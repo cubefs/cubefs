@@ -2,6 +2,7 @@ package proto
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -50,4 +51,13 @@ func TestHTTPReplyRaw(t *testing.T) {
 	require.NoError(t, UnmarshalHTTPReply(genBody(), &aStruct))
 	require.Equal(t, int(177), aStruct.Outter)
 	require.Equal(t, "", aStruct.inner)
+}
+
+func TestValidateFollowerReadLeaseTime(t *testing.T) {
+	require.NoError(t, ValidateFollowerReadLeaseTime(1))
+	require.NoError(t, ValidateFollowerReadLeaseTime(MaxFollowerReadLeaseTimeSec))
+	require.Error(t, ValidateFollowerReadLeaseTime(0))
+	require.Error(t, ValidateFollowerReadLeaseTime(MaxFollowerReadLeaseTimeSec+1))
+	err := ValidateFollowerReadLeaseTime(0)
+	require.True(t, errors.Is(err, ErrFollowerReadLeaseTimeRange))
 }

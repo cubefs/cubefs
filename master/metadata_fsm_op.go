@@ -1326,6 +1326,10 @@ func (c *Cluster) updateMetaNodeDeleteWorkerSleepMs(val uint64) {
 }
 
 func (c *Cluster) updateFollowerReadLeaseTime(val uint64) {
+	if val > proto.MaxFollowerReadLeaseTimeSec {
+		log.LogWarnf("action[updateFollowerReadLeaseTime] value %d exceeds max %d, capping", val, proto.MaxFollowerReadLeaseTimeSec)
+		val = proto.MaxFollowerReadLeaseTimeSec
+	}
 	atomic.StoreUint64(&c.cfg.FollowerReadLeaseTime, val)
 }
 

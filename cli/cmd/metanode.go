@@ -87,8 +87,7 @@ func newMetaNodeListCmd(client *master.MasterClient) *cobra.Command {
 				}
 				return metaNodes[i].ID < metaNodes[j].ID
 			})
-			stdout("[Meta nodes]\n")
-			stdout("%v\n", formatMetaNodeViewTableHeader())
+			visible := make([]proto.NodeView, 0, len(metaNodes))
 			for _, node := range metaNodes {
 				if optFilterStatus != "" &&
 					!strings.Contains(formatNodeStatus(node.Status), optFilterStatus) {
@@ -98,8 +97,10 @@ func newMetaNodeListCmd(client *master.MasterClient) *cobra.Command {
 					!strings.Contains(formatYesNo(node.IsWritable), optFilterWritable) {
 					continue
 				}
-				stdout("%v\n", formatMetaNodeView(&node, true))
+				visible = append(visible, node)
 			}
+			stdout("[Meta nodes]\n")
+			stdout("%s\n", formatMetaNodeViewTable(visible, "", ""))
 		},
 	}
 	cmd.Flags().StringVar(&optFilterWritable, "filter-writable", "", "Filter node writable status")

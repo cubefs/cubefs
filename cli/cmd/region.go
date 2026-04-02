@@ -113,14 +113,12 @@ func formatRegionView(rv *proto.RegionView) string {
 		sb.WriteString(fmt.Sprintf("  [Zone: %v]\n", zoneView.ZoneName))
 		sb.WriteString(fmt.Sprintf("    Meta Node Count: %v\n", len(zoneView.MetaNodes)))
 		if len(zoneView.MetaNodes) > 0 {
-			sb.WriteString(fmt.Sprintf("    %v\n", formatMetaNodeViewTableHeader()))
 			// Sort nodes by ID
 			sort.Slice(zoneView.MetaNodes, func(i, j int) bool {
 				return zoneView.MetaNodes[i].ID < zoneView.MetaNodes[j].ID
 			})
-			for _, node := range zoneView.MetaNodes {
-				sb.WriteString(fmt.Sprintf("    %v\n", formatMetaNodeView(&node, true)))
-			}
+			sb.WriteString(prefixEachLine(formatMetaNodeViewTable(zoneView.MetaNodes, "", ""), "    "))
+			sb.WriteString("\n")
 		}
 		sb.WriteString("\n")
 	}

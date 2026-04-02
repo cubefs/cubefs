@@ -862,7 +862,7 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 	}
 
 	// Start timestamp notification goroutine
-	mp.startNotifyTimestamp()
+	go mp.startNotifyTimestamp()
 
 	mp.volType = volInfo.VolType
 	if !proto.IsValidStorageClass(volInfo.VolStorageClass) {
@@ -1075,45 +1075,43 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaP
 
 // startNotifyTimestamp starts a goroutine to periodically send timestamp notifications to followers
 func (mp *metaPartition) startNotifyTimestamp() {
-	go func() {
-		log.LogInfof("[startNotifyTimestamp] mp(%v) start timestamp notification", mp.config.PartitionId)
-		interval := time.Duration(FollowerReadLeaseTime()) * 1000 * time.Millisecond / 3
-		timer := time.NewTimer(interval)
-		defer timer.Stop()
+	log.LogInfof("[startNotifyTimestamp] mp(%v) start timestamp notification", mp.config.PartitionId)
+	interval := time.Duration(FollowerReadLeaseTime()) * 1000 * time.Millisecond / 3
+	timer := time.NewTimer(interval)
+	defer timer.Stop()
 
-		for {
-			select {
-			case <-mp.stopC:
-				log.LogInfof("[startNotifyTimestamp] mp(%v) stop timestamp notification", mp.config.PartitionId)
-				return
-			case <-timer.C:
+	for {
+		select {
+		case <-mp.stopC:
+			log.LogInfof("[startNotifyTimestamp] mp(%v) stop timestamp notification", mp.config.PartitionId)
+			return
+		case <-timer.C:
 
-				interval = time.Duration(FollowerReadLeaseTime()) * 1000 * time.Millisecond / 3
-				timer.Reset(interval)
+			interval = time.Duration(FollowerReadLeaseTime()) * 1000 * time.Millisecond / 3
+			timer.Reset(interval)
 
-				// Only leader sends timestamp notifications
-				if _, ok := mp.IsLeader(); !ok {
-					continue
-				}
-
-				// Get current timestamp
-				timestamp := timeutil.GetCurrentTimeUnix()
-
-				// Encode timestamp as uint64 bytes
-				buf := make([]byte, 8)
-				binary.BigEndian.PutUint64(buf, uint64(timestamp))
-				// Submit through raft
-				if _, err := mp.submit(opFSMNotifyTimestamp, buf); err != nil {
-					log.LogWarnf("[startNotifyTimestamp] mp(%v) failed to submit timestamp notification: %v, interval: %v",
-						mp.config.PartitionId, err, interval)
-				} else {
-					log.LogDebugf("[startNotifyTimestamp] mp(%v) sent timestamp notification: %v, interval: %v",
-						mp.config.PartitionId, timestamp, interval)
-				}
-
+			// Only leader sends timestamp notifications
+			if _, ok := mp.IsLeader(); !ok {
+				continue
 			}
+
+			// Get current timestamp
+			timestamp := timeutil.GetCurrentTimeUnix()
+
+			// Encode timestamp as uint64 bytes
+			buf := make([]byte, 8)
+			binary.BigEndian.PutUint64(buf, uint64(timestamp))
+			// Submit through raft
+			if _, err := mp.submit(opFSMNotifyTimestamp, buf); err != nil {
+				log.LogWarnf("[startNotifyTimestamp] mp(%v) failed to submit timestamp notification: %v, interval: %v",
+					mp.config.PartitionId, err, interval)
+			} else {
+				log.LogDebugf("[startNotifyTimestamp] mp(%v) sent timestamp notification: %v, interval: %v",
+					mp.config.PartitionId, timestamp, interval)
+			}
+
 		}
-	}()
+	}
 }
 
 func (mp *metaPartition) GetVerSeq() uint64 {

@@ -168,5 +168,9 @@ func FollowerReadLeaseTime() uint64 {
 
 // updateFollowerReadLeaseTime updates the follower read lease time atomically
 func updateFollowerReadLeaseTime(val uint64) {
+	if val > proto.MaxFollowerReadLeaseTimeSec {
+		log.LogWarnf("FollowerReadLeaseTime %d from cluster exceeds max %d, capping", val, proto.MaxFollowerReadLeaseTimeSec)
+		val = proto.MaxFollowerReadLeaseTimeSec
+	}
 	atomic.StoreUint64(&nodeInfo.followerReadLeaseTime, val)
 }

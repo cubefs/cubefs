@@ -272,7 +272,7 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	m.rack = cfg.GetString(cfgRack)
 	m.region = cfg.GetString(cfgRegion)
 	if m.region == "" {
-		m.region = "default"
+		m.region = proto.DefaultRegion
 	}
 
 	// Parse delete batch count

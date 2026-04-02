@@ -5483,6 +5483,9 @@ func (c *Cluster) setMetaNodeDeleteBatchCount(val uint64) (err error) {
 }
 
 func (c *Cluster) setMetaNodeFollowerReadLeaseTime(val uint64) (err error) {
+	if err = proto.ValidateFollowerReadLeaseTime(val); err != nil {
+		return err
+	}
 	oldVal := atomic.LoadUint64(&c.cfg.FollowerReadLeaseTime)
 	atomic.StoreUint64(&c.cfg.FollowerReadLeaseTime, val)
 	if err = c.syncPutCluster(); err != nil {

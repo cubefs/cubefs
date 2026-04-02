@@ -230,55 +230,58 @@ func formatClusterDiskOp(opv *proto.OpLogView, logNum int, filterOp string) stri
 	return sb.String()
 }
 
-var nodeViewTableRowPattern = "%-6v    %-32v    %-6v    %-8v    %-8v    %-42v    %-8v 	%-8v     %-24v     %-10v    %-10v    %-10v    %-24v"
-
-func formatNodeViewTableHeader() string {
-	return fmt.Sprintf(nodeViewTableRowPattern, "ID", "ADDRESS", "DP", "MAX_DP", "WRITABLE", "ALLOCATABLE", "ACTIVE", "MEDIA", "ZONE", "POOL", "RACK", "ForbidWriteOpOfProtoVer0", "TAG")
+func formatNodeViewPoolColumn(view *proto.NodeView) string {
+	if view.PoolId <= 0 {
+		return "-"
+	}
+	if view.PoolName != "" {
+		return fmt.Sprintf("%d(%s)", view.PoolId, view.PoolName)
+	}
+	return fmt.Sprintf("%d", view.PoolId)
 }
 
-func formatNodeView(view *proto.NodeView, tableRow bool) string {
-	if tableRow {
-		poolInfo := "-"
-		if view.PoolId > 0 {
-			if view.PoolName != "" {
-				poolInfo = fmt.Sprintf("%d(%s)", view.PoolId, view.PoolName)
-			} else {
-				poolInfo = fmt.Sprintf("%d", view.PoolId)
-			}
-		}
-		zoneInfo := view.ZoneName
-		if zoneInfo == "" {
-			zoneInfo = "-"
-		}
-		return fmt.Sprintf(nodeViewTableRowPattern, view.ID, formatAddr(view.Addr, view.DomainAddr),
-			view.DataPartitionCount, view.PartitionLimitCnt,
-			formatYesNo(view.IsWritable), formatAllocatableWithReason(view.CanAllocPartition, view.CanAllocReason), formatNodeStatus(view.Status), formatNodeMediaType(view.MediaType),
-			zoneInfo, poolInfo, view.Rack,
-			formatNodeForbiddenWriteOpVer(view.ForbidWriteOpOfProtoVer0), view.Tag)
+func nodeViewTableHeaderRow() []interface{} {
+	return arow("ID", "ADDRESS", "DP", "MAX_DP", "WRITABLE", "ALLOCATABLE", "ACTIVE", "MEDIA", "ZONE", "POOL", "RACK", "ForbidWriteOfVer0", "TAG")
+}
+
+// nodeViewTableCells builds one data-node table row. fixedZone/fixedPool override ZONE/POOL when non-empty (e.g. zone view).
+func nodeViewTableCells(view *proto.NodeView, fixedZone, fixedPool string) []interface{} {
+	zoneInfo := fixedZone
+	if zoneInfo == "" {
+		zoneInfo = view.ZoneName
 	}
-	sb := strings.Builder{}
-	sb.WriteString(fmt.Sprintf("  ID      : %v\n", view.ID))
-	sb.WriteString(fmt.Sprintf("  Address : %v\n", formatAddr(view.Addr, view.DomainAddr)))
-	sb.WriteString(fmt.Sprintf("  Writable: %v\n", formatYesNo(view.IsWritable)))
-	sb.WriteString(fmt.Sprintf("  Allocatable: %v\n", formatAllocatableWithReason(view.CanAllocPartition, view.CanAllocReason)))
-	sb.WriteString(fmt.Sprintf("  Active  : %v\n", formatNodeStatus(view.Status)))
-	sb.WriteString(fmt.Sprintf("  MEDIA   : %v\n", formatNodeMediaType(view.MediaType)))
-	if view.ZoneName != "" {
-		sb.WriteString(fmt.Sprintf("  Zone    : %v\n", view.ZoneName))
+	if zoneInfo == "" {
+		zoneInfo = "-"
 	}
-	if view.PoolId > 0 {
-		poolInfo := fmt.Sprintf("%d", view.PoolId)
-		if view.PoolName != "" {
-			poolInfo = fmt.Sprintf("%d(%s)", view.PoolId, view.PoolName)
-		}
-		sb.WriteString(fmt.Sprintf("  Pool    : %v\n", poolInfo))
+	poolInfo := fixedPool
+	if poolInfo == "" {
+		poolInfo = formatNodeViewPoolColumn(view)
 	}
-	sb.WriteString(fmt.Sprintf("  Rack    : %v\n", view.Rack))
-	sb.WriteString(fmt.Sprintf("  DP count: %v\n", view.DataPartitionCount))
-	sb.WriteString(fmt.Sprintf("  Max DP  : %v\n", view.PartitionLimitCnt))
-	sb.WriteString(fmt.Sprintf("  ForbidWriteOpOfProtoVer0: %v\n", formatNodeForbiddenWriteOpVer(view.ForbidWriteOpOfProtoVer0)))
-	sb.WriteString(fmt.Sprintf("  Tag : %v", view.Tag))
-	return sb.String()
+	return []interface{}{
+		view.ID,
+		formatAddr(view.Addr, view.DomainAddr),
+		view.DataPartitionCount,
+		view.PartitionLimitCnt,
+		formatYesNo(view.IsWritable),
+		formatAllocatableWithReason(view.CanAllocPartition, view.CanAllocReason),
+		formatNodeStatus(view.Status),
+		formatNodeMediaType(view.MediaType),
+		zoneInfo,
+		poolInfo,
+		view.Rack,
+		formatNodeForbiddenWriteOpVer(view.ForbidWriteOpOfProtoVer0),
+		view.Tag,
+	}
+}
+
+// formatNodeViewTable renders data node list with column widths from header and rows (tab-separated).
+func formatNodeViewTable(nodes []proto.NodeView, fixedZone, fixedPool string) string {
+	rows := make([][]interface{}, 0, len(nodes)+1)
+	rows = append(rows, nodeViewTableHeaderRow())
+	for i := range nodes {
+		rows = append(rows, nodeViewTableCells(&nodes[i], fixedZone, fixedPool))
+	}
+	return strings.TrimSuffix(alignTableSep("\t", rows...), "\n")
 }
 
 var nodeViewTableRowPatternForNodeSet = "%-6v    %-65v    %-8v    %-8v    %-10v    %-10v    %-10v    %-10v"
@@ -1833,34 +1836,14 @@ func formatZoneView(zv *proto.ZoneView) string {
 	for index, ns := range zv.NodeSet {
 		sb.WriteString(fmt.Sprintf("NodeSet-%v:\n", index))
 		sb.WriteString(fmt.Sprintf("  DataNodes[%v]:\n", ns.DataNodeLen))
-		sb.WriteString(fmt.Sprintf("    %v\n", formatNodeViewTableHeader()))
-		for _, nv := range ns.DataNodes {
-			sb.WriteString(fmt.Sprintf("    %v\n", formatNodeViewForZone(&nv, zoneName, poolInfo)))
-		}
+		sb.WriteString(prefixEachLine(formatNodeViewTable(ns.DataNodes, zoneName, poolInfo), "    "))
+		sb.WriteString("\n")
 		sb.WriteString("\n")
 		sb.WriteString(fmt.Sprintf("  MetaNodes[%v]:\n", ns.MetaNodeLen))
-		sb.WriteString(fmt.Sprintf("    %v\n", formatMetaNodeViewTableHeader()))
-		for _, nv := range ns.MetaNodes {
-			sb.WriteString(fmt.Sprintf("    %v\n", formatMetaNodeViewForZone(&nv, zoneName, metaRegion)))
-		}
+		sb.WriteString(prefixEachLine(formatMetaNodeViewTable(ns.MetaNodes, metaRegion, zoneName), "    "))
+		sb.WriteString("\n")
 	}
 	return sb.String()
-}
-
-// formatNodeViewForZone formats a DataNode view for zone info display, using zone's pool and zone name
-func formatNodeViewForZone(view *proto.NodeView, zoneName, poolInfo string) string {
-	return fmt.Sprintf(nodeViewTableRowPattern, view.ID, formatAddr(view.Addr, view.DomainAddr),
-		formatYesNo(view.IsWritable), formatNodeStatus(view.Status), formatNodeMediaType(view.MediaType),
-		zoneName, poolInfo, view.Rack,
-		formatNodeForbiddenWriteOpVer(view.ForbidWriteOpOfProtoVer0), view.Tag)
-}
-
-// formatMetaNodeViewForZone formats a MetaNode view for zone info display, using zone's region and zone name
-func formatMetaNodeViewForZone(view *proto.NodeView, zoneName, region string) string {
-	return fmt.Sprintf(metaNodeViewTableRowPattern, view.ID, formatAddr(view.Addr, view.DomainAddr),
-		formatYesNo(view.IsWritable), formatNodeStatus(view.Status), formatNodeMediaType(view.MediaType),
-		view.Rack, formatNodeForbiddenWriteOpVer(view.ForbidWriteOpOfProtoVer0),
-		formatYesNo(view.IsRocksdbWritable), region, zoneName, view.Tag)
 }
 
 var quotaTableRowPattern = "%-6v %-30v %-15v %-20v     %-15v    %-10v    %-12v    %-12v    %-10v    %-10v    %-10v    %-10v"
@@ -2237,41 +2220,53 @@ func formatMetaPartitionFreeze(freeze int8) string {
 	}
 }
 
-var metaNodeViewTableRowPattern = "%-6v    %-32v    %-6v    %-8v    %-8v    %-42v    %-8v    %-8v    %-24v    %-8v    %-8v    %-10v    %-10v    %-16v"
-
-func formatMetaNodeViewTableHeader() string {
-	return fmt.Sprintf(metaNodeViewTableRowPattern, "ID", "ADDRESS", "MP", "MAX_MP", "WRITABLE", "ALLOCATABLE", "ACTIVE", "MEDIA", "RACK", "ForbidWriteOpOfProtoVer0", "RocksdbWritable", "REGION", "ZONE", "TAG")
+func metaNodeViewTableHeaderRow() []interface{} {
+	return arow("ID", "ADDRESS", "MP", "MAX_MP", "WRITABLE", "ALLOCATABLE", "ACTIVE", "MEDIA", "RACK",
+		"ForbidWriteOfVer0", "RocksdbWritable", "REGION", "ZONE", "TAG")
 }
 
-func formatMetaNodeView(view *proto.NodeView, tableRow bool) string {
-	if tableRow {
-		region := view.Region
-		if region == "" {
-			region = "-"
-		}
-		zoneName := view.ZoneName
-		if zoneName == "" {
-			zoneName = "-"
-		}
-		return fmt.Sprintf(metaNodeViewTableRowPattern, view.ID, formatAddr(view.Addr, view.DomainAddr),
-			view.MetaPartitionCount, view.PartitionLimitCnt,
-			formatYesNo(view.IsWritable), formatAllocatableWithReason(view.CanAllocPartition, view.CanAllocReason), formatNodeStatus(view.Status), formatNodeMediaType(view.MediaType),
-			view.Rack, formatNodeForbiddenWriteOpVer(view.ForbidWriteOpOfProtoVer0),
-			formatYesNo(view.IsRocksdbWritable), region, zoneName, view.Tag)
+// metaNodeViewTableCells builds one table row. fixedRegion/fixedZone override view.Region / view.ZoneName when non-empty (e.g. zone list).
+func metaNodeViewTableCells(view *proto.NodeView, fixedRegion, fixedZone string) []interface{} {
+	region := fixedRegion
+	if region == "" {
+		region = view.Region
 	}
-	sb := strings.Builder{}
-	sb.WriteString(fmt.Sprintf("  ID              : %v\n", view.ID))
-	sb.WriteString(fmt.Sprintf("  Address         : %v\n", formatAddr(view.Addr, view.DomainAddr)))
-	sb.WriteString(fmt.Sprintf("  Writable        : %v\n", formatYesNo(view.IsWritable)))
-	sb.WriteString(fmt.Sprintf("  Allocatable     : %v\n", formatAllocatableWithReason(view.CanAllocPartition, view.CanAllocReason)))
-	sb.WriteString(fmt.Sprintf("  Active          : %v", formatNodeStatus(view.Status)))
-	sb.WriteString(fmt.Sprintf("  MEDIA           : %v", formatNodeMediaType(view.MediaType)))
-	sb.WriteString(fmt.Sprintf("  Rack            : %v\n", view.Rack))
-	sb.WriteString(fmt.Sprintf("  MP count        : %v\n", view.MetaPartitionCount))
-	sb.WriteString(fmt.Sprintf("  Max MP          : %v\n", view.PartitionLimitCnt))
-	sb.WriteString(fmt.Sprintf("  ForbidWriteOpOfProtoVer0: %v\n", formatNodeForbiddenWriteOpVer(view.ForbidWriteOpOfProtoVer0)))
-	sb.WriteString(fmt.Sprintf("  RocksdbWritable : %v", formatYesNo(view.IsRocksdbWritable)))
-	return sb.String()
+	if region == "" {
+		region = "-"
+	}
+	zoneName := fixedZone
+	if zoneName == "" {
+		zoneName = view.ZoneName
+	}
+	if zoneName == "" {
+		zoneName = "-"
+	}
+	return []interface{}{
+		view.ID,
+		formatAddr(view.Addr, view.DomainAddr),
+		view.MetaPartitionCount,
+		view.PartitionLimitCnt,
+		formatYesNo(view.IsWritable),
+		formatAllocatableWithReason(view.CanAllocPartition, view.CanAllocReason),
+		formatNodeStatus(view.Status),
+		formatNodeMediaType(view.MediaType),
+		view.Rack,
+		formatNodeForbiddenWriteOpVer(view.ForbidWriteOpOfProtoVer0),
+		formatYesNo(view.IsRocksdbWritable),
+		region,
+		zoneName,
+		view.Tag,
+	}
+}
+
+// formatMetaNodeViewTable renders meta node list with column widths derived from header and data (tab-separated columns).
+func formatMetaNodeViewTable(nodes []proto.NodeView, fixedRegion, fixedZone string) string {
+	rows := make([][]interface{}, 0, len(nodes)+1)
+	rows = append(rows, metaNodeViewTableHeaderRow())
+	for i := range nodes {
+		rows = append(rows, metaNodeViewTableCells(&nodes[i], fixedRegion, fixedZone))
+	}
+	return strings.TrimSuffix(alignTableSep("\t", rows...), "\n")
 }
 
 func formatDistributionOptimizationStatus(status *proto.DistributionOptimizationStatus) string {

@@ -782,8 +782,8 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 					err = fmt.Errorf("param followerReadLeaseTime(%v) failed, should be uint64", optFollowerReadLeaseTime)
 					return
 				}
-				if tmpUint64 == 0 {
-					err = fmt.Errorf("param followerReadLeaseTime(%v) must be greater than 0", optFollowerReadLeaseTime)
+				if err = proto.ValidateFollowerReadLeaseTime(tmpUint64); err != nil {
+					err = fmt.Errorf("param followerReadLeaseTime(%v): %w", optFollowerReadLeaseTime, err)
 					return
 				}
 			}
@@ -858,7 +858,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optMarkDeleteRate, CliFlagMarkDelRate, "", "DataNode batch mark delete limit rate. if 0 for no infinity limit")
 	cmd.Flags().StringVar(&optAutoRepairRate, CliFlagAutoRepairRate, "", "DataNode auto repair rate")
 	cmd.Flags().StringVar(&optDelWorkerSleepMs, CliFlagDelWorkerSleepMs, "", "MetaNode delete worker sleep time with millisecond. if 0 for no sleep")
-	cmd.Flags().StringVar(&optFollowerReadLeaseTime, "followerReadLeaseTime", "", "Follower read lease time in seconds, default is 5")
+	cmd.Flags().StringVar(&optFollowerReadLeaseTime, "followerReadLeaseTime", "", fmt.Sprintf("Follower read lease time in seconds (1-%d), default is 5", proto.MaxFollowerReadLeaseTimeSec))
 	cmd.Flags().StringVar(&opMaxDpCntLimit, CliFlagMaxDpCntLimit, "", "Maximum number of dp on each datanode, default 3000, 0 represents setting to default")
 	cmd.Flags().StringVar(&opMaxMpCntLimit, CliFlagMaxMpCntLimit, "", "Maximum number of mp on each metanode, default 300, 0 represents setting to default")
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)

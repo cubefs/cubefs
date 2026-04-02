@@ -86,8 +86,7 @@ func newDataNodeListCmd(client *master.MasterClient) *cobra.Command {
 				}
 				return dataNodes[i].ID < dataNodes[j].ID
 			})
-			stdoutln("[Data nodes]")
-			stdoutln(formatNodeViewTableHeader())
+			visible := make([]proto.NodeView, 0, len(dataNodes))
 			for _, node := range dataNodes {
 				if optFilterStatus != "" &&
 					!strings.Contains(formatNodeStatus(node.Status), optFilterStatus) {
@@ -97,8 +96,10 @@ func newDataNodeListCmd(client *master.MasterClient) *cobra.Command {
 					!strings.Contains(formatYesNo(node.IsWritable), optFilterWritable) {
 					continue
 				}
-				stdoutln(formatNodeView(&node, true))
+				visible = append(visible, node)
 			}
+			stdoutln("[Data nodes]")
+			stdoutln(formatNodeViewTable(visible, "", ""))
 			return nil
 		},
 	}

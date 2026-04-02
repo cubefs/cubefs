@@ -112,6 +112,18 @@ func alignColumnIndex(index int, rows ...[]interface{}) string {
 	return alignColumnIndent(util.Any2String(index), rows...)
 }
 
+// prefixEachLine prepends prefix to every line in s (including empty lines).
+func prefixEachLine(s, prefix string) string {
+	if s == "" {
+		return ""
+	}
+	lines := strings.Split(s, "\n")
+	for i := range lines {
+		lines[i] = prefix + lines[i]
+	}
+	return strings.Join(lines, "\n")
+}
+
 func ParseStoreMode(optStoreMode string) (proto.StoreMode, error) {
 	storeMode := proto.StoreModeDef
 	if optStoreMode != "" {

@@ -1503,6 +1503,9 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 			err = unmatchedKey(followerReadLeaseTimeKey)
 			return
 		}
+		if err = proto.ValidateFollowerReadLeaseTime(followerReadLeaseTime); err != nil {
+			return
+		}
 		params[followerReadLeaseTimeKey] = followerReadLeaseTime
 	}
 
@@ -2331,6 +2334,10 @@ func newSuccessHTTPReply(data interface{}) *proto.HTTPReply {
 func newErrHTTPReply(err error) *proto.HTTPReply {
 	if err == nil {
 		return newSuccessHTTPReply("")
+	}
+
+	if errors.Is(err, proto.ErrFollowerReadLeaseTimeRange) {
+		return &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()}
 	}
 
 	if errors.Is(err, errAutoMpMetaRepairNeedsLearnerDecommission) {

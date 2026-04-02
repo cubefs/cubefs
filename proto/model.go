@@ -28,7 +28,17 @@ const (
 	MaxAutoDpMetaRepairParallelCnt = 10000
 	MinAutoMpMetaRepairParallelCnt = 1
 	MaxAutoMpMetaRepairParallelCnt = 1000
+	// MaxFollowerReadLeaseTimeSec is the maximum allowed follower read lease duration in seconds (master cluster param).
+	MaxFollowerReadLeaseTimeSec uint64 = 60
 )
+
+// ValidateFollowerReadLeaseTime returns nil if val is in [1, MaxFollowerReadLeaseTimeSec].
+func ValidateFollowerReadLeaseTime(val uint64) error {
+	if val == 0 || val > MaxFollowerReadLeaseTimeSec {
+		return fmt.Errorf("%w: value %d, valid range is 1-%d seconds inclusive", ErrFollowerReadLeaseTimeRange, val, MaxFollowerReadLeaseTimeSec)
+	}
+	return nil
+}
 
 // MetaNode defines the structure of a meta node
 type MetaNodeInfo struct {
