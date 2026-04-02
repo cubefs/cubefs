@@ -772,6 +772,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 			ReadOnlyReasons:            partition.ReadOnlyReasons(),
 			IsMissingTinyExtent:        partition.isMissingTinyExtent,
 			IsRepairing:                partition.isRepairing,
+			ApplyMemberChangeID:        atomic.LoadUint64(&partition.applyMemberChangeID),
 		}
 		log.LogDebugf("action[Heartbeats] dpid(%v), status(%v) total(%v) used(%v) leader(%v) isLeader(%v) "+
 			"TriggerDiskError(%v) reqId(%v) testID(%v) cost(%v).",

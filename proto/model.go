@@ -520,6 +520,7 @@ type DataReplica struct {
 	ReadOnlyReasons            uint32
 	IsMissingTinyExtent        bool
 	IsRepairing                bool
+	ApplyMemberChangeID        uint64 `json:",omitempty"` // last applied member-change raft index on this replica
 }
 
 // data partition diagnosis represents the inactive data nodes, corrupt data partitions, and data partitions lack of replicas

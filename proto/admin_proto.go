@@ -975,6 +975,7 @@ type DataPartitionReport struct {
 	ReadOnlyReasons            uint32
 	IsMissingTinyExtent        bool
 	IsRepairing                bool
+	ApplyMemberChangeID        uint64 // last applied ConfChange index on this replica (0 if legacy DN)
 }
 
 type DataNodeQosResponse struct {

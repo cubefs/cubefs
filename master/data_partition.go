@@ -847,6 +847,16 @@ func (partition *DataPartition) updateMetric(vr *proto.DataPartitionReport, data
 	replica.DecommissionRepairProgress = vr.DecommissionRepairProgress
 	replica.LocalPeers = vr.LocalPeers
 	replica.TriggerDiskError = vr.TriggerDiskError
+	// Legacy datanodes send ApplyMemberChangeID=0; do not overwrite a known non-zero value.
+	if vr.ApplyMemberChangeID != 0 && vr.ApplyMemberChangeID != replica.ApplyMemberChangeID {
+		oldApplyMC := replica.ApplyMemberChangeID
+		replica.ApplyMemberChangeID = vr.ApplyMemberChangeID
+		if err = c.syncUpdateDataPartition(partition); err != nil {
+			replica.ApplyMemberChangeID = oldApplyMC
+			log.LogErrorf("action[updateMetric] dp(%v) replica(%v) syncUpdateDataPartition applyMemberChangeID err(%v)",
+				partition.PartitionID, dataNode.Addr, err)
+		}
+	}
 	if replica.DiskPath != vr.DiskPath && vr.DiskPath != "" {
 		oldDiskPath := replica.DiskPath
 		replica.DiskPath = vr.DiskPath
@@ -3496,6 +3506,8 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 	// find redundant peers from replica meta
 	force := false
 	replicasToDelete := make([]proto.Peer, 0)
+	leaderApplyMCID, hasLeaderReplica := partition.getLeaderApplyMemberChangeID()
+	dpTimeoutSec := c.getDataPartitionTimeoutSec()
 	for _, replica := range partition.Replicas {
 		// new created replica, no heart beat report, skip
 		if len(replica.LocalPeers) == 0 {
@@ -3503,6 +3515,12 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 		}
 		// do not delete new replica add by manual
 		if partition.DecommissionType == ManualAddReplica {
+			continue
+		}
+		if !replica.isLive(partition.PartitionID, dpTimeoutSec) {
+			continue
+		}
+		if hasLeaderReplica && !replica.IsLeader && replica.ApplyMemberChangeID < leaderApplyMCID {
 			continue
 		}
 		redundantPeers := findPeersToDeleteByConfig(replica.LocalPeers, partition.Peers)
@@ -3551,6 +3569,12 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 	for _, replica := range partition.Replicas {
 		// new created replica, no heart beat report, skip
 		if len(replica.LocalPeers) == 0 {
+			continue
+		}
+		if !replica.isLive(partition.PartitionID, dpTimeoutSec) {
+			continue
+		}
+		if hasLeaderReplica && !replica.IsLeader && replica.ApplyMemberChangeID < leaderApplyMCID {
 			continue
 		}
 		redundantPeers := findPeersToDeleteByConfig(partition.Peers, replica.LocalPeers)
@@ -3814,9 +3838,53 @@ func (partition *DataPartition) createTaskToRecoverBackupDataPartitionReplica(ad
 	return
 }
 
+// getLeaderApplyMemberChangeID returns the leader replica's ApplyMemberChangeID if any replica reports IsLeader.
+func (partition *DataPartition) getLeaderApplyMemberChangeID() (applyID uint64, hasLeader bool) {
+	for _, replica := range partition.Replicas {
+		if replica.IsLeader {
+			return replica.ApplyMemberChangeID, true
+		}
+	}
+	return 0, false
+}
+
+// hasFollowerApplyMemberChangeAheadOfLeader reports whether some non-leader replica has a higher
+// ApplyMemberChangeID than the leader (stale leader heartbeat / divergent view); in that case replica
+// meta restore should not run.
+func (partition *DataPartition) hasFollowerApplyMemberChangeAheadOfLeader() bool {
+	var leader *DataReplica
+	for _, r := range partition.Replicas {
+		if r.IsLeader {
+			leader = r
+			break
+		}
+	}
+	if leader == nil {
+		return false
+	}
+	for _, r := range partition.Replicas {
+		if r.IsLeader {
+			continue
+		}
+		if r.ApplyMemberChangeID > leader.ApplyMemberChangeID {
+			log.LogDebugf("action[replicaMeta]dp(%v) follower %v applyMemberChangeID(%v) > leader %v(%v), skip restore",
+				partition.PartitionID, r.Addr, r.ApplyMemberChangeID, leader.Addr, leader.ApplyMemberChangeID)
+			return true
+		}
+	}
+	return false
+}
+
 func (partition *DataPartition) needReplicaMetaRestore(c *Cluster) bool {
 	partition.RLock()
 	defer partition.RUnlock()
+	if partition.hasFollowerApplyMemberChangeAheadOfLeader() {
+		return false
+	}
+
+	leaderApplyMCID, hasLeaderReplica := partition.getLeaderApplyMemberChangeID()
+	timeOutSec := c.getDataPartitionTimeoutSec()
+
 	if len(partition.Replicas) == len(partition.Hosts) && len(partition.Hosts) == len(partition.Peers) &&
 		len(partition.Replicas) > int(partition.ReplicaNum) && (partition.GetDecommissionStatus() == DecommissionInitial || partition.GetDecommissionStatus() == DecommissionFail) {
 		return true
@@ -3831,6 +3899,13 @@ func (partition *DataPartition) needReplicaMetaRestore(c *Cluster) bool {
 			continue
 		}
 
+		if !replica.isLive(partition.PartitionID, timeOutSec) {
+			continue
+		}
+		if hasLeaderReplica && !replica.IsLeader && replica.ApplyMemberChangeID < leaderApplyMCID {
+			continue
+		}
+
 		redundantPeers := findPeersToDeleteByConfig(replica.LocalPeers, partition.Peers)
 		if len(redundantPeers) != 0 {
 			return true
@@ -3839,6 +3914,12 @@ func (partition *DataPartition) needReplicaMetaRestore(c *Cluster) bool {
 
 	for _, replica := range partition.Replicas {
 		if len(replica.LocalPeers) == 0 {
+			continue
+		}
+		if !replica.isLive(partition.PartitionID, timeOutSec) {
+			continue
+		}
+		if hasLeaderReplica && !replica.IsLeader && replica.ApplyMemberChangeID < leaderApplyMCID {
 			continue
 		}
 		redundantPeers := findPeersToDeleteByConfig(partition.Peers, replica.LocalPeers)

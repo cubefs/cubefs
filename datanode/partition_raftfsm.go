@@ -144,11 +144,12 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 	}
 	if isUpdated {
 		dp.DataPartitionCreateType = proto.NormalCreateDataPartition
-		if err = dp.PersistMetadata(); err != nil {
-			log.LogErrorf("action[ApplyMemberChange] dp(%v) PersistMetadata err(%v).", dp.partitionID, err)
-			dp.checkIsDiskError(err, WriteFlag)
-			return
-		}
+	}
+	dp.uploadApplyMemberChangeID(index)
+	if err = dp.PersistMetadata(); err != nil {
+		log.LogErrorf("action[ApplyMemberChange] dp(%v) PersistMetadata err(%v).", dp.partitionID, err)
+		dp.checkIsDiskError(err, WriteFlag)
+		return
 	}
 	return
 }
@@ -221,4 +222,12 @@ func (dp *DataPartition) uploadApplyID(applyID uint64) {
 	log.LogDebugf("[uploadApplyID] dp(%v) upload apply id(%v)", dp.partitionID, applyID)
 	atomic.StoreUint64(&dp.appliedID, applyID)
 	atomic.StoreUint64(&dp.extentStore.ApplyId, applyID)
+}
+
+func (dp *DataPartition) uploadApplyMemberChangeID(index uint64) {
+	if index == 0 {
+		return
+	}
+	log.LogDebugf("[uploadApplyMemberChangeID] dp(%v) applyMemberChangeID(%v)", dp.partitionID, index)
+	atomic.StoreUint64(&dp.applyMemberChangeID, index)
 }

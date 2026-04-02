@@ -79,6 +79,7 @@ type DataPartitionMetadata struct {
 	StopRecover             bool
 	VerList                 []*proto.VolVersionInfo
 	ApplyID                 uint64
+	ApplyMemberChangeID     uint64 `json:"applyMemberChangeID,omitempty"`
 	DiskErrCnt              uint64
 	IsRepairing             bool
 }
@@ -100,30 +101,31 @@ type MetaMultiSnapshotInfo struct {
 }
 
 type DataPartition struct {
-	clusterID       string
-	volumeID        string
-	partitionID     uint64
-	partitionStatus int
-	partitionSize   int
-	partitionType   int
-	replicaNum      int
-	replicas        []string // addresses of the replicas
-	replicasLock    sync.RWMutex
-	disk            *Disk
-	dataNode        *DataNode
-	isLeader        bool
-	isRaftLeader    bool
-	path            string
-	used            int
-	leaderSize      int
-	extentStore     *storage.ExtentStore
-	raftPartition   raftstore.Partition
-	config          *dataPartitionCfg
-	appliedID       uint64 // apply id used in Raft
-	lastTruncateID  uint64 // truncate id used in Raft
-	metaAppliedID   uint64 // apply id while do meta persist
-	minAppliedID    uint64
-	maxAppliedID    uint64
+	clusterID           string
+	volumeID            string
+	partitionID         uint64
+	partitionStatus     int
+	partitionSize       int
+	partitionType       int
+	replicaNum          int
+	replicas            []string // addresses of the replicas
+	replicasLock        sync.RWMutex
+	disk                *Disk
+	dataNode            *DataNode
+	isLeader            bool
+	isRaftLeader        bool
+	path                string
+	used                int
+	leaderSize          int
+	extentStore         *storage.ExtentStore
+	raftPartition       raftstore.Partition
+	config              *dataPartitionCfg
+	appliedID           uint64 // apply id used in Raft
+	applyMemberChangeID uint64 // last successfully applied ApplyMemberChange raft log index
+	lastTruncateID      uint64 // truncate id used in Raft
+	metaAppliedID       uint64 // apply id while do meta persist
+	minAppliedID        uint64
+	maxAppliedID        uint64
 
 	stopOnce  sync.Once
 	stopRaftC chan uint64
@@ -323,6 +325,7 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	}
 	dp.stopRecover = meta.StopRecover
 	dp.metaAppliedID = meta.ApplyID
+	atomic.StoreUint64(&dp.applyMemberChangeID, meta.ApplyMemberChangeID)
 	dp.isRepairing = meta.IsRepairing
 	dp.computeUsage()
 	dp.ForceSetDataPartitionToLoading()
@@ -896,6 +899,7 @@ func (dp *DataPartition) PersistMetadata() (err error) {
 		StopRecover:             dp.stopRecover,
 		VerList:                 dp.volVersionInfoList.VerList,
 		ApplyID:                 dp.appliedID,
+		ApplyMemberChangeID:     atomic.LoadUint64(&dp.applyMemberChangeID),
 		DiskErrCnt:              atomic.LoadUint64(&dp.diskErrCnt),
 		IsRepairing:             dp.isRepairing,
 	}

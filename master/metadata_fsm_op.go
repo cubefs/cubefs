@@ -355,6 +355,9 @@ func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
 			continue
 		}
 		dp.afterCreation(rv.Addr, rv.DiskPath, c)
+		if rep, err := dp.getReplica(rv.Addr); err == nil {
+			rep.ApplyMemberChangeID = rv.ApplyMemberChangeID
+		}
 	}
 	for disk, retryTimes := range dpv.DecommissionDiskRetryMap {
 		dp.DecommissionDiskRetryMap[disk] = retryTimes
@@ -364,8 +367,9 @@ func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
 }
 
 type replicaValue struct {
-	Addr     string
-	DiskPath string
+	Addr                string
+	DiskPath            string
+	ApplyMemberChangeID uint64 `json:"applyMemberChangeID,omitempty"`
 }
 
 func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
@@ -413,7 +417,7 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 		PoolId:                          dp.PoolId,
 	}
 	for _, replica := range dp.Replicas {
-		rv := &replicaValue{Addr: replica.Addr, DiskPath: replica.DiskPath}
+		rv := &replicaValue{Addr: replica.Addr, DiskPath: replica.DiskPath, ApplyMemberChangeID: replica.ApplyMemberChangeID}
 		dpv.Replicas = append(dpv.Replicas, rv)
 	}
 	return
