@@ -1,11 +1,13 @@
 package master
 
 import (
+	"encoding/json"
 	"fmt"
 	"sync"
 	"testing"
 	"time"
 
+	raftProto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -529,4 +531,142 @@ func TestSelectOptimalNodesCrossNodeSet(t *testing.T) {
 		require.NotEqual(t, "rack1", dataNode.Rack, "Destination should not be in rack1")
 		require.NotEqual(t, "rack2", dataNode.Rack, "Destination should not be in rack2")
 	}
+}
+
+// testLiveDataReplica builds a replica that passes isLive() for needReplicaMetaRestore / checkReplicaMeta paths.
+func testLiveDataReplica(addr string, applyMemberChangeID uint64, isLeader bool, localPeers []proto.Peer) *DataReplica {
+	dn := &DataNode{isActive: true, Addr: addr}
+	return &DataReplica{
+		DataReplica: proto.DataReplica{
+			Addr:                addr,
+			Status:              proto.ReadWrite,
+			ReportTime:          time.Now().Unix(),
+			IsLeader:            isLeader,
+			ApplyMemberChangeID: applyMemberChangeID,
+			LocalPeers:          localPeers,
+		},
+		dataNode: dn,
+	}
+}
+
+func TestDataPartition_getLeaderApplyMemberChangeID(t *testing.T) {
+	p := &DataPartition{
+		Replicas: []*DataReplica{
+			testLiveDataReplica("h2", 7, false, nil),
+			testLiveDataReplica("h1", 42, true, nil),
+		},
+	}
+	id, ok := p.getLeaderApplyMemberChangeID()
+	require.True(t, ok)
+	require.EqualValues(t, 42, id)
+
+	p2 := &DataPartition{
+		Replicas: []*DataReplica{
+			testLiveDataReplica("h1", 10, false, nil),
+		},
+	}
+	id, ok = p2.getLeaderApplyMemberChangeID()
+	require.False(t, ok)
+	require.Zero(t, id)
+}
+
+func TestDataPartition_hasFollowerApplyMemberChangeAheadOfLeader(t *testing.T) {
+	peers := []proto.Peer{
+		{Addr: "h1", Type: raftProto.PeerNormal},
+		{Addr: "h2", Type: raftProto.PeerNormal},
+	}
+	p := &DataPartition{
+		Replicas: []*DataReplica{
+			testLiveDataReplica("h1", 100, true, peers),
+			testLiveDataReplica("h2", 100, false, peers),
+		},
+	}
+	require.False(t, p.hasFollowerApplyMemberChangeAheadOfLeader())
+
+	p.Replicas[1].ApplyMemberChangeID = 101
+	require.True(t, p.hasFollowerApplyMemberChangeAheadOfLeader())
+
+	pNoLeader := &DataPartition{
+		Replicas: []*DataReplica{
+			testLiveDataReplica("h1", 200, false, peers),
+		},
+	}
+	require.False(t, pNoLeader.hasFollowerApplyMemberChangeAheadOfLeader())
+}
+
+// TestDataPartition_needReplicaMetaRestore_applyMemberChangeID covers e8f69a29: lagging followers must not
+// drive replica-meta restore; if a follower reports higher ApplyMemberChangeID than leader, restore is skipped.
+func TestDataPartition_needReplicaMetaRestore_applyMemberChangeID(t *testing.T) {
+	c := &Cluster{cfg: newClusterConfig()}
+	peers := []proto.Peer{
+		{Addr: "h1", Type: raftProto.PeerNormal},
+		{Addr: "h2", Type: raftProto.PeerNormal},
+	}
+	orphan := proto.Peer{Addr: "orphan", Type: raftProto.PeerNormal}
+	peersWithOrphan := append(append([]proto.Peer(nil), peers...), orphan)
+
+	// Leader caught up; follower still behind on member-change log but carries redundant local peer — ignore follower.
+	dpLaggingFollower := &DataPartition{
+		PartitionID: 9901,
+		ReplicaNum:  2,
+		Peers:       peers,
+		Hosts:       []string{"h1", "h2"},
+		Replicas: []*DataReplica{
+			testLiveDataReplica("h1", 200, true, peers),
+			testLiveDataReplica("h2", 50, false, peersWithOrphan),
+		},
+	}
+	require.False(t, dpLaggingFollower.needReplicaMetaRestore(c), "lagging follower should not trigger restore")
+
+	// Same topology but follower caught up to leader — redundant local peer should be detected.
+	dpCaughtUp := &DataPartition{
+		PartitionID: 9902,
+		ReplicaNum:  2,
+		Peers:       peers,
+		Hosts:       []string{"h1", "h2"},
+		Replicas: []*DataReplica{
+			testLiveDataReplica("h1", 200, true, peers),
+			testLiveDataReplica("h2", 200, false, peersWithOrphan),
+		},
+	}
+	require.True(t, dpCaughtUp.needReplicaMetaRestore(c), "caught-up follower with redundant peers should need restore")
+
+	// Follower ahead of leader (stale leader view): never restore.
+	dpDivergent := &DataPartition{
+		PartitionID: 9903,
+		ReplicaNum:  2,
+		Peers:       peers,
+		Hosts:       []string{"h1", "h2"},
+		Replicas: []*DataReplica{
+			testLiveDataReplica("h1", 50, true, peers),
+			testLiveDataReplica("h2", 100, false, peersWithOrphan),
+		},
+	}
+	require.False(t, dpDivergent.needReplicaMetaRestore(c), "follower ahead of leader must skip restore")
+}
+
+// TestDataPartitionValue_replicaApplyMemberChangeIDJSON ensures raft-persisted DP replica value carries ApplyMemberChangeID (e8f69a29).
+func TestDataPartitionValue_replicaApplyMemberChangeIDJSON(t *testing.T) {
+	dp := &DataPartition{
+		PartitionID: 88001,
+		ReplicaNum:  1,
+		VolName:     "vol_mc_json",
+		VolID:       1,
+		Hosts:       []string{"10.0.0.1:17310"},
+		Replicas: []*DataReplica{
+			{DataReplica: proto.DataReplica{Addr: "10.0.0.1:17310", DiskPath: "/data1", ApplyMemberChangeID: 888}},
+		},
+	}
+	dpv := newDataPartitionValue(dp)
+	require.Len(t, dpv.Replicas, 1)
+	require.EqualValues(t, 888, dpv.Replicas[0].ApplyMemberChangeID)
+
+	raw, err := json.Marshal(dpv)
+	require.NoError(t, err)
+	require.Contains(t, string(raw), "applyMemberChangeID")
+
+	var decoded dataPartitionValue
+	require.NoError(t, json.Unmarshal(raw, &decoded))
+	require.Len(t, decoded.Replicas, 1)
+	require.EqualValues(t, 888, decoded.Replicas[0].ApplyMemberChangeID)
 }

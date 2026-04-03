@@ -183,6 +183,29 @@ func (t *FlashNodeTopology) GetRemoteCacheWriteFlowMap() map[string]int64 {
 	return result
 }
 
+// DeleteRemoteCacheFlowsForVol removes volName from RemoteCacheReadFlowMap and RemoteCacheWriteFlowMap.
+// Returns true if either map was modified (caller may persist the topology).
+func (t *FlashNodeTopology) DeleteRemoteCacheFlowsForVol(volName string) (changed bool) {
+	if volName == "" {
+		return false
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.RemoteCacheReadFlowMap != nil {
+		if _, ok := t.RemoteCacheReadFlowMap[volName]; ok {
+			delete(t.RemoteCacheReadFlowMap, volName)
+			changed = true
+		}
+	}
+	if t.RemoteCacheWriteFlowMap != nil {
+		if _, ok := t.RemoteCacheWriteFlowMap[volName]; ok {
+			delete(t.RemoteCacheWriteFlowMap, volName)
+			changed = true
+		}
+	}
+	return changed
+}
+
 func (t *FlashNodeTopology) gradualCreateFlashGroup(fgID uint64, syncUpdateFlashGroupFunc SyncUpdateFlashGroupFunc,
 	setSlots []uint32, setWeight uint32, step uint32,
 ) (flashGroup *FlashGroup, err error) {

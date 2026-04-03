@@ -257,6 +257,28 @@ func (c *Cluster) checkFlashNodeHeartbeat() {
 	})
 }
 
+// removeRemoteCacheFlowLimitsForVol drops per-volume remote cache read/write flow limits from every
+// flash topology and persists topologies that changed. Called when a volume is deleted from the cluster.
+func (c *Cluster) removeRemoteCacheFlowLimitsForVol(volName string) {
+	if volName == "" {
+		return
+	}
+	c.flashNodeTopo.Range(func(_, value interface{}) bool {
+		topo, ok := value.(*flashgroupmanager.FlashNodeTopology)
+		if !ok || topo == nil {
+			return true
+		}
+		if !topo.DeleteRemoteCacheFlowsForVol(volName) {
+			return true
+		}
+		if err := c.syncUpdateFlashTopo(topo); err != nil {
+			log.LogWarnf("action[removeRemoteCacheFlowLimitsForVol] vol(%v) topo(%v) syncUpdateFlashTopo err(%v)",
+				volName, topo.Name, err)
+		}
+		return true
+	})
+}
+
 func (m *Server) addFlashNode(w http.ResponseWriter, r *http.Request) {
 	var (
 		nodeAddr common.String

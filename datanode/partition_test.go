@@ -18,6 +18,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sync/atomic"
 	"syscall"
 	"testing"
 
@@ -107,4 +108,12 @@ func TestCheckAvailable(t *testing.T) {
 			require.Equal(t, uint64(3), dp.diskErrCnt)
 		})
 	})
+}
+
+func TestDataPartition_uploadApplyMemberChangeID(t *testing.T) {
+	dp := &DataPartition{partitionID: 42}
+	dp.uploadApplyMemberChangeID(0)
+	require.Equal(t, uint64(0), atomic.LoadUint64(&dp.applyMemberChangeID))
+	dp.uploadApplyMemberChangeID(1001)
+	require.Equal(t, uint64(1001), atomic.LoadUint64(&dp.applyMemberChangeID))
 }

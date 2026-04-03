@@ -1801,6 +1801,7 @@ func (vol *Vol) deleteVolFromStore(c *Cluster) (err error) {
 	vol.deleteDataPartitionsFromStore(c)
 	vol.deleteMetaPartitionsFromStore(c)
 	// then delete the volume
+	c.removeRemoteCacheFlowLimitsForVol(vol.Name)
 	c.deleteVol(vol.Name)
 	c.volStatInfo.Delete(vol.Name)
 

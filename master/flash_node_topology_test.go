@@ -31,6 +31,7 @@ func TestFlash(t *testing.T) {
 func testFlashTopology(t *testing.T) {
 	t.Run("Clear", testFlashTopologyClear)
 	t.Run("Load", testFlashTopologyLoad)
+	t.Run("RemoveRemoteCacheFlowLimits", testFlashTopologyRemoveRemoteCacheFlowLimits)
 }
 
 func testFlashTopologyClear(t *testing.T) {
@@ -55,7 +56,55 @@ func testFlashTopologyClear(t *testing.T) {
 }
 
 func testFlashTopologyLoad(t *testing.T) {
+	// After Clear, flashNodeTopo is empty; repopulate from metadata before Load() on each topo.
+	require.NoError(t, server.cluster.loadFlashTopos())
 	server.cluster.loadFlashNodes()
 	server.cluster.loadFlashGroups()
-	server.cluster.loadFlashTopology()
+	require.NoError(t, server.cluster.loadFlashTopology())
+}
+
+// testFlashTopologyRemoveRemoteCacheFlowLimits checks that Cluster.removeRemoteCacheFlowLimitsForVol
+// clears per-volume entries from all flash topologies while leaving other volumes intact.
+func testFlashTopologyRemoveRemoteCacheFlowLimits(t *testing.T) {
+	// Subtest "Clear" replaces flashNodeTopo with an empty map; loadFlashTopology() only refreshes
+	// existing entries. Reload from metadata store so this case works after Clear/Load.
+	require.NoError(t, server.cluster.loadFlashTopos())
+
+	const volA = "tmp_rc_flow_cleanup_a"
+	const volB = "tmp_rc_flow_cleanup_b"
+
+	var topoCount int
+	server.cluster.flashNodeTopo.Range(func(_, value interface{}) bool {
+		topo, ok := value.(*flashgroupmanager.FlashNodeTopology)
+		if !ok || topo == nil {
+			return true
+		}
+		topoCount++
+		topo.SetRemoteCacheReadFlow(volA, 100)
+		topo.SetRemoteCacheReadFlow(volB, 200)
+		topo.SetRemoteCacheWriteFlow(volA, 300)
+		topo.SetRemoteCacheWriteFlow(volB, 400)
+		return true
+	})
+	require.Greater(t, topoCount, 0, "need at least one flash topology")
+
+	server.cluster.removeRemoteCacheFlowLimitsForVol("")
+	server.cluster.removeRemoteCacheFlowLimitsForVol(volA)
+
+	server.cluster.flashNodeTopo.Range(func(_, value interface{}) bool {
+		topo, ok := value.(*flashgroupmanager.FlashNodeTopology)
+		require.True(t, ok)
+		require.NotNil(t, topo)
+		rm := topo.GetRemoteCacheReadFlowMap()
+		wm := topo.GetRemoteCacheWriteFlowMap()
+		_, hasARead := rm[volA]
+		_, hasAWrite := wm[volA]
+		require.False(t, hasARead, "read map should drop deleted vol")
+		require.False(t, hasAWrite, "write map should drop deleted vol")
+		require.EqualValues(t, 200, rm[volB], "other vol read limit preserved")
+		require.EqualValues(t, 400, wm[volB], "other vol write limit preserved")
+		return true
+	})
+
+	server.cluster.removeRemoteCacheFlowLimitsForVol(volB)
 }
