@@ -1978,7 +1978,7 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64, region stri
 		return nil, err
 	}
 
-	log.LogInfof("target meta hosts:%v,peers:%v", hosts, peers)
+	log.LogInfof("target meta hosts:%v,peers:%v, region:%v", hosts, peers, region)
 	if partitionID, err = c.idAlloc.allocateMetaPartitionID(); err != nil {
 		return nil, errors.NewError(err)
 	}

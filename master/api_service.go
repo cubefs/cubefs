@@ -7457,6 +7457,7 @@ func getMetaPartitionView(mp *MetaPartition) (mpView *proto.MetaPartitionView) {
 	mp.RLock()
 	defer mp.RUnlock()
 	mpView.Members = append(mpView.Members, mp.Hosts...)
+	mpView.Region = mp.Region
 	mr, err := mp.getMetaReplicaLeader()
 	if err != nil {
 		return
