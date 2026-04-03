@@ -26,12 +26,11 @@ import (
 	"sync/atomic"
 	"syscall"
 
-	"github.com/cubefs/cubefs/util/qos"
-
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/datanode/storage"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -335,167 +334,50 @@ func (s *DataNode) setDiskQos(w http.ResponseWriter, r *http.Request) {
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-
-	updated := false
-
-	params := map[string]interface{}{
-		ConfigDiskReadIocc:               &s.diskReadIocc,
-		ConfigDiskReadIopsMinLimit:       &s.diskReadIopsMinLimit,
-		ConfigDiskWriteIocc:              &s.diskWriteIocc,
-		ConfigDiskWriteIopsMinLimit:      &s.diskWriteIopsMinLimit,
-		ConfigDiskWQueFactor:             &s.diskWQueFactor,
-		ConfigDiskAsyncReadIocc:          &s.diskAsyncReadIocc,
-		ConfigDiskAsyncReadIopsMinLimit:  &s.diskAsyncReadIopsMinLimit,
-		ConfigDiskAsyncWriteIocc:         &s.diskAsyncWriteIocc,
-		ConfigDiskAsyncWriteIopsMinLimit: &s.diskAsyncWriteIopsMinLimit,
-		ConfigDiskCreateIocc:             &s.diskCreateIocc,
-		ConfigDiskCreateIopsMinLimit:     &s.diskCreateIopsMinLimit,
-		ConfigDiskDeleteIocc:             &s.diskDeleteIocc,
-		ConfigDiskDeleteIopsMinLimit:     &s.diskDeleteIopsMinLimit,
-		ConfigDiskFlowDecayStep:          &s.diskFlowDecayStep,
-		ConfigTriggerConsecutive:         &s.triggerConsecutive,
-		ConfigMetricsWindows:             &s.metricsWindows,
-		ConfigFlowCheckIntervalMs:        &s.diskFlowCheckIntervalMs,
-		ConfigBizReadAwaitDegradeMs:      &s.bizReadAwaitDegradeMs,
-		ConfigBizWriteAwaitDegradeMs:     &s.bizWriteAwaitDegradeMs,
-		ConfigMetricsWindowMs:            &s.metricsWindowMs,
-		ConfigSampleIntervalMs:           &s.sampleIntervalMs,
-		ConfigSafetyBoundaryRatio:        &s.safetyBoundaryRatio,
-		ConfigRelaxDisableFactor:         &s.relaxDisableFactor,
-	}
-
-	for key, target := range params {
+	parser := func(key string) (val int, err error, has bool) {
 		valStr := r.FormValue(key)
 		if valStr == "" {
-			continue
+			return 0, nil, false
 		}
-		switch ptr := target.(type) {
-		case *int:
-			val, err := strconv.Atoi(valStr)
-			if err != nil {
-				s.buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("parse %s err: %v", key, err))
-				return
-			}
-			*ptr = val
-		case *int64:
-			val, err := strconv.ParseInt(valStr, 10, 64)
-			if err != nil {
-				s.buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("parse %s err: %v", key, err))
-				return
-			}
-			*ptr = val
-		case *float64:
-			val, err := strconv.ParseFloat(valStr, 64)
-			if err != nil {
-				s.buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("parse %s err: %v", key, err))
-				return
-			}
-			*ptr = val
-		default:
-			s.buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("unsupported type for %s", key))
+		has = true
+		val, err = strconv.Atoi(valStr)
+		return
+	}
+
+	updated := false
+	for key, pVal := range map[string]*int{
+		ConfigDiskReadIocc:       &s.diskReadIocc,
+		ConfigDiskReadIops:       &s.diskReadIops,
+		ConfigDiskReadFlow:       &s.diskReadFlow,
+		ConfigDiskWriteIocc:      &s.diskWriteIocc,
+		ConfigDiskWriteIops:      &s.diskWriteIops,
+		ConfigDiskWriteFlow:      &s.diskWriteFlow,
+		ConfigDiskWQueFactor:     &s.diskWQueFactor,
+		ConfigDiskAsyncReadIocc:  &s.diskAsyncReadIocc,
+		ConfigDiskAsyncReadIops:  &s.diskAsyncReadIops,
+		ConfigDiskAsyncReadFlow:  &s.diskAsyncReadFlow,
+		ConfigDiskAsyncWriteIocc: &s.diskAsyncWriteIocc,
+		ConfigDiskAsyncWriteIops: &s.diskAsyncWriteIops,
+		ConfigDiskAsyncWriteFlow: &s.diskAsyncWriteFlow,
+		ConfigDiskDeleteIocc:     &s.diskDeleteIocc,
+		ConfigDiskDeleteIops:     &s.diskDeleteIops,
+		ConfigDiskDeleteFlow:     &s.diskDeleteFlow,
+	} {
+		val, err, has := parser(key)
+		if err != nil {
+			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		updated = true
+		if has {
+			updated = true
+			*pVal = val
+		}
 	}
 
 	if updated {
 		s.updateQosLimit()
 	}
 	s.buildSuccessResp(w, "success")
-}
-
-func (s *DataNode) setDiskLimit(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	diskPath := r.FormValue("disk")
-	if diskPath == "" {
-		err := fmt.Errorf("disk param cannot be empty")
-		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	ioTypeStr := r.FormValue("ioType")
-	if ioTypeStr == "" {
-		err := fmt.Errorf("ioType param cannot be empty")
-		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	ioType, err := strconv.Atoi(ioTypeStr)
-	if err != nil {
-		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	limitStr := r.FormValue("limit")
-	if limitStr == "" {
-		err = fmt.Errorf("limit param cannot be empty")
-		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	limit, err := strconv.Atoi(limitStr)
-	if err != nil {
-		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	disk, err := s.space.GetDisk(diskPath)
-	if err != nil {
-		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	disk.flowLimiterMgr.SetManualIopsLimit(qos.IoType(ioType), limit)
-	s.buildSuccessResp(w, "success")
-}
-
-func (s *DataNode) getDiskStat(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	diskPath := r.FormValue("disk")
-	if diskPath == "" {
-		err := fmt.Errorf("disk param cannot be empty")
-		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	ioTypeStr := r.FormValue("ioType")
-	if ioTypeStr == "" {
-		err := fmt.Errorf("ioType param cannot be empty")
-		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	ioType, err := strconv.Atoi(ioTypeStr)
-	if err != nil {
-		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	disk, err := s.space.GetDisk(diskPath)
-	if err != nil {
-		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	ioTypeName := qos.IoTypeNames[qos.IoType(ioType)]
-	limiterStatus := disk.flowLimiterMgr.GetLimiterStatus(qos.IoType(ioType))
-	if limiterStatus == nil {
-		s.buildFailureResp(w, http.StatusBadRequest, "ioType does not exist")
-		return
-	}
-	ws := disk.flowLimiterMgr.GetLatestWindowStat(qos.IoType(ioType))
-	diskStat := &struct {
-		Path   string         `json:"path"`
-		IoType string         `json:"ioType"`
-		Enable bool           `json:"enable"`
-		Limit  int            `json:"limit"`
-		Stat   qos.WindowStat `json:"stat"`
-	}{
-		Path:   diskPath,
-		IoType: ioTypeName,
-		Enable: limiterStatus.Enable,
-		Limit:  limiterStatus.Limit,
-		Stat:   ws,
-	}
-	s.buildSuccessResp(w, diskStat)
 }
 
 func (s *DataNode) getDiskQos(w http.ResponseWriter, r *http.Request) {
@@ -505,12 +387,22 @@ func (s *DataNode) getDiskQos(w http.ResponseWriter, r *http.Request) {
 			Path           string             `json:"path"`
 			QosEnable      bool               `json:"qosEnable"`
 			AsyncQosEnable bool               `json:"asyncQosEnable"`
-			QosStatus      *qos.ManagerStatus `json:"qosStatus"`
+			Read           util.LimiterStatus `json:"read"`
+			Write          util.LimiterStatus `json:"write"`
+			AsyncRead      util.LimiterStatus `json:"asyncRead"`
+			AsyncWrite     util.LimiterStatus `json:"asyncWrite"`
+			Delete         util.LimiterStatus `json:"delete"`
+			IopsStatus     proto.IopsStatus   `json:"IopsStatus"`
 		}{
 			Path:           diskItem.Path,
 			QosEnable:      s.diskQosEnable || s.diskQosEnableFromMaster,
 			AsyncQosEnable: s.diskAsyncQosEnable,
-			QosStatus:      diskItem.flowLimiterMgr.GetManagerStatus(),
+			Read:           diskItem.limitRead.Status(false),
+			Write:          diskItem.limitWrite.Status(false),
+			AsyncRead:      diskItem.limitAsyncRead.Status(false),
+			AsyncWrite:     diskItem.limitAsyncWrite.Status(false),
+			Delete:         diskItem.limitDelete.Status(false),
+			IopsStatus:     s.IopsStatus(),
 		}
 		disks = append(disks, disk)
 	}

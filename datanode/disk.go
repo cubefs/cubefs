@@ -15,6 +15,7 @@
 package datanode
 
 import (
+	"context"
 	"fmt"
 	syslog "log"
 	"os"
@@ -28,10 +29,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cubefs/cubefs/util/qos"
-
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
@@ -39,6 +39,7 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/strutil"
 	"github.com/shirou/gopsutil/disk"
+	"golang.org/x/time/rate"
 )
 
 var (
@@ -65,7 +66,6 @@ const (
 	OpAsyncRead  = "asyncRead"
 	OpWrite      = "write"
 	OpAsyncWrite = "asyncWrite"
-	OpCreate     = "create"
 	OpDelete     = "delete"
 )
 
@@ -94,7 +94,12 @@ type Disk struct {
 	space                                     *SpaceManager
 	dataNode                                  *DataNode
 
-	flowLimiterMgr *qos.AdaptiveManager
+	limitFactor     map[uint32]*rate.Limiter
+	limitRead       *util.IoLimiter
+	limitWrite      *util.IoLimiter
+	limitAsyncRead  *util.IoLimiter
+	limitAsyncWrite *util.IoLimiter
+	limitDelete     *util.IoLimiter
 
 	// diskPartition info
 	diskPartition               *disk.PartitionStat
@@ -159,45 +164,21 @@ func NewDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int, 
 	}
 	file.Close()
 
-	conf := qos.AdaptiveManagerConf{
-		FlowConfigs: map[qos.IoType]qos.FlowConfig{
-			qos.Read: {
-				Iocc:         space.dataNode.diskReadIocc,
-				IopsMinLimit: space.dataNode.diskReadIopsMinLimit,
-			},
-			qos.Write: {
-				Iocc:         space.dataNode.diskWriteIocc,
-				IopsMinLimit: space.dataNode.diskWriteIopsMinLimit,
-			},
-			qos.Create: {
-				Iocc:         space.dataNode.diskCreateIocc,
-				IopsMinLimit: space.dataNode.diskCreateIopsMinLimit,
-			},
-			qos.Delete: {
-				Iocc:         space.dataNode.diskDeleteIocc,
-				IopsMinLimit: space.dataNode.diskDeleteIopsMinLimit,
-			},
-			qos.AsyncRead: {
-				Iocc:         space.dataNode.diskAsyncReadIocc,
-				IopsMinLimit: space.dataNode.diskAsyncReadIopsMinLimit,
-			},
-			qos.AsyncWrite: {
-				Iocc:         space.dataNode.diskAsyncWriteIocc,
-				IopsMinLimit: space.dataNode.diskAsyncWriteIopsMinLimit,
-			},
-		},
-		DecayStep:              space.dataNode.diskFlowDecayStep,
-		CheckIntervalMs:        space.dataNode.diskFlowCheckIntervalMs,
-		BizReadAwaitDegradeMs:  space.dataNode.bizReadAwaitDegradeMs,
-		BizWriteAwaitDegradeMs: space.dataNode.bizWriteAwaitDegradeMs,
-		SafetyBoundaryRatio:    space.dataNode.safetyBoundaryRatio,
-		TriggerConsecutive:     space.dataNode.triggerConsecutive,
-		RelaxDisableFactor:     space.dataNode.relaxDisableFactor,
-		MetricsWindows:         space.dataNode.metricsWindows,
-		MetricsWindowMs:        space.dataNode.metricsWindowMs,
-		SampleIntervalMs:       space.dataNode.sampleIntervalMs,
-	}
-	d.flowLimiterMgr = qos.NewAdaptiveManager(path, conf)
+	d.limitFactor = make(map[uint32]*rate.Limiter)
+	d.limitFactor[proto.FlowReadType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxFLowLimit), proto.QosDefaultBurst)
+	d.limitFactor[proto.FlowWriteType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxFLowLimit), proto.QosDefaultBurst)
+	d.limitFactor[proto.IopsReadType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxIoLimit), defaultIOLimitBurst)
+	d.limitFactor[proto.IopsWriteType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxIoLimit), defaultIOLimitBurst)
+	d.limitFactor[proto.FlowAsyncReadType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxFLowLimit), proto.QosDefaultBurst)
+	d.limitFactor[proto.FlowAsyncWriteType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxFLowLimit), proto.QosDefaultBurst)
+	d.limitFactor[proto.IopsAsyncReadType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxIoLimit), defaultIOLimitBurst)
+	d.limitFactor[proto.IopsAsyncWriteType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxIoLimit), defaultIOLimitBurst)
+	d.limitFactor[proto.IopsDeleteType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxIoLimit), defaultMarkDeleteLimitBurst)
+	d.limitRead = util.NewIOLimiter(space.dataNode.diskReadFlow, space.dataNode.diskReadIocc)
+	d.limitWrite = util.NewIOLimiter(space.dataNode.diskWriteFlow, space.dataNode.diskWriteIocc)
+	d.limitAsyncRead = util.NewIOLimiter(space.dataNode.diskAsyncReadFlow, space.dataNode.diskAsyncReadIocc)
+	d.limitAsyncWrite = util.NewIOLimiter(space.dataNode.diskAsyncWriteFlow, space.dataNode.diskAsyncWriteIocc)
+	d.limitDelete = util.NewIOLimiter(space.dataNode.diskDeleteFlow, space.dataNode.diskDeleteIocc)
 
 	err = d.initDecommissionStatus()
 	if err != nil {
@@ -289,7 +270,7 @@ func (d *Disk) GetDiskPartition() *disk.PartitionStat {
 }
 
 func (d *Disk) isBrokenDisk() (ok bool) {
-	ok = d.Status == proto.Unavailable && d.flowLimiterMgr == nil
+	ok = d.Status == proto.Unavailable && d.limitRead == nil && d.limitWrite == nil
 	return
 }
 
@@ -298,85 +279,95 @@ func (d *Disk) updateQosLimiter() {
 		log.LogInfof("[updateQosLimiter] disk(%v) is broken or lost", d.Path)
 		return
 	}
-	d.flowLimiterMgr.UpdateIopsMinLimitByType(qos.Read, d.dataNode.diskReadIopsMinLimit)
-	d.flowLimiterMgr.UpdateIopsMinLimitByType(qos.Write, d.dataNode.diskWriteIopsMinLimit)
-	d.flowLimiterMgr.UpdateIopsMinLimitByType(qos.AsyncRead, d.dataNode.diskAsyncReadIopsMinLimit)
-	d.flowLimiterMgr.UpdateIopsMinLimitByType(qos.AsyncWrite, d.dataNode.diskAsyncWriteIopsMinLimit)
-	d.flowLimiterMgr.UpdateIopsMinLimitByType(qos.Create, d.dataNode.diskCreateIopsMinLimit)
-	d.flowLimiterMgr.UpdateIopsMinLimitByType(qos.Delete, d.dataNode.diskDeleteIopsMinLimit)
-	log.LogWarnf("action[updateQosLimiter] read(iocc:normal %d async %d, minIopsLimit:%d async %d) write(iocc:%d async %d, minIopsLimit:%d async %d) create(iocc:%d, minIopsLimit:%d) delete(iocc:%d, minIopsLimit:%d)",
-		d.dataNode.diskReadIocc, d.dataNode.diskAsyncReadIocc, d.dataNode.diskReadIopsMinLimit, d.dataNode.diskAsyncReadIopsMinLimit,
-		d.dataNode.diskWriteIocc, d.dataNode.diskAsyncWriteIocc, d.dataNode.diskWriteIopsMinLimit, d.dataNode.diskAsyncWriteIopsMinLimit,
-		d.dataNode.diskCreateIocc, d.dataNode.diskCreateIopsMinLimit, d.dataNode.diskDeleteIocc, d.dataNode.diskDeleteIopsMinLimit)
-	d.flowLimiterMgr.UpdateIOByType(qos.Read, d.dataNode.diskReadIocc, 0)
-	d.flowLimiterMgr.UpdateIOByType(qos.Write, d.dataNode.diskWriteIocc, d.dataNode.diskWQueFactor)
-	d.flowLimiterMgr.UpdateIOByType(qos.AsyncRead, d.dataNode.diskAsyncReadIocc, 0)
-	d.flowLimiterMgr.UpdateIOByType(qos.AsyncWrite, d.dataNode.diskAsyncWriteIocc, 0)
-	d.flowLimiterMgr.UpdateIOByType(qos.Create, d.dataNode.diskCreateIocc, 0)
-	d.flowLimiterMgr.UpdateIOByType(qos.Delete, d.dataNode.diskDeleteIocc, 0)
-	d.flowLimiterMgr.UpdateControlParams(struct {
-		DecayStep              int
-		CheckIntervalMs        int64
-		BizReadAwaitDegradeMs  int64
-		BizWriteAwaitDegradeMs int64
-		SafetyBoundaryRatio    float64
-		TriggerConsecutive     int
-		RelaxDisableFactor     float64
-		MetricsWindows         int
-		MetricsWindowMs        int64
-		SampleIntervalMs       int64
-	}{
-		DecayStep:              d.dataNode.diskFlowDecayStep,
-		CheckIntervalMs:        d.dataNode.diskFlowCheckIntervalMs,
-		BizReadAwaitDegradeMs:  d.dataNode.bizReadAwaitDegradeMs,
-		BizWriteAwaitDegradeMs: d.dataNode.bizWriteAwaitDegradeMs,
-		SafetyBoundaryRatio:    d.dataNode.safetyBoundaryRatio,
-		TriggerConsecutive:     d.dataNode.triggerConsecutive,
-		RelaxDisableFactor:     d.dataNode.relaxDisableFactor,
-		MetricsWindows:         d.dataNode.metricsWindows,
-		MetricsWindowMs:        d.dataNode.metricsWindowMs,
-		SampleIntervalMs:       d.dataNode.sampleIntervalMs,
-	})
+	if d.dataNode.diskReadFlow > 0 {
+		d.limitFactor[proto.FlowReadType].SetLimit(rate.Limit(d.dataNode.diskReadFlow))
+	}
+	if d.dataNode.diskWriteFlow > 0 {
+		d.limitFactor[proto.FlowWriteType].SetLimit(rate.Limit(d.dataNode.diskWriteFlow))
+	}
+	if d.dataNode.diskReadIops > 0 {
+		d.limitFactor[proto.IopsReadType].SetLimit(rate.Limit(d.dataNode.diskReadIops))
+	}
+	if d.dataNode.diskWriteIops > 0 {
+		d.limitFactor[proto.IopsWriteType].SetLimit(rate.Limit(d.dataNode.diskWriteIops))
+	}
+	if d.dataNode.diskAsyncReadFlow > 0 {
+		d.limitFactor[proto.FlowAsyncReadType].SetLimit(rate.Limit(d.dataNode.diskAsyncReadFlow))
+	}
+	if d.dataNode.diskAsyncWriteFlow > 0 {
+		d.limitFactor[proto.FlowAsyncWriteType].SetLimit(rate.Limit(d.dataNode.diskAsyncWriteFlow))
+	}
+	if d.dataNode.diskAsyncReadIops > 0 {
+		d.limitFactor[proto.IopsAsyncReadType].SetLimit(rate.Limit(d.dataNode.diskAsyncReadIops))
+		d.limitFactor[proto.IopsAsyncReadType].SetBurst(d.dataNode.diskAsyncReadIops / 2)
+	}
+	if d.dataNode.diskAsyncWriteIops > 0 {
+		d.limitFactor[proto.IopsAsyncWriteType].SetLimit(rate.Limit(d.dataNode.diskAsyncWriteIops))
+		d.limitFactor[proto.IopsAsyncWriteType].SetBurst(d.dataNode.diskAsyncWriteIops / 2)
+	}
+	if d.dataNode.diskDeleteIops > 0 {
+		d.limitFactor[proto.IopsDeleteType].SetLimit(rate.Limit(d.dataNode.diskDeleteIops))
+		d.limitFactor[proto.IopsDeleteType].SetBurst(d.dataNode.diskDeleteIops / 2)
+	}
+	for i := proto.IopsReadType; i < proto.FlowDeleteType; i++ {
+		log.LogInfof("action[updateQosLimiter] type %v limit %v", proto.QosTypeString(i), d.limitFactor[i].Limit())
+	}
+	log.LogWarnf("action[updateQosLimiter] read(iocc:normal %d async %d, iops:%d async %d, flow:normal %d async %d) write(iocc:%d async %d, iops:%d async %d, flow:%d async %d) delete(iocc:%d, flow:%d, iops:%d)",
+		d.dataNode.diskReadIocc, d.dataNode.diskAsyncReadIocc, d.dataNode.diskReadIops, d.dataNode.diskAsyncReadIops, d.dataNode.diskReadFlow, d.dataNode.diskAsyncReadFlow,
+		d.dataNode.diskWriteIocc, d.dataNode.diskAsyncWriteIocc, d.dataNode.diskWriteIops, d.dataNode.diskAsyncWriteIops, d.dataNode.diskWriteFlow, d.dataNode.diskAsyncWriteFlow,
+		d.dataNode.diskDeleteIocc, d.dataNode.diskDeleteFlow, d.dataNode.diskDeleteIops)
+	d.limitRead.ResetIO(d.dataNode.diskReadIocc, 0)
+	d.limitRead.ResetFlow(d.dataNode.diskReadFlow)
+	d.limitWrite.ResetIO(d.dataNode.diskWriteIocc, d.dataNode.diskWQueFactor)
+	d.limitWrite.ResetFlow(d.dataNode.diskWriteFlow)
+	d.limitAsyncRead.ResetIO(d.dataNode.diskAsyncReadIocc, 0)
+	d.limitAsyncRead.ResetFlow(d.dataNode.diskAsyncReadFlow)
+	d.limitAsyncWrite.ResetIO(d.dataNode.diskAsyncWriteIocc, 0)
+	d.limitAsyncWrite.ResetFlow(d.dataNode.diskAsyncWriteFlow)
+	d.limitDelete.ResetIO(d.dataNode.diskDeleteIocc, 0)
+	d.limitDelete.ResetFlow(d.dataNode.diskDeleteFlow)
 }
 
-func (d *Disk) allocCheckLimit(flowType qos.IoType) error {
+func (d *Disk) allocCheckLimit(factorType uint32, used uint32) error {
 	if !(d.dataNode.diskQosEnableFromMaster && d.dataNode.diskQosEnable) {
 		return nil
 	}
 
-	l := d.flowLimiterMgr.GetLimiterByType(flowType)
-	if l != nil {
-		l.AllocCheckLimit()
-	}
+	ctx := context.Background()
+	d.limitFactor[factorType].WaitN(ctx, int(used))
 	return nil
 }
 
-func (d *Disk) allocCheckAsyncLimit(flowType qos.IoType) error {
+func (d *Disk) allocCheckAsyncLimit(factorType uint32, used uint32) error {
 	if !d.dataNode.diskAsyncQosEnable {
 		return nil
 	}
-
-	l := d.flowLimiterMgr.GetLimiterByType(flowType)
-	if l != nil {
-		l.AllocCheckLimit()
+	if factorType == proto.FlowAsyncReadType || factorType == proto.FlowAsyncWriteType {
+		return nil
 	}
+
+	ctx := context.Background()
+	d.limitFactor[factorType].WaitN(ctx, int(used))
 	return nil
 }
 
-func (d *Disk) getLimitIoConfig(ioType string) (flowType qos.IoType, allocCheckFunc func(flowType qos.IoType) error, allowHang bool) {
+func (d *Disk) getLimitIoConfig(ioType string) (
+	flowType, iopsType uint32,
+	allocCheckFunc func(factorType uint32, used uint32) error,
+	limiter *util.IoLimiter,
+	allowHang bool,
+) {
 	switch ioType {
 	case OpRead:
-		return qos.Read, d.allocCheckLimit, false
+		return proto.FlowReadType, proto.IopsReadType, d.allocCheckLimit, d.limitRead, false
 	case OpAsyncRead:
-		return qos.AsyncRead, d.allocCheckAsyncLimit, true
+		return proto.FlowAsyncReadType, proto.IopsAsyncReadType, d.allocCheckAsyncLimit, d.limitAsyncRead, true
 	case OpWrite:
-		return qos.Write, d.allocCheckLimit, true
+		return proto.FlowWriteType, proto.IopsWriteType, d.allocCheckLimit, d.limitWrite, true
 	case OpAsyncWrite:
-		return qos.AsyncWrite, d.allocCheckAsyncLimit, true
-	case OpCreate:
-		return qos.Create, d.allocCheckLimit, true
+		return proto.FlowAsyncWriteType, proto.IopsAsyncWriteType, d.allocCheckAsyncLimit, d.limitAsyncWrite, true
 	case OpDelete:
-		return qos.Delete, d.allocCheckAsyncLimit, true
+		return proto.FlowDeleteType, proto.IopsDeleteType, d.allocCheckAsyncLimit, d.limitDelete, true
 	default:
 		panic("unknown ioType: " + ioType)
 	}
@@ -387,11 +378,14 @@ func (d *Disk) diskLimit(
 	operationSize uint32,
 	operationFunc func(),
 ) (err error) {
-	flowType, allocCheckFunc, allowHang := d.getLimitIoConfig(ioType)
+	flowType, iopsType, allocCheckFunc, limiter, allowHang := d.getLimitIoConfig(ioType)
 
-	allocCheckFunc(flowType)
+	if operationSize > 0 {
+		allocCheckFunc(flowType, operationSize)
+	}
+	allocCheckFunc(iopsType, 1)
 
-	err = d.flowLimiterMgr.Run(flowType, int(operationSize), allowHang, func() {
+	err = limiter.Run(int(operationSize), allowHang, func() {
 		operationFunc()
 	})
 	return err
@@ -402,13 +396,17 @@ func (d *Disk) tryDiskLimit(
 	operationSize uint32,
 	operationFunc func(),
 ) bool {
-	flowType, allocCheckFunc, _ := d.getLimitIoConfig(ioType)
+	flowType, iopsType, allocCheckFunc, limiter, _ := d.getLimitIoConfig(ioType)
 
-	allocCheckFunc(flowType)
+	if operationSize > 0 {
+		allocCheckFunc(flowType, operationSize)
+	}
+	allocCheckFunc(iopsType, 1)
 
-	writable := d.flowLimiterMgr.TryRun(flowType, int(operationSize), func() {
+	writable := limiter.TryRun(int(operationSize), func() {
 		operationFunc()
 	})
+
 	return writable
 }
 

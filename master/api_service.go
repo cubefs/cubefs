@@ -1848,20 +1848,20 @@ func (m *Server) QosUpdateZoneLimit(w http.ResponseWriter, r *http.Request) {
 		value    interface{}
 		ok       bool
 		err      error
-		zoneArgs *zoneDiskQosArgs
+		qosParam *qosArgs
 		enable   bool
 		zoneName string
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.QosUpdateZoneLimit))
 	defer func() {
 		doStatAndMetric(proto.QosUpdateZoneLimit, metric, err, nil)
-		AuditLog(r, proto.QosUpdateZoneLimit, fmt.Sprintf("zone(%v) zoneArgs(%v)", zoneName, zoneArgs), err)
+		AuditLog(r, proto.QosUpdateZoneLimit, fmt.Sprintf("zone(%v) qosParam(%v)", zoneName, qosParam), err)
 	}()
 
 	if zoneName = r.FormValue(zoneNameKey); zoneName == "" {
 		zoneName = DefaultZoneName
 	}
-	if zoneArgs, err = parseZoneDiskQosArgs(r); err != nil {
+	if qosParam, err = parseRequestQos(r, false, true); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1879,7 +1879,7 @@ func (m *Server) QosUpdateZoneLimit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	zone := value.(*Zone)
-	zone.updateDataNodeQosConfig(m.cluster, zoneArgs)
+	zone.updateDataNodeQosLimit(m.cluster, qosParam)
 
 	sendOkReply(w, r, newSuccessHTTPReply("success"))
 }
@@ -1887,15 +1887,15 @@ func (m *Server) QosUpdateZoneLimit(w http.ResponseWriter, r *http.Request) {
 // flowRVal, flowWVal take MB as unit
 func (m *Server) QosGetZoneLimit(w http.ResponseWriter, r *http.Request) {
 	var (
-		value    interface{}
-		ok       bool
-		zoneName string
+		value interface{}
+		ok    bool
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.QosGetZoneLimitInfo))
 	defer func() {
 		doStatAndMetric(proto.QosGetZoneLimitInfo, metric, nil, nil)
 	}()
 
+	var zoneName string
 	if zoneName = r.FormValue(zoneNameKey); zoneName == "" {
 		zoneName = DefaultZoneName
 	}
@@ -1909,15 +1909,20 @@ func (m *Server) QosGetZoneLimit(w http.ResponseWriter, r *http.Request) {
 	type qosZoneStatus struct {
 		Zone            string
 		DiskLimitEnable bool
-		DiskQos         map[string]string
+		IopsRVal        uint64
+		IopsWVal        uint64
+		FlowRVal        uint64
+		FlowWVal        uint64
 	}
 
 	zoneSt := &qosZoneStatus{
 		Zone:            zoneName,
 		DiskLimitEnable: m.cluster.diskQosEnable,
-		DiskQos:         zone.cloneDiskQosConfig(),
+		IopsRVal:        zone.QosIopsRLimit,
+		IopsWVal:        zone.QosIopsWLimit,
+		FlowRVal:        zone.QosFlowRLimit,
+		FlowWVal:        zone.QosFlowWLimit,
 	}
-
 	sendOkReply(w, r, newSuccessHTTPReply(zoneSt))
 }
 

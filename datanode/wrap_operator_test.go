@@ -23,14 +23,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cubefs/cubefs/util/qos"
-
 	"github.com/cubefs/cubefs/datanode/repl"
 	"github.com/cubefs/cubefs/datanode/storage"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/atomicutil"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/time/rate"
 )
 
 func newExtentStoreForOperatorTest(t *testing.T) (store *storage.ExtentStore) {
@@ -50,42 +49,16 @@ func newDiskForOperatorTest(t *testing.T, dn *DataNode) (d *Disk) {
 		Used:      0,
 		dataNode:  dn,
 	}
-	conf := qos.AdaptiveManagerConf{
-		FlowConfigs: map[qos.IoType]qos.FlowConfig{
-			qos.Read: {
-				Iocc:         10,
-				IopsMinLimit: 30,
-			},
-			qos.Write: {
-				Iocc:         10,
-				IopsMinLimit: 30,
-			},
-			qos.Delete: {
-				Iocc:         10,
-				IopsMinLimit: 10,
-			},
-			qos.AsyncRead: {
-				Iocc:         10,
-				IopsMinLimit: 5,
-			},
-			qos.AsyncWrite: {
-				Iocc:         10,
-				IopsMinLimit: 5,
-			},
-		},
-		DecayStep:              5,
-		CheckIntervalMs:        1000,
-		BizReadAwaitDegradeMs:  500,
-		BizWriteAwaitDegradeMs: 500,
-		SafetyBoundaryRatio:    0.8,
-		TriggerConsecutive:     3,
-		RelaxDisableFactor:     2,
-		MetricsWindows:         10,
-		MetricsWindowMs:        1000,
-		SampleIntervalMs:       10,
-	}
-	d.flowLimiterMgr = qos.NewAdaptiveManager("", conf)
-
+	d.limitFactor = make(map[uint32]*rate.Limiter)
+	d.limitFactor[proto.FlowReadType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxFLowLimit), proto.QosDefaultBurst)
+	d.limitFactor[proto.FlowWriteType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxFLowLimit), proto.QosDefaultBurst)
+	d.limitFactor[proto.IopsReadType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxIoLimit), defaultIOLimitBurst)
+	d.limitFactor[proto.IopsWriteType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxIoLimit), defaultIOLimitBurst)
+	d.limitFactor[proto.IopsDeleteType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxIoLimit), defaultIOLimitBurst)
+	d.limitRead = util.NewIOLimiter(1*util.MB, 10)
+	d.limitWrite = util.NewIOLimiter(1*util.MB, 10)
+	d.limitAsyncRead = util.NewIOLimiter(1*util.MB, 10)
+	d.limitDelete = util.NewIOLimiter(1*util.MB, 10)
 	return
 }
 
@@ -125,11 +98,6 @@ func newDataNodeForOperatorTest(t *testing.T) (dn *DataNode) {
 		diskAsyncQosEnable: true,
 	}
 	dn.space = NewSpaceManager(dn)
-	// Stop the background scheduler immediately to avoid accessing uninitialized MasterClient
-	go func() {
-		time.Sleep(100 * time.Millisecond)
-		close(dn.space.stopC)
-	}()
 	return
 }
 
@@ -173,9 +141,6 @@ func TestMarkDeleteIopsLimit(t *testing.T) {
 
 	dn := newDataNodeForOperatorTest(t)
 	dp := newDpForOperatorTest(t, dn)
-	defer func() {
-		dp.disk.flowLimiterMgr.Close()
-	}()
 
 	for i := 100; i < 900; i++ {
 		p := newPacketForOperatorTest(t, dp, uint64(i))
@@ -185,9 +150,7 @@ func TestMarkDeleteIopsLimit(t *testing.T) {
 	}
 
 	dp.dataNode.diskAsyncQosEnable = true
-	limiter := dp.disk.flowLimiterMgr.GetLimiterByType(qos.Delete)
-	limiter.Enable()
-	limiter.ResetLimit(200)
+	dp.disk.limitFactor[proto.IopsDeleteType].SetLimit(rate.Limit(200))
 	startTime := time.Now()
 	for i := 100; i < 500; i++ {
 		wg.Add(1)
@@ -206,7 +169,7 @@ func TestMarkDeleteIopsLimit(t *testing.T) {
 
 	time.Sleep(time.Second)
 
-	limiter.ResetLimit(50)
+	dp.disk.limitFactor[proto.IopsDeleteType].SetLimit(rate.Limit(50))
 	startTime = time.Now()
 	for i := 500; i < 900; i++ {
 		wg.Add(1)
@@ -234,9 +197,6 @@ func TestMarkDeleteIoccLimit(t *testing.T) {
 
 	dn := newDataNodeForOperatorTest(t)
 	dp := newDpForOperatorTest(t, dn)
-	defer func() {
-		dp.disk.flowLimiterMgr.Close()
-	}()
 
 	for i := 100; i < 700; i++ {
 		p := newPacketForOperatorTest(t, dp, uint64(i))
@@ -245,7 +205,7 @@ func TestMarkDeleteIoccLimit(t *testing.T) {
 		require.EqualValues(t, proto.OpOk, p.ResultCode)
 	}
 
-	limiter := dp.disk.flowLimiterMgr.GetLimiterByType(qos.Delete)
+	dp.disk.limitFactor[proto.IopsDeleteType].SetLimit(rate.Limit(100))
 	startTime := time.Now()
 	for i := 100; i < 400; i++ {
 		wg.Add(1)
@@ -255,16 +215,14 @@ func TestMarkDeleteIoccLimit(t *testing.T) {
 			p.Opcode = proto.OpMarkDelete
 			p.ExtentType = 1
 			dn.handleMarkDeletePacket(p, c)
-			require.EqualValues(t, proto.OpOk, p.ResultCode)
 		}(i)
 	}
 	wg.Wait()
 
 	costTime1 := time.Since(startTime)
 	t.Logf("cost time1(%v)", costTime1)
-	require.Equal(t, 10, limiter.Status().IOConcurrency)
 
-	limiter.ResetIO(2, 0)
+	dp.disk.limitDelete.ResetIO(2, 0)
 	startTime = time.Now()
 	for i := 400; i < 700; i++ {
 		wg.Add(1)
@@ -280,7 +238,8 @@ func TestMarkDeleteIoccLimit(t *testing.T) {
 	wg.Wait()
 	costTime2 := time.Since(startTime)
 	t.Logf("cost time2(%v)", costTime2)
-	require.Equal(t, 2, limiter.Status().IOConcurrency)
+
+	require.Greater(t, costTime2, costTime1)
 }
 
 func TestDeleteLostDisk(t *testing.T) {
@@ -361,6 +320,9 @@ func TestReloadDisk(t *testing.T) {
 	require.NoError(t, err)
 
 	dn := &DataNode{
+		diskReadFlow:      1 * util.MB,
+		diskAsyncReadFlow: 1 * util.MB,
+		diskWriteFlow:     1 * util.MB,
 		diskReadIocc:      10,
 		diskAsyncReadIocc: 10,
 		diskWriteIocc:     10,

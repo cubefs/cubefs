@@ -1738,8 +1738,10 @@ type Zone struct {
 	metaNodes                  *sync.Map
 	nodeSetMap                 map[uint64]*nodeSet
 	nsLock                     sync.RWMutex
-	DiskQosConfig              map[string]string
-	DiskQosConfigLock          sync.RWMutex
+	QosIopsRLimit              uint64
+	QosIopsWLimit              uint64
+	QosFlowRLimit              uint64
+	QosFlowWLimit              uint64
 	dataMediaType              uint32
 	PoolId                     uint8
 	MetaRegion                 string // Region name, "default" if not specified
@@ -1748,7 +1750,10 @@ type Zone struct {
 
 type zoneValue struct {
 	Name                string
-	DiskQosConfig       map[string]string
+	QosIopsRLimit       uint64
+	QosIopsWLimit       uint64
+	QosFlowRLimit       uint64
+	QosFlowWLimit       uint64
 	DataNodesetSelector string
 	MetaNodesetSelector string
 	DataMediaType       uint32
@@ -1762,7 +1767,6 @@ func newZone(name string, dataMediaType uint32) (zone *Zone) {
 	zone.dataNodes = new(sync.Map)
 	zone.metaNodes = new(sync.Map)
 	zone.nodeSetMap = make(map[uint64]*nodeSet)
-	zone.DiskQosConfig = make(map[string]string)
 	zone.dataNodesetSelector = NewNodesetSelector(DefaultNodesetSelectorName, DataNodeType)
 	zone.metaMemoryNodesetSelector = NewNodesetSelector(DefaultNodesetSelectorName, MetaNodeType)
 	zone.metaRocksdbNodesetSelector = NewNodesetSelector(DefaultNodesetSelectorName, RocksdbType)
@@ -1813,23 +1817,16 @@ func (zone *Zone) SetMetaNodeSelector(name string) {
 func (zone *Zone) getFsmValue() *zoneValue {
 	return &zoneValue{
 		Name:                zone.name,
-		DiskQosConfig:       zone.cloneDiskQosConfig(),
+		QosIopsRLimit:       zone.QosIopsRLimit,
+		QosIopsWLimit:       zone.QosIopsWLimit,
+		QosFlowRLimit:       zone.QosFlowRLimit,
+		QosFlowWLimit:       zone.QosFlowWLimit,
 		DataNodesetSelector: zone.GetDataNodesetSelector(),
 		MetaNodesetSelector: zone.GetMetaNodesetSelector(),
 		DataMediaType:       zone.GetDataMediaType(),
 		PoolId:              zone.PoolId,
 		Region:              zone.MetaRegion,
 	}
-}
-
-func (zone *Zone) cloneDiskQosConfig() map[string]string {
-	zone.DiskQosConfigLock.RLock()
-	defer zone.DiskQosConfigLock.RUnlock()
-	result := make(map[string]string)
-	for k, v := range zone.DiskQosConfig {
-		result[k] = v
-	}
-	return result
 }
 
 func (zone *Zone) setStatus(status int) {
@@ -2245,41 +2242,57 @@ func (zone *Zone) updateNodesetSelector(cluster *Cluster, dataNodesetSelector st
 	return cluster.sycnPutZoneInfo(zone)
 }
 
-func (zone *Zone) updateDataNodeQosConfig(cluster *Cluster, args *zoneDiskQosArgs) error {
+func (zone *Zone) updateDataNodeQosLimit(cluster *Cluster, qosParam *qosArgs) error {
 	var err error
-	zone.DiskQosConfigLock.Lock()
-	for key, value := range args.params {
-		if value != "" {
-			zone.DiskQosConfig[key] = value
-		}
+	if qosParam.flowRVal > 0 {
+		zone.QosFlowRLimit = qosParam.flowRVal
 	}
-	zone.DiskQosConfigLock.Unlock()
+	if qosParam.flowWVal > 0 {
+		zone.QosFlowWLimit = qosParam.flowWVal
+	}
+	if qosParam.iopsRVal > 0 {
+		zone.QosIopsRLimit = qosParam.iopsRVal
+	}
+	if qosParam.iopsWVal > 0 {
+		zone.QosIopsWLimit = qosParam.iopsWVal
+	}
 
 	if err = cluster.sycnPutZoneInfo(zone); err != nil {
 		return err
 	}
 	zone.dataNodes.Range(func(key, value interface{}) bool {
 		dataNode := value.(*DataNode)
-		dataNode.DiskQosConfigLock.Lock()
-		for k, v := range args.params {
-			if v != "" {
-				dataNode.DiskQosConfig[k] = v
-			}
+		if qosParam.flowRVal > 0 {
+			dataNode.QosFlowRLimit = qosParam.flowRVal
 		}
-		dataNode.DiskQosConfigLock.Unlock()
+		if qosParam.flowWVal > 0 {
+			dataNode.QosFlowWLimit = qosParam.flowWVal
+		}
+		if qosParam.iopsRVal > 0 {
+			dataNode.QosIopsRLimit = qosParam.iopsRVal
+		}
+		if qosParam.iopsWVal > 0 {
+			dataNode.QosIopsWLimit = qosParam.iopsWVal
+		}
 		return true
 	})
 	return nil
 }
 
-func (zone *Zone) loadDataNodeQosConfig() {
-	diskQosConfig := zone.cloneDiskQosConfig()
+func (zone *Zone) loadDataNodeQosLimit() {
 	zone.dataNodes.Range(func(key, value interface{}) bool {
 		dataNode := value.(*DataNode)
-		for k, v := range diskQosConfig {
-			if v != "" {
-				dataNode.DiskQosConfig[k] = v
-			}
+		if zone.QosFlowRLimit > 0 {
+			dataNode.QosFlowRLimit = zone.QosFlowRLimit
+		}
+		if zone.QosFlowWLimit > 0 {
+			dataNode.QosFlowWLimit = zone.QosFlowWLimit
+		}
+		if zone.QosIopsRLimit > 0 {
+			dataNode.QosIopsRLimit = zone.QosIopsRLimit
+		}
+		if zone.QosIopsWLimit > 0 {
+			dataNode.QosIopsWLimit = zone.QosIopsWLimit
 		}
 		return true
 	})

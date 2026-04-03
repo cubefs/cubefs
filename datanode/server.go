@@ -117,31 +117,24 @@ const (
 	ConfigKeySmuxTotalStream   = "sumxTotalStream"    // int
 
 	// rate limit control enable
-	ConfigDiskQosEnable              = "diskQosEnable"              // bool
-	ConfigDiskAsyncQosEnable         = "diskAsyncQosEnable"         // bool
-	ConfigDiskReadIocc               = "diskReadIocc"               // int
-	ConfigDiskReadIopsMinLimit       = "diskReadIopsMinLimit"       // int
-	ConfigDiskWriteIocc              = "diskWriteIocc"              // int
-	ConfigDiskWriteIopsMinLimit      = "diskWriteIopsMinLimit"      // int
-	ConfigDiskWQueFactor             = "diskWQueFactor"             // int
-	ConfigDiskAsyncReadIocc          = "diskAsyncReadIocc"          // int
-	ConfigDiskAsyncReadIopsMinLimit  = "diskAsyncReadIopsMinLimit"  // int
-	ConfigDiskAsyncWriteIocc         = "diskAsyncWriteIocc"         // int
-	ConfigDiskAsyncWriteIopsMinLimit = "diskAsyncWriteIopsMinLimit" // int
-	ConfigDiskCreateIocc             = "diskCreateIocc"             // int
-	ConfigDiskCreateIopsMinLimit     = "diskCreateIopsMinLimit"     // int
-	ConfigDiskDeleteIocc             = "diskDeleteIocc"             // int
-	ConfigDiskDeleteIopsMinLimit     = "diskDeleteIopsMinLimit"     // int
-	ConfigDiskFlowDecayStep          = "diskFlowDecayStep"
-	ConfigFlowCheckIntervalMs        = "flowCheckIntervalMs"
-	ConfigBizReadAwaitDegradeMs      = "bizReadAwaitDegradeMs"
-	ConfigBizWriteAwaitDegradeMs     = "bizWriteAwaitDegradeMs"
-	ConfigSafetyBoundaryRatio        = "safetyBoundaryRatio"
-	ConfigTriggerConsecutive         = "triggerConsecutive"
-	ConfigRelaxDisableFactor         = "relaxDisableFactor"
-	ConfigMetricsWindows             = "metricsWindows"
-	ConfigMetricsWindowMs            = "metricsWindowMs"
-	ConfigSampleIntervalMs           = "sampleIntervalMs"
+	ConfigDiskQosEnable      = "diskQosEnable"      // bool
+	ConfigDiskAsyncQosEnable = "diskAsyncQosEnable" // bool
+	ConfigDiskReadIocc       = "diskReadIocc"       // int
+	ConfigDiskReadIops       = "diskReadIops"       // int
+	ConfigDiskReadFlow       = "diskReadFlow"       // int
+	ConfigDiskWriteIocc      = "diskWriteIocc"      // int
+	ConfigDiskWriteIops      = "diskWriteIops"      // int
+	ConfigDiskWriteFlow      = "diskWriteFlow"      // int
+	ConfigDiskWQueFactor     = "diskWQueFactor"     // int
+	ConfigDiskAsyncReadIocc  = "diskAsyncReadIocc"  // int
+	ConfigDiskAsyncReadIops  = "diskAsyncReadIops"  // int
+	ConfigDiskAsyncReadFlow  = "diskAsyncReadFlow"  // int
+	ConfigDiskAsyncWriteIocc = "diskAsyncWriteIocc" // int
+	ConfigDiskAsyncWriteIops = "diskAsyncWriteIops" // int
+	ConfigDiskAsyncWriteFlow = "diskAsyncWriteFlow" // int
+	ConfigDiskDeleteIocc     = "diskDeleteIocc"     // int
+	ConfigDiskDeleteIops     = "diskDeleteIops"     // int
+	ConfigDiskDeleteFlow     = "diskDeleteFlow"     // int
 
 	// load/stop dp limit
 	ConfigDiskCurrentLoadDpLimit = "diskCurrentLoadDpLimit"
@@ -216,37 +209,29 @@ type DataNode struct {
 
 	control common.Control
 
-	diskQosEnable              bool
-	diskQosEnableFromMaster    bool
-	diskAsyncQosEnable         bool
-	diskReadIocc               int
-	diskReadIopsMinLimit       int
-	diskWriteIocc              int
-	diskWriteIopsMinLimit      int
-	diskAsyncReadIocc          int
-	diskAsyncReadIopsMinLimit  int
-	diskAsyncWriteIocc         int
-	diskAsyncWriteIopsMinLimit int
-	diskCreateIocc             int
-	diskCreateIopsMinLimit     int
-	diskDeleteIocc             int
-	diskDeleteIopsMinLimit     int
-	diskFlowDecayStep          int
-	diskFlowCheckIntervalMs    int64
-	bizReadAwaitDegradeMs      int64
-	bizWriteAwaitDegradeMs     int64
-	safetyBoundaryRatio        float64
-	triggerConsecutive         int
-	relaxDisableFactor         float64
-	metricsWindows             int
-	metricsWindowMs            int64
-	sampleIntervalMs           int64
-
-	diskWQueFactor        int
-	dpMaxRepairErrCnt     uint64
-	clusterUuid           string
-	clusterUuidEnable     bool
-	clusterEnableSnapshot bool
+	diskQosEnable           bool
+	diskQosEnableFromMaster bool
+	diskAsyncQosEnable      bool
+	diskReadIocc            int
+	diskReadIops            int
+	diskReadFlow            int
+	diskWriteIocc           int
+	diskWriteIops           int
+	diskWriteFlow           int
+	diskAsyncReadIocc       int
+	diskAsyncReadIops       int
+	diskAsyncReadFlow       int
+	diskAsyncWriteIocc      int
+	diskAsyncWriteIops      int
+	diskAsyncWriteFlow      int
+	diskDeleteIocc          int
+	diskDeleteIops          int
+	diskDeleteFlow          int
+	diskWQueFactor          int
+	dpMaxRepairErrCnt       uint64
+	clusterUuid             string
+	clusterUuidEnable       bool
+	clusterEnableSnapshot   bool
 
 	serviceIDKey   string
 	cpuUtil        atomicutil.Float64
@@ -563,48 +548,23 @@ func (s *DataNode) initQosLimit(cfg *config.Config) {
 	dn.diskQosEnable = cfg.GetBoolWithDefault(ConfigDiskQosEnable, true)
 	dn.diskAsyncQosEnable = cfg.GetBoolWithDefault(ConfigDiskAsyncQosEnable, true)
 	dn.diskReadIocc = cfg.GetInt(ConfigDiskReadIocc)
-	dn.diskReadIopsMinLimit = cfg.GetIntWithDefault(ConfigDiskReadIopsMinLimit, 0)
-	if dn.diskReadIopsMinLimit < 0 {
-		dn.diskReadIopsMinLimit = 0
-	}
+	dn.diskReadIops = cfg.GetInt(ConfigDiskReadIops)
+	dn.diskReadFlow = cfg.GetInt(ConfigDiskReadFlow)
 	dn.diskWriteIocc = cfg.GetInt(ConfigDiskWriteIocc)
-	dn.diskWriteIopsMinLimit = cfg.GetIntWithDefault(ConfigDiskWriteIopsMinLimit, 0)
-	if dn.diskWriteIopsMinLimit < 0 {
-		dn.diskWriteIopsMinLimit = 0
-	}
+	dn.diskWriteIops = cfg.GetInt(ConfigDiskWriteIops)
+	dn.diskWriteFlow = cfg.GetInt(ConfigDiskWriteFlow)
 	dn.diskAsyncReadIocc = cfg.GetIntWithDefault(ConfigDiskAsyncReadIocc, 100)
-	dn.diskAsyncReadIopsMinLimit = cfg.GetIntWithDefault(ConfigDiskAsyncReadIopsMinLimit, 0)
-	if dn.diskAsyncReadIopsMinLimit < 0 {
-		dn.diskAsyncReadIopsMinLimit = 0
-	}
+	dn.diskAsyncReadIops = cfg.GetInt(ConfigDiskAsyncReadIops)
+	dn.diskAsyncReadFlow = cfg.GetInt(ConfigDiskAsyncReadFlow)
 	dn.diskAsyncWriteIocc = cfg.GetIntWithDefault(ConfigDiskAsyncWriteIocc, 100)
-	dn.diskAsyncWriteIopsMinLimit = cfg.GetIntWithDefault(ConfigDiskAsyncWriteIopsMinLimit, 0)
-	if dn.diskAsyncWriteIopsMinLimit < 0 {
-		dn.diskAsyncWriteIopsMinLimit = 0
-	}
-	dn.diskCreateIocc = cfg.GetInt(ConfigDiskCreateIocc)
-	dn.diskCreateIopsMinLimit = cfg.GetIntWithDefault(ConfigDiskCreateIopsMinLimit, 0)
-	if dn.diskCreateIopsMinLimit < 0 {
-		dn.diskCreateIopsMinLimit = 0
-	}
+	dn.diskAsyncWriteIops = cfg.GetInt(ConfigDiskAsyncWriteIops)
+	dn.diskAsyncWriteFlow = cfg.GetInt(ConfigDiskAsyncWriteFlow)
 	dn.diskDeleteIocc = cfg.GetInt(ConfigDiskDeleteIocc)
-	dn.diskDeleteIopsMinLimit = cfg.GetIntWithDefault(ConfigDiskDeleteIopsMinLimit, 0)
-	if dn.diskDeleteIopsMinLimit < 0 {
-		dn.diskDeleteIopsMinLimit = 0
-	}
-	dn.diskFlowDecayStep = cfg.GetInt(ConfigDiskFlowDecayStep)
-	dn.diskFlowCheckIntervalMs = cfg.GetInt64(ConfigFlowCheckIntervalMs)
-	dn.bizReadAwaitDegradeMs = cfg.GetInt64(ConfigBizReadAwaitDegradeMs)
-	dn.bizWriteAwaitDegradeMs = cfg.GetInt64(ConfigBizWriteAwaitDegradeMs)
-	dn.safetyBoundaryRatio = cfg.GetFloat(ConfigSafetyBoundaryRatio)
-	dn.triggerConsecutive = cfg.GetInt(ConfigTriggerConsecutive)
-	dn.relaxDisableFactor = cfg.GetFloat(ConfigRelaxDisableFactor)
-	dn.metricsWindows = cfg.GetInt(ConfigMetricsWindows)
-	dn.metricsWindowMs = cfg.GetInt64(ConfigMetricsWindowMs)
-	dn.sampleIntervalMs = cfg.GetInt64(ConfigSampleIntervalMs)
-
-	log.LogWarnf("action[initQosLimit] set qos [normal %v async %v], rWriteiocc:normal %d async %d) write(iocc:%d async %d) create(iocc:%d) delete(iocc:%d)",
-		dn.diskQosEnable, dn.diskAsyncQosEnable, dn.diskReadIocc, dn.diskAsyncReadIocc, dn.diskWriteIocc, dn.diskAsyncWriteIocc, dn.diskCreateIocc, dn.diskDeleteIocc)
+	dn.diskDeleteFlow = cfg.GetInt(ConfigDiskDeleteFlow)
+	dn.diskDeleteIops = cfg.GetInt(ConfigDiskDeleteIops)
+	log.LogWarnf("action[initQosLimit] set qos [normal %v async %v], rWriteiocc:normal %d async %d, iops:%d async %d, flow:normal %d async %d) write(iocc:%d async %d,iops:%d async %d, flow:%d async %d) delete(iocc:%d flow:%d iops: %d)",
+		dn.diskQosEnable, dn.diskAsyncQosEnable, dn.diskReadIocc, dn.diskAsyncReadIocc, dn.diskReadIops, dn.diskAsyncReadIops, dn.diskReadFlow, dn.diskAsyncReadFlow, dn.diskWriteIocc, dn.diskAsyncWriteIocc,
+		dn.diskWriteIops, dn.diskAsyncWriteIops, dn.diskWriteFlow, dn.diskAsyncWriteFlow, dn.diskDeleteIocc, dn.diskDeleteFlow, dn.diskDeleteIops)
 }
 
 func (s *DataNode) updateQosLimit() {
@@ -1020,8 +980,6 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/setDiskBad", s.setDiskBadAPI)
 	http.HandleFunc("/setDiskQos", s.setDiskQos)
 	http.HandleFunc("/getDiskQos", s.getDiskQos)
-	http.HandleFunc("/getDiskStat", s.getDiskStat)
-	http.HandleFunc("/setDiskLimit", s.setDiskLimit)
 	http.HandleFunc("/reloadDataPartition", s.reloadDataPartition)
 	http.HandleFunc("/setDiskExtentReadLimitStatus", s.setDiskExtentReadLimitStatus)
 	http.HandleFunc("/queryDiskExtentReadLimitStatus", s.queryDiskExtentReadLimitStatus)
@@ -1366,4 +1324,13 @@ func (s *DataNode) scheduleToCheckLackPartitions() {
 func IsDiskErr(errMsg string) bool {
 	return strings.Contains(errMsg, syscall.EIO.Error()) ||
 		strings.Contains(errMsg, syscall.EROFS.Error())
+}
+
+func (s *DataNode) IopsStatus() (status proto.IopsStatus) {
+	status.ReadIops = s.diskReadIops
+	status.WriteIops = s.diskWriteIops
+	status.AsyncReadIops = s.diskAsyncReadIops
+	status.AsyncWriteIops = s.diskAsyncWriteIops
+	status.DeleteIops = s.diskDeleteIops
+	return
 }

@@ -264,7 +264,7 @@ func (s *DataNode) handlePacketToCreateExtent(p *repl.Packet) {
 		return
 	}
 
-	partition.disk.diskLimit(OpCreate, 0, func() {
+	partition.disk.diskLimit(OpWrite, 0, func() {
 		err = partition.ExtentStore().Create(p.ExtentID)
 	})
 }
@@ -637,65 +637,17 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 
 			var needUpdate bool
 			for _, pair := range []struct {
-				replace string
-				origin  interface{}
+				replace uint64
+				origin  *int
 			}{
-				{request.DiskQosConfig[ConfigDiskReadIocc], &s.diskReadIocc},
-				{request.DiskQosConfig[ConfigDiskReadIopsMinLimit], &s.diskReadIopsMinLimit},
-				{request.DiskQosConfig[ConfigDiskWriteIocc], &s.diskWriteIocc},
-				{request.DiskQosConfig[ConfigDiskWriteIopsMinLimit], &s.diskWriteIopsMinLimit},
-				{request.DiskQosConfig[ConfigDiskWQueFactor], &s.diskWQueFactor},
-				{request.DiskQosConfig[ConfigDiskAsyncReadIocc], &s.diskAsyncReadIocc},
-				{request.DiskQosConfig[ConfigDiskAsyncReadIopsMinLimit], &s.diskAsyncReadIopsMinLimit},
-				{request.DiskQosConfig[ConfigDiskAsyncWriteIocc], &s.diskAsyncWriteIocc},
-				{request.DiskQosConfig[ConfigDiskAsyncWriteIopsMinLimit], &s.diskAsyncWriteIopsMinLimit},
-				{request.DiskQosConfig[ConfigDiskCreateIocc], &s.diskCreateIocc},
-				{request.DiskQosConfig[ConfigDiskCreateIopsMinLimit], &s.diskCreateIopsMinLimit},
-				{request.DiskQosConfig[ConfigDiskDeleteIocc], &s.diskDeleteIocc},
-				{request.DiskQosConfig[ConfigDiskDeleteIopsMinLimit], &s.diskDeleteIopsMinLimit},
-				{request.DiskQosConfig[ConfigDiskFlowDecayStep], &s.diskFlowDecayStep},
-				{request.DiskQosConfig[ConfigTriggerConsecutive], &s.triggerConsecutive},
-				{request.DiskQosConfig[ConfigMetricsWindows], &s.metricsWindows},
-				{request.DiskQosConfig[ConfigFlowCheckIntervalMs], &s.diskFlowCheckIntervalMs},
-				{request.DiskQosConfig[ConfigBizReadAwaitDegradeMs], &s.bizReadAwaitDegradeMs},
-				{request.DiskQosConfig[ConfigBizWriteAwaitDegradeMs], &s.bizWriteAwaitDegradeMs},
-				{request.DiskQosConfig[ConfigMetricsWindowMs], &s.metricsWindowMs},
-				{request.DiskQosConfig[ConfigSampleIntervalMs], &s.sampleIntervalMs},
-				{request.DiskQosConfig[ConfigSafetyBoundaryRatio], &s.safetyBoundaryRatio},
-				{request.DiskQosConfig[ConfigRelaxDisableFactor], &s.relaxDisableFactor},
+				{request.QosFlowWriteLimit, &s.diskWriteFlow},
+				{request.QosFlowReadLimit, &s.diskReadFlow},
+				{request.QosIopsWriteLimit, &s.diskWriteIops},
+				{request.QosIopsReadLimit, &s.diskReadIops},
 			} {
-				if pair.replace != "" {
-					switch ptr := pair.origin.(type) {
-					case *int:
-						val, err := strconv.Atoi(pair.replace)
-						if err != nil {
-							continue
-						}
-						if val > 0 && val != *ptr {
-							*ptr = val
-							needUpdate = true
-						}
-					case *int64:
-						val, err := strconv.ParseInt(pair.replace, 10, 64)
-						if err != nil {
-							continue
-						}
-						if val > 0 && val != *ptr {
-							*ptr = val
-							needUpdate = true
-						}
-					case *float64:
-						val, err := strconv.ParseFloat(pair.replace, 64)
-						if err != nil {
-							continue
-						}
-						if val > 0 && val != *ptr {
-							*ptr = val
-							needUpdate = true
-						}
-					default:
-						continue
-					}
+				if pair.replace > 0 && int(pair.replace) != *pair.origin {
+					*pair.origin = int(pair.replace)
+					needUpdate = true
 				}
 			}
 
@@ -704,8 +656,8 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 			response.IoUtils = s.space.GetDiskUtils()
 
 			if needUpdate {
-				log.LogWarnf("action[handleHeartbeatPacket] master change disk qos config to [%v]",
-					request.DiskQosConfig)
+				log.LogWarnf("action[handleHeartbeatPacket] master change disk qos limit to [flowWrite %v, flowRead %v, iopsWrite %v, iopsRead %v]",
+					s.diskWriteFlow, s.diskReadFlow, s.diskWriteIops, s.diskReadIops)
 				s.updateQosLimit()
 			}
 		} else {

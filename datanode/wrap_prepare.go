@@ -20,8 +20,6 @@ import (
 	"hash/crc32"
 	"sync/atomic"
 
-	"github.com/cubefs/cubefs/util/qos"
-
 	"github.com/cubefs/cubefs/datanode/repl"
 	"github.com/cubefs/cubefs/datanode/storage"
 	"github.com/cubefs/cubefs/proto"
@@ -108,7 +106,8 @@ func (s *DataNode) checkPartition(p *repl.Packet) (err error) {
 		}
 	}
 	if p.IsNormalWriteOperation() || p.IsRandomWrite() {
-		dp.disk.allocCheckLimit(qos.Write)
+		dp.disk.allocCheckLimit(proto.FlowWriteType, uint32(p.Size))
+		dp.disk.allocCheckLimit(proto.IopsWriteType, 1)
 	}
 	return
 }

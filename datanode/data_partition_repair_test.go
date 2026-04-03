@@ -11,8 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cubefs/cubefs/util/qos"
-
 	"github.com/cubefs/cubefs/datanode/repl"
 	"github.com/cubefs/cubefs/datanode/storage"
 	"github.com/cubefs/cubefs/proto"
@@ -600,8 +598,8 @@ func TestExtentRepairWithIOLimit(t *testing.T) {
 	const repairRateLimit = 1 * util.MB
 
 	// normalIds := []uint64{1025, 1026, 1027, 1028, 1029, 1030, 1031, 1032, 1033, 1034}
-	normalIds := make([]uint64, 15)
-	for i := 0; i < 15; i++ {
+	normalIds := make([]uint64, 10)
+	for i := 0; i < 10; i++ {
 		normalIds[i] = uint64(1025 + i)
 	}
 	data, crc := genDataAndGetCrc("normal", util.BlockSize)
@@ -611,8 +609,8 @@ func TestExtentRepairWithIOLimit(t *testing.T) {
 	sendWorker.dstWorker = recvWorker
 	recvWorker.dstWorker = sendWorker
 
-	sendWorker.dp.disk.flowLimiterMgr.GetLimiterByType(qos.AsyncRead).GetIo().ResetFlow(repairRateLimit)
-	recvWorker.dp.disk.flowLimiterMgr.GetLimiterByType(qos.AsyncWrite).GetIo().ResetFlow(repairRateLimit)
+	sendWorker.dp.disk.limitAsyncRead = util.NewIOLimiter(repairRateLimit, 0)
+	recvWorker.dp.disk.limitAsyncWrite = util.NewIOLimiter(repairRateLimit, 0)
 
 	for _, id := range normalIds {
 		err := sendWorker.dp.extentStore.Create(id)
@@ -676,7 +674,7 @@ func senderRepairWorkerWithConcurrent(t *testing.T, exitCh chan struct{}) {
 						wg.Done()
 					}()
 					start := time.Now()
-					t.Logf("Sender: limitAsyncRead %v", sendWorker.dp.disk.flowLimiterMgr.GetLimiterByType(qos.AsyncRead).Status())
+					t.Logf("Sender: limitAsyncRead %v", sendWorker.dp.disk.limitAsyncRead.Status(false))
 					sendWorker.dp.NormalExtentRepairRead(pr, con, true, nil, sendNewNormalReadResponsePacket)
 					elapsed := time.Since(start)
 					t.Logf("request %d read cost time: %v", pr.GetExtentID(), elapsed)
@@ -697,7 +695,7 @@ func recvRepairWorkerWithConcurrent(t *testing.T, ids []uint64, exitCh chan stru
 			defer wg.Done()
 			ei, err := sendWorker.dp.extentStore.Watermark(eid)
 			require.NoError(t, err)
-			t.Logf("Recver: limitAsyncWrite %v", recvWorker.dp.disk.flowLimiterMgr.GetLimiterByType(qos.AsyncWrite).Status())
+			t.Logf("Recver: limitAsyncWrite %v", recvWorker.dp.disk.limitAsyncWrite.Status(false))
 			repairExtent := &RepairExtentInfo{ExtentInfo: *ei}
 			start := time.Now()
 			err = recvWorker.dp.streamRepairExtent(repairExtent,

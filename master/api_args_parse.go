@@ -672,47 +672,6 @@ func (qos *qosArgs) isArgsWork() bool {
 	return (qos.iopsRVal | qos.iopsWVal | qos.flowRVal | qos.flowWVal) > 0
 }
 
-type zoneDiskQosArgs struct {
-	params map[string]string
-}
-
-var zoneDiskQosKeys = []string{
-	"diskReadIocc",
-	"diskReadIopsMinLimit",
-	"diskWriteIocc",
-	"diskWriteIopsMinLimit",
-	"diskAsyncReadIocc",
-	"diskAsyncReadIopsMinLimit",
-	"diskAsyncWriteIocc",
-	"diskAsyncWriteIopsMinLimit",
-	"diskCreateIocc",
-	"diskCreateIopsMinLimit",
-	"diskDeleteIocc",
-	"diskDeleteIopsMinLimit",
-	"diskFlowDecayStep",
-	"flowCheckIntervalMs",
-	"bizReadAwaitDegradeMs",
-	"bizWriteAwaitDegradeMs",
-	"safetyBoundaryRatio",
-	"triggerConsecutive",
-	"relaxDisableFactor",
-	"metricsWindows",
-	"metricsWindowMs",
-	"sampleIntervalMs",
-}
-
-func parseZoneDiskQosArgs(r *http.Request) (*zoneDiskQosArgs, error) {
-	args := &zoneDiskQosArgs{params: make(map[string]string)}
-
-	for _, key := range zoneDiskQosKeys {
-		if valStr := r.FormValue(key); valStr != "" {
-			args.params[key] = valStr
-		}
-	}
-
-	return args, nil
-}
-
 type coldVolArgs struct {
 	objBlockSize            int
 	accessTimeValidInterval int64

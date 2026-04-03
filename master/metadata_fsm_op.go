@@ -1456,9 +1456,10 @@ func (c *Cluster) loadZoneValue() (err error) {
 			continue
 		}
 		zone := zoneInfo.(*Zone)
-		for k, v := range cv.DiskQosConfig {
-			zone.DiskQosConfig[k] = v
-		}
+		zone.QosFlowRLimit = cv.QosFlowRLimit
+		zone.QosIopsWLimit = cv.QosIopsWLimit
+		zone.QosFlowWLimit = cv.QosFlowWLimit
+		zone.QosIopsRLimit = cv.QosIopsRLimit
 		if zone.GetDataNodesetSelector() != cv.DataNodesetSelector {
 			zone.dataNodesetSelector = NewNodesetSelector(cv.DataNodesetSelector, DataNodeType)
 		}
@@ -1485,9 +1486,10 @@ func (c *Cluster) loadZoneValue() (err error) {
 			zone.MetaRegion = proto.DefaultRegion
 		}
 
-		log.LogInfof("action[loadZoneValue] load zoneName[%v] with qosConfig[%v], dataMediaType[%v], poolId[%d], region[%v]",
-			zone.name, cv.DiskQosConfig, proto.MediaTypeString(zone.dataMediaType), zone.PoolId, zone.MetaRegion)
-		zone.loadDataNodeQosConfig()
+		log.LogInfof("action[loadZoneValue] load zoneName[%v] with limit [%v,%v,%v,%v], dataMediaType[%v], poolId[%d], region[%v]",
+			zone.name, cv.QosFlowRLimit, cv.QosIopsWLimit, cv.QosFlowWLimit, cv.QosIopsRLimit,
+			proto.MediaTypeString(zone.dataMediaType), zone.PoolId, zone.MetaRegion)
+		zone.loadDataNodeQosLimit()
 	}
 
 	for _, z := range c.t.zones {

@@ -1,17 +1,11 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
-	"net/http"
-	"net/url"
 	"sort"
-	"strconv"
-	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
-	"github.com/cubefs/cubefs/util/qos"
 	"github.com/spf13/cobra"
 )
 
@@ -35,7 +29,6 @@ func newDiskCmd(client *master.MasterClient) *cobra.Command {
 		newRecommissionDiskCmd(client),
 		newQueryDecommissionDiskCmd(client),
 		newCancelDecommissionDiskCmd(client),
-		newDiskIoStatCmd(),
 	)
 	return cmd
 }
@@ -252,163 +245,4 @@ func newCancelDecommissionDiskCmd(client *master.MasterClient) *cobra.Command {
 		},
 	}
 	return cmd
-}
-
-const (
-	cmdDiskIoStatShort = "continuously print disk QoS stats"
-)
-
-func newDiskIoStatCmd() *cobra.Command {
-	var (
-		intervalSec int
-		count       int
-	)
-	cmd := &cobra.Command{
-		Use:   "iostat [DATA NODE ADDR:PROF PORT] [DISK]",
-		Short: cmdDiskIoStatShort,
-		Args:  cobra.ExactArgs(2),
-		Run: func(cmd *cobra.Command, args []string) {
-			var err error
-			defer func() {
-				errout(err)
-			}()
-
-			err = runDiskIostat(args[0], args[1], intervalSec, count)
-		},
-	}
-	cmd.Flags().IntVarP(&intervalSec, "interval", "i", 1, "interval seconds between samples")
-	cmd.Flags().IntVarP(&count, "count", "c", 0, "number of samples to print (0 for infinite)")
-	return cmd
-}
-
-type diskIoStatReply struct {
-	Code int32           `json:"code"`
-	Msg  string          `json:"msg"`
-	Data json.RawMessage `json:"data"`
-}
-
-type diskIoStatData struct {
-	Path   string         `json:"path"`
-	IoType string         `json:"ioType"`
-	Enable bool           `json:"enable"`
-	Limit  int            `json:"limit"`
-	Stat   qos.WindowStat `json:"stat"`
-}
-
-var diskIoStatHTTPClient = &http.Client{
-	Timeout: 5 * time.Second,
-}
-
-func runDiskIostat(addr, disk string, intervalSec, count int) error {
-	if intervalSec <= 0 {
-		intervalSec = 1
-	}
-	interval := time.Duration(intervalSec) * time.Second
-	samples := 0
-	for {
-		stats, err := collectDiskIoStat(addr, disk)
-		if err != nil {
-			return err
-		}
-		printDiskIoStat(addr, disk, stats, samples)
-		samples++
-		if count > 0 && samples >= count {
-			break
-		}
-		time.Sleep(interval)
-	}
-	return nil
-}
-
-func collectDiskIoStat(addr, disk string) ([]*diskIoStatData, error) {
-	stats := make([]*diskIoStatData, 0, len(qos.IoTypes))
-	for _, ioType := range qos.IoTypes {
-		stat, err := fetchDiskStat(addr, disk, int(ioType))
-		if err != nil {
-			return nil, err
-		}
-		stats = append(stats, stat)
-	}
-	return stats, nil
-}
-
-func fetchDiskStat(addr, disk string, ioType int) (*diskIoStatData, error) {
-	endpoint := fmt.Sprintf("http://%s/getDiskStat", addr)
-	query := url.Values{}
-	query.Set("disk", disk)
-	query.Set("ioType", strconv.Itoa(ioType))
-	req, err := http.NewRequest(http.MethodGet, endpoint+"?"+query.Encode(), nil)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := diskIoStatHTTPClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	var reply diskIoStatReply
-	if err = json.NewDecoder(resp.Body).Decode(&reply); err != nil {
-		return nil, err
-	}
-	if reply.Code != http.StatusOK {
-		if reply.Msg == "" {
-			reply.Msg = http.StatusText(int(reply.Code))
-		}
-		return nil, fmt.Errorf("get disk stat failed, ioType=%d: %s", ioType, reply.Msg)
-	}
-	var stat diskIoStatData
-	if err = json.Unmarshal(reply.Data, &stat); err != nil {
-		return nil, err
-	}
-	return &stat, nil
-}
-
-func printDiskIoStat(addr, disk string, stats []*diskIoStatData, sample int) {
-	timestamp := time.Now().Format("2006-01-02 15:04:05")
-	stdout("[%s] addr=%s disk=%s sample=%d\n", timestamp, addr, disk, sample+1)
-	rows := make([][]interface{}, 0, len(stats)+1)
-	header := []interface{}{"IOType", "Enable", "Limit", "IOPS", "BPS", "AvgReq", "AvgQue", "Await(ms)", "RunAvg", "RunMax", "Success%", "Error%", "Reject%"}
-	rows = append(rows, header)
-	for _, stat := range stats {
-		rows = append(rows, []interface{}{
-			stat.IoType,
-			boolToYN(stat.Enable),
-			limitToString(stat.Enable, stat.Limit),
-			stat.Stat.Iops,
-			stat.Stat.Bps,
-			stat.Stat.Avgrq,
-			stat.Stat.Avgqu,
-			awaitMillis(stat.Stat.Await),
-			stat.Stat.RunAvg,
-			stat.Stat.RunMax,
-			percent(stat.Stat.SuccessRate),
-			percent(stat.Stat.ErrorRate),
-			percent(stat.Stat.RejectRate),
-		})
-	}
-	stdout("%s\n\n", alignTable(rows...))
-}
-
-func boolToYN(v bool) string {
-	if v {
-		return "Y"
-	}
-	return "N"
-}
-
-func limitToString(enable bool, limit int) string {
-	if !enable {
-		return "-"
-	}
-	return strconv.Itoa(limit)
-}
-
-func awaitMillis(awaitNs int64) string {
-	ms := float64(awaitNs) / 1e6
-	return fmt.Sprintf("%.2f", ms)
-}
-
-func percent(value float64) string {
-	return fmt.Sprintf("%.2f", value*100)
 }
