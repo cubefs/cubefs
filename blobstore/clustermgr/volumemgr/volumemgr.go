@@ -934,7 +934,7 @@ func (v *VolumeMgr) getCreateVolumeCount(ctx context.Context, modeConf codeModeC
 		return volCount
 	}
 	weightedUnitCount := v.getWeightedDataUnitCount()
-	writableSpaceVolCount := int(float64(v.MinWritableVolumeSpace-writableSpace) / weightedUnitCount / float64(v.ChunkSize) * modeConf.sizeRatio)
+	writableSpaceVolCount := int(float64(v.MinWritableVolumeSpace-writableSpace) / float64(v.ChunkSize) / weightedUnitCount * modeConf.sizeRatio)
 	span.Infof("code mode %v, writable space vol count %d, min writable vol space %d, current space %d", modeConf.mode, writableSpaceVolCount, v.MinWritableVolumeSpace, writableSpace)
 
 	return util.Max(volCount, curVolCount+writableSpaceVolCount)
