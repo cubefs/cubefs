@@ -841,3 +841,39 @@ func TestAllocAvoidAllocZeroVolFromCM(t *testing.T) {
 		require.True(t, true, a.count > 0)
 	}
 }
+
+// Test the getBidMgrCache method of volumeMgr
+func TestGetBidMgrCache(t *testing.T) {
+	ctx := context.Background()
+	cmcli := mock.ProxyMockClusterMgrCli(t)
+
+	vm, err := NewVolumeMgr(ctx, BlobConfig{}, VolConfig{
+		InitVolumeNum:         4,
+		MetricReportIntervalS: 1,
+		RetainIntervalS:       1,
+	}, cmcli)
+	require.NoError(t, err)
+	defer vm.Close()
+
+	v, ok := vm.(*volumeMgr)
+	if !ok {
+		t.Skip("Skipping test: could not cast to *volumeMgr")
+		return
+	}
+
+	current, backup := v.getBidMgrCache()
+
+	require.Equal(t, uint64(10000), current)
+	require.Equal(t, uint64(0), backup)
+
+	_, err = vm.Alloc(ctx, &proxy.AllocVolsArgs{
+		CodeMode: codemode.EC6P6,
+		BidCount: 100,
+		Fsize:    1024 * 1024,
+	})
+	require.NoError(t, err)
+
+	current, backup = v.getBidMgrCache()
+	require.Equal(t, uint64(9900), current)
+	require.Equal(t, uint64(0), backup)
+}

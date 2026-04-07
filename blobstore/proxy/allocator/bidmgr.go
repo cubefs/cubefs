@@ -176,3 +176,17 @@ func (b *bidMgr) Alloc(ctx context.Context, count uint64) (bidRange []BidRange, 
 	span.Debugf("after alloc, current bidRange: %v,backup bidRange: %v", b.current, b.backup)
 	return
 }
+
+// Get the bid cache count metrics
+func (b *bidMgr) getBidCacheCount() (current, backup uint64) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	if b.current != nil {
+		current = uint64(b.current.maxBid - b.current.minBid + 1)
+	}
+	if b.backup != nil {
+		backup = uint64(b.backup.maxBid - b.backup.minBid + 1)
+	}
+	return
+}
