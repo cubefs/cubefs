@@ -130,14 +130,19 @@ func (s *DataNode) checkPacketAndPrepare(p *repl.Packet) error {
 		}
 	}
 	if p.IsLeaderPacket() && proto.IsTinyExtentType(p.ExtentType) && p.IsNormalWriteOperation() {
-		extentID, err = store.GetAvailableTinyExtent()
-		if err != nil {
-			return fmt.Errorf("checkPacketAndPrepare partition %v GetAvailableTinyExtent error %v", p.PartitionID, err.Error())
-		}
-		p.ExtentID = extentID
-		p.ExtentOffset, err = store.GetTinyExtentOffset(extentID)
-		if err != nil {
-			return fmt.Errorf("checkPacketAndPrepare partition %v  %v GetTinyExtentOffset error %v", p.PartitionID, extentID, err.Error())
+		if !partition.isRepairing {
+			extentID, err = store.GetAvailableTinyExtent()
+			if err != nil {
+				return fmt.Errorf("checkPacketAndPrepare partition %v GetAvailableTinyExtent error %v", p.PartitionID, err.Error())
+			}
+			p.ExtentID = extentID
+			p.ExtentOffset, err = store.GetTinyExtentOffset(extentID)
+			if err != nil {
+				return fmt.Errorf("checkPacketAndPrepare partition %v  %v GetTinyExtentOffset error %v", p.PartitionID, extentID, err.Error())
+			}
+		} else {
+			log.LogInfof("checkPacketAndPrepare partition %v err %v", p.PartitionID, storage.ErrDpDecommissionRepair)
+			return storage.ErrDpDecommissionRepair
 		}
 	} else if p.IsLeaderPacket() && p.IsSnapshotModWriteAppendOperation() {
 		if proto.IsTinyExtentType(p.ExtentType) {

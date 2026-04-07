@@ -277,16 +277,30 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 	}
 }
 
-func compareExtentsBySize(toCompareExtents, baseExtents []*storage.ExtentInfo) bool {
-	for _, extent := range toCompareExtents {
-		found := false
-		for _, base := range baseExtents {
-			if base.GetSize() == extent.GetSize() {
+func compareExtentsBySize(partitionID uint64, toCompareExtents, baseExtents []*storage.ExtentInfo) bool {
+	var extent *storage.ExtentInfo
+	var base *storage.ExtentInfo
+	var found, equal bool
+	for _, extent = range toCompareExtents {
+		found = false
+		equal = false
+		for _, base = range baseExtents {
+			if base.FileID == extent.FileID {
 				found = true
-				break
+				if base.GetSize() == extent.GetSize() {
+					equal = true
+					break
+				}
 			}
 		}
 		if !found {
+			log.LogWarnf("action[compareExtentsBySize] PartitionID(%v) normal extent(%v) cannot be found in localExtents",
+				partitionID, extent.FileID)
+			return false
+		}
+		if !equal {
+			log.LogWarnf("action[compareExtentsBySize] PartitionID(%v) normal extent(%v) localSize(%v) is not equal to leaderSize(%v)",
+				partitionID, extent.FileID, base.GetSize(), extent.GetSize())
 			return false
 		}
 	}
@@ -378,7 +392,7 @@ func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 				continue
 			}
 
-			if !compareExtentsBySize(currLeaderPartitionNormalExtents, localPartitionNormalExtents) {
+			if !compareExtentsBySize(dp.partitionID, currLeaderPartitionNormalExtents, localPartitionNormalExtents) {
 				log.LogWarnf("action[StartRaftAfterRepair] PartitionID(%v) leader normal extent incomplete match local normal extent, wait snapshot recover", dp.partitionID)
 				continue
 			}

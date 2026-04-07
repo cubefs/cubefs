@@ -1067,6 +1067,22 @@ func (dp *DataPartition) LaunchRepair(extentType uint8) {
 	if !dp.isLeader {
 		return
 	}
+
+	if dp.isRepairing && proto.IsTinyExtentType(extentType) {
+		totalTiny := dp.extentStore.AvailableTinyExtentCnt() + dp.extentStore.BrokenTinyExtentCnt()
+		if totalTiny < storage.TinyExtentCount {
+			log.LogWarnf("action[LaunchRepair] dp(%v) tinyExtent cnt(%v) < expected(%v), reload dp before repair",
+				dp.partitionID, totalTiny, storage.TinyExtentCount)
+			if err := dp.reload(dp.dataNode.space); err == nil {
+				log.LogWarnf("action[LaunchRepair] dp(%v) reload success", dp.partitionID)
+				return
+			} else {
+				log.LogErrorf("action[LaunchRepair] dp(%v) reload failed when tinyExtent cnt(%v), err(%v)",
+					dp.partitionID, totalTiny, err)
+			}
+		}
+	}
+
 	if dp.extentStore.BrokenTinyExtentCnt() == 0 {
 		dp.extentStore.MoveAllToBrokenTinyExtentC(MinTinyExtentsToRepair)
 	}

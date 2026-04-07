@@ -1691,8 +1691,10 @@ func (partition *DataPartition) MarkDecommissionStatus(param *DecommissionStatus
 		key := fmt.Sprintf("%s_%s", partition.DecommissionSrcAddr, partition.DecommissionSrcDiskPath)
 		if value, ok := c.DecommissionDisks.Load(key); ok {
 			disk := value.(*DecommissionDisk)
-			if !disk.residualDecommissionDpsHas(partition.PartitionID) {
-				disk.residualDecommissionDpsSave(partition.PartitionID, partition.DecommissionErrorMessage, c)
+			if disk.DecommissionTerm == partition.DecommissionTerm {
+				if !disk.residualDecommissionDpsHas(partition.PartitionID) {
+					disk.residualDecommissionDpsSave(partition.PartitionID, partition.DecommissionErrorMessage, c)
+				}
 			}
 		}
 

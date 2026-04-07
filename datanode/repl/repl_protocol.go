@@ -602,6 +602,9 @@ func (rp *ReplProtocol) putResponse(reply *Packet) (err error) {
 	default:
 		err = fmt.Errorf("response Chan has full (%v)", len(rp.responseCh))
 		log.LogError(err)
+		if rp.postFunc != nil {
+			rp.postFunc(reply)
+		}
 	}
 	return
 }
@@ -612,6 +615,9 @@ func (rp *ReplProtocol) putToBeProcess(request *Packet) (err error) {
 	default:
 		err = fmt.Errorf("toBeProcessedCh Chan has full (%v)", len(rp.toBeProcessedCh))
 		log.LogError(err)
+		if rp.postFunc != nil {
+			rp.postFunc(request)
+		}
 	}
 	return
 }

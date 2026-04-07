@@ -2089,7 +2089,7 @@ func formatDiskErrorReplicaDpInfoRow(partition *proto.DataPartitionInfo, infos [
 			sb.WriteString(",")
 		}
 		// if dp is not loaded, remove replica cannot delete dp from disk heartbeat report
-		if replicaInHost(partition.Hosts, info.Addr) {
+		if replicaInReplicas(partition.Replicas, info.Addr, info.Disk) {
 			sb.WriteString(fmt.Sprintf("%v(%v)", info.Addr, info.Disk))
 			firstItem = false
 		}
@@ -2115,9 +2115,9 @@ func formatDecommissionFailedDiskInfo(info *proto.DecommissionFailedDiskInfo) st
 	return sb.String()
 }
 
-func replicaInHost(hosts []string, replica string) bool {
-	for _, host := range hosts {
-		if replica == host {
+func replicaInReplicas(replicas []*proto.DataReplica, replicaAddr string, replicaDiskPath string) bool {
+	for _, replica := range replicas {
+		if replica.Addr == replicaAddr && replica.DiskPath == replicaDiskPath {
 			return true
 		}
 	}
