@@ -34,6 +34,10 @@ func (v *volumeMgr) retainTask() {
 		select {
 		case <-ticker.C:
 			v.retainAll(ctx)
+			// After every retain cycle, proactively replenish volumes that may have been
+			// discarded due to lease renewal failures, ensuring allocatable volumes are
+			// always available even during idle periods with no incoming alloc requests.
+			v.checkAndReplenish(ctx)
 		case <-v.closeCh:
 			span.Debugf("loop retain done.")
 			return
@@ -208,4 +212,16 @@ func (v *volumeMgr) retainVolumeFromCm(ctx context.Context, tokens []string, isB
 	}
 	span.Debugf("retain result: %#v, lens: %v\n", retainVolume, len(retainVolume.RetainVolTokens))
 	v.handleRetainResult(ctx, tokens, retainVolume.RetainVolTokens, isBackup)
+}
+
+// checkAndReplenish inspects the volume cache for every code mode after a retain cycle.
+func (v *volumeMgr) checkAndReplenish(ctx context.Context) {
+	span := trace.SpanFromContextSafe(ctx)
+	for mode, info := range v.modeInfos {
+		modeCfg := v.getCodeModeConfig(mode)
+		if info.current.Len()+info.backup.Len() == 0 {
+			span.Warnf("codeMode %s: current and backup both empty after retain, triggering replenish", mode.String())
+			v.allocNotify(ctx, mode, modeCfg.DefaultAllocVolsNum, false)
+		}
+	}
 }
