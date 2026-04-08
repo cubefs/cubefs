@@ -393,15 +393,14 @@ func (mgr *ShardMigrateMgr) prepareTask() (err error) {
 		return base.ErrNoTaskInQueue
 	}
 
-	span, ctx := trace.StartSpanFromContext(context.Background(), "shard.migrate.prepareTask")
+	taskC := *(task.(*proto.ShardMigrateTask))
+	span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "shard.migrate.prepareTask", taskC.TaskID)
 	defer span.Finish()
 	defer func() {
 		if err != nil {
-			mgr.prepareQueue.RetryTask(task.(*proto.ShardMigrateTask).TaskID)
+			mgr.prepareQueue.RetryTask(taskC.TaskID)
 		}
 	}()
-
-	taskC := *(task.(*proto.ShardMigrateTask))
 	err = base.ShardTaskLockerInst().TryLock(ctx, uint32(taskC.Source.Suid.ShardID()))
 	if err != nil {
 		span.Warnf("lock shard failed: shard_id[%v], err[%+v]", taskC.Source.Suid.ShardID(), err)
@@ -462,15 +461,14 @@ func (mgr *ShardMigrateMgr) finishTask() (err error) {
 		return base.ErrNoTaskInQueue
 	}
 
-	span, ctx := trace.StartSpanFromContext(context.Background(), "migrate.finishTask")
+	migrateTask := *(task.(*proto.ShardMigrateTask))
+	span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "shard.migrate.finishTask", migrateTask.TaskID)
 	defer span.Finish()
 	defer func() {
 		if err != nil {
-			mgr.finishQueue.RetryTask(task.(*proto.ShardMigrateTask).TaskID)
+			mgr.finishQueue.RetryTask(migrateTask.TaskID)
 		}
 	}()
-
-	migrateTask := *(task.(*proto.ShardMigrateTask))
 	span.Infof("finish task phase: task_id[%s], state[%v]", migrateTask.TaskID, migrateTask.State)
 	if migrateTask.State != proto.ShardTaskStateWorkCompleted {
 		span.Panicf("unexpect task state: task_id[%s], expect state[%d], actual state[%d]",
