@@ -563,16 +563,15 @@ func (mgr *MigrateMgr) prepareTask() (err error) {
 		return base.ErrNoTaskInQueue
 	}
 
-	span, ctx := trace.StartSpanFromContext(context.Background(), "migrate.prepareTask")
+	migTask := task.(*proto.MigrateTask).Copy()
+	span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "migrate.prepareTask", migTask.TaskID)
 	defer span.Finish()
 
 	defer func() {
 		if err != nil {
-			mgr.prepareQueue.RetryTask(task.(*proto.MigrateTask).TaskID)
+			mgr.prepareQueue.RetryTask(migTask.TaskID)
 		}
 	}()
-
-	migTask := task.(*proto.MigrateTask).Copy()
 
 	span.Infof("prepare task phase: task_id[%s], state[%+v]", migTask.TaskID, migTask.State)
 
@@ -659,16 +658,15 @@ func (mgr *MigrateMgr) finishTask() (err error) {
 		return base.ErrNoTaskInQueue
 	}
 
-	span, ctx := trace.StartSpanFromContext(context.Background(), "migrate.finishTask")
+	migrateTask := task.(*proto.MigrateTask).Copy()
+	span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "migrate.finishTask", migrateTask.TaskID)
 	defer span.Finish()
 
 	defer func() {
 		if err != nil {
-			mgr.finishQueue.RetryTask(task.(*proto.MigrateTask).TaskID)
+			mgr.finishQueue.RetryTask(migrateTask.TaskID)
 		}
 	}()
-
-	migrateTask := task.(*proto.MigrateTask).Copy()
 	span.Infof("finish task phase: task_id[%s], state[%v]", migrateTask.TaskID, migrateTask.State)
 
 	if migrateTask.State != proto.MigrateStateWorkCompleted {
