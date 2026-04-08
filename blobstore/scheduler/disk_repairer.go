@@ -403,19 +403,20 @@ func (mgr *DiskRepairMgr) popTaskAndPrepare() error {
 		return base.ErrNoTaskInQueue
 	}
 
+	//why:avoid to change task in queue
+	t := task.(*proto.MigrateTask).Copy()
+
 	var err error
-	span, ctx := trace.StartSpanFromContext(context.Background(), "disk_repair.popTaskAndPrepare")
+	span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "disk_repair.popTaskAndPrepare", t.TaskID)
 	defer span.Finish()
 
 	defer func() {
 		if err != nil {
-			span.Errorf("prepare task failed  and retry task: task_id[%s], err[%+v]", task.(*proto.MigrateTask).TaskID, err)
-			mgr.prepareQueue.RetryTask(task.(*proto.MigrateTask).TaskID)
+			span.Errorf("prepare task failed and retry task: task_id[%s], err[%+v]", t.TaskID, err)
+			mgr.prepareQueue.RetryTask(t.TaskID)
 		}
 	}()
 
-	//why:avoid to change task in queue
-	t := task.(*proto.MigrateTask).Copy()
 	span.Infof("pop task: task_id[%s], task[%+v]", t.TaskID, t)
 	// whether vid has another running task
 	err = base.VolTaskLockerInst().TryLock(ctx, uint32(t.Vid()))
@@ -430,7 +431,7 @@ func (mgr *DiskRepairMgr) popTaskAndPrepare() error {
 		}
 	}()
 
-	err = mgr.prepareTask(t)
+	err = mgr.prepareTask(ctx, t)
 	if err != nil {
 		span.Errorf("prepare task failed: task_id[%s], err[%+v]", t.TaskID, err)
 		return err
@@ -440,12 +441,8 @@ func (mgr *DiskRepairMgr) popTaskAndPrepare() error {
 	return nil
 }
 
-func (mgr *DiskRepairMgr) prepareTask(t *proto.MigrateTask) error {
-	span, ctx := trace.StartSpanFromContext(
-		context.Background(),
-		"DiskRepairMgr.prepareTask")
-	defer span.Finish()
-
+func (mgr *DiskRepairMgr) prepareTask(ctx context.Context, t *proto.MigrateTask) error {
+	span := trace.SpanFromContextSafe(ctx)
 	span.Infof("start prepare repair task: task_id[%s], task[%+v]", t.TaskID, t)
 
 	volInfo, err := mgr.clusterMgrCli.GetVolumeInfo(ctx, t.Vid())
@@ -523,9 +520,9 @@ func (mgr *DiskRepairMgr) popTaskAndFinish() error {
 		return base.ErrNoTaskInQueue
 	}
 
-	span, ctx := trace.StartSpanFromContext(context.Background(), "disk_repair.popTaskAndFinish")
-
 	t := task.(*proto.MigrateTask).Copy()
+	span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "disk_repair.popTaskAndFinish", t.TaskID)
+
 	err := mgr.finishTask(ctx, t)
 	if err != nil {
 		span.Errorf("finish task failed: err[%+v]", err)
