@@ -4274,12 +4274,15 @@ func (c *Cluster) deleteDataReplica(dp *DataPartition, dataNode *DataNode, raftF
 func (c *Cluster) putRecoverMetaPartitions(partitionID uint64) {
 	c.badPartitionMutex.Lock()
 	defer c.badPartitionMutex.Unlock()
+	log.LogWarnf("putRecoverMetaPartitions: partitionID[%v]", partitionID)
 	c.RecoverMetaPartitionIds.Store(partitionID, true)
 }
 
 func (c *Cluster) putBadMetaPartitions(addr string, partitionID uint64) {
 	c.badPartitionMutex.Lock()
 	defer c.badPartitionMutex.Unlock()
+
+	log.LogWarnf("putBadMetaPartitions: addr[%v], partitionID[%v]", addr, partitionID)
 
 	newBadPartitionIDs := make([]uint64, 0)
 	badPartitionIDs, ok := c.BadMetaPartitionIds.Load(addr)
@@ -4531,12 +4534,28 @@ func (c *Cluster) migrateMetaNode(srcAddr, targetAddr string, limit int) (err er
 	tmpOfflineMps := make([]*MetaPartition, 0, len(toBeOfflineMps))
 	remainCount := 0
 	for _, mp := range toBeOfflineMps {
-		// If srcAddr is not empty in learner usage, it is doing migrating.
-		if mp.RecoverSrc == "" {
-			tmpOfflineMps = append(tmpOfflineMps, mp)
-		} else {
+		if !mp.RecoverPair.IsEmpty() {
 			remainCount++
+			log.LogWarnf("migrateMetaNode: partitionID[%v] recover pair found", mp.PartitionID)
+			continue
 		}
+
+		found := false
+		mp.RLock()
+		for _, r := range mp.RecoverLearners {
+			if r.RecoverDst == srcAddr || r.RecoverSrc == srcAddr {
+				remainCount++
+				found = true
+				log.LogWarnf("migrateMetaNode: partitionID[%v] recover learner[%v] found", mp.PartitionID, r.RecoverDst)
+				break
+			}
+		}
+		mp.RUnlock()
+		if found {
+			continue
+		}
+
+		tmpOfflineMps = append(tmpOfflineMps, mp)
 	}
 	toBeOfflineMps = tmpOfflineMps
 

@@ -992,8 +992,8 @@ func (c *Cluster) addMetaReplicaLearner(partition *MetaPartition, targetAddr str
 			log.LogErrorf("action[addMetaReplicaLearner],vol[%v],meta partition[%v],addr[%v],storeMode[%v],err[%v]",
 				partition.volName, partition.PartitionID, targetAddr, storeMode, err)
 		} else {
-			log.LogWarnf("action[addMetaReplicaLearner] success,vol[%v],meta partition[%v],addr[%v],storeMode[%v]",
-				partition.volName, partition.PartitionID, targetAddr, storeMode)
+			log.LogWarnf("action[addMetaReplicaLearner] success,vol[%v],meta partition[%v],addr[%v],storeMode[%v], info %v, manualPromote %v",
+				partition.volName, partition.PartitionID, targetAddr, storeMode, partition.RecoverPair.String(), manualPromote)
 		}
 
 		if manualPromote && len(partition.RecoverLearners) > 0 {
@@ -1054,6 +1054,14 @@ func (c *Cluster) addMetaReplicaLearner(partition *MetaPartition, targetAddr str
 		err = fmt.Errorf("vol[%v],mp[%v] is recovering, can't add learner", partition.volName, partition.PartitionID)
 		log.LogWarnf("action[addMetaReplicaLearner] %v", err)
 		return
+	}
+
+	for _, learner := range partition.RecoverLearners {
+		if learner.RecoverDst == srcAddr || learner.RecoverSrc == srcAddr {
+			err = fmt.Errorf("vol[%v],mp[%v] already has recovering learner for target addr[%v]", partition.volName, partition.PartitionID, targetAddr)
+			log.LogWarnf("action[addMetaReplicaLearner] %v", err)
+			return
+		}
 	}
 
 	// Check maximum learner number limit

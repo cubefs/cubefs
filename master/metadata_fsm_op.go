@@ -2277,10 +2277,11 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 		mp.setHosts(strings.Split(mpv.Hosts, underlineSeparator))
 		mp.setPeers(mpv.Peers)
 		mp.OfflinePeerID = mpv.OfflinePeerID
-		mp.IsRecover.Store(mpv.IsRecover)
+		mp.RecoverPair = mpv.RecoverPair
+		mp.IsRecover.Store(mpv.IsRecover) // use mpv.IsRecover to set IsRecover
 		mp.Freeze = mpv.Freeze
 		mp.LastDelReplicaTime = mpv.LastDelReplicaTime
-		mp.RecoverPair = mpv.RecoverPair
+		mp.RecoverLearners = mpv.RecoverLearners
 		mp.RecoverState = proto.RecoverState(mpv.RecoverState)
 		mp.RestoreReplicaMeta = mpv.RestoreReplicaMeta
 		mp.DecommissionType = mpv.DecommissionType

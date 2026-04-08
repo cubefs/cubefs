@@ -2793,24 +2793,32 @@ func (vol *Vol) checkMpRegionPolicyCompliance(c *Cluster) bool {
 		copy(peers, mp.Peers)
 		mp.RUnlock()
 
-		for targetRegion := range policy.Learner {
+		for targetRegion, policy := range policy.Learner {
 			// Check if this mp has completed or in-progress learner for this target region
 			exist := false
-			for _, p := range mp.Peers {
+			for _, p := range peers {
 				if p.Type == raftProto.PeerLearner && p.ManualPromote {
 					dstRegion := c.getRegionFromMetaNodeAddr(p.Addr)
-					if dstRegion == targetRegion {
+
+					mode, err := mp.GetMetaReplicaStoreMode(p.Addr)
+					if err != nil {
+						log.LogErrorf("checkMpRegionPolicyCompliance: mp[%v] get meta replica store mode failed, addr[%v], err[%v]", mp.PartitionID, p.Addr, err)
+						continue
+					}
+
+					if dstRegion == targetRegion && mode == policy.Mode {
 						exist = true
 						break
 					}
 				}
 			}
+
 			if !exist {
-				log.LogWarnf("checkMpRegionPolicyCompliance: mp[%v] region[%v] no learner for target region[%v]", mp.PartitionID, mpRegion, targetRegion)
+				log.LogWarnf("checkMpRegionPolicyCompliance: mp[%v] region[%v] no learner for target region[%v], mode[%v]",
+					mp.PartitionID, mpRegion, targetRegion, policy.Mode)
 				return false
 			}
 		}
 	}
-
 	return true
 }
