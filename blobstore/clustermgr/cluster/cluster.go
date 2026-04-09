@@ -34,7 +34,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/raftserver"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
-	"github.com/cubefs/cubefs/blobstore/util"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
@@ -1117,8 +1116,6 @@ func (d *manager) generateDiskSetStorage(ctx context.Context, disks []*diskItem,
 		}
 		spaceStatInfo.WritableSpace += d.calculateWritable(idcNodeStgs)
 	}
-	spaceStatInfo.ReservedSpace = util.Min(d.cfg.ReservedSpace, spaceStatInfo.WritableSpace)
-	spaceStatInfo.WritableSpace = util.Max(0, spaceStatInfo.WritableSpace-spaceStatInfo.ReservedSpace)
 
 	return
 }

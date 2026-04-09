@@ -19,6 +19,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/util"
 )
 
 // refresh use for refreshing storage allocator info and cluster statistic info
@@ -58,6 +59,9 @@ func (s *ShardNodeManager) refresh(ctx context.Context) {
 			}
 			nodeSetAllocators[diskType][nodeSet.ID()] = nodeSetAllocator
 		}
+		spaceStatInfo.ReservedSpace = util.Min(s.cfg.ReservedSpace, spaceStatInfo.WritableSpace)
+		spaceStatInfo.WritableSpace = util.Max(0, spaceStatInfo.WritableSpace-spaceStatInfo.ReservedSpace)
+
 		for idc := range diskStatInfo {
 			spaceStatInfo.DisksStatInfos = append(spaceStatInfo.DisksStatInfos, *diskStatInfo[idc])
 		}

@@ -22,6 +22,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
@@ -85,6 +86,8 @@ func (b *BlobNodeManager) refresh(ctx context.Context) {
 			}
 			nodeSetAllocators[diskType][nodeSet.ID()] = nodeSetAllocator
 		}
+		spaceStatInfo.ReservedSpace = util.Min(b.cfg.ReservedSpace, spaceStatInfo.WritableSpace)
+		spaceStatInfo.WritableSpace = util.Max(0, spaceStatInfo.WritableSpace-spaceStatInfo.ReservedSpace)
 
 		for idc := range diskStatInfo {
 			spaceStatInfo.DisksStatInfos = append(spaceStatInfo.DisksStatInfos, *diskStatInfo[idc])
@@ -121,6 +124,8 @@ func (b *BlobNodeManager) refresh(ctx context.Context) {
 		}
 
 		ecIdcAllocators, ecFreeChunk := b.generateDiskSetStorage(ctx, ecDiskSet[diskType], ecSpaceStateInfo, diskStatInfo)
+		ecSpaceStateInfo.ReservedSpace = util.Min(b.cfg.ReservedSpace, ecSpaceStateInfo.WritableSpace)
+		ecSpaceStateInfo.WritableSpace = util.Max(0, ecSpaceStateInfo.WritableSpace-ecSpaceStateInfo.ReservedSpace)
 
 		// initial ec allocator
 		diskSetAllocator := newDiskSetAllocator(ecDiskSetID, ecFreeChunk, ecIdcAllocators)
