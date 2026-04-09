@@ -2061,10 +2061,15 @@ func (m *metadataManager) opMetaGetAppliedID(conn net.Conn, p *Packet, remote st
 	if err = m.parseRequestAndHandleError(conn, p, req, false); err != nil {
 		return
 	}
-	mp, handledByProxy, err := m.getPartitionCheckProxy(conn, p, req.PartitionId, false)
-	if err != nil || handledByProxy {
+
+	mp, err := m.getPartition(req.PartitionId)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[opMetaGetAppliedID] req: %v, resp: %v", req, err.Error())
 		return
 	}
+
 	appliedID := mp.GetAppliedID()
 	buf := make([]byte, 8)
 	binary.BigEndian.PutUint64(buf, appliedID)

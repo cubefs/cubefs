@@ -135,12 +135,12 @@ func (m *metadataManager) serveProxy(conn net.Conn, mp MetaPartition,
 		return true
 	}
 
+	enableFollowerRead := followerRead()
 	if leaderAddr == "" {
-		if followerRead() {
+		if enableFollowerRead {
 			log.LogDebugf("read from follower: p(%v), arg(%v)", p, mp.GetBaseConfig().PartitionId)
 			return true
 		}
-
 		err = fmt.Errorf("mpId(%v) %v", mp.GetBaseConfig().PartitionId, ErrNoLeader)
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		goto end
@@ -173,7 +173,7 @@ func (m *metadataManager) serveProxy(conn net.Conn, mp MetaPartition,
 	m.connPool.PutConnect(mConn, NoClosedConnect)
 
 end:
-	if p.Opcode != proto.OpOk && followerRead() {
+	if p.ResultCode != proto.OpOk && enableFollowerRead {
 		log.LogWarnf("read from follower after try leader failed: p(%v)", p)
 		return true
 	}
