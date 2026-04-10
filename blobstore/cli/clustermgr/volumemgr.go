@@ -620,14 +620,25 @@ func printDiskLoadStats(volumes []*clustermgr.VolumeInfo, topn int) {
 	diskVolumes := make(map[proto.DiskID][]proto.Vid)
 	activeCount := 0
 
+	cmDiskLoad := make(map[codemode.CodeMode]map[proto.DiskID]int)
+	cmDiskVolumes := make(map[codemode.CodeMode]map[proto.DiskID][]proto.Vid)
+	cmActiveCount := make(map[codemode.CodeMode]int)
+
 	for _, vol := range volumes {
 		if vol.Status != proto.VolumeStatusActive {
 			continue
 		}
 		activeCount++
+		if cmDiskLoad[vol.CodeMode] == nil {
+			cmDiskLoad[vol.CodeMode] = make(map[proto.DiskID]int)
+			cmDiskVolumes[vol.CodeMode] = make(map[proto.DiskID][]proto.Vid)
+		}
+		cmActiveCount[vol.CodeMode]++
 		for _, unit := range vol.Units {
 			diskLoad[unit.DiskID]++
 			diskVolumes[unit.DiskID] = append(diskVolumes[unit.DiskID], vol.Vid)
+			cmDiskLoad[vol.CodeMode][unit.DiskID]++
+			cmDiskVolumes[vol.CodeMode][unit.DiskID] = append(cmDiskVolumes[vol.CodeMode][unit.DiskID], vol.Vid)
 		}
 	}
 	if len(diskLoad) == 0 {
@@ -695,4 +706,50 @@ func printDiskLoadStats(volumes []*clustermgr.VolumeInfo, topn int) {
 		fmt.Printf(" %d(%d)", line.Vid, line.N)
 	}
 	fmt.Println()
+
+	// Per-CodeMode disk load stats
+	cms := make([]codemode.CodeMode, 0, len(cmDiskLoad))
+	for cm := range cmDiskLoad {
+		cms = append(cms, cm)
+	}
+	sort.Slice(cms, func(i, j int) bool { return cms[i] < cms[j] })
+
+	fmt.Printf("\n[Active Volume Disk Load by CodeMode]\n")
+	for _, cm := range cms {
+		cmLoad := cmDiskLoad[cm]
+		cmVols := cmDiskVolumes[cm]
+
+		cmEntries := make([]diskLoadEntry, 0, len(cmLoad))
+		cmLoads := make([]int, 0, len(cmLoad))
+		for diskID, load := range cmLoad {
+			cmEntries = append(cmEntries, diskLoadEntry{diskID, load})
+			cmLoads = append(cmLoads, load)
+		}
+		sort.Slice(cmEntries, func(i, j int) bool {
+			return cmEntries[i].Load > cmEntries[j].Load
+		})
+
+		fmt.Printf("\n--- CodeMode: %s ---\n", cm.String())
+		fmt.Printf("Active volumes: %d, Disks involved: %d\n", cmActiveCount[cm], len(cmLoad))
+
+		fmt.Println("\nLoad Distribution:")
+		for _, line := range tablefmt.HistogramRange(cmLoads) {
+			fmt.Println("  " + line)
+		}
+
+		cmTopn := util.Min(topn, len(cmEntries))
+		fmt.Printf("\nTop %d Disk Load:\n", cmTopn)
+		rows := tablefmt.Table{tablefmt.NewRow("Rank", "DiskID", "Load", "Volumes (max 10)")}
+		for i := 0; i < cmTopn; i++ {
+			diskID := cmEntries[i].DiskID
+			vids := cmVols[diskID]
+			if len(vids) > 10 {
+				vids = vids[len(vids)-10:]
+			}
+			rows = rows.Append(tablefmt.NewRow(i+1, diskID, cmEntries[i].Load, vids))
+		}
+		for _, line := range tablefmt.AlignWith([]tablefmt.Alignment{tablefmt.AlignCenter}, rows...) {
+			fmt.Println("  " + line)
+		}
+	}
 }
