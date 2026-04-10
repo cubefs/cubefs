@@ -981,9 +981,7 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq, m *Server) (err
 	if req.remoteCacheMaxFileSizeMB, err = extractInt64WithDefault(r, remoteCacheMaxFileSizeMB, proto.DefaultRemoteCacheMaxFileSizeMB); err != nil {
 		return
 	}
-	if req.remoteCacheOnlyForNotSSD, err = extractBoolWithDefault(r, remoteCacheOnlyForNotSSD, false); err != nil {
-		return
-	}
+	req.remoteCacheOnlyForNotSSD = true
 	if req.remoteCacheMultiRead, err = extractBoolWithDefault(r, remoteCacheMultiRead, false); err != nil {
 		return
 	}

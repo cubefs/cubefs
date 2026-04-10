@@ -154,7 +154,6 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optRcReadTimeout int64
 	var optRemoteCacheMaxFileSizeGB int64
 	var optRemoteCacheMaxFileSizeMB int64
-	var optRemoteCacheOnlyForNotSSD string
 	var optRemoteCacheMultiRead string
 	var optFlashNodeTimeoutCount int64
 	var optRemoteCacheSameZoneTimeout int64
@@ -288,7 +287,6 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  remoteCacheReadTimeout   : %v ms\n", optRcReadTimeout)
 				stdout("  remoteCacheMaxFileSizeGB : %v G\n", optRemoteCacheMaxFileSizeGB)
 				stdout("  remoteCacheMaxFileSizeMB : %v M\n", optRemoteCacheMaxFileSizeMB)
-				stdout("  remoteCacheOnlyForNotSSD : %v\n", optRemoteCacheOnlyForNotSSD)
 				stdout("  remoteCacheMultiRead     : %v\n", optRemoteCacheMultiRead)
 				stdout("  flashNodeTimeoutCount    : %v\n", optFlashNodeTimeoutCount)
 				stdout("  rcSameZoneTimeout        : %v microSecond\n", optRemoteCacheSameZoneTimeout)
@@ -328,7 +326,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				optTxMask, optTxTimeout, optTxConflictRetryNum, optTxConflictRetryInterval, optEnableQuota, clientIDKey,
 				proto.StorageClass_Unspecified, "", optMetaFollowerRead, optMetaNearRead, optMaximallyRead,
 				optRcEnable, optRcAutoPrepare, optRcPath, optRcTTL, optRcReadTimeout, optRemoteCacheMaxFileSizeGB, optRemoteCacheMaxFileSizeMB,
-				optRemoteCacheOnlyForNotSSD, optRemoteCacheMultiRead, optFlashNodeTimeoutCount,
+				optRemoteCacheMultiRead, optFlashNodeTimeoutCount,
 				optRemoteCacheSameZoneTimeout, optRemoteCacheSameRegionTimeout, storeMode, optPoolId, optPools, remoteCacheDisableTTL, optDefaultRegion)
 			if err != nil {
 				err = fmt.Errorf("Create volume failed case:\n%v\n", err)
@@ -369,7 +367,6 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&optRcReadTimeout, CliFlagRemoteCacheReadTimeout, cmdVolDefaultRemoteCacheReadTimeout, "Remote cache read timeout millisecond(must > 0)")
 	cmd.Flags().Int64Var(&optRemoteCacheMaxFileSizeGB, CliFlagRemoteCacheMaxFileSizeGB, cmdVolDefaultRemoteCacheMaxFileSizeGB, "Remote cache max file size[Unit: GB](must > 0)")
 	cmd.Flags().Int64Var(&optRemoteCacheMaxFileSizeMB, CliFlagRemoteCacheMaxFileSizeMB, cmdVolDefaultRemoteCacheMaxFileSizeMB, "Remote cache max file size[Unit: MB](must > 0)")
-	cmd.Flags().StringVar(&optRemoteCacheOnlyForNotSSD, CliFlagRemoteCacheOnlyForNotSSD, "true", "Remote cache only for not ssd(true|false)")
 	cmd.Flags().StringVar(&optRemoteCacheMultiRead, CliFlagRemoteCacheMultiRead, "false", "Remote cache follower read(true|false)")
 	cmd.Flags().Int64Var(&optFlashNodeTimeoutCount, CliFlagFlashNodeTimeoutCount, cmdVolDefaultFlashNodeTimeoutCount, "FlashNode timeout count, flashNode will be removed by client if it's timeout count exceeds this value")
 	cmd.Flags().Int64Var(&optRemoteCacheSameZoneTimeout, CliFlagRemoteCacheSameZoneTimeout, proto.DefaultRemoteCacheSameZoneTimeout, "Remote cache same zone timeout microsecond(must > 0)")
@@ -407,7 +404,6 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optRcReadTimeout int64
 	var optRemoteCacheMaxFileSizeGB int64
 	var optRemoteCacheMaxFileSizeMB int64
-	var optRemoteCacheOnlyForNotSSD string
 	var optRemoteCacheFollowerRead string
 	var optFlashNodeTimeoutCount int64
 	var optRemoteCacheSameZoneTimeout int64
@@ -974,7 +970,6 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				{&vv.RemoteCacheReadTimeout, optRcReadTimeout, CliFlagRemoteCacheReadTimeout},
 				{&vv.RemoteCacheMaxFileSizeGB, optRemoteCacheMaxFileSizeGB, CliFlagRemoteCacheMaxFileSizeGB},
 				{&vv.RemoteCacheMaxFileSizeMB, optRemoteCacheMaxFileSizeMB, CliFlagRemoteCacheMaxFileSizeMB},
-				{&vv.RemoteCacheOnlyForNotSSD, optRemoteCacheOnlyForNotSSD, CliFlagRemoteCacheOnlyForNotSSD},
 				{&vv.RemoteCacheMultiRead, optRemoteCacheFollowerRead, CliFlagRemoteCacheMultiRead},
 				{&vv.FlashNodeTimeoutCount, optFlashNodeTimeoutCount, CliFlagFlashNodeTimeoutCount},
 				{&vv.RemoteCacheSameZoneTimeout, optRemoteCacheSameZoneTimeout, CliFlagRemoteCacheSameZoneTimeout},
@@ -1094,7 +1089,6 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&optRcReadTimeout, CliFlagRemoteCacheReadTimeout, 0, "Remote cache read timeout millisecond(must > 0)")
 	cmd.Flags().Int64Var(&optRemoteCacheMaxFileSizeGB, CliFlagRemoteCacheMaxFileSizeGB, 0, "Remote cache max file size[Unit: GB](must > 0)")
 	cmd.Flags().Int64Var(&optRemoteCacheMaxFileSizeMB, CliFlagRemoteCacheMaxFileSizeMB, 0, "Remote cache max file size[Unit: MB](must > 0)")
-	cmd.Flags().StringVar(&optRemoteCacheOnlyForNotSSD, CliFlagRemoteCacheOnlyForNotSSD, "", "Remote cache only for not ssd(true|false), default false")
 	cmd.Flags().StringVar(&optRemoteCacheFollowerRead, CliFlagRemoteCacheMultiRead, "", "Remote cache follower read(true|false), default true")
 	cmd.Flags().Int64Var(&optFlashNodeTimeoutCount, CliFlagFlashNodeTimeoutCount, 0, "FlashNode timeout count, flashNode will be removed by client if it's timeout count exceeds this value(default 5)")
 	cmd.Flags().Int64Var(&optRemoteCacheSameZoneTimeout, CliFlagRemoteCacheSameZoneTimeout, proto.DefaultRemoteCacheSameZoneTimeout, "Remote cache same zone timeout microsecond(must > 0),default 400")

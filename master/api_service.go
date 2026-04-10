@@ -3433,7 +3433,6 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		newArg("remoteCacheReadTimeout", &newArgs.remoteCacheReadTimeout).OmitEmpty(),
 		newArg("remoteCacheMaxFileSizeGB", &newArgs.remoteCacheMaxFileSizeGB).OmitEmpty(),
 		newArg("remoteCacheMaxFileSizeMB", &newArgs.remoteCacheMaxFileSizeMB).OmitEmpty(),
-		newArg("remoteCacheOnlyForNotSSD", &newArgs.remoteCacheOnlyForNotSSD).OmitEmpty(),
 		newArg("remoteCacheMultiRead", &newArgs.remoteCacheMultiRead).OmitEmpty(),
 		newArg("flashNodeTimeoutCount", &newArgs.flashNodeTimeoutCount).OmitEmpty(),
 		newArg("remoteCacheSameZoneTimeout", &newArgs.remoteCacheSameZoneTimeout).OmitEmpty(),
@@ -4037,7 +4036,7 @@ func newSimpleView(c *Cluster, vol *Vol) (view *proto.SimpleVolView) {
 		RemoteCacheReadTimeout:       vol.remoteCacheReadTimeout,
 		RemoteCacheMaxFileSizeGB:     vol.remoteCacheMaxFileSizeGB,
 		RemoteCacheMaxFileSizeMB:     vol.remoteCacheMaxFileSizeMB,
-		RemoteCacheOnlyForNotSSD:     vol.remoteCacheOnlyForNotSSD,
+		RemoteCacheOnlyForNotSSD:     true,
 		RemoteCacheMultiRead:         vol.remoteCacheMultiRead,
 		FlashNodeTimeoutCount:        vol.flashNodeTimeoutCount,
 		RemoteCacheSameZoneTimeout:   vol.remoteCacheSameZoneTimeout,
@@ -7431,6 +7430,7 @@ func volStat(vol *Vol, countByMeta bool) (stat *proto.VolStatInfo) {
 	stat.TrashInterval = vol.TrashInterval
 	stat.DefaultStorageClass = vol.volStorageClass
 	stat.DefaultMetaRegion = vol.defaultRegion
+	stat.DefaultPoolId = vol.defaultPoolId
 
 	stat.StatByStorageClass = vol.StatByStorageClass
 	stat.StatMigrateStorageClass = vol.StatMigrateStorageClass
@@ -7568,7 +7568,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			replicas[i].IsLearner, _, err = getMetaReplicaLearnerInfo(mp, replicas[i].Addr)
 			if err != nil {
 				replicas[i].IsLearner = mp.Replicas[i].IsLearner
-				log.LogErrorf("getMetaReplicaLearnerInfo mp[%v] replica[%v] error: %v", mp.PartitionID, replicas[i].Addr, err)
+				log.LogWarnf("getMetaReplicaLearnerInfo mp[%v] replica[%v] error: %v", mp.PartitionID, replicas[i].Addr, err)
 			}
 		}
 

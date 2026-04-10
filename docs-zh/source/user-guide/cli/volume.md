@@ -41,7 +41,6 @@ Flags:
       --remoteCacheEnable string           Remote cache enable
       --remoteCacheMaxFileSizeGB int       Remote cache max file size[Unit: GB](must > 0) (default 128)
       --remoteCacheMultiRead string        Remote cache follower read(true|false) (default "false")
-      --remoteCacheOnlyForNotSSD string    Remote cache only for not ssd(true|false) (default "false")
       --remoteCachePath string             Remote cache path, split with (,)
       --remoteCacheReadTimeout int         Remote cache read timeout millisecond(must > 0) (default 100)
       --remoteCacheSameRegionTimeout int   Remote cache same region timeout millisecond(must > 0) (default 2)
@@ -158,7 +157,6 @@ Flags:
       --remoteCacheEnable string              Remote cache enable
       --remoteCacheMaxFileSizeGB int          Remote cache max file size[Unit: GB](must > 0)
       --remoteCacheMultiRead string           Remote cache follower read(true|false), default true
-      --remoteCacheOnlyForNotSSD string       Remote cache only for not ssd(true|false), default false
       --remoteCachePath string                Remote cache path, split with (,)
       --remoteCacheReadTimeout int            Remote cache read timeout millisecond(must > 0)
       --remoteCacheSameRegionTimeout int      Remote cache same region timeout millisecond(must > 0),default 2

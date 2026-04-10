@@ -147,6 +147,10 @@ func NewStreamer(client *ExtentClient, inode uint64, openForWrite, isCache bool,
 	return s
 }
 
+func (s *Streamer) GetDefaultPoolId() uint8 {
+	return s.client.metaWrapper.GetClientPoolId()
+}
+
 func (s *Streamer) SetParentInode(inode uint64) {
 	s.parentInode = inode
 }
@@ -333,9 +337,9 @@ func (s *Streamer) read(data []byte, offset int, size int, poolId uint8) (total 
 					return 0, err
 				}
 
-				if s.client.forceRemoteCache || !s.client.RemoteCache.remoteCacheOnlyForNotSSD || (s.client.RemoteCache.remoteCacheOnlyForNotSSD && inodeInfo.StorageClass != proto.StorageClass_Replica_SSD) {
-					log.LogDebugf("Streamer read from remoteCache, ino(%v) enableRemoteCache(true) storageClass(%v) remoteCacheOnlyForNotSSD(%v)",
-						s.inode, proto.StorageClassString(inodeInfo.StorageClass), s.client.RemoteCache.remoteCacheOnlyForNotSSD)
+				if s.client.forceRemoteCache || inodeInfo.PoolId != s.GetDefaultPoolId() {
+					log.LogDebugf("Streamer read from remoteCache, ino(%v) enableRemoteCache(true) poolId(%v), defaultPoolId(%v)",
+						s.inode, inodeInfo.PoolId, s.GetDefaultPoolId())
 					var cacheReadRequests []*remotecache.CacheReadRequest
 					cacheReadRequests, err = s.PrepareCacheRequests(uint64(req.FileOffset), uint64(req.Size), req.Data, inodeInfo.Generation)
 					if err == nil {
@@ -353,8 +357,8 @@ func (s *Streamer) read(data []byte, offset int, size int, poolId uint8) (total 
 						log.LogWarnf("Stream read: readFromRemoteCache failed: ino(%v) offset(%v) size(%v), err(%v)", s.inode, req.FileOffset, req.Size, err)
 					}
 				} else {
-					log.LogDebugf("Streamer not read from remoteCache, ino(%v) enableRemoteCache(true) storageClass(%v) remoteCacheOnlyForNotSSD(%v)",
-						s.inode, proto.StorageClassString(inodeInfo.StorageClass), s.client.RemoteCache.remoteCacheOnlyForNotSSD)
+					log.LogDebugf("Streamer not read from remoteCache, ino(%v) enableRemoteCache(true) poolId(%v), defaultPoolId(%v)",
+						s.inode, inodeInfo.PoolId, s.GetDefaultPoolId())
 				}
 			} else {
 				log.LogDebugf("Streamer not read from remoteCache, ino(%v) enableRemoteCache(false)", s.inode)

@@ -607,7 +607,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		RemoteCachePath:              vol.remoteCachePath,
 		RemoteCacheMaxFileSizeGB:     vol.remoteCacheMaxFileSizeGB,
 		RemoteCacheMaxFileSizeMB:     vol.remoteCacheMaxFileSizeMB,
-		RemoteCacheOnlyForNotSSD:     vol.remoteCacheOnlyForNotSSD,
+		RemoteCacheOnlyForNotSSD:     true,
 		RemoteCacheMultiRead:         vol.remoteCacheMultiRead,
 		FlashNodeTimeoutCount:        vol.flashNodeTimeoutCount,
 		RemoteCacheSameZoneTimeout:   vol.remoteCacheSameZoneTimeout,

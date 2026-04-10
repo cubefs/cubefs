@@ -629,9 +629,8 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 				return err
 			}
 
-			enableRemoteCacheStorageClass := !eh.stream.client.RemoteCache.remoteCacheOnlyForNotSSD ||
-				(eh.stream.client.RemoteCache.remoteCacheOnlyForNotSSD && inodeInfo.StorageClass != proto.StorageClass_Replica_SSD)
-			if enableRemoteCacheStorageClass {
+			enableRemoteCachePool := inodeInfo.PoolId != eh.stream.GetDefaultPoolId()
+			if enableRemoteCachePool {
 				prepareReq := &PrepareRemoteCacheRequest{
 					ctx:   context.Background(),
 					ek:    eh.key,

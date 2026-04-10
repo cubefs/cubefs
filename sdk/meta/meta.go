@@ -209,7 +209,8 @@ type MetaWrapper struct {
 	RemoteCacheBloom func() *bloom.BloomFilter
 
 	// Client specified pool ID for new inodes (0 means use volume default)
-	clientPoolId uint8
+	clientPoolId  uint8
+	defaultPoolId uint8
 
 	// Client specified meta region for creating inodes (empty means use volume default region)
 	clientMetaRegionCfg string
@@ -315,6 +316,10 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	go mw.updateQuotaInfoTick()
 	go mw.refresh()
 	return mw, nil
+}
+
+func (mw *MetaWrapper) GetClientPoolId() uint8 {
+	return mw.defaultPoolId
 }
 
 func (mw *MetaWrapper) enableTrash() error {

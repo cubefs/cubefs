@@ -443,6 +443,7 @@ type VolStatInfo struct {
 	MetaFollowerRead        bool
 	MetaNearRead            bool
 	DefaultMetaRegion       string
+	DefaultPoolId           uint8
 	MaximallyRead           bool
 	LeaderRetryTimeOut      int
 	StatByStorageClass      []*StatOfStorageClass

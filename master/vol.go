@@ -295,7 +295,7 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.remoteCacheEnable = vv.RemoteCacheEnable
 	vol.remoteCacheMaxFileSizeGB = vv.RemoteCacheMaxFileSizeGB
 	vol.remoteCacheMaxFileSizeMB = vv.RemoteCacheMaxFileSizeMB
-	vol.remoteCacheOnlyForNotSSD = vv.RemoteCacheOnlyForNotSSD
+	vol.remoteCacheOnlyForNotSSD = true
 	vol.remoteCacheMultiRead = vv.RemoteCacheMultiRead
 	vol.flashNodeTimeoutCount = vv.FlashNodeTimeoutCount
 	vol.remoteCacheSameZoneTimeout = vv.RemoteCacheSameZoneTimeout
@@ -2109,7 +2109,6 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.remoteCacheReadTimeout = args.remoteCacheReadTimeout
 	vol.remoteCacheMaxFileSizeGB = args.remoteCacheMaxFileSizeGB
 	vol.remoteCacheMaxFileSizeMB = args.remoteCacheMaxFileSizeMB
-	vol.remoteCacheOnlyForNotSSD = args.remoteCacheOnlyForNotSSD
 	vol.remoteCacheMultiRead = args.remoteCacheMultiRead
 	vol.flashNodeTimeoutCount = args.flashNodeTimeoutCount
 	vol.remoteCacheSameZoneTimeout = args.remoteCacheSameZoneTimeout
@@ -2211,7 +2210,7 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		remoteCacheReadTimeout:       vol.remoteCacheReadTimeout,
 		remoteCacheMaxFileSizeGB:     vol.remoteCacheMaxFileSizeGB,
 		remoteCacheMaxFileSizeMB:     vol.remoteCacheMaxFileSizeMB,
-		remoteCacheOnlyForNotSSD:     vol.remoteCacheOnlyForNotSSD,
+		remoteCacheOnlyForNotSSD:     true,
 		remoteCacheMultiRead:         vol.remoteCacheMultiRead,
 		flashNodeTimeoutCount:        vol.flashNodeTimeoutCount,
 		remoteCacheSameZoneTimeout:   vol.remoteCacheSameZoneTimeout,

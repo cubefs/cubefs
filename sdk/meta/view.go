@@ -189,6 +189,12 @@ func (mw *MetaWrapper) updateVolStatInfo() (err error) {
 	if mw.clientMetaRegionCfg == "" {
 		mw.defaultMetaRegion = info.DefaultMetaRegion
 	}
+
+	if mw.clientPoolId == 0 {
+		log.LogInfof("updateVolStatInfo: defaultPoolId(%v)", info.DefaultPoolId)
+		mw.defaultPoolId = info.DefaultPoolId
+	}
+
 	mw.leaderRetryTimeout = int64(info.LeaderRetryTimeOut)
 	log.LogInfof("[updateVolStatInfo]: info(%+v), defaultStorageClass(%v), followerRead(%v), metaNearRead(%v), timout(%v)",
 		info, proto.StorageClassString(info.DefaultStorageClass), mw.FollowerRead, mw.NearRead, mw.leaderRetryTimeout)

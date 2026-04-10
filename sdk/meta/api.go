@@ -70,6 +70,7 @@ func (mw *MetaWrapper) SetClientPoolId(poolId uint8) {
 	mw.Lock()
 	defer mw.Unlock()
 	mw.clientPoolId = poolId
+	mw.defaultPoolId = poolId
 }
 
 // SetClientMetaRegion sets the client specified meta region for creating inodes
