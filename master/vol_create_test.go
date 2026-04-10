@@ -12,6 +12,20 @@ import (
 )
 
 // TestCreateVolAdvanced tests advanced volume creation scenarios
+// TestCreateVol_RemoteCacheOnlyForNotSSDInvariant documents that new volumes keep remoteCacheOnlyForNotSSD true
+// after the CLI/API flag removal (commit refactor defaulting this field to true).
+func TestCreateVol_RemoteCacheOnlyForNotSSDInvariant(t *testing.T) {
+	req := createDefaultReq("test_rc_only_not_ssd_invariant", "cfs_test_user")
+	require.True(t, req.remoteCacheOnlyForNotSSD)
+	err := server.checkCreateVolReq(req)
+	require.NoError(t, err)
+	vol, err := server.cluster.createVol(req)
+	require.NoError(t, err)
+	require.NotNil(t, vol)
+	require.True(t, vol.remoteCacheOnlyForNotSSD)
+	cleanUpVol(vol)
+}
+
 func TestCreateVolAdvanced(t *testing.T) {
 	t.Run("SameNameCreate", testSameNameCreate)
 	t.Run("InitFailedCleanup", testInitFailedCleanup)
@@ -803,26 +817,27 @@ func testInitializingStatusHandling(t *testing.T) {
 
 func createDefaultReq(name string, owner string) *createVolReq {
 	return &createVolReq{
-		name:                    name,
-		owner:                   owner,
-		dpSize:                  11,
-		mpCount:                 3,
-		dpCount:                 10,
-		dpReplicaNum:            3,
-		capacity:                100,
-		followerRead:            false,
-		authenticate:            false,
-		crossZone:               false,
-		zoneName:                testZone2,
-		description:             "",
-		volType:                 proto.VolumeTypeHot,
-		qosLimitArgs:            &qosArgs{},
-		volStorageClass:         defaultVolStorageClass,
-		storeMode:               proto.StoreModeMem,
-		defaultPoolId:           defaultPoolId,
-		accessTimeValidInterval: proto.MinAccessTimeValidInterval,
-		remoteCacheReadTimeout:  proto.ReadDeadlineTime,
-		allowedPools:            []uint8{defaultPoolId},
+		name:                     name,
+		owner:                    owner,
+		dpSize:                   11,
+		mpCount:                  3,
+		dpCount:                  10,
+		dpReplicaNum:             3,
+		capacity:                 100,
+		followerRead:             false,
+		authenticate:             false,
+		crossZone:                false,
+		zoneName:                 testZone2,
+		description:              "",
+		volType:                  proto.VolumeTypeHot,
+		qosLimitArgs:             &qosArgs{},
+		volStorageClass:          defaultVolStorageClass,
+		storeMode:                proto.StoreModeMem,
+		defaultPoolId:            defaultPoolId,
+		accessTimeValidInterval:  proto.MinAccessTimeValidInterval,
+		remoteCacheReadTimeout:   proto.ReadDeadlineTime,
+		remoteCacheOnlyForNotSSD: true,
+		allowedPools:             []uint8{defaultPoolId},
 	}
 }
 

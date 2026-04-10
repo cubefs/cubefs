@@ -148,6 +148,9 @@ func NewStreamer(client *ExtentClient, inode uint64, openForWrite, isCache bool,
 }
 
 func (s *Streamer) GetDefaultPoolId() uint8 {
+	if s.client == nil || s.client.metaWrapper == nil {
+		return 0
+	}
 	return s.client.metaWrapper.GetClientPoolId()
 }
 
@@ -338,8 +341,8 @@ func (s *Streamer) read(data []byte, offset int, size int, poolId uint8) (total 
 				}
 
 				if s.client.forceRemoteCache || inodeInfo.PoolId != s.GetDefaultPoolId() {
-					log.LogDebugf("Streamer read from remoteCache, ino(%v) enableRemoteCache(true) poolId(%v), defaultPoolId(%v)",
-						s.inode, inodeInfo.PoolId, s.GetDefaultPoolId())
+					log.LogDebugf("Streamer read from remoteCache, ino(%v) enableRemoteCache(%v) poolId(%v), defaultPoolId(%v)",
+						s.inode, s.client.forceRemoteCache, inodeInfo.PoolId, s.GetDefaultPoolId())
 					var cacheReadRequests []*remotecache.CacheReadRequest
 					cacheReadRequests, err = s.PrepareCacheRequests(uint64(req.FileOffset), uint64(req.Size), req.Data, inodeInfo.Generation)
 					if err == nil {
@@ -361,7 +364,7 @@ func (s *Streamer) read(data []byte, offset int, size int, poolId uint8) (total 
 						s.inode, inodeInfo.PoolId, s.GetDefaultPoolId())
 				}
 			} else {
-				log.LogDebugf("Streamer not read from remoteCache, ino(%v) enableRemoteCache(false)", s.inode)
+				log.LogDebugf("Streamer not read from remoteCache, ino(%v) enableRemoteCache(false), poolId(%v)", s.inode, s.GetDefaultPoolId())
 			}
 
 			// read extent

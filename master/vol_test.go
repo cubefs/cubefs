@@ -295,6 +295,7 @@ func getSimpleVol(name string, success bool, t *testing.T) *proto.SimpleVolView 
 	err := json.Unmarshal([]byte(reply.Data), view)
 
 	assert.True(t, err == nil)
+	assert.True(t, view.RemoteCacheOnlyForNotSSD, "RemoteCacheOnlyForNotSSD must stay true (SDK/master default after flag removal)")
 
 	return view
 }

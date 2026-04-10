@@ -9,12 +9,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data/manager"
 	"github.com/cubefs/cubefs/sdk/data/wrapper"
+	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util"
 	"golang.org/x/time/rate"
 )
@@ -28,6 +30,9 @@ type MockTCPServer struct {
 	dataB    []byte
 	offsetB  uint64
 	fileSize uint64
+
+	opMu     sync.Mutex
+	opCounts map[uint8]int
 }
 
 func NewMockTCPServer(dataA []byte, offsetA uint64, dataB []byte, offsetB uint64, fileSize uint64) (*MockTCPServer, error) {
@@ -58,6 +63,25 @@ func (s *MockTCPServer) Serve() {
 
 func (s *MockTCPServer) Close() {
 	s.listener.Close()
+}
+
+func (s *MockTCPServer) recordOp(op uint8) {
+	s.opMu.Lock()
+	defer s.opMu.Unlock()
+	if s.opCounts == nil {
+		s.opCounts = make(map[uint8]int)
+	}
+	s.opCounts[op]++
+}
+
+// OpCount returns how many packets with the given opcode were handled (for test assertions).
+func (s *MockTCPServer) OpCount(op uint8) int {
+	s.opMu.Lock()
+	defer s.opMu.Unlock()
+	if s.opCounts == nil {
+		return 0
+	}
+	return s.opCounts[op]
 }
 
 func (s *MockTCPServer) handleConn(conn net.Conn) {
@@ -100,6 +124,7 @@ func (s *MockTCPServer) handleConn(conn net.Conn) {
 		}
 		switch p.Opcode {
 		case proto.OpRead, proto.OpStreamRead: // DataNode Read
+			s.recordOp(p.Opcode)
 			// p.KernelOffset is the file offset
 			// Check if request falls into A
 			if p.KernelOffset >= s.offsetA && p.KernelOffset+uint64(p.Size) <= s.offsetA+uint64(len(s.dataA)) {
@@ -117,10 +142,12 @@ func (s *MockTCPServer) handleConn(conn net.Conn) {
 			}
 
 		case proto.OpFlashNodeHeartbeat:
+			s.recordOp(p.Opcode)
 			time.Sleep(time.Millisecond)
 			reply.ResultCode = proto.OpOk
 
 		case proto.OpFlashNodeCacheRead: // RemoteCache Read
+			s.recordOp(p.Opcode)
 			// Data contains marshaled CacheReadRequest
 			req := &proto.CacheReadRequest{}
 			if err := req.Unmarshal(p.Data); err != nil {
@@ -291,18 +318,20 @@ func TestStreamerRead_WithHoles_Consistency(t *testing.T) {
 			Volume:  "testvol",
 			Masters: masters,
 		},
-		metaWrapper: nil,
+		metaWrapper: meta.NewMetaWrapperForDefaultPool(0),
 		multiVerMgr: &MultiVerMgr{verList: &proto.VolVersionInfoList{}},
 	}
 	client.dataWrapper.HostsStatus[tcpServer.addr] = true
 	client.LimitManager.WrapperUpdate = func(clientInfo wrapper.SimpleClientInfo) (bWork bool, err error) { return }
 
-	// Mock getInodeInfo
+	// Mock getInodeInfo (PoolId 0 matches default pool from metaWrapper; Generation required for remote cache path)
 	client.getInodeInfo = func(ino uint64) (*proto.InodeInfo, error) {
 		return &proto.InodeInfo{
 			Inode:        ino,
 			Size:         filesize,
 			StorageClass: proto.StorageClass_Replica_HDD,
+			PoolId:       0,
+			Generation:   1,
 		}, nil
 	}
 
@@ -379,6 +408,9 @@ func TestStreamerRead_WithHoles_Consistency(t *testing.T) {
 	} else {
 		t.Log("RemoteCache read verification successful")
 	}
+	if tcpServer.OpCount(proto.OpFlashNodeCacheRead) == 0 {
+		t.Errorf("expected OpFlashNodeCacheRead when forceRemoteCache is true")
+	}
 
 	// 8. Test Data Node Read (Remote Cache Disabled)
 	s.client.forceRemoteCache = false
@@ -406,5 +438,173 @@ func TestStreamerRead_WithHoles_Consistency(t *testing.T) {
 		}
 	} else {
 		t.Log("DataNode read verification successful")
+	}
+}
+
+// TestStreamerRead_RemoteCacheRoutingByPoolID covers post-refactor behavior: remote cache read is chosen when
+// inode pool differs from the client's default pool (replacing storage-class + remoteCacheOnlyForNotSSD gating).
+func TestStreamerRead_RemoteCacheRoutingByPoolID(t *testing.T) {
+	tests := []struct {
+		name              string
+		defaultPool       uint8
+		inodePool         uint8
+		wantFlashNodeRead bool
+	}{
+		{"samePoolSkipsFlashNode", 11, 11, false},
+		{"diffPoolUsesFlashNode", 11, 22, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assertRemoteCacheRoutingByPool(t, tt.defaultPool, tt.inodePool, tt.wantFlashNodeRead)
+		})
+	}
+}
+
+func assertRemoteCacheRoutingByPool(t *testing.T, defaultPool, inodePool uint8, wantFlashNodeRead bool) {
+	filesize := uint64(1153434)
+	offsetA := uint64(100)
+	sizeA := 400
+	mockDataA := make([]byte, sizeA)
+	for i := range mockDataA {
+		mockDataA[i] = 0xAA
+	}
+	offsetB := uint64(1059061)
+	sizeB := 10486
+	mockDataB := make([]byte, sizeB)
+	for i := range mockDataB {
+		mockDataB[i] = 0xBB
+	}
+
+	tcpServer, err := NewMockTCPServer(mockDataA, offsetA, mockDataB, offsetB, filesize)
+	if err != nil {
+		t.Fatalf("Failed to start mock tcp server: %v", err)
+	}
+	defer tcpServer.Close()
+	go tcpServer.Serve()
+
+	slot0 := proto.ComputeCacheBlockSlot("testvol", 1, 0)
+	slot1 := proto.ComputeCacheBlockSlot("testvol", 1, 1048576)
+
+	masterHandler := http.NewServeMux()
+	masterHandler.HandleFunc(proto.ClientFlashGroups, func(w http.ResponseWriter, r *http.Request) {
+		view := proto.FlashGroupView{
+			Enable: true,
+			FlashGroups: []*proto.FlashGroupInfo{
+				{ID: 1, Hosts: []string{tcpServer.addr}, Slot: []uint32{slot0, slot1}},
+			},
+		}
+		data, _ := json.Marshal(view)
+		rsp := proto.HTTPReplyRaw{Code: proto.ErrCodeSuccess, Data: data}
+		rspData, _ := json.Marshal(rsp)
+		w.Write(rspData)
+	})
+	masterHandler.HandleFunc(proto.AdminGetRemoteCacheConfig, func(w http.ResponseWriter, r *http.Request) {
+		config := proto.RemoteCacheConfig{RemoteCacheTTL: 3600, RemoteCacheReadTimeout: 1000}
+		data, _ := json.Marshal(config)
+		rsp := proto.HTTPReplyRaw{Code: proto.ErrCodeSuccess, Data: data}
+		rspData, _ := json.Marshal(rsp)
+		w.Write(rspData)
+	})
+	mockMaster := httptest.NewServer(masterHandler)
+	defer mockMaster.Close()
+	masters := []string{strings.TrimPrefix(mockMaster.URL, "http://")}
+
+	w := &wrapper.Wrapper{HostsStatus: make(map[string]bool)}
+	dp := &wrapper.DataPartition{
+		DataPartitionResponse: proto.DataPartitionResponse{
+			PartitionID: 1,
+			Hosts:       []string{tcpServer.addr},
+			LeaderAddr:  tcpServer.addr,
+			Status:      proto.ReadWrite,
+			MediaType:   proto.MediaType_HDD,
+		},
+	}
+	wrapper.InsertPartitionForTest(w, dp)
+	dp.ClientWrapper = w
+	w.InitFollowerRead(false)
+
+	client := &ExtentClient{
+		dataWrapper:  w,
+		LimitManager: manager.NewLimitManager(nil),
+		readLimiter:  rate.NewLimiter(rate.Inf, 128),
+		streamers:    make(map[uint64]*Streamer),
+		extentConfig: &ExtentConfig{Volume: "testvol", Masters: masters},
+		metaWrapper:  meta.NewMetaWrapperForDefaultPool(defaultPool),
+		multiVerMgr:  &MultiVerMgr{verList: &proto.VolVersionInfoList{}},
+	}
+	client.dataWrapper.HostsStatus[tcpServer.addr] = true
+	client.LimitManager.WrapperUpdate = func(clientInfo wrapper.SimpleClientInfo) (bWork bool, err error) { return }
+	client.getInodeInfo = func(ino uint64) (*proto.InodeInfo, error) {
+		return &proto.InodeInfo{
+			Inode:        ino,
+			Size:         filesize,
+			StorageClass: proto.StorageClass_Replica_HDD,
+			PoolId:       inodePool,
+			Generation:   1,
+		}, nil
+	}
+
+	client.RemoteCache.Init(client)
+	client.RemoteCache.remoteCacheClient.SameZoneTimeout = 1000000
+	client.RemoteCache.remoteCacheClient.SameRegionTimeout = 1000
+	time.Sleep(100 * time.Millisecond)
+	client.RemoteCache.VolumeEnabled = true
+	client.RemoteCache.remoteCacheMaxFileSizeGB = 100
+	client.RemoteCache.remoteCacheMaxFileSizeMB = 100 * 1024
+	client.RemoteCache.remoteCacheClient.SetClusterEnable(true)
+	if err := client.RemoteCache.remoteCacheClient.UpdateFlashGroups(); err != nil {
+		t.Fatalf("UpdateFlashGroups failed: %v", err)
+	}
+
+	extents := []proto.ExtentKey{
+		{FileOffset: offsetA, Size: uint32(sizeA), PartitionId: 1, ExtentId: 1},
+		{FileOffset: offsetB, Size: uint32(sizeB), PartitionId: 1, ExtentId: 2},
+	}
+	getExtents := func(inode uint64, isCache bool, openForWrite bool, isMigration bool) (uint64, uint64, []proto.ExtentKey, error) {
+		return 0, filesize, extents, nil
+	}
+	client.getExtents = getExtents
+
+	s := NewStreamer(client, 1, false, false, "/test/file")
+	s.extents.RefreshForce(1, true, getExtents, false, false, false)
+
+	// Remote cache eligible, but routing depends on pool vs default (not forceRemoteCache).
+	s.client.forceRemoteCache = false
+	client.RemoteCache.Path = "/"
+
+	data := make([]byte, filesize)
+	for i := range data {
+		data[i] = 0xFF
+	}
+	expected := make([]byte, filesize)
+	copy(expected[offsetA:offsetA+uint64(sizeA)], mockDataA)
+	copy(expected[offsetB:offsetB+uint64(sizeB)], mockDataB)
+
+	total, err := s.read(data, 0, int(filesize), 0)
+	if err != nil {
+		t.Fatalf("read failed: %v", err)
+	}
+	if uint64(total) != filesize {
+		t.Fatalf("read total mismatch: got %v want %v", total, filesize)
+	}
+	if !bytes.Equal(data, expected) {
+		t.Fatalf("data mismatch after read")
+	}
+
+	flashCnt := tcpServer.OpCount(proto.OpFlashNodeCacheRead)
+	streamCnt := tcpServer.OpCount(proto.OpStreamRead)
+	if wantFlashNodeRead {
+		if flashCnt == 0 {
+			t.Fatalf("expected OpFlashNodeCacheRead when inode pool %d != default pool %d, got flash=%d stream=%d",
+				inodePool, defaultPool, flashCnt, streamCnt)
+		}
+	} else {
+		if flashCnt != 0 {
+			t.Fatalf("expected no OpFlashNodeCacheRead when inode pool matches default pool %d, got flash=%d stream=%d",
+				defaultPool, flashCnt, streamCnt)
+		}
+		if streamCnt == 0 {
+			t.Fatalf("expected datanode OpStreamRead when flash path skipped, got stream=%d", streamCnt)
+		}
 	}
 }

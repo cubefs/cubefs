@@ -322,6 +322,12 @@ func (mw *MetaWrapper) GetClientPoolId() uint8 {
 	return mw.defaultPoolId
 }
 
+// NewMetaWrapperForDefaultPool returns a MetaWrapper with only defaultPoolId initialized.
+// It is for unit tests (e.g. data stream) that need GetClientPoolId without a full mount.
+func NewMetaWrapperForDefaultPool(defaultPoolID uint8) *MetaWrapper {
+	return &MetaWrapper{defaultPoolId: defaultPoolID}
+}
+
 func (mw *MetaWrapper) enableTrash() error {
 	if mw.disableTrash {
 		return errors.NewErrorf("trash is disabled")
