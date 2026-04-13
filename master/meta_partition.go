@@ -1721,21 +1721,20 @@ func (mp *MetaPartition) removeManualLearnersViolatingMpRegionPolicy(c *Cluster)
 	return nil
 }
 
-// isManualLearnerPeerMigrating reports whether peerAddr matches RecoverDst on the partition
-// (embedded RecoverPair or RecoverLearners).
+// isManualLearnerPeerMigrating reports whether peerAddr equals RecoverSrc or RecoverDst on any
+// mp.RecoverLearners entry whose RecoverState is RecoverStateRecovering.
 func (mp *MetaPartition) isManualLearnerPeerMigrating(peerAddr string) bool {
 	match := func(rp *proto.RecoverPair) bool {
-		if rp == nil || rp.RecoverDst != peerAddr {
+		if rp == nil {
 			return false
 		}
-		if rp.RecoverSrc == peerAddr || rp.RecoverDst == peerAddr {
+		if rp.RecoverState == proto.RecoverStateRecovering && (rp.RecoverSrc == peerAddr || rp.RecoverDst == peerAddr) {
+			log.LogInfof("isManualLearnerPeerMigrating: mp(%v) recover pair %v matches peer %v", mp.PartitionID, rp.String(), peerAddr)
 			return true
 		}
 		return false
 	}
-	if match(&mp.RecoverPair) {
-		return true
-	}
+
 	for _, rp := range mp.RecoverLearners {
 		if match(rp) {
 			return true

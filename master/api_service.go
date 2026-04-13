@@ -10850,7 +10850,7 @@ func (m *Server) volAddPool(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !vol.AllPartitionForbidVer0() {
-		err = fmt.Errorf("there is still some dp or mp not forbidden write")
+		err = fmt.Errorf("there is still some dp or mp not forbidden write, wait a minute and try again")
 		log.LogErrorf("[volAddAllowedStorageClass] vol(%v), err: %v", name, err.Error())
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return

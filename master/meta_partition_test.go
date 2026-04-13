@@ -370,9 +370,10 @@ func TestManualLearnerOutsideMpRegionPolicy(t *testing.T) {
 		mp := baseMP()
 		mp.Peers = append(mp.Peers, proto.Peer{Addr: learnerAddr2, Type: raftProto.PeerLearner, ManualPromote: true})
 		mp.Replicas = append(mp.Replicas, &MetaReplica{Addr: learnerAddr2, StoreMode: proto.StoreModeMem})
-		rp := &proto.RecoverPair{RecoverDst: learnerAddr2, RecoverSrc: ""}
-		rp.IsRecover.Store(true)
-		mp.RecoverLearners = []*proto.RecoverPair{rp}
+		mp.RecoverLearners = []*proto.RecoverPair{{
+			RecoverDst:    learnerAddr2,
+			RecoverState:  proto.RecoverStateRecovering,
+		}}
 		require.False(t, mp.manualLearnerOutsideMpRegionPolicy(c))
 	})
 
@@ -400,14 +401,17 @@ func TestManualLearnerOutsideMpRegionPolicy(t *testing.T) {
 		require.Empty(t, trim)
 	})
 
-	t.Run("migrating on embedded RecoverPair short-circuits duplicate check", func(t *testing.T) {
+	t.Run("migrating on RecoverLearners short-circuits duplicate check", func(t *testing.T) {
 		vol.mpPolicy = map[string]*proto.VolMpPolicy{
 			"east": {Learner: map[string]*proto.LearnerPolicy{"west": {Mode: proto.StoreModeMem}}},
 		}
 		mp := baseMP()
 		mp.Peers = append(mp.Peers, proto.Peer{Addr: learnerAddr2, Type: raftProto.PeerLearner, ManualPromote: true})
 		mp.Replicas = append(mp.Replicas, &MetaReplica{Addr: learnerAddr2, StoreMode: proto.StoreModeMem})
-		mp.RecoverPair = proto.RecoverPair{RecoverDst: learnerAddr}
+		mp.RecoverLearners = []*proto.RecoverPair{{
+			RecoverDst:   learnerAddr,
+			RecoverState: proto.RecoverStateRecovering,
+		}}
 		require.False(t, mp.manualLearnerOutsideMpRegionPolicy(c),
 			"any migrating manual learner causes policy to return false before duplicate detection")
 	})
@@ -422,17 +426,78 @@ func TestManualLearnerOutsideMpRegionPolicy(t *testing.T) {
 }
 
 func TestIsManualLearnerPeerMigrating(t *testing.T) {
-	mp := &MetaPartition{}
-	require.False(t, mp.isManualLearnerPeerMigrating("10.0.0.1:17210"))
+	const peerA = "10.0.0.1:17210"
+	const peerB = "10.0.0.2:17210"
+	const peerC = "10.0.0.3:17210"
 
-	mp.RecoverPair = proto.RecoverPair{RecoverDst: "10.0.0.1:17210"}
-	require.True(t, mp.isManualLearnerPeerMigrating("10.0.0.1:17210"))
-	require.False(t, mp.isManualLearnerPeerMigrating("10.0.0.2:17210"))
+	t.Run("empty partition", func(t *testing.T) {
+		mp := &MetaPartition{}
+		require.False(t, mp.isManualLearnerPeerMigrating(peerA))
+	})
 
-	mp.RecoverPair = proto.RecoverPair{}
-	dst := "10.0.0.3:17210"
-	mp.RecoverLearners = []*proto.RecoverPair{{RecoverDst: dst}}
-	require.True(t, mp.isManualLearnerPeerMigrating(dst))
+	t.Run("RecoverPair alone is ignored", func(t *testing.T) {
+		mp := &MetaPartition{
+			RecoverPair: proto.RecoverPair{RecoverDst: peerA, RecoverState: proto.RecoverStateRecovering},
+		}
+		require.False(t, mp.isManualLearnerPeerMigrating(peerA))
+	})
+
+	t.Run("requires RecoverStateRecovering", func(t *testing.T) {
+		mp := &MetaPartition{
+			RecoverLearners: []*proto.RecoverPair{{
+				RecoverDst:   peerA,
+				RecoverState: proto.RecoverStateInit,
+			}},
+		}
+		require.False(t, mp.isManualLearnerPeerMigrating(peerA))
+		mp.RecoverLearners[0].RecoverState = proto.RecoverStateFailed
+		require.False(t, mp.isManualLearnerPeerMigrating(peerA))
+	})
+
+	t.Run("RecoverDst match when recovering", func(t *testing.T) {
+		mp := &MetaPartition{
+			RecoverLearners: []*proto.RecoverPair{{
+				RecoverDst:   peerA,
+				RecoverState: proto.RecoverStateRecovering,
+			}},
+		}
+		require.True(t, mp.isManualLearnerPeerMigrating(peerA))
+		require.False(t, mp.isManualLearnerPeerMigrating(peerB))
+	})
+
+	t.Run("RecoverSrc match when recovering", func(t *testing.T) {
+		mp := &MetaPartition{
+			RecoverLearners: []*proto.RecoverPair{{
+				RecoverSrc:   peerB,
+				RecoverDst:   "10.0.0.9:17210",
+				RecoverState: proto.RecoverStateRecovering,
+			}},
+		}
+		require.True(t, mp.isManualLearnerPeerMigrating(peerB))
+		require.False(t, mp.isManualLearnerPeerMigrating(peerA))
+		require.False(t, mp.isManualLearnerPeerMigrating(peerC))
+	})
+
+	t.Run("nil recover pair entries are skipped", func(t *testing.T) {
+		mp := &MetaPartition{
+			RecoverLearners: []*proto.RecoverPair{
+				nil,
+				{RecoverDst: peerA, RecoverState: proto.RecoverStateRecovering},
+			},
+		}
+		require.True(t, mp.isManualLearnerPeerMigrating(peerA))
+	})
+
+	t.Run("multiple RecoverLearners any entry may match", func(t *testing.T) {
+		mp := &MetaPartition{
+			RecoverLearners: []*proto.RecoverPair{
+				{RecoverDst: peerB, RecoverState: proto.RecoverStateRecovering},
+				{RecoverDst: peerA, RecoverState: proto.RecoverStateRecovering},
+			},
+		}
+		require.True(t, mp.isManualLearnerPeerMigrating(peerB))
+		require.True(t, mp.isManualLearnerPeerMigrating(peerA))
+	})
 }
 
 func TestSetRestoreReplica(t *testing.T) {
