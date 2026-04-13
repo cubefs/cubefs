@@ -119,7 +119,7 @@ func (c *Cluster) checkDpTag() {
 	vols := c.allVols()
 	count := 0
 	for _, vol := range vols {
-		if vol.isInitializingOrInitFailed() {
+		if vol.isInitializingOrInitFailed() || vol.dpReplicaNum < TagReplicaRuleNum {
 			continue
 		}
 
@@ -144,7 +144,7 @@ func (c *Cluster) checkDpTag() {
 
 	total := MaxTagDecommissionNum - count
 	for _, vol := range vols {
-		if vol.isInitializingOrInitFailed() {
+		if vol.isInitializingOrInitFailed() || vol.dpReplicaNum < TagReplicaRuleNum {
 			continue
 		}
 
