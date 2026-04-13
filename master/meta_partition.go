@@ -1813,6 +1813,7 @@ func (mp *MetaPartition) manualLearnerOutsideMpRegionPolicy(c *Cluster) bool {
 		return false
 	}
 	policy := volMpPolicyForSourceRegion(vol, mp.Region)
+	log.LogInfof("manualLearnerOutsideMpRegionPolicy: mp(%v) policy %v", mp.PartitionID, policy.String())
 
 	for _, p := range mp.Peers {
 		if p.Type != raftProto.PeerLearner || !p.ManualPromote {
@@ -1824,6 +1825,7 @@ func (mp *MetaPartition) manualLearnerOutsideMpRegionPolicy(c *Cluster) bool {
 			log.LogInfof("manualLearnerOutsideMpRegionPolicy: mp(%v) manual learner %v not allowed by policy %v", mp.PartitionID, p.Addr, policy)
 			return true
 		}
+		log.LogInfof("manualLearnerOutsideMpRegionPolicy: mp(%v) manual learner %v allowed by policy %v", mp.PartitionID, p.Addr, policy.String())
 	}
 
 	for targetRegion, lp := range policy.Learner {
