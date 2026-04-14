@@ -382,16 +382,35 @@ func (metaNode *MetaNode) GetRocksdbUsed() (used uint64) {
 	return
 }
 
+func (metaNode *MetaNode) hasWritableRocksdbDisk() bool {
+	for _, disk := range metaNode.RocksdbDisks {
+		if disk != nil && disk.Status == proto.ReadWrite {
+			return true
+		}
+	}
+	return false
+}
+
+func (metaNode *MetaNode) getWritableRocksdbStat() (total, used uint64) {
+	for _, disk := range metaNode.RocksdbDisks {
+		if disk == nil || disk.Status != proto.ReadWrite {
+			continue
+		}
+		total += disk.Total
+		used += disk.Used
+	}
+	return
+}
+
 func (metaNode *MetaNode) reachesRocksdbDisksThreshold() bool {
 	var total, used uint64
 	if metaNode.RocksdbDiskThreshold <= 0 {
 		metaNode.RocksdbDiskThreshold = defaultRocksdbDiskThreshold
 	}
-	if len(metaNode.RocksdbDisks) == 0 {
+	if !metaNode.hasWritableRocksdbDisk() {
 		return true
 	}
-	total = metaNode.GetRocksdbTotal()
-	used = metaNode.GetRocksdbUsed()
+	total, used = metaNode.getWritableRocksdbStat()
 	if total == 0 {
 		log.LogErrorf("[reachesRocksdbDisksThreshold] metanode(%v) total is 0", metaNode.Addr)
 		return true
@@ -436,6 +455,7 @@ func (metaNode *MetaNode) IsRocksdbWriteAble() (ok bool) {
 	systemMemoryFreeSize := metaNode.NodeMemTotal - metaNode.NodeMemUsed
 
 	if metaNode.IsActive && !metaNode.RocksdbRdOnly &&
+		metaNode.hasWritableRocksdbDisk() &&
 		systemMemoryFreeSize > gConfig.metaNodeReservedMem &&
 		metaNode.MetaPartitionCount < defaultMaxMetaPartitionCountOnEachNode &&
 		!metaNode.reachesRocksdbDisksThreshold() &&

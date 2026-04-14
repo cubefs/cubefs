@@ -35,6 +35,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/auditlog"
+	"github.com/cubefs/cubefs/util/diskmon"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -396,10 +397,15 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 				}
 			case proto.StoreModeRocksDb:
 				for _, stat := range diskStat {
-					if stat.Path == mConf.RocksDBDir &&
-						(stat.UsageRatio >= m.rocksDBDiskUsageThreshold || stat.KeyNum >= m.metaNode.rocksdbKeyNumMax) {
+					if stat.Path != mConf.RocksDBDir {
+						continue
+					}
+					if stat.Status == diskmon.Unavailable {
+						mpr.Status = proto.Unavailable
+					} else if stat.UsageRatio >= m.rocksDBDiskUsageThreshold || stat.KeyNum >= m.metaNode.rocksdbKeyNumMax {
 						mpr.Status = proto.ReadOnly
 					}
+					break
 				}
 			default:
 				log.LogErrorf("[opMasterHeartbeat] mp(%v) unknown store mode, set read only", mConf.PartitionId)

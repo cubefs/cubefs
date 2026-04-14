@@ -1808,7 +1808,7 @@ func createMetaNodeWithRocksDB(addr, zoneName, rackName string, ns *nodeSet, roc
 			Total:      rocksdbTotal,
 			Used:       rocksdbUsed,
 			UsageRatio: float64(rocksdbUsed) / float64(rocksdbTotal),
-			Status:     1,      // Active
+			Status:     proto.ReadWrite,
 			KeyNum:     100000, // Set reasonable key number
 		},
 	}
