@@ -268,6 +268,13 @@ func (cr *CacheRequest) EncodeBinaryLen() int {
 	return 2 + len(cr.Volume) + 8 + 8 + 4 + 4 + sourcesLen + 8
 }
 
+func (cr *CacheRequest) CacheBlockVersionKey() uint64 {
+	if cr == nil {
+		return 0
+	}
+	return (cr.Generation&0xFFFFFFFF)<<32 | uint64(cr.Version)
+}
+
 func (cr *CacheReadRequest) EncodeBinaryTo(b []byte) {
 	var off int
 	binary.BigEndian.PutUint64(b[off:off+8], cr.Offset)
@@ -307,15 +314,15 @@ func (cacheReq *CacheRequest) String() string {
 	if cacheReq == nil {
 		return ""
 	}
-	return fmt.Sprintf("CacheRequest[Volume(%v) Inode(%v) FixedFileOffset(%v) Sources(%v) TTL(%v) ]", cacheReq.Volume, cacheReq.Inode, cacheReq.FixedFileOffset, len(cacheReq.Sources), cacheReq.TTL)
+	return fmt.Sprintf("CacheRequest[Volume(%v) Inode(%v) FixedFileOffset(%v) Sources(%v) TTL(%v) Slot(%v) Generation(%v)]", cacheReq.Volume, cacheReq.Inode, cacheReq.FixedFileOffset, len(cacheReq.Sources), cacheReq.TTL, cacheReq.Slot, cacheReq.Generation)
 }
 
 func (cr *CacheReadRequest) String() string {
 	if cr == nil {
 		return ""
 	}
-	return fmt.Sprintf("cacheReadRequest[Volume(%v) Inode(%v) FixedFileOffset(%v) Sources(%v) TTL(%v) Offset(%v) Size(%v)]",
-		cr.CacheRequest.Volume, cr.CacheRequest.Inode, cr.CacheRequest.FixedFileOffset, len(cr.CacheRequest.Sources), cr.CacheRequest.TTL, cr.Offset, cr.Size_)
+	return fmt.Sprintf("cacheReadRequest[Volume(%v) Inode(%v) FixedFileOffset(%v) Sources(%v) TTL(%v) Generation(%v)  Offset(%v) Size(%v)]",
+		cr.CacheRequest.Volume, cr.CacheRequest.Inode, cr.CacheRequest.FixedFileOffset, len(cr.CacheRequest.Sources), cr.CacheRequest.TTL, cr.CacheRequest.Generation, cr.Offset, cr.Size_)
 }
 
 func (pr *CachePrepareRequest) String() string {

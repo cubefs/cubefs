@@ -25,6 +25,7 @@ message CacheRequest {
   repeated DataSource Sources         = 5;
   int64               TTL             = 6;
   uint64              Slot            = 7;
+  uint64              Generation      = 8;
 }
 
 message CacheReadRequest {

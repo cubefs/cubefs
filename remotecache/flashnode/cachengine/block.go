@@ -57,7 +57,6 @@ type CacheBlock struct {
 	volume      string
 	inode       uint64
 	fixedOffset uint64
-	version     uint32
 
 	usedSize  int64
 	allocSize int64
@@ -76,14 +75,13 @@ type CacheBlock struct {
 }
 
 // NewCacheBlock create and returns a new extent instance.
-func NewCacheBlock(rootPath string, volume string, inode, fixedOffset uint64, version uint32, allocSize uint64,
+func NewCacheBlock(rootPath string, volume string, inode, fixedOffset uint64, version uint64, allocSize uint64,
 	reader ReadExtentData, clientIP string, d *Disk,
 ) (cb *CacheBlock) {
 	cb = new(CacheBlock)
 	cb.volume = volume
 	cb.inode = inode
 	cb.fixedOffset = fixedOffset
-	cb.version = version
 	cb.sourceType = SourceTypeDefault
 	cb.blockKey = GenCacheBlockKey(volume, inode, fixedOffset, version)
 	cb.updateAllocSize(int64(allocSize))
@@ -98,7 +96,7 @@ func NewCacheBlock(rootPath string, volume string, inode, fixedOffset uint64, ve
 }
 
 func (cb *CacheBlock) String() string {
-	return fmt.Sprintf("volume(%s) inode(%d) offset(%d) version(%d)", cb.volume, cb.inode, cb.fixedOffset, cb.version)
+	return fmt.Sprintf("key(%s) volume(%s) inode(%d) offset(%d)", cb.blockKey, cb.volume, cb.inode, cb.fixedOffset)
 }
 
 func (cb *CacheBlock) GetBlockKey() string {

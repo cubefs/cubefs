@@ -209,6 +209,7 @@ func (s *Streamer) PrepareCacheRequests(offset, size uint64, data []byte, gen ui
 			TTL:             s.client.RemoteCache.remoteCacheClient.TTL,
 			Sources:         sources,
 			Version:         proto.ComputeSourcesVersion(sources, gen),
+			Generation:      gen,
 		}
 		cRequests = append(cRequests, cReq)
 	}

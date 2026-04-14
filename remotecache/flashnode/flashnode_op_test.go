@@ -35,7 +35,7 @@ const (
 	_volume          = "volume"
 	_inode    uint64 = 1
 	_offset   uint64 = 1024
-	_version  uint32 = 0
+	_version  uint64 = 0
 	_ttl             = 60
 	blockSize        = 1024
 )
@@ -173,7 +173,7 @@ func testTCPCacheRead(t *testing.T) {
 	require.Equal(t, proto.OpErr, r.ResultCode)
 
 	prepare.Size_ = blockSize
-	prepare.CacheRequest.Version = _version
+	prepare.CacheRequest.Version = uint32(_version)
 	p.MarshalDataPb(prepare)
 	require.NoError(t, p.WriteToConn(conn))
 	require.NoError(t, r.ReadFromConn(conn, 3))

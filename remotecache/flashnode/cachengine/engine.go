@@ -648,8 +648,7 @@ func (c *CacheEngine) deleteCacheItems(keys []string) {
 	}
 }
 
-func unmarshalCacheBlockName(name string) (inode uint64, offset uint64, version uint32, err error) {
-	var value uint64
+func unmarshalCacheBlockName(name string) (inode uint64, offset uint64, version uint64, err error) {
 	arr := strings.Split(name, "#")
 	if len(arr) != 3 {
 		err = fmt.Errorf("error cacheBlock name(%v)", name)
@@ -661,10 +660,9 @@ func unmarshalCacheBlockName(name string) (inode uint64, offset uint64, version 
 	if offset, err = strconv.ParseUint(arr[1], 10, 64); err != nil {
 		return
 	}
-	if value, err = strconv.ParseUint(arr[2], 10, 32); err != nil {
+	if version, err = strconv.ParseUint(arr[2], 10, 64); err != nil {
 		return
 	}
-	version = uint32(value)
 	return
 }
 
@@ -949,7 +947,7 @@ func (c *CacheEngine) DeleteCacheBlock(key string) {
 	}
 }
 
-func (c *CacheEngine) GetCacheBlockForRead(volume string, inode, offset uint64, version uint32, size uint64) (block *CacheBlock, err error) {
+func (c *CacheEngine) GetCacheBlockForRead(volume string, inode, offset uint64, version uint64, size uint64) (block *CacheBlock, err error) {
 	key := GenCacheBlockKey(volume, inode, offset, version)
 	return c.GetCacheBlockForReadByKey(key)
 }
@@ -1029,7 +1027,7 @@ func (c *CacheEngine) selectAvailableLruCache() (cacheItem *lruCacheItem, err er
 	return nil, errors.NewErrorf("no available disk can select")
 }
 
-func (c *CacheEngine) createCacheBlockFromExist(dataPath string, volume string, inode, fixedOffset uint64, version uint32, allocSize uint64, clientIP string, asyncDeleteCh chan func()) (block *CacheBlock, cacheItem *lruCacheItem, err error) {
+func (c *CacheEngine) createCacheBlockFromExist(dataPath string, volume string, inode, fixedOffset uint64, version uint64, allocSize uint64, clientIP string, asyncDeleteCh chan func()) (block *CacheBlock, cacheItem *lruCacheItem, err error) {
 	key := GenCacheBlockKey(volume, inode, fixedOffset, version)
 	if cacheItem, ok := c.getCacheItem(key); ok {
 		if atomic.LoadInt32(&cacheItem.disk.Status) == proto.ReadWrite {
@@ -1080,7 +1078,7 @@ func (c *CacheEngine) createCacheBlockFromExist(dataPath string, volume string, 
 	return
 }
 
-func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64, version uint32, ttl int64, allocSize uint64, clientIP string, isPrepare bool) (block *CacheBlock, err error) {
+func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64, version uint64, ttl int64, allocSize uint64, clientIP string, isPrepare bool) (block *CacheBlock, err error) {
 	if allocSize == 0 {
 		return nil, fmt.Errorf("alloc size is zero")
 	}
@@ -1221,12 +1219,13 @@ func (c *CacheEngine) StartCachePrepareWorkers(flw *util.IoLimiter, prepareWorke
 					}
 					var err error
 					bg := stat.BeginStat()
-					_, err3 := c.GetCacheBlockForRead(r.Volume, r.Inode, r.FixedFileOffset, r.Version, 0)
+					verKey := r.CacheBlockVersionKey()
+					_, err3 := c.GetCacheBlockForRead(r.Volume, r.Inode, r.FixedFileOffset, verKey, 0)
 					if err3 == nil {
 						continue
 					}
 					err1 := limiter.Run(reqSize, true, func() {
-						bk := GenCacheBlockKey(r.Volume, r.Inode, r.FixedFileOffset, r.Version)
+						bk := GenCacheBlockKey(r.Volume, r.Inode, r.FixedFileOffset, verKey)
 						if log.EnableDebug() {
 							log.LogDebugf("action[startCachePrepareWorkers] start cache key(%v)", bk)
 						}
@@ -1264,10 +1263,11 @@ func (c *CacheEngine) CreateBlock(req *proto.CacheRequest, clientIP string, isPr
 	if len(req.Sources) == 0 {
 		return nil, fmt.Errorf("no source data")
 	}
-	if block, err = c.createCacheBlock(req.Volume, req.Inode, req.FixedFileOffset, req.Version, req.TTL, computeAllocSize(req.Sources), clientIP, isPrepare); err != nil {
+	verKey := req.CacheBlockVersionKey()
+	if block, err = c.createCacheBlock(req.Volume, req.Inode, req.FixedFileOffset, verKey, req.TTL, computeAllocSize(req.Sources), clientIP, isPrepare); err != nil {
 		log.LogWarnf("action[CreateBlock] createCacheBlock(%v) failed err %v ",
-			GenCacheBlockKey(req.Volume, req.Inode, req.FixedFileOffset, req.Version), err)
-		c.DeleteCacheBlock(GenCacheBlockKey(req.Volume, req.Inode, req.FixedFileOffset, req.Version))
+			GenCacheBlockKey(req.Volume, req.Inode, req.FixedFileOffset, verKey), err)
+		c.DeleteCacheBlock(GenCacheBlockKey(req.Volume, req.Inode, req.FixedFileOffset, verKey))
 		return nil, err
 	}
 	return block, nil
@@ -1373,9 +1373,9 @@ func (c *CacheEngine) EvictCacheAll() {
 	log.LogWarn("action[EvictCacheAll] evict all finish")
 }
 
-func GenCacheBlockKey(volume string, inode, offset uint64, version uint32) string {
+func GenCacheBlockKey(volume string, inode, offset, version uint64) string {
 	u := strconv.FormatUint
-	return path.Join(volume, u(inode, 10)+"#"+u(offset, 10)+"#"+u(uint64(version), 10))
+	return path.Join(volume, u(inode, 10)+"#"+u(offset, 10)+"#"+u(version, 10))
 }
 
 func GenCacheBlockKeyV2(pDir string, key string) string {

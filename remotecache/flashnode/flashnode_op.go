@@ -305,7 +305,7 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 
 	f.updateSlotStat(cr.Slot)
 
-	block, err := f.cacheEngine.GetCacheBlockForRead(volume, cr.Inode, cr.FixedFileOffset, cr.Version, req.Size_)
+	block, err := f.cacheEngine.GetCacheBlockForRead(volume, cr.Inode, cr.FixedFileOffset, cr.CacheBlockVersionKey(), req.Size_)
 	if err != nil {
 		hitRateMap := f.cacheEngine.GetHitRate()
 		for dataPath, hitRate := range hitRateMap {
@@ -347,7 +347,7 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 			stat.EndStat("MissCacheReadCancel", ctx.Err(), bgTime2, 1)
 			return ctx.Err()
 		case <-missTaskDone:
-			block, err = f.cacheEngine.GetCacheBlockForRead(volume, cr.Inode, cr.FixedFileOffset, cr.Version, req.Size_)
+			block, err = f.cacheEngine.GetCacheBlockForRead(volume, cr.Inode, cr.FixedFileOffset, cr.CacheBlockVersionKey(), req.Size_)
 		}
 		stat.EndStat("MissCacheRead", err, bgTime2, 1)
 		if err != nil {
@@ -1576,7 +1576,7 @@ func (f *FlashNode) preheatWorker(workerID int, quit <-chan struct{}) {
 			}
 			cacheReq := req.Req.CacheRequest
 			var processErr error
-			_, err3 := f.cacheEngine.GetCacheBlockForRead(cacheReq.Volume, cacheReq.Inode, cacheReq.FixedFileOffset, cacheReq.Version, 0)
+			_, err3 := f.cacheEngine.GetCacheBlockForRead(cacheReq.Volume, cacheReq.Inode, cacheReq.FixedFileOffset, cacheReq.CacheBlockVersionKey(), 0)
 			if err3 == nil {
 				processErr = fmt.Errorf("already exist")
 			} else {
@@ -1588,7 +1588,7 @@ func (f *FlashNode) preheatWorker(workerID int, quit <-chan struct{}) {
 					log.LogWarnf("preheatWorker flow limit wait error: %v", err)
 				}
 				err1 := f.limitWrite.Run(reqSize, true, func() {
-					bk := cachengine.GenCacheBlockKey(cacheReq.Volume, cacheReq.Inode, cacheReq.FixedFileOffset, cacheReq.Version)
+					bk := cachengine.GenCacheBlockKey(cacheReq.Volume, cacheReq.Inode, cacheReq.FixedFileOffset, cacheReq.CacheBlockVersionKey())
 					if _, processErr = f.cacheEngine.CreateBlock(cacheReq, req.ReplyAddr, true); processErr != nil {
 						return
 					}

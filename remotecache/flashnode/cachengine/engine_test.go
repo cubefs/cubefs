@@ -64,7 +64,7 @@ func TestEngineNew(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { require.NoError(t, ce.Stop()) }()
 	var cb *CacheBlock
-	inode, fixedOffset, version := uint64(1), uint64(1024), uint32(112358796)
+	inode, fixedOffset, version := uint64(1), uint64(1024), uint64(112358796)
 	cb, err = ce.createCacheBlock(t.Name(), inode, fixedOffset, version, DefaultExpireTime, proto.CACHE_BLOCK_SIZE, "", false)
 	require.NoError(t, err)
 	require.NoError(t, cb.WriteAt(bytesCommon, 0, 1024))
@@ -102,7 +102,7 @@ func TestEngineOverFlow(t *testing.T) {
 			go func(round int, thread int) {
 				defer wg.Done()
 
-				inode, fixedOffset, version := uint64(1), uint64(1024), uint32(112358796)
+				inode, fixedOffset, version := uint64(1), uint64(1024), uint64(112358796)
 				cb, err1 := ce.createCacheBlock(fmt.Sprintf("%s_%d_%d", t.Name(), round, thread),
 					inode, fixedOffset, version, DefaultExpireTime, proto.CACHE_BLOCK_SIZE, "", false)
 				if err1 != nil {
@@ -146,7 +146,7 @@ func TestEngineTTL(t *testing.T) {
 	var ce *CacheEngine
 	var err error
 	lruCap := 10
-	inode, fixedOffset, version := uint64(1), uint64(1024), uint32(112358796)
+	inode, fixedOffset, version := uint64(1), uint64(1024), uint64(112358796)
 	if _, err = os.Stat(testTmpFS); err != nil {
 		require.Equal(t, true, os.IsNotExist(err.(*os.PathError)))
 		err = os.MkdirAll(testTmpFS, 0o755)
@@ -229,7 +229,7 @@ func TestEngineLru(t *testing.T) {
 	for j := 0; j < 20; j++ {
 		var cb *CacheBlock
 		var offset int64
-		inode, fixedOffset, version := uint64(1), uint64(1024), uint32(112358796)
+		inode, fixedOffset, version := uint64(1), uint64(1024), uint64(112358796)
 		cb, err = ce.createCacheBlock(fmt.Sprintf("%s_%d", t.Name(), j), inode, fixedOffset, version, DefaultExpireTime, proto.CACHE_BLOCK_SIZE, "", false)
 		require.NoError(t, err)
 		for {

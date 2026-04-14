@@ -187,11 +187,6 @@ func (s *ManualScanner) checkScanning() {
 	lastChangeTime := time.Now()
 
 	for {
-		repeatMinute++
-		if minuteProgressCount > 0 && repeatMinute >= minuteProgressCount {
-			repeatMinute = 0
-			s.currentStat.LastCacheSize = s.currentStat.TotalCacheSize
-		}
 		select {
 		case <-s.stopC:
 			log.LogInfof("receive stop, stop checkScanning %v", s.ID)
@@ -222,6 +217,11 @@ func (s *ManualScanner) checkScanning() {
 			s.flashNode.respondToMaster(s.adminTask)
 			return
 		case <-taskCheckTimer.C:
+			repeatMinute++
+			if minuteProgressCount > 0 && repeatMinute >= minuteProgressCount {
+				repeatMinute = 0
+				s.currentStat.LastCacheSize = s.currentStat.TotalCacheSize
+			}
 			if s.DoneScanning() {
 				log.LogInfof("checkScanning completed for task(%v) eklen(%v)", s.adminTask, s.currentStat.TotalExtentKeyNum)
 				taskCheckTimer.Stop()
