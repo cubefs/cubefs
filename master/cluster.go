@@ -4540,7 +4540,7 @@ func (c *Cluster) migrateMetaNode(srcAddr, targetAddr string, limit int, rocksdb
 			continue
 		}
 
-		if c.stopDecommissionMetaPartition(mp, srcAddr, rocksdbDir) {
+		if c.skipMigrateMetaPartition(mp, srcAddr, rocksdbDir) {
 			continue
 		}
 
@@ -8505,7 +8505,7 @@ func (c *Cluster) isValidRegion(region string) bool {
  * false: continue to decommission mp.
  * true: stop to decommission mp.
  */
-func (c *Cluster) stopDecommissionMetaPartition(mp *MetaPartition, srcAddr, rocksdbDir string) bool {
+func (c *Cluster) skipMigrateMetaPartition(mp *MetaPartition, srcAddr, rocksdbDir string) bool {
 	// continue to decommission mp if not selected rocksdbDir.
 	if rocksdbDir == "" {
 		return false

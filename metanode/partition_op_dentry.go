@@ -611,7 +611,7 @@ func (mp *metaPartition) Lookup(req *LookupReq, p *Packet) (err error) {
 	}
 	dentry, status, rocksEerr := mp.getDentry(dentry)
 	if rocksEerr != nil {
-		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		p.PacketErrorWithBody(proto.OpErr, []byte(rocksEerr.Error()))
 		return
 	}
 	var reply []byte
