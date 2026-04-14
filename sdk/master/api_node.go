@@ -152,11 +152,14 @@ func (api *NodeAPI) DataNodeDecommission(nodeAddr string, count int, clientIDKey
 	return
 }
 
-func (api *NodeAPI) MetaNodeDecommission(nodeAddr string, count int, clientIDKey string) (err error) {
+func (api *NodeAPI) MetaNodeDecommission(nodeAddr string, count int, clientIDKey, rocksdbDir string) (err error) {
 	request := newRequest(get, proto.DecommissionMetaNode).Header(api.h).NoTimeout()
 	request.addParam("addr", nodeAddr)
 	request.addParam("count", strconv.Itoa(count))
 	request.addParam("clientIDKey", clientIDKey)
+	if rocksdbDir != "" {
+		request.addParam("rocksdbDir", rocksdbDir)
+	}
 	if _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}

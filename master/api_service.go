@@ -6877,7 +6877,7 @@ func (m *Server) migrateMetaNodeHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if err = m.cluster.migrateMetaNode(srcAddr, targetAddr, limit); err != nil {
+	if err = m.cluster.migrateMetaNode(srcAddr, targetAddr, limit, ""); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -6905,6 +6905,8 @@ func (m *Server) decommissionMetaNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	rocksdbDir := r.FormValue(RocksdbDirKey)
+
 	if oldLimit <= 0 {
 		newLimit = util.DefaultMigrateMpCnt
 	} else {
@@ -6928,7 +6930,7 @@ func (m *Server) decommissionMetaNode(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaNodeNotExists))
 		return
 	}
-	if err = m.cluster.migrateMetaNode(offLineAddr, "", newLimit); err != nil {
+	if err = m.cluster.migrateMetaNode(offLineAddr, "", newLimit, rocksdbDir); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}

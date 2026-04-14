@@ -190,14 +190,7 @@ func newMetaNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 				stdout("Migrate mp count should >= 0\n")
 				return
 			}
-			if rocksdbDir != "" {
-				if err = client.NodeAPI().DecommissionRocksdbDir(nodeAddr, rocksdbDir); err != nil {
-					return
-				}
-				stdout("Decommission rocksdb dir in background. Use 'cfs-cli mp-balance show' to get the result\n")
-				return
-			}
-			if err = client.NodeAPI().MetaNodeDecommission(nodeAddr, optCount, clientIDKey); err != nil {
+			if err = client.NodeAPI().MetaNodeDecommission(nodeAddr, optCount, clientIDKey, rocksdbDir); err != nil {
 				return
 			}
 			stdout("Decommission meta node successfully\n")
@@ -211,7 +204,7 @@ func newMetaNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.Flags().IntVar(&optCount, CliFlagCount, 0, "MetaNode delete mp count")
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
-	cmd.Flags().StringVar(&rocksdbDir, "rocksdb-dir", "", "Rocksdb dir")
+	cmd.Flags().StringVar(&rocksdbDir, "rocksdb-dir", "", "only decommission MPs in the selected rocksdb dir. Do not set it when deleting a metanode.")
 	return cmd
 }
 

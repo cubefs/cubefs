@@ -4494,7 +4494,7 @@ func (c *Cluster) getBadDataPartitionsRepairView() (bprvs []proto.BadPartitionRe
 	return
 }
 
-func (c *Cluster) migrateMetaNode(srcAddr, targetAddr string, limit int) (err error) {
+func (c *Cluster) migrateMetaNode(srcAddr, targetAddr string, limit int, rocksdbDir string) (err error) {
 	var toBeOfflineMps []*MetaPartition
 
 	if c.ForbidMpDecommission {
@@ -4537,6 +4537,10 @@ func (c *Cluster) migrateMetaNode(srcAddr, targetAddr string, limit int) (err er
 		if !mp.RecoverPair.IsEmpty() {
 			remainCount++
 			log.LogWarnf("migrateMetaNode: partitionID[%v] recover pair found", mp.PartitionID)
+			continue
+		}
+
+		if c.stopDecommissionMetaPartition(mp, srcAddr, rocksdbDir) {
 			continue
 		}
 
@@ -4601,9 +4605,9 @@ func (c *Cluster) migrateMetaNode(srcAddr, targetAddr string, limit int) (err er
 	default:
 	}
 
-	if limit > 0 || remainCount > 0 {
-		log.LogWarnf("action[migrateMetaNode] clusterID[%v] migrating from [%s] to [%s] cnt[%d] recovering count[%d]",
-			c.Name, srcAddr, targetAddr, limit, remainCount)
+	if limit > 0 || remainCount > 0 || rocksdbDir != "" {
+		log.LogWarnf("action[migrateMetaNode] clusterID[%v] migrating from [%s] to [%s] cnt[%d] recovering count[%d] rocksdbDir[%s]",
+			c.Name, srcAddr, targetAddr, limit, remainCount, rocksdbDir)
 		return
 	}
 
@@ -4621,7 +4625,7 @@ func (c *Cluster) migrateMetaNode(srcAddr, targetAddr string, limit int) (err er
 }
 
 func (c *Cluster) decommissionMetaNode(metaNode *MetaNode) (err error) {
-	return c.migrateMetaNode(metaNode.Addr, "", 0)
+	return c.migrateMetaNode(metaNode.Addr, "", 0, "")
 }
 
 func (c *Cluster) deleteMetaNodeFromCache(metaNode *MetaNode) {
@@ -8494,4 +8498,39 @@ func (c *Cluster) isValidRegion(region string) bool {
 	}
 
 	return false
+}
+
+/*
+ * Return value:
+ * false: continue to decommission mp.
+ * true: stop to decommission mp.
+ */
+func (c *Cluster) stopDecommissionMetaPartition(mp *MetaPartition, srcAddr, rocksdbDir string) bool {
+	// continue to decommission mp if not selected rocksdbDir.
+	if rocksdbDir == "" {
+		return false
+	}
+
+	// only decommission rocksdb type replica.
+	isRocksdbReplica := false
+	for _, replica := range mp.Replicas {
+		if replica.Addr == srcAddr && replica.StoreMode == proto.StoreModeRocksDb {
+			isRocksdbReplica = true
+			break
+		}
+	}
+	// stop to decommission mp for memory replica.
+	if !isRocksdbReplica {
+		return true
+	}
+
+	for _, resp := range mp.LoadResponse {
+		if resp.Addr == srcAddr && resp.RocksdbDir == rocksdbDir {
+			// continue to decommission mp for the selected rocksdbDir.
+			return false
+		}
+	}
+
+	// stop to decommission mp for other rocksdbDir.
+	return true
 }
