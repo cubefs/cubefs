@@ -2504,6 +2504,28 @@ func (partition *DataPartition) processNextDecommissionTask(c *Cluster) bool {
 			log.LogWarnf("action[processNextDecommissionTask] %v, err: %v", msg, err)
 			auditlog.LogMasterOp("DataPartitionDecommission", msg, err)
 			return false
+		} else if strings.Contains(err.Error(), proto.ErrDecommissionDiskErrDPFirst.Error()) {
+			key := fmt.Sprintf("%s_%s", t.DecommissionSrcAddr, t.DecommissionSrcDiskPath)
+			if value, ok := c.DecommissionDisks.Load(key); ok {
+				disk := value.(*DecommissionDisk)
+				if disk.DecommissionTerm == t.DecommissionTerm {
+					disk.IgnoreDecommissionDps = append(disk.IgnoreDecommissionDps, proto.IgnoreDecommissionDP{
+						PartitionID: partition.PartitionID,
+						ErrMsg:      proto.ErrDecommissionDiskErrDPFirst.Error(),
+					})
+				}
+			}
+		} else if strings.Contains(err.Error(), proto.ErrWaitForAutoAddReplica.Error()) {
+			key := fmt.Sprintf("%s_%s", t.DecommissionSrcAddr, t.DecommissionSrcDiskPath)
+			if value, ok := c.DecommissionDisks.Load(key); ok {
+				disk := value.(*DecommissionDisk)
+				if disk.DecommissionTerm == t.DecommissionTerm {
+					disk.IgnoreDecommissionDps = append(disk.IgnoreDecommissionDps, proto.IgnoreDecommissionDP{
+						PartitionID: partition.PartitionID,
+						ErrMsg:      proto.ErrWaitForAutoAddReplica.Error(),
+					})
+				}
+			}
 		}
 	}
 
