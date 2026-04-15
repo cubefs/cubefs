@@ -463,7 +463,7 @@ func (r *raftFsm) addPeer(peer proto.Peer) {
 func (r *raftFsm) removePeer(peer proto.Peer) (ok bool) {
 	r.pendingConf = false
 
-	log.LogWarnf("raft[%v] remove peer[%v]", r.id, peer.String())
+	logger.Warn("raft[%v] remove peer[%v]", r.id, peer.String())
 	replica, ok := r.replicas[peer.ID]
 	if !ok {
 		if logger.IsEnableWarn() {
@@ -477,7 +477,7 @@ func (r *raftFsm) removePeer(peer proto.Peer) (ok bool) {
 		return
 	}
 
-	log.LogWarnf("raft[%v] remove peer[%v]", r.id, peer.String())
+	logger.Warn("raft[%v] remove peer[%v]", r.id, peer.String())
 	delete(r.replicas, peer.ID)
 	ok = true
 

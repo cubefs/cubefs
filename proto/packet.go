@@ -298,7 +298,7 @@ const (
 	OpWriteOpOfProtoVerForbidden        uint8 = 0x88
 	OpMetaForbiddenMigration            uint8 = 0x89
 	// Distributed cache related OP codes.
-	OpFlashNodeHeartbeat        uint8 = 0xC1
+	OpFlashNodeHeartbeat        uint8 = 0xDA
 	OpFlashNodeCachePrepare     uint8 = 0xC2
 	OpFlashNodeCacheRead        uint8 = 0xC3
 	OpFlashNodeCachePutBlock    uint8 = 0xC4
@@ -880,8 +880,6 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpMetaUpdateExtentKeyAfterMigration"
 	case OpDeleteMigrationExtentKey:
 		m = "OpDeleteMigrationExtentKey"
-	case OpFlashNodeHeartbeat:
-		m = "OpFlashNodeHeartbeat"
 	case OpFlashNodeCachePrepare:
 		m = "OpFlashNodeCachePrepare"
 	case OpFlashNodeCacheRead:
@@ -931,7 +929,7 @@ func (p *Packet) GetOpMsg() (m string) {
 	case OpMetaAsyncLockDir:
 		m = "OpMetaAsyncLockDir"
 	case OpMetaAsyncTxCreateInode:
-		m = "OpMetaAsyncTxCreateInode"
+		m = "OpMetaAsyncTxCreateInode-OpFlashNodeHeartbeat"
 	case OpMetaAsyncTxCreateDentry:
 		m = "OpMetaAsyncTxCreateDentry"
 	case OpMetaAsyncReadDir:
