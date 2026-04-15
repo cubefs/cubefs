@@ -53,7 +53,8 @@ var (
 	enableRetryTiny            = false
 	extentAllocRetryIntervalMs = 0 // ms
 	extentWriteRetryIntervalMs = 0 // ms
-	extentHandlerMaxRetryTime  = 0 // min
+	// extentHandlerMaxRetryTime is max retry budget in seconds when > 0 (see SetExentRetryArgs).
+	extentHandlerMaxRetryTime = 0
 )
 
 var gExtentHandlerID = uint64(0)
@@ -63,20 +64,39 @@ func GetExtentHandlerID() uint64 {
 	return atomic.AddUint64(&gExtentHandlerID, 1)
 }
 
-func SetExentRetryArgs(allocInterval, writeInterval, maxRetryMin int, retryTiny bool) {
+// SetExentRetryArgs configures process-wide defaults for extent retry behavior.
+// maxRetrySec is the max retry time budget in seconds for extent allocation / write backoff when > 0;
+// 0 means use the built-in default duration.
+func SetExentRetryArgs(allocInterval, writeInterval, maxRetrySec int, retryTiny bool) {
 	extentAllocRetryIntervalMs = allocInterval
 	extentWriteRetryIntervalMs = writeInterval
-	extentHandlerMaxRetryTime = maxRetryMin
-	enableRetryTiny = true
-	log.LogWarnf("SetExentRetryArgs: alloc interval %d ms, write interval %d ms, max %d min retry Tiny %v",
-		allocInterval, writeInterval, maxRetryMin, retryTiny)
+	extentHandlerMaxRetryTime = maxRetrySec
+	enableRetryTiny = retryTiny
+	log.LogWarnf("SetExentRetryArgs: alloc interval %d ms, write interval %d ms, max %d s retry Tiny %v",
+		allocInterval, writeInterval, maxRetrySec, retryTiny)
 }
 
 func getRetryInterval(intervalMs, retry int) time.Duration {
 	return getRetryIntervalTimeOut(intervalMs, retry, true)
 }
 
+func getExtentAllocRetryTimeout() time.Duration {
+	if extentHandlerMaxRetryTime > 0 {
+		// Configured value (seconds) overrides default so callers can fail faster or wait longer.
+		return time.Duration(extentHandlerMaxRetryTime) * time.Second
+	}
+	// Cover at least: 2 * master DP check/create cycle + 2 * client DP pull cycle (see wrapper.Default*).
+	defaultTimeout := 2*wrapper.DefaultDpMasterCheckInterval + 2*wrapper.DefaultDpPullInterval
+	return defaultTimeout
+}
+
 func getRetryIntervalTimeOut(intervalMs, retry int, checkTimeOut bool) time.Duration {
+	return getRetryIntervalTimeOutWithBudget(intervalMs, retry, checkTimeOut, extentHandlerMaxRetryTime)
+}
+
+// getRetryIntervalTimeOutWithBudget is like getRetryIntervalTimeOut but uses maxRetrySec for the
+// "shorten backoff after cumulative delay exceeds budget" branch (0 disables that branch).
+func getRetryIntervalTimeOutWithBudget(intervalMs, retry int, checkTimeOut bool, maxRetrySec int) time.Duration {
 	d1 := intervalMs
 
 	if retry >= maxRetryExpVal { // to avoid int overflow
@@ -89,14 +109,14 @@ func getRetryIntervalTimeOut(intervalMs, retry int, checkTimeOut bool) time.Dura
 		d1 = maxRetryInterval
 	}
 
-	if checkTimeOut && extentHandlerMaxRetryTime > 0 && d1 >= maxRetryInterval {
+	if checkTimeOut && maxRetrySec > 0 && d1 >= maxRetryInterval {
 		total := 0
 		for i := 1; i <= retry; i++ {
-			t1 := getRetryIntervalTimeOut(intervalMs, i, false)
+			t1 := getRetryIntervalTimeOutWithBudget(intervalMs, i, false, 0)
 			total += int(t1)
 		}
 		// once over max retry time, retry quickly
-		if time.Minute*time.Duration(extentHandlerMaxRetryTime) < time.Duration(total) {
+		if time.Second*time.Duration(maxRetrySec) < time.Duration(total) {
 			d1 = intervalMs
 		}
 	}
@@ -108,6 +128,32 @@ func getRetryIntervalTimeOut(intervalMs, retry int, checkTimeOut bool) time.Dura
 
 	d1 = d1 + rand.Intn(d1)/10
 	return time.Duration(d1) * time.Millisecond
+}
+
+func (eh *ExtentHandler) allocRetryInterval(retry int) time.Duration {
+	baseInterval := extentAllocRetryIntervalMs
+	if baseInterval <= 0 {
+		baseInterval = wrapper.DefaultExtentAllocRetryBaseIntervalMs
+	}
+	return getRetryIntervalTimeOutWithBudget(baseInterval, retry, true, extentHandlerMaxRetryTime)
+}
+
+func (eh *ExtentHandler) sleepAllocRetryIfNeeded(retry int, start time.Time, timeout time.Duration) {
+	retryInterval := eh.allocRetryInterval(retry)
+	elapsed := time.Since(start)
+	if retryInterval <= 0 {
+		log.LogWarnf("allocateExtent: skip retry sleep, invalid plannedSleep(%dms), retryIndex(%d), elapsed(%dms), timeout(%dms), eh(%v)",
+			retryInterval.Milliseconds(), retry, elapsed.Milliseconds(), timeout.Milliseconds(), eh)
+		return
+	}
+	if elapsed+retryInterval > timeout {
+		log.LogWarnf("allocateExtent: skip retry sleep, plannedSleep(%dms), retryIndex(%d), elapsed(%dms), timeout(%dms), eh(%v)",
+			retryInterval.Milliseconds(), retry, elapsed.Milliseconds(), timeout.Milliseconds(), eh)
+		return
+	}
+	log.LogWarnf("allocateExtent: slow retry alloc extent, sleep interval(%dms), retryIndex(%d), elapsed(%dms), timeout(%dms), eh(%v)",
+		retryInterval.Milliseconds(), retry, elapsed.Milliseconds(), timeout.Milliseconds(), eh)
+	time.Sleep(retryInterval)
 }
 
 // ExtentHandler defines the struct of the extent handler.
@@ -736,8 +782,25 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 	log.LogDebugf("ExtentHandler allocateExtent enter: eh(%v)", eh)
 
 	exclude := make(map[string]struct{})
+	start := time.Now()
+	retryTimeout := getExtentAllocRetryTimeout()
+	retryCount := 0
 
-	for i := 0; i < MaxSelectDataPartitionForWrite; i++ {
+	for {
+		//if time.Since(start) > retryTimeout {
+		//	break
+		//}
+		if retryCount >= MaxSelectDataPartitionForWrite {
+			break
+		}
+		retryCount++
+		log.LogInfof("allocateExtent: retry attempt(%d/%d), elapsed(%dms), timeout(%dms), eh(%v)",
+			retryCount, MaxSelectDataPartitionForWrite, time.Since(start).Milliseconds(), retryTimeout.Milliseconds(), eh)
+		// Unified backoff: no sleep on first two attempts; then use same sleep as before (index retryCount-2).
+		if retryCount > 1 {
+			eh.sleepAllocRetryIfNeeded(retryCount-2, start, retryTimeout)
+		}
+
 		if eh.key == nil {
 			if dp, err = eh.stream.client.dataWrapper.GetDataPartitionForWrite(exclude, eh.poolId, eh.id); err != nil {
 				log.LogWarnf("allocateExtent: failed to get write data partition, eh(%v) exclude(%v), "+
@@ -751,14 +814,6 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 				extID, err = eh.createExtent(dp)
 			}
 			if err != nil {
-				// reduce cluster messusre by slow retry
-				if extentAllocRetryIntervalMs > 0 {
-					retryInterval := getRetryInterval(extentAllocRetryIntervalMs, i)
-					log.LogWarnf("allocateExtent: slow retry alloc extent, sleep interval %dms, retry(%d), eh(%v)",
-						retryInterval.Milliseconds(), i, eh)
-					time.Sleep(retryInterval)
-				}
-
 				// NOTE: try again
 				if strings.Contains(err.Error(), "Again") || strings.Contains(err.Error(), "LimitedIoErr") {
 					log.LogWarnf("[allocateExtent] eh(%v) try again, err:%v", eh, err)
@@ -798,7 +853,10 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 		return nil
 	}
 
-	errmsg := "allocateExtent failed: hit max retry limit"
+	errmsg := fmt.Sprintf("allocateExtent failed: hit retry limit(%d) or timeout(%s)",
+		MaxSelectDataPartitionForWrite, retryTimeout)
+	log.LogWarnf("allocateExtent: exit after retryCount(%d/%d), elapsed(%dms), timeout(%dms), lastErr(%v), eh(%v)",
+		retryCount, MaxSelectDataPartitionForWrite, time.Since(start).Milliseconds(), retryTimeout.Milliseconds(), err, eh)
 	if err != nil {
 		err = errors.Trace(err, errmsg)
 	} else {

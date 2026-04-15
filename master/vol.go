@@ -1284,7 +1284,7 @@ func (vol *Vol) setDpForbid() {
 	defer vol.dataPartitions.RUnlock()
 	for _, dp := range vol.dataPartitions.partitionMap {
 		if dp.Status != proto.Unavailable {
-			dp.Status = proto.ReadOnly
+			dp.applyDataPartitionStatus(proto.ReadOnly, "setDpForbid")
 		}
 	}
 }

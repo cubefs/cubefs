@@ -105,6 +105,7 @@ const (
 	FuseServeThreads
 	PoolId
 	MetaRegion
+	ExtentHandlerMaxRetryTime
 	MaxMountOption
 )
 
@@ -219,6 +220,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[RemoteCacheName] = MountOption{"remoteCacheTopoName", "name for target remote cache topology", "", "default"}
 	opts[PoolId] = MountOption{"poolId", "Storage pool ID for new inodes (0 means use volume default)", "", int64(0)}
 	opts[MetaRegion] = MountOption{"metaRegion", "Meta region for creating inodes (empty means use volume default region)", "", ""}
+	opts[ExtentHandlerMaxRetryTime] = MountOption{"extentHandlerMaxRetryTime", "process-wide max extent alloc retry budget (seconds); 0 = use built-in 2*dpCheck+2*dpPull", "", int64(0)}
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
 	}
@@ -404,6 +406,8 @@ type MountOptions struct {
 	DisableMountSubtype bool
 	// stream retry timeout
 	StreamRetryTimeout int
+	// extent allocation retry max time budget in seconds; 0 = use SetExentRetryArgs or built-in default at NewExtentClient
+	ExtentHandlerMaxRetryTime int
 
 	// hybrid cloud
 	VolStorageClass        uint32

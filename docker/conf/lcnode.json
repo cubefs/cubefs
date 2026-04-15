@@ -15,5 +15,6 @@
   "batchExpirationGetNum": "100",
   "scanCheckInterval": "2",
   "s3ScanRoutineNumPerTask": "100",
-  "snapShotRoutineNumPerTask": "100"
+  "snapShotRoutineNumPerTask": "100",
+  "extentHandlerMaxRetrySec": 600
 }

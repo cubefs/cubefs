@@ -119,11 +119,30 @@ func NewDataPartitionMetrics() *DataPartitionMetrics {
 	return metrics
 }
 
-// String returns the string format of the data partition.
+func dataPartitionResponseStatusString(s int8) string {
+	switch s {
+	case proto.Recovering:
+		return "Recovering"
+	case proto.ReadOnly:
+		return "ReadOnly"
+	case proto.ReadWrite:
+		return "ReadWrite"
+	case proto.Unavailable:
+		return "Unavailable"
+	default:
+		return fmt.Sprintf("Unknown(%d)", s)
+	}
+}
+
+// String implements fmt.Stringer for concise logs (use %v on *DataPartition, not on embedded DataPartitionResponse).
 func (dp *DataPartition) String() string {
-	return fmt.Sprintf("PartitionID(%v) Type(%v), Status(%v) ReplicaNum(%v) Hosts(%v) Leader(%v) NearHosts(%v) "+
-		"mediaType(%v)",
-		dp.PartitionID, dp.PartitionType, dp.Status, dp.ReplicaNum, dp.Hosts, dp.LeaderAddr, dp.NearHosts, proto.MediaTypeString(dp.MediaType))
+	if dp == nil {
+		return "<nil>*DataPartition"
+	}
+	return fmt.Sprintf("PartitionID(%v) PoolId(%v) Type(%v) Status(%v) ReplicaNum(%v) Epoch(%v) Recover(%v) Discard(%v) "+
+		"Hosts(%v) Leader(%v) RandomWrite(%v) NearHosts(%v) MediaType(%v)",
+		dp.PartitionID, dp.PoolId, dp.PartitionType, dataPartitionResponseStatusString(dp.Status), dp.ReplicaNum, dp.Epoch,
+		dp.IsRecover, dp.IsDiscard, dp.Hosts, dp.LeaderAddr, dp.RandomWrite, dp.NearHosts, proto.MediaTypeString(dp.MediaType))
 }
 
 func (dp *DataPartition) CheckAllHostsIsAvail(exclude map[string]struct{}) {

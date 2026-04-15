@@ -35,7 +35,7 @@ func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dp
 	if proto.IsNormalDp(partition.PartitionType) {
 		liveReplicas = partition.getLiveReplicasFromHosts(dpTimeOutSec)
 		if len(partition.Replicas) > len(partition.Hosts) {
-			partition.Status = proto.ReadOnly
+			partition.applyDataPartitionStatus(proto.ReadOnly, "checkStatus:replicaExceedsHosts")
 			msg := fmt.Sprintf("action[extractStatus],partitionID:%v has exceed repica, replicaNum:%v  liveReplicas:%v   Status:%v  RocksDBHost:%v ",
 				partition.PartitionID, partition.ReplicaNum, len(liveReplicas), partition.Status, partition.Hosts)
 			Warn(clusterName, msg)
@@ -47,7 +47,7 @@ func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dp
 
 	switch len(liveReplicas) {
 	case (int)(partition.ReplicaNum):
-		partition.Status = proto.ReadOnly
+		partition.applyDataPartitionStatus(proto.ReadOnly, "checkStatus:liveReplicasMatchReplicaNum")
 		if partition.checkReplicaEqualStatus(liveReplicas, proto.ReadWrite) &&
 			partition.hasEnoughAvailableSpace() &&
 			!shouldDpInhibitWriteByVolFull {
@@ -64,22 +64,22 @@ func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dp
 			// if the volume is not forbidden
 			// set status to ReadWrite
 			if writable && !forbiddenVol {
-				partition.Status = proto.ReadWrite
+				partition.applyDataPartitionStatus(proto.ReadWrite, "checkStatus:healthyWritable")
 			}
 		}
 	default:
-		partition.Status = proto.ReadOnly
+		partition.applyDataPartitionStatus(proto.ReadOnly, "checkStatus:insufficientLiveReplicas")
 	}
 	// keep readonly if special replica is still decommission
 	if partition.isSpecialReplicaCnt() && partition.GetSpecialReplicaDecommissionStep() > 0 {
 		log.LogInfof("action[checkStatus] partition %v with Special replica cnt %v on decommison status %v, live replicacnt %v",
 			partition.PartitionID, partition.ReplicaNum, partition.Status, len(liveReplicas))
-		partition.Status = proto.ReadOnly
+		partition.applyDataPartitionStatus(proto.ReadOnly, "checkStatus:specialReplicaDecommission")
 	}
 
 	if partition.checkReplicaEqualStatus(liveReplicas, proto.Unavailable) {
 		log.LogWarnf("action[checkStatus] partition %v bet set Unavailable", partition.PartitionID)
-		partition.Status = proto.Unavailable
+		partition.applyDataPartitionStatus(proto.Unavailable, "checkStatus:allLiveReplicasUnavailable")
 	}
 
 	if needLog && len(liveReplicas) != int(partition.ReplicaNum) {
@@ -287,7 +287,7 @@ func (partition *DataPartition) checkDiskError(clusterID, leaderAddr string) {
 	}
 
 	if len(diskErrorAddrs) != (int)(partition.ReplicaNum) && len(diskErrorAddrs) > 0 && partition.Status > proto.ReadOnly {
-		partition.Status = proto.ReadOnly
+		partition.applyDataPartitionStatus(proto.ReadOnly, "checkDiskError:partialReplicaDiskUnavailable")
 	}
 
 	for addr, diskPath := range diskErrorAddrs {

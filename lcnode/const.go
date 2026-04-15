@@ -32,6 +32,8 @@ const (
 	configLcNodeTaskCountLimit         = "lcNodeTaskCountLimit"
 	configDelayDelMinute               = "delayDelMinute"
 	configUseCreateTime                = "useCreateTime"
+	// extentHandlerMaxRetrySec is the process-wide max time budget (seconds) for extent alloc/write retry; see stream.SetExentRetryArgs.
+	configExtentHandlerMaxRetrySec = "extentHandlerMaxRetrySec"
 )
 
 // Default of configuration value
@@ -54,7 +56,7 @@ const (
 
 	defaultAllocRetryInterval       = 100
 	defaultWriteRetryInterval       = 100
-	defaultExtenthandlerMaxRetryMin = 10
+	defaultExtentHandlerMaxRetrySec = 600 // 10 minutes; SetExentRetryArgs third arg is seconds (not minutes)
 )
 
 var (

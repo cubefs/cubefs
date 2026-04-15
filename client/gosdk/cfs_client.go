@@ -56,6 +56,8 @@ type (
 		LogDir           string `json:"logDir,omitempty"`
 		LogLevel         string `json:"logLevel,omitempty"`
 		PushAddr         string `json:"pushAddr,omitempty"`
+		// ExtentHandlerMaxRetryTime sets the process-wide extent allocation retry budget (seconds) before creating the SDK client.
+		ExtentHandlerMaxRetryTime int `json:"extentHandlerMaxRetryTime,omitempty"`
 	}
 
 	Client struct {
@@ -254,6 +256,9 @@ func (c *Client) Start() (err error) {
 	}); err != nil {
 		log.LogErrorf("newClient NewMetaWrapper failed(%v)", err)
 		return err
+	}
+	if c.cfg.ExtentHandlerMaxRetryTime > 0 {
+		stream.SetExentRetryArgs(100, 100, c.cfg.ExtentHandlerMaxRetryTime, false)
 	}
 	var ec *stream.ExtentClient
 	if ec, err = stream.NewExtentClient(&stream.ExtentConfig{

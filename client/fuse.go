@@ -109,6 +109,9 @@ const (
 
 	DefaultLogPath            = "/var/log/chubaofs"
 	DefaultMinClientOpTimeOut = 60
+
+	defaultAllocRetryInterval = 10
+	defaultWriteRetryInterval = 10
 )
 
 var (
@@ -379,6 +382,11 @@ func main() {
 		daemonize.SignalOutcome(err)
 		os.Exit(1)
 	}
+	// Process-wide stream extent retry defaults before any ExtentClient. Per-client ExtentHandlerMaxRetryTime>0 overrides at NewExtentClient.
+	maxSec := opt.ExtentHandlerMaxRetryTime
+	retryTiny := cfg.GetBoolWithDefault("extentRetryTiny", false)
+	stream.SetExentRetryArgs(defaultAllocRetryInterval, defaultWriteRetryInterval, maxSec, retryTiny)
+
 	// load  conf from master
 	for retry := 0; retry < MasterRetrys; retry++ {
 		err = loadConfFromMaster(opt)
@@ -1078,6 +1086,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.FileSystemName = GlobalMountOptions[proto.FileSystemName].GetString()
 	opt.DisableMountSubtype = GlobalMountOptions[proto.DisableMountSubtype].GetBool()
 	opt.StreamRetryTimeout = int(GlobalMountOptions[proto.StreamRetryTimeOut].GetInt64())
+	opt.ExtentHandlerMaxRetryTime = int(GlobalMountOptions[proto.ExtentHandlerMaxRetryTime].GetInt64())
 	opt.ForceRemoteCache = GlobalMountOptions[proto.ForceRemoteCache].GetBool()
 	opt.AheadReadEnable = GlobalMountOptions[proto.AheadReadEnable].GetBool()
 	opt.EnableAsyncFlush = GlobalMountOptions[proto.EnableAsyncFlush].GetBool()

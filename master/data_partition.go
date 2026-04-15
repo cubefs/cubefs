@@ -182,8 +182,37 @@ func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64,
 	return
 }
 
+func dataPartitionStatusName(s int8) string {
+	switch s {
+	case proto.Recovering:
+		return "Recovering"
+	case proto.ReadOnly:
+		return "ReadOnly"
+	case proto.ReadWrite:
+		return "ReadWrite"
+	case proto.Unavailable:
+		return "Unavailable"
+	default:
+		return fmt.Sprintf("Unknown(%d)", s)
+	}
+}
+
+// applyDataPartitionStatus sets partition.Status and logs at Info when it changes (old -> new).
+// Caller should hold partition.Lock if the partition may be accessed concurrently.
+func (partition *DataPartition) applyDataPartitionStatus(newStatus int8, reason string) {
+	old := partition.Status
+	if old == newStatus {
+		return
+	}
+	partition.Status = newStatus
+	log.LogInfof("action[dataPartitionStatusChange] vol(%v) partitionID(%v) status %v -> %v, reason(%v)",
+		partition.VolName, partition.PartitionID, dataPartitionStatusName(old), dataPartitionStatusName(newStatus), reason)
+}
+
 func (partition *DataPartition) setReadWrite() {
-	partition.Status = proto.ReadWrite
+	partition.Lock()
+	defer partition.Unlock()
+	partition.applyDataPartitionStatus(proto.ReadWrite, "setReadWrite")
 	for _, replica := range partition.Replicas {
 		replica.ReadOnlyReasons = 0
 		replica.Status = proto.ReadWrite
@@ -2253,7 +2282,7 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 		newReplica, _ := partition.getReplica(targetAddr)
 		newReplica.Status = proto.Recovering // in case heartbeat response is not arrived
 		partition.isRecover = true
-		partition.Status = proto.ReadOnly
+		partition.applyDataPartitionStatus(proto.ReadOnly, "decommissionDataPartition:waitRepair")
 		partition.SetDecommissionStatus(DecommissionRunning, "decommission_waitForRepair", "")
 		partition.RecoverUpdateTime = time.Now()
 		partition.RecoverStartTime = time.Now()

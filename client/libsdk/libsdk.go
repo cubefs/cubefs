@@ -247,28 +247,29 @@ type client struct {
 	id int64
 
 	// mount config
-	volName                string
-	masterAddr             string
-	followerRead           bool
-	logDir                 string
-	logLevel               string
-	ebsEndpoint            string
-	servicePath            string
-	volType                int
-	ebsBlockSize           int
-	enableBcache           bool
-	readBlockThread        int
-	writeBlockThread       int
-	secretKey              string
-	accessKey              string
-	subDir                 string
-	pushAddr               string
-	cluster                string
-	dirChildrenNumLimit    uint32
-	enableAudit            bool
-	volStorageClass        uint32
-	volAllowedStorageClass []uint32
-	enableInnerReq         bool
+	volName                   string
+	masterAddr                string
+	followerRead              bool
+	logDir                    string
+	logLevel                  string
+	ebsEndpoint               string
+	servicePath               string
+	volType                   int
+	ebsBlockSize              int
+	enableBcache              bool
+	readBlockThread           int
+	writeBlockThread          int
+	secretKey                 string
+	accessKey                 string
+	subDir                    string
+	pushAddr                  string
+	cluster                   string
+	dirChildrenNumLimit       uint32
+	enableAudit               bool
+	volStorageClass           uint32
+	volAllowedStorageClass    []uint32
+	enableInnerReq            bool
+	extentHandlerMaxRetryTime int
 
 	// runtime context
 	cwd    string // current working directory
@@ -590,6 +591,12 @@ func cfs_set_client(id C.int64_t, key, val *C.char) C.int {
 			c.enableInnerReq = true
 		} else {
 			c.enableInnerReq = false
+		}
+	case "extentHandlerMaxRetryTime":
+		if sec, err := strconv.Atoi(v); err == nil && sec >= 0 {
+			c.extentHandlerMaxRetryTime = sec
+		} else {
+			return statusEINVAL
 		}
 	default:
 		return statusEINVAL
@@ -1546,6 +1553,9 @@ func (c *client) start() (err error) {
 	}); err != nil {
 		log.LogErrorf("newClient NewMetaWrapper failed(%v)", err)
 		return err
+	}
+	if c.extentHandlerMaxRetryTime > 0 {
+		stream.SetExentRetryArgs(100, 100, c.extentHandlerMaxRetryTime, false)
 	}
 	var ec *stream.ExtentClient
 	if ec, err = stream.NewExtentClient(&stream.ExtentConfig{

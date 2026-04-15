@@ -3149,7 +3149,7 @@ func (c *Cluster) decommissionSingleDp(dp *DataPartition, newAddr, offlineAddr s
 		dp.SetSpecialReplicaDecommissionStep(SpecialDecommissionWaitAddRes)
 		dp.SetDecommissionStatus(DecommissionRunning, "decommission_singleDp_addNewReplica", "")
 		dp.isRecover = true
-		dp.Status = proto.ReadOnly
+		dp.applyDataPartitionStatus(proto.ReadOnly, "decommissionSingleDp:waitAddReplica")
 		dp.RecoverUpdateTime = time.Now()
 		dp.RecoverStartTime = time.Now()
 		c.syncUpdateDataPartition(dp)
@@ -3558,7 +3558,7 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 
 	// if special replica wait for
 	if dp.ReplicaNum == 1 || (dp.ReplicaNum == 2 && (dp.ReplicaNum == c.vols[dp.VolName].dpReplicaNum) && !raftForce) {
-		dp.Status = proto.ReadOnly
+		dp.applyDataPartitionStatus(proto.ReadOnly, "migrateDataPartition:specialReplica")
 		dp.isRecover = true
 		c.putBadDataPartitionIDs(replica, srcAddr, dp.PartitionID)
 
@@ -3573,7 +3573,7 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 			goto errHandler
 		}
 
-		dp.Status = proto.ReadOnly
+		dp.applyDataPartitionStatus(proto.ReadOnly, "migrateDataPartition:afterAddReplica")
 		dp.isRecover = true
 		c.putBadDataPartitionIDs(replica, srcAddr, dp.PartitionID)
 	}

@@ -499,7 +499,7 @@ func (dpMap *DataPartitionMap) setAllDataPartitionsToReadOnly() {
 	changedCnt := 0
 	for _, dp := range dpMap.partitions {
 		if proto.ReadWrite == dp.Status {
-			dp.Status = proto.ReadOnly
+			dp.applyDataPartitionStatus(proto.ReadOnly, "setAllDataPartitionsToReadOnly")
 			changedCnt++
 		}
 	}

@@ -2229,7 +2229,7 @@ func (m *Server) addDataReplica(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	newReplica.Status = proto.Recovering // in case heartbeat response is not arrived
-	dp.Status = proto.ReadOnly
+	dp.applyDataPartitionStatus(proto.ReadOnly, "manualAddReplica")
 	dp.isRecover = true
 	m.cluster.putBadDataPartitionIDs(nil, addr, dp.PartitionID)
 

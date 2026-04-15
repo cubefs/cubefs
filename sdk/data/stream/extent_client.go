@@ -147,6 +147,10 @@ type ExtentConfig struct {
 	DisableMetaCache   bool
 	StreamRetryTimeout int
 
+	// Deprecated: per-client retry budget is no longer used.
+	// Configure the process-wide default via SetExentRetryArgs instead.
+	ExtentHandlerMaxRetryTime int
+
 	OnRenewalForbiddenMigration RenewalForbiddenMigrationFunc
 	OnForbiddenMigration        ForbiddenMigrationFunc
 
@@ -367,6 +371,9 @@ retry:
 		client.streamRetryTimeout = time.Duration(config.StreamRetryTimeout) * time.Second
 	}
 	log.LogInfof("stream retry timeout %d ms", client.streamRetryTimeout.Milliseconds())
+
+	log.LogInfof("extent alloc retry timeout %v s (global budget), maxSecForBackoff %d",
+		getExtentAllocRetryTimeout().Seconds(), extentHandlerMaxRetryTime)
 
 	var readLimit, writeLimit rate.Limit
 	if config.ReadRate <= 0 {

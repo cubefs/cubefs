@@ -225,7 +225,13 @@ func (l *LcNode) parseConfig(cfg *config.Config) (err error) {
 		log.LogWarnf("loadConfig: setup config: localIP(%v) bindIp(%v)", l.localIP, l.bindIp)
 	}
 
-	stream.SetExentRetryArgs(defaultAllocRetryInterval, defaultWriteRetryInterval, defaultExtenthandlerMaxRetryMin, true)
+	extentMaxRetrySec := cfg.GetInt(configExtentHandlerMaxRetrySec)
+	if extentMaxRetrySec <= 0 {
+		extentMaxRetrySec = defaultExtentHandlerMaxRetrySec
+	}
+	stream.SetExentRetryArgs(defaultAllocRetryInterval, defaultWriteRetryInterval, extentMaxRetrySec, true)
+	log.LogWarnf("loadConfig: setup config: %v(%v) (seconds, passed to SetExentRetryArgs)",
+		configExtentHandlerMaxRetrySec, extentMaxRetrySec)
 
 	return
 }
