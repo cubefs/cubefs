@@ -54,9 +54,10 @@ func TestHTTPReplyRaw(t *testing.T) {
 }
 
 func TestValidateFollowerReadLeaseTime(t *testing.T) {
-	require.NoError(t, ValidateFollowerReadLeaseTime(1))
+	require.NoError(t, ValidateFollowerReadLeaseTime(MinFollowerReadLeaseTimeSec))
 	require.NoError(t, ValidateFollowerReadLeaseTime(MaxFollowerReadLeaseTimeSec))
 	require.Error(t, ValidateFollowerReadLeaseTime(0))
+	require.Error(t, ValidateFollowerReadLeaseTime(1))
 	require.Error(t, ValidateFollowerReadLeaseTime(MaxFollowerReadLeaseTimeSec+1))
 	err := ValidateFollowerReadLeaseTime(0)
 	require.True(t, errors.Is(err, ErrFollowerReadLeaseTimeRange))

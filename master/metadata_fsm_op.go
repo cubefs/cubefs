@@ -1330,6 +1330,10 @@ func (c *Cluster) updateMetaNodeDeleteWorkerSleepMs(val uint64) {
 }
 
 func (c *Cluster) updateFollowerReadLeaseTime(val uint64) {
+	if val < proto.MinFollowerReadLeaseTimeSec {
+		log.LogWarnf("action[updateFollowerReadLeaseTime] value %d below min %d, capping", val, proto.MinFollowerReadLeaseTimeSec)
+		val = proto.MinFollowerReadLeaseTimeSec
+	}
 	if val > proto.MaxFollowerReadLeaseTimeSec {
 		log.LogWarnf("action[updateFollowerReadLeaseTime] value %d exceeds max %d, capping", val, proto.MaxFollowerReadLeaseTimeSec)
 		val = proto.MaxFollowerReadLeaseTimeSec

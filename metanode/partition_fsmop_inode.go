@@ -652,7 +652,7 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(dbHandle interface{}, inoPara
 	fsmIno, err = mp.inodeTree.CopyGet(inoParam)
 	if err != nil {
 		status = proto.OpErr
-		log.LogErrorf("fsmAppendExtentsWithCheck inode(%d) rocksdb op error", inoParam.Inode)
+		log.LogErrorf("fsmAppendExtentsWithCheck mp[%v] inode(%d) rocksdb op error", mp.config.PartitionId, inoParam.Inode)
 		return
 	}
 
@@ -679,20 +679,21 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(dbHandle interface{}, inoPara
 	}
 
 	if isMigration && fsmIno.NeedDeleteMigrationExtentKey() {
-		log.LogWarnf("fsmAppendExtentsWithCheck: inode(%v) need delete migration extent key, can't append migration extent", inoParam.Inode)
+		log.LogWarnf("fsmAppendExtentsWithCheck mp[%v] inode(%v) need delete migration extent key, can't append migration extent",
+			mp.config.PartitionId, inoParam.Inode)
 		status = proto.OpMismatchStorageClass
 		return
 	}
 
 	if err = fsmIno.updateStorageClass(storageClass, poolId, isMigration); err != nil {
-		log.LogErrorf("action[fsmAppendExtentsWithCheck] updateStorageClass inode(%v) isMigration(%v), failed: %v",
-			inoParam.Inode, isMigration, err.Error())
+		log.LogErrorf("action[fsmAppendExtentsWithCheck] mp[%v] updateStorageClass inode(%v) isMigration(%v), failed: %v",
+			mp.config.PartitionId, inoParam.Inode, isMigration, err.Error())
 		status = proto.OpMismatchStorageClass
 		return
 	}
 
-	log.LogDebugf("action[fsmAppendExtentsWithCheck] inode %v hist len %v,eks %v, isMigration %v",
-		fsmIno.Inode, fsmIno.getLayerLen(), eks, isMigration)
+	log.LogDebugf("action[fsmAppendExtentsWithCheck] mp[%v] inode %v hist len %v,eks %v, isMigration %v",
+		mp.config.PartitionId, fsmIno.Inode, fsmIno.getLayerLen(), eks, isMigration)
 	if len(eks) < 1 {
 		log.LogWarnf("fsmAppendExtentsWithCheck: recive eks less than 1, may be wrong, mp %d, ino %d",
 			mp.config.PartitionId, inoParam.Inode)

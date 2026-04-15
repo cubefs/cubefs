@@ -131,7 +131,7 @@ var (
 	ErrNoRenewMpStoreModeTask                  = errors.New("no renew meta partition store mode task")
 	ErrNoCheckSumPlan                          = errors.New("no check sum plan")
 	ErrNoPromoteLearnerPlan                    = errors.New("no promote learner plan")
-	// ErrFollowerReadLeaseTimeRange indicates followerReadLeaseTime is outside the allowed range (see MaxFollowerReadLeaseTimeSec).
+	// ErrFollowerReadLeaseTimeRange indicates followerReadLeaseTime is outside the allowed range (see MinFollowerReadLeaseTimeSec and MaxFollowerReadLeaseTimeSec).
 	ErrFollowerReadLeaseTimeRange = errors.New("followerReadLeaseTime out of range")
 )
 

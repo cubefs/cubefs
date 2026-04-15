@@ -1096,7 +1096,7 @@ func (mp *metaPartition) startNotifyTimestamp() {
 			}
 
 			// Get current timestamp
-			timestamp := timeutil.GetCurrentTimeUnix()
+			timestamp := time.Now().Unix()
 
 			// Encode timestamp as uint64 bytes
 			buf := make([]byte, 8)

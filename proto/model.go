@@ -28,14 +28,16 @@ const (
 	MaxAutoDpMetaRepairParallelCnt = 10000
 	MinAutoMpMetaRepairParallelCnt = 1
 	MaxAutoMpMetaRepairParallelCnt = 1000
+	// MinFollowerReadLeaseTimeSec is the minimum allowed follower read lease duration in seconds (master cluster param).
+	MinFollowerReadLeaseTimeSec uint64 = 2
 	// MaxFollowerReadLeaseTimeSec is the maximum allowed follower read lease duration in seconds (master cluster param).
 	MaxFollowerReadLeaseTimeSec uint64 = 60
 )
 
-// ValidateFollowerReadLeaseTime returns nil if val is in [1, MaxFollowerReadLeaseTimeSec].
+// ValidateFollowerReadLeaseTime returns nil if val is in [MinFollowerReadLeaseTimeSec, MaxFollowerReadLeaseTimeSec].
 func ValidateFollowerReadLeaseTime(val uint64) error {
-	if val == 0 || val > MaxFollowerReadLeaseTimeSec {
-		return fmt.Errorf("%w: value %d, valid range is 1-%d seconds inclusive", ErrFollowerReadLeaseTimeRange, val, MaxFollowerReadLeaseTimeSec)
+	if val < MinFollowerReadLeaseTimeSec || val > MaxFollowerReadLeaseTimeSec {
+		return fmt.Errorf("%w: value %d, valid range is %d-%d seconds inclusive", ErrFollowerReadLeaseTimeRange, val, MinFollowerReadLeaseTimeSec, MaxFollowerReadLeaseTimeSec)
 	}
 	return nil
 }
