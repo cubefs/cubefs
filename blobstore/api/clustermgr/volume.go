@@ -271,9 +271,6 @@ func (r *ReportChunkArgs) Decode(reader io.Reader) error {
 		if n != ChunkIDEncodeLen || err != nil {
 			return fmt.Errorf("invalid source reader, err: %v", err)
 		}
-		if err != nil {
-			return err
-		}
 		r.ChunkInfos[i].Id.Unmarshal(raw)
 		read(&r.ChunkInfos[i].Vuid)
 		read(&r.ChunkInfos[i].DiskID)
