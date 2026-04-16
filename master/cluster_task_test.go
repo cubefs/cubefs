@@ -114,3 +114,39 @@ func TestHasLearnerFlagMismatch(t *testing.T) {
 	mp.Replicas[0].IsLearner = true
 	require.False(t, hasLearnerFlagMismatch(mp))
 }
+
+func TestShouldUseTagForMetaPartitionSelection(t *testing.T) {
+	cluster := &Cluster{
+		cfg: &clusterConfig{},
+		ClusterVolSubItem: ClusterVolSubItem{
+			vols: map[string]*Vol{
+				"vol-1": {
+					Name:  "vol-1",
+					MpTag: "tag-a",
+				},
+			},
+		},
+	}
+
+	mp := &MetaPartition{
+		PartitionID: 1,
+		volName:     "vol-1",
+		Peers: []proto.Peer{
+			{Addr: "manual-learner", Type: raftProto.PeerLearner, ManualPromote: true},
+			{Addr: "auto-learner", Type: raftProto.PeerLearner, ManualPromote: false},
+			{Addr: "normal", Type: raftProto.PeerNormal},
+		},
+	}
+
+	useTag, err := cluster.shouldUseTagForMetaPartitionSelection(mp, "manual-learner")
+	require.NoError(t, err)
+	require.False(t, useTag)
+
+	useTag, err = cluster.shouldUseTagForMetaPartitionSelection(mp, "auto-learner")
+	require.NoError(t, err)
+	require.True(t, useTag)
+
+	useTag, err = cluster.shouldUseTagForMetaPartitionSelection(mp, "manual-learner")
+	require.NoError(t, err)
+	require.False(t, useTag)
+}

@@ -250,7 +250,11 @@ func (c *Cluster) selectTargetMetaPeer(mp *MetaPartition, srcAddr, targetAddr st
 
 	log.LogInfof("action[selectTargetMetaPeer] param[%v], nodeType[%v]", param.String(), nodeType)
 
-	if c.IsMetaPartitionTagSet(mp.volName) && srcAddr != "" {
+	useTag, err := c.shouldUseTagForMetaPartitionSelection(mp, srcAddr)
+	if err != nil {
+		return nil, finalDstStoreMode, err
+	}
+	if useTag {
 		param.selectType = proto.SelectTypeTag
 		param.tag = c.GetMetaNodeTag(srcAddr)
 	}
@@ -397,6 +401,23 @@ func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition, 
 		return
 	}
 	return c.migrateMetaPartition(nodeAddr, "", mp, dstStoreMode, proto.ManualDecommission)
+}
+
+func (c *Cluster) shouldUseTagForMetaPartitionSelection(mp *MetaPartition, srcAddr string) (bool, error) {
+	if srcAddr == "" || !c.IsMetaPartitionTagSet(mp.volName) {
+		return false, nil
+	}
+
+	isLearner, manualPromote, err := getMetaReplicaLearnerInfo(mp, srcAddr)
+	if err != nil {
+		return false, fmt.Errorf("get meta replica learner info for %s: %w", srcAddr, err)
+	}
+
+	if isLearner && manualPromote {
+		return false, nil
+	}
+
+	return true, nil
 }
 
 // prepareMetaPartitionMigration prepares common parameters and validates for meta partition migration
