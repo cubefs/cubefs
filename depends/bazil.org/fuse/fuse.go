@@ -530,6 +530,9 @@ func fileMode(unixMode uint32) os.FileMode {
 	if unixMode&syscall.S_ISGID != 0 {
 		mode |= os.ModeSetgid
 	}
+	if unixMode&syscall.S_ISVTX != 0 {
+		mode |= os.ModeSticky
+	}
 	return mode
 }
 
@@ -1402,6 +1405,9 @@ func (a *Attr) attr(out *attr, proto Protocol) {
 	}
 	if a.Mode&os.ModeSetgid != 0 {
 		out.Mode |= syscall.S_ISGID
+	}
+	if a.Mode&os.ModeSticky != 0 {
+		out.Mode |= syscall.S_ISVTX
 	}
 	out.Nlink = a.Nlink
 	out.Uid = a.Uid
