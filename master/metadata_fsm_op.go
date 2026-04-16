@@ -1972,7 +1972,8 @@ func (c *Cluster) loadDataNodes() (err error) {
 		return
 	}
 
-	for _, value := range result {
+	for key, value := range result {
+		log.LogInfof("action[loadDataNodes] key[%v]", key)
 		dnv := &dataNodeValue{}
 		if err = json.Unmarshal(value, dnv); err != nil {
 			err = fmt.Errorf("action[loadDataNodes],value:%v,unmarshal err:%v", string(value), err)

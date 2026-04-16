@@ -2103,6 +2103,11 @@ func (mp *metaPartition) LoadDataFromRocksDb() (err error) {
 
 func (mp *metaPartition) Clear() (err error) {
 	log.LogDebugf("[Clear] mp(%v) clear data", mp.config.PartitionId)
+
+	if !mp.HasRocksDBStore() {
+		return nil
+	}
+
 	handle, err := mp.inodeTree.CreateBatchWriteHandle()
 	if err != nil {
 		log.LogErrorf("[Clear] mp(%v) failed to open write handle, err(%v)", mp.config.PartitionId, err)

@@ -161,6 +161,7 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 		if err = mf.delKeyAndPutIndex(cmd.K, cmdMap); err != nil {
 			panic(err)
 		}
+		log.LogWarnf("action[fsmApply] delete key[%v], index[%v]", cmd.K, index)
 	case opSyncMoveFlashNode:
 		mv := new(moveKeyValueCmd)
 		if err = json.Unmarshal(cmd.V, mv); err != nil {

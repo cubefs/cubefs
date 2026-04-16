@@ -371,8 +371,8 @@ func TestManualLearnerOutsideMpRegionPolicy(t *testing.T) {
 		mp.Peers = append(mp.Peers, proto.Peer{Addr: learnerAddr2, Type: raftProto.PeerLearner, ManualPromote: true})
 		mp.Replicas = append(mp.Replicas, &MetaReplica{Addr: learnerAddr2, StoreMode: proto.StoreModeMem})
 		mp.RecoverLearners = []*proto.RecoverPair{{
-			RecoverDst:    learnerAddr2,
-			RecoverState:  proto.RecoverStateRecovering,
+			RecoverDst:   learnerAddr2,
+			RecoverState: proto.RecoverStateRecovering,
 		}}
 		require.False(t, mp.manualLearnerOutsideMpRegionPolicy(c))
 	})
