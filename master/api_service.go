@@ -2374,6 +2374,30 @@ func (m *Server) updateDataPartitionReplicaNum(w http.ResponseWriter, r *http.Re
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
+func (m *Server) updateMetaPartitionRegion(w http.ResponseWriter, r *http.Request) {
+	var (
+		partitionID uint64
+		region      string
+		err         error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminUpdateMetaPartitionRegion))
+	defer func() {
+		doStatAndMetric(proto.AdminUpdateMetaPartitionRegion, metric, err, nil)
+		AuditLog(r, proto.AdminUpdateMetaPartitionRegion, fmt.Sprintf("mp(%v) region(%v)", partitionID, region), err)
+	}()
+
+	if partitionID, region, err = parseRequestToUpdateMetaPartitionRegion(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if err = m.cluster.updateMetaPartitionRegion(partitionID, region); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("update meta partition(%v) region to %v successfully", partitionID, region)))
+}
+
 func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 	var (
 		msg         string

@@ -2205,6 +2205,37 @@ func (c *Cluster) getMetaPartitionByID(id uint64) (mp *MetaPartition, err error)
 	return
 }
 
+// updateMetaPartitionRegion updates mp.Region after validating cluster region and volume allowedRegions.
+func (c *Cluster) updateMetaPartitionRegion(partitionID uint64, region string) (err error) {
+	var mp *MetaPartition
+	if mp, err = c.getMetaPartitionByID(partitionID); err != nil {
+		return
+	}
+	var vol *Vol
+	if vol, err = c.getVol(mp.volName); err != nil {
+		return
+	}
+
+	if !vol.isRegionInAllowed(region) {
+		return fmt.Errorf("region(%v) is not in volume(%v) allowed regions(%v)", region, vol.Name, vol.allowedRegions)
+	}
+
+	oldRegion := mp.Region
+	if oldRegion == region {
+		// Idempotent: requested region matches persisted state.
+		return nil
+	}
+
+	mp.Region = region
+	if err = c.syncUpdateMetaPartition(mp); err != nil {
+		mp.Region = oldRegion
+		log.LogErrorf("action[updateMetaPartitionRegion] update meta partition(%v) region to %v failed, err(%v)", partitionID, region, err)
+		return err
+	}
+	log.LogWarnf("action[updateMetaPartitionRegion] update meta partition(%v) region to %v successfully", partitionID, region)
+	return nil
+}
+
 func (c *Cluster) checkVol(vol *Vol) (err error) {
 	c.volMutex.Lock()
 	defer c.volMutex.Unlock()

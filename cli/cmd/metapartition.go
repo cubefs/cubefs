@@ -15,6 +15,7 @@
 package cmd
 
 import (
+	"fmt"
 	"sort"
 	"strconv"
 	"time"
@@ -42,6 +43,7 @@ func newMetaPartitionCmd(client *master.MasterClient) *cobra.Command {
 		newMetaPartitionDeleteReplicaCmd(client),
 		newMetaPartitionAddLearnerCmd(client),
 		newMetaPartitionPromoteLearnerCmd(client),
+		newMetaPartitionUpdateRegionCmd(client),
 	)
 	return cmd
 }
@@ -54,6 +56,7 @@ const (
 	cmdMetaPartitionDeleteReplicaShort  = "Delete a replication of the meta partition on a fixed address"
 	cmdMetaPartitionAddLearnerShort     = "Add a learner replica of the meta partition on a new address"
 	cmdMetaPartitionPromoteLearnerShort = "Promote a learner replica to voter in the meta partition"
+	cmdMetaPartitionUpdateRegionShort   = "Update meta partition region (region must be in the volume's allowed regions)"
 )
 
 func newMetaPartitionGetCmd(client *master.MasterClient) *cobra.Command {
@@ -90,6 +93,52 @@ func newMetaPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 			stdout("%v\n", formatMetaPartitionInfoWithPoolNames(partition, poolNameMap))
 		},
 	}
+	return cmd
+}
+
+func newMetaPartitionUpdateRegionCmd(client *master.MasterClient) *cobra.Command {
+	var clientIDKey string
+	cmd := &cobra.Command{
+		Use:   "updateRegion [META_PARTITION_ID] [REGION]",
+		Short: cmdMetaPartitionUpdateRegionShort,
+		Args:  cobra.ExactArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			defer func() {
+				errout(err)
+			}()
+			partitionID, err := strconv.ParseUint(args[0], 10, 64)
+			if err != nil {
+				return
+			}
+			region := args[1]
+			var mpInfo *proto.MetaPartitionInfo
+			if mpInfo, err = client.ClientAPI().GetMetaPartition(partitionID); err != nil {
+				return
+			}
+			volName := mpInfo.VolName
+			var vv *proto.SimpleVolView
+			if vv, err = client.AdminAPI().GetVolumeSimpleInfo(volName); err != nil {
+				return
+			}
+			allowed := false
+			for _, r := range vv.AllowedRegions {
+				if r == region {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				err = fmt.Errorf("region %q is not in volume %q allowed regions %v", region, volName, vv.AllowedRegions)
+				return
+			}
+			if err = client.AdminAPI().UpdateMetaPartitionRegion(partitionID, region, clientIDKey); err != nil {
+				return
+			}
+			stdout("Update meta partition region successfully.\n")
+		},
+	}
+	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	return cmd
 }
 

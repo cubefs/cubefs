@@ -2086,6 +2086,21 @@ func validateRequestToCreateMetaPartition(r *http.Request) (volName string, coun
 	return
 }
 
+func parseRequestToUpdateMetaPartitionRegion(r *http.Request) (partitionID uint64, region string, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if partitionID, err = extractMetaPartitionID(r); err != nil {
+		return
+	}
+	region = strings.TrimSpace(r.FormValue(regionKey))
+	if region == "" {
+		err = keyNotFound(regionKey)
+		return
+	}
+	return
+}
+
 func parseAndExtractPartitionInfo(r *http.Request) (partitionID uint64, err error) {
 	if err = r.ParseForm(); err != nil {
 		return

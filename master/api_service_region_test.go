@@ -6,11 +6,14 @@
 package master
 
 import (
+	"fmt"
+	"net/url"
 	"sort"
 	"testing"
 
 	raftProto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseMpRegionPolicy(t *testing.T) {
@@ -350,4 +353,71 @@ func TestVolGetMpRegionPolicyStatus(t *testing.T) {
 	if st2[0].LearnerStatuses != nil && len(st2[0].LearnerStatuses) > 0 {
 		t.Fatalf("expected no learner status map for region without policy")
 	}
+}
+
+// TestUpdateMetaPartitionRegionHTTPWithoutVolName updates MP region using only id and region query params.
+func TestUpdateMetaPartitionRegionHTTPWithoutVolName(t *testing.T) {
+	require.NotNil(t, commonVol)
+	vol := commonVol
+	vol.mpsLock.RLock()
+	var mpID uint64
+	for id := range vol.MetaPartitions {
+		mpID = id
+		break
+	}
+	vol.mpsLock.RUnlock()
+	require.NotZero(t, mpID)
+
+	mp, err := vol.metaPartition(mpID)
+	require.NoError(t, err)
+	targetRegion := mp.Region
+	require.NotEmpty(t, targetRegion)
+
+	reqURL := fmt.Sprintf("%v%v?id=%v&region=%v",
+		hostAddr, proto.AdminUpdateMetaPartitionRegion, mpID, url.QueryEscape(targetRegion))
+	process(reqURL, t)
+
+	mp2, err := server.cluster.getMetaPartitionByID(mpID)
+	require.NoError(t, err)
+	require.Equal(t, targetRegion, mp2.Region)
+}
+
+// TestUpdateMetaPartitionRegionHTTPDisallowedRegion rejects region not in volume allowed list.
+func TestUpdateMetaPartitionRegionHTTPDisallowedRegion(t *testing.T) {
+	require.NotNil(t, commonVol)
+	vol := commonVol
+	vol.mpsLock.RLock()
+	var mpID uint64
+	for id := range vol.MetaPartitions {
+		mpID = id
+		break
+	}
+	vol.mpsLock.RUnlock()
+	require.NotZero(t, mpID)
+
+	badRegion := "region-not-allowed-for-test-xyz"
+	reqURL := fmt.Sprintf("%v%v?id=%v&region=%v",
+		hostAddr, proto.AdminUpdateMetaPartitionRegion, mpID, url.QueryEscape(badRegion))
+	reply := processNoCheck(reqURL, t)
+	require.NotNil(t, reply)
+	require.NotEqual(t, int32(0), reply.Code, "expected error, got msg=%s", reply.Msg)
+}
+
+// TestClusterUpdateMetaPartitionRegionByID exercises cluster.updateMetaPartitionRegion without HTTP.
+func TestClusterUpdateMetaPartitionRegionByID(t *testing.T) {
+	require.NotNil(t, commonVol)
+	vol := commonVol
+	vol.mpsLock.RLock()
+	var mpID uint64
+	for id := range vol.MetaPartitions {
+		mpID = id
+		break
+	}
+	vol.mpsLock.RUnlock()
+	require.NotZero(t, mpID)
+
+	mp, err := vol.metaPartition(mpID)
+	require.NoError(t, err)
+	region := mp.Region
+	require.NoError(t, server.cluster.updateMetaPartitionRegion(mpID, region))
 }

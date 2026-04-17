@@ -77,6 +77,7 @@ const (
 	AdminSetCheckDataReplicasEnable                        = "/cluster/setCheckDataReplicasEnable"
 	AdminGetIP                                             = "/admin/getIp"
 	AdminCreateMetaPartition                               = "/metaPartition/create"
+	AdminUpdateMetaPartitionRegion                         = "/metaPartition/updateRegion"
 	AdminSetMetaNodeThreshold                              = "/threshold/set"
 	AdminSetMasterVolDeletionDelayTime                     = "/volDeletionDelayTime/set"
 	AdminSetMasterFlashTopoDeletionDelayTime               = "/flashTopoDeletionDelayTime/set"
@@ -405,6 +406,7 @@ var GApiInfo map[string]string = map[string]string{
 	"adminclusterstat":                         AdminClusterStat,
 	"admingetip":                               AdminGetIP,
 	"admincreatemetapartition":                 AdminCreateMetaPartition,
+	"adminupdatemetapartitionregion":           AdminUpdateMetaPartitionRegion,
 	"adminsetmetanodethreshold":                AdminSetMetaNodeThreshold,
 	"adminsetmastervoldeletiondelaytime":       AdminSetMasterVolDeletionDelayTime,
 	"adminsetmasterflashtopodeletiondelaytime": AdminSetMasterFlashTopoDeletionDelayTime,

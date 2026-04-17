@@ -771,6 +771,18 @@ func (api *AdminAPI) CreateMetaPartition(volName string, count int, clientIDKey 
 	return
 }
 
+// UpdateMetaPartitionRegion sets the meta partition region (must be a valid cluster region and in the volume's allowedRegions).
+func (api *AdminAPI) UpdateMetaPartitionRegion(partitionID uint64, region string, clientIDKey string) (err error) {
+	request := newRequest(get, proto.AdminUpdateMetaPartitionRegion).Header(api.h)
+	request.addParam("id", strconv.FormatUint(partitionID, 10))
+	request.addParam("region", region)
+	if clientIDKey != "" {
+		request.addParam("clientIDKey", clientIDKey)
+	}
+	_, err = api.mc.serveRequest(request)
+	return
+}
+
 func (api *AdminAPI) ListVols(keywords string) (volsInfo []*proto.VolInfo, err error) {
 	volsInfo = make([]*proto.VolInfo, 0)
 	err = api.mc.requestWith(&volsInfo, newRequest(get, proto.AdminListVols).

@@ -451,9 +451,21 @@ func (c *Cluster) prepareMetaPartitionMigration(srcAddr, targetAddr string, mp *
 		return
 	}
 
+	region := mp.Region
+	isLearner, manualPromote, err := getMetaReplicaLearnerInfo(mp, srcAddr)
+	if err != nil {
+		err = fmt.Errorf("action[prepareMetaPartitionMigration] mp(%v) get meta replica learner info failed, srcAddr[%v], err[%v]", mp.PartitionID, srcAddr, err)
+		return
+	}
+
+	if isLearner && manualPromote {
+		region = srcNode.Region
+		log.LogInfof("action[prepareMetaPartitionMigration] mp(%v) srcAddr[%v] is learner and manual promote, region[%v]", mp.PartitionID, srcAddr, region)
+	}
+
 	// Select target node
 	var selected []proto.Peer
-	selected, finalDstStoreMode, err = c.selectTargetMetaPeer(mp, srcAddr, targetAddr, dstStoreMode, srcNode.Region)
+	selected, finalDstStoreMode, err = c.selectTargetMetaPeer(mp, srcAddr, targetAddr, dstStoreMode, region)
 	if err != nil {
 		return
 	}

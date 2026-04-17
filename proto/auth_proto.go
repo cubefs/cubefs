@@ -228,6 +228,7 @@ const (
 	MsgMasterQosUpdateClientParamReq      MsgType = MsgMasterAPIAccessReq + 0x40a00
 	MsgMasterAddMetaPartitionLearnerReq   MsgType = MsgMasterAPIAccessReq + 0x40E00
 	MsgMasterPromoteMetaReplicaReq        MsgType = MsgMasterAPIAccessReq + 0x40F00
+	MsgMasterUpdateMetaPartitionRegionReq MsgType = MsgMasterAPIAccessReq + 0x40B00
 
 	// Master API data partition management
 	MsgMasterCreateDataPartitionReq       MsgType = MsgMasterAPIAccessReq + 0x50100
@@ -315,6 +316,7 @@ var MsgType2ResourceMap = map[MsgType]string{
 	MsgMasterDeleteMetaReplicaReq:         "master:deletemetareplica",
 	MsgMasterAddMetaPartitionLearnerReq:   "master:addmetapartitionlearner",
 	MsgMasterPromoteMetaReplicaReq:        "master:promotemetareplica",
+	MsgMasterUpdateMetaPartitionRegionReq: "master:updatemetapartitionregion",
 	MsgMasterQosUpdateReq:                 "master:qosupdate",
 	MsgMasterQosUpdateZoneLimitReq:        "master:qosupdatezonelimit",
 	MsgMasterQosUpdateMasterLimitReq:      "master:qosupdatemasterlimit",

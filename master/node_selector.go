@@ -169,12 +169,12 @@ func (s *CarryWeightNodeSelector) getCarryNodes(nset *nodeSet, maxTotal uint64, 
 			return true
 		}
 		if node.IsOffline() {
-			log.LogWarnf("[getCarryDataNodes] nodeType (%v) storage info (%v)  exclude hosts(%v)", s.nodeType, node.GetStorageInfo(), param.excludeHosts)
+			log.LogInfof("[getCarryDataNodes] nodeType (%v) storage info (%v)  exclude hosts(%v)", s.nodeType, node.GetStorageInfo(), param.excludeHosts)
 			return true
 		}
 
 		if !canAllocPartition(node, s.nodeType, param.threshold) {
-			log.LogWarnf("[getCarryDataNodes] nodeType (%v) storage info (%v)  exclude hosts(%v)", s.nodeType,
+			log.LogInfof("[getCarryDataNodes] nodeType (%v) storage info (%v)  exclude hosts(%v)", s.nodeType,
 				node.GetStorageInfo(), param.excludeHosts)
 			return true
 		}
@@ -694,7 +694,7 @@ func (ns *nodeSet) selectNodesWithRack(param *selectParam, nodeType NodeType, st
 					rack, paramCopy.String(), err)
 			}
 
-			log.LogWarnf("action[getAvailMetaNodeHosts] weak rack aware selection failed for rack[%v], param %v, err: %v",
+			log.LogInfof("action[getAvailMetaNodeHosts] weak rack aware selection failed for rack[%v], param %v, err: %v",
 				rack, paramCopy.String(), err.Error())
 			paramCopy.rackLevel = proto.RackAwareWeak
 			continue
