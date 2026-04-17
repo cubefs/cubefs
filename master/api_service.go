@@ -6511,7 +6511,7 @@ func (m *Server) updateDataNode(w http.ResponseWriter, r *http.Request) {
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminUpdateDataNode))
 	defer func() {
 		doStatAndMetric(proto.AdminUpdateDataNode, metric, err, nil)
-		AuditLog(r, proto.AdminUpdateDataNode, fmt.Sprintf("update datanode %v", nodeAddr), err)
+		AuditLog(r, proto.AdminUpdateDataNode, fmt.Sprintf("update datanode %v, id: %v, tag: %v", nodeAddr, id, selectTag), err)
 	}()
 
 	if nodeAddr, id, selectTag, err = parseRequestForUpdateNode(r); err != nil {
@@ -6548,6 +6548,11 @@ func (m *Server) updateDataNode(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("update datanode %v select tag %v successfully", nodeAddr, selectTag)))
+		return
+	}
+
+	if id == 0 {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Errorf("id is required").Error()})
 		return
 	}
 

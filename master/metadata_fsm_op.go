@@ -2034,8 +2034,8 @@ func (c *Cluster) loadDataNodes() (err error) {
 		dataNode.Tag = dnv.Tag
 		olddn, ok := c.dataNodes.Load(dataNode.Addr)
 		if ok {
-			if olddn.(*DataNode).ID <= dataNode.ID {
-				log.LogDebugf("action[loadDataNodes]: skip addr %v old %v current %v", dataNode.Addr, olddn.(*DataNode).ID, dataNode.ID)
+			if olddn.(*DataNode).ID >= dataNode.ID {
+				log.LogWarnf("action[loadDataNodes]: skip addr %v old %v current %v", dataNode.Addr, olddn.(*DataNode).ID, dataNode.ID)
 				continue
 			}
 		}
@@ -2061,7 +2061,8 @@ func (c *Cluster) loadMetaNodes() (err error) {
 		err = fmt.Errorf("action[loadMetaNodes],err:%v", err.Error())
 		return err
 	}
-	for _, value := range result {
+	for key, value := range result {
+		log.LogInfof("action[loadMetaNodes] key[%v]", key)
 		mnv := &metaNodeValue{}
 		if err = json.Unmarshal(value, mnv); err != nil {
 			err = fmt.Errorf("action[loadMetaNodes],unmarshal err:%v", err.Error())
@@ -2090,7 +2091,8 @@ func (c *Cluster) loadMetaNodes() (err error) {
 
 		oldmn, ok := c.metaNodes.Load(metaNode.Addr)
 		if ok {
-			if oldmn.(*MetaNode).ID <= metaNode.ID {
+			if oldmn.(*MetaNode).ID >= metaNode.ID {
+				log.LogWarnf("action[loadMetaNodes] skip addr %v old %v current %v", metaNode.Addr, oldmn.(*MetaNode).ID, metaNode.ID)
 				continue
 			}
 		}

@@ -1409,6 +1409,19 @@ func (c *Cluster) updateDataNodeBaseInfo(nodeAddr string, id uint64) (err error)
 	if dataNode.ID == id {
 		return
 	}
+	var conflictAddr string
+	c.dataNodes.Range(func(_, v interface{}) bool {
+		dn := v.(*DataNode)
+		if dn.Addr != nodeAddr && dn.ID == id {
+			conflictAddr = dn.Addr
+			return false
+		}
+		return true
+	})
+	if conflictAddr != "" {
+		err = fmt.Errorf("dataNode id %d is already used by %v", id, conflictAddr)
+		return
+	}
 	cmds := make(map[string]*RaftCmd)
 	metadata, err := c.buildDeleteDataNodeCmd(dataNode)
 	if err != nil {
@@ -1438,6 +1451,19 @@ func (c *Cluster) updateMetaNodeBaseInfo(nodeAddr string, id uint64) (err error)
 	}
 	metaNode := value.(*MetaNode)
 	if metaNode.ID == id {
+		return
+	}
+	var conflictAddr string
+	c.metaNodes.Range(func(_, v interface{}) bool {
+		mn := v.(*MetaNode)
+		if mn.Addr != nodeAddr && mn.ID == id {
+			conflictAddr = mn.Addr
+			return false
+		}
+		return true
+	})
+	if conflictAddr != "" {
+		err = fmt.Errorf("metaNode id %d is already used by %v", id, conflictAddr)
 		return
 	}
 	cmds := make(map[string]*RaftCmd)
