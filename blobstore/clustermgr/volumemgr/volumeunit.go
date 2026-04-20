@@ -75,6 +75,10 @@ func (v *VolumeMgr) AllocVolumeUnit(ctx context.Context, args *cmapi.AllocVolume
 
 	nextEpoch := vol.vUnits[index].nextEpoch + 1
 	vol.lock.RUnlock()
+	if nextEpoch > proto.MaxEpoch {
+		span.Errorf("vuid[%d] nextEpoch[%d] overflow MaxEpoch[%d]", vuid, nextEpoch, proto.MaxEpoch)
+		return nil, ErrVolumeUnitEpochOverflow
+	}
 
 	pendingVuidKey := uuid.New().String()
 	v.pendingEntries.Store(pendingVuidKey, proto.Vuid(0))

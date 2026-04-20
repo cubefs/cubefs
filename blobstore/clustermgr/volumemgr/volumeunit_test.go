@@ -24,6 +24,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/cluster"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/raftserver"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
@@ -509,6 +510,32 @@ func TestVolumeMgr_ReleaseVolumeUnit(t *testing.T) {
 	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).Return(nil, errors.New("err"))
 	err = mockVolumeMgr.ReleaseVolumeUnit(ctx, proto.EncodeVuid(vuidPrefix1, 1), 90, false)
 	require.Error(t, err)
+}
+
+// TestVolumeMgr_AllocVolumeUnit_EpochOverflow verifies that AllocVolumeUnit returns
+// ErrVolumeUnitEpochOverflow when nextEpoch would exceed proto.MaxEpoch.
+func TestVolumeMgr_AllocVolumeUnit_EpochOverflow(t *testing.T) {
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
+
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	ctr := gomock.NewController(t)
+	mockRaftServer := mocks.NewMockRaftServer(ctr)
+	mockRaftServer.EXPECT().IsLeader().AnyTimes().Return(false)
+	mockRaftServer.EXPECT().Status().AnyTimes().Return(raftserver.Status{Id: 1})
+	mockVolumeMgr.raftServer = mockRaftServer
+
+	vol := mockVolumeMgr.all.getVol(1)
+	require.NotNil(t, vol)
+
+	// Force nextEpoch to MaxEpoch so that +1 would overflow.
+	vol.lock.Lock()
+	vol.vUnits[0].nextEpoch = proto.MaxEpoch
+	vol.lock.Unlock()
+
+	vuid := proto.EncodeVuid(vuidPrefix1, vol.vUnits[0].epoch)
+	_, err := mockVolumeMgr.AllocVolumeUnit(ctx, &clustermgr.AllocVolumeUnitArgs{Vuid: vuid})
+	require.ErrorIs(t, err, ErrVolumeUnitEpochOverflow)
 }
 
 func BenchmarkVolumeMgr_ChunkReport(b *testing.B) {

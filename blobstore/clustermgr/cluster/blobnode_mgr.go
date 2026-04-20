@@ -52,8 +52,8 @@ type BlobNodeManagerAPI interface {
 	ListDiskInfo(ctx context.Context, opt *clustermgr.ListOptionArgs) (disks []*clustermgr.BlobNodeDiskInfo, marker proto.DiskID, err error)
 	// AllocChunks return available chunks in data center
 	AllocChunks(ctx context.Context, policy AllocPolicy) ([]proto.DiskID, []proto.Vuid, error)
-	// HasEnoughSpace returns true if cluster has enough space
-	HasEnoughSpace(ctx context.Context) bool
+	// HasEnoughSpace reports whether the cluster currently has enough space to create
+	HasEnoughSpace(ctx context.Context, mode codemode.CodeMode) bool
 
 	NodeManagerAPI
 	persistentHandler
@@ -596,8 +596,8 @@ func (b *BlobNodeManager) AllocChunks(ctx context.Context, policy AllocPolicy) (
 	return ret, retVuids, err
 }
 
-func (b *BlobNodeManager) HasEnoughSpace(ctx context.Context) bool {
-	span, _ := trace.StartSpanFromContext(context.Background(), "")
+func (b *BlobNodeManager) HasEnoughSpace(ctx context.Context, mode codemode.CodeMode) bool {
+	span := trace.SpanFromContextSafe(ctx)
 	spaceStat := b.Stat(ctx, proto.DiskTypeHDD)
 	for _, diskStatInfo := range spaceStat.DisksStatInfos {
 		if diskStatInfo.TotalOversoldFreeChunk <= b.cfg.IDCReservedFreeChunk {
@@ -606,7 +606,7 @@ func (b *BlobNodeManager) HasEnoughSpace(ctx context.Context) bool {
 			return false
 		}
 	}
-	return true
+	return b.allocator.Load().(*allocator).canAllocForMode(proto.DiskTypeHDD, mode)
 }
 
 func (b *BlobNodeManager) GetModuleName() string {

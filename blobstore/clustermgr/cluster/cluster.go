@@ -947,6 +947,8 @@ func (d *manager) generateDiskSetStorage(ctx context.Context, disks []*diskItem,
 	rackNodeStgs := make(map[string][]*nodeAllocator)
 	rackDiskStgs := make(map[string][]*diskItem)
 	rackFreeItems := make(map[string]int64)
+	creatableHosts := make(map[string]bool)
+	idcCreatableDisks := make(map[string]int64)
 
 	var (
 		free, size, diskFreeItem, diskMaxItem int64
@@ -1042,6 +1044,11 @@ func (d *manager) generateDiskSetStorage(ctx context.Context, disks []*diskItem,
 				return errors.New("expired disk")
 			}
 
+			if diskFreeItem > d.cfg.DiskReservedFreeChunk {
+				creatableHosts[host] = true
+				idcCreatableDisks[idc]++
+			}
+
 			return nil
 		})
 		if err != nil {
@@ -1103,19 +1110,35 @@ func (d *manager) generateDiskSetStorage(ctx context.Context, disks []*diskItem,
 
 	spaceStatInfo.UsedSpace = spaceStatInfo.TotalSpace - spaceStatInfo.FreeSpace - spaceStatInfo.ReadOnlySpace
 
+	creatableNodeStgs := make(map[*nodeAllocator]bool, len(creatableHosts))
+	for host := range creatableHosts {
+		if stg, ok := nodeStgs[host]; ok {
+			creatableNodeStgs[stg] = true
+		}
+	}
+
 	if len(idcRackStgs) > 0 {
 		ret = make(map[string]*idcAllocator)
 		for i := range d.cfg.IDC {
-			ret[d.cfg.IDC[i]] = &idcAllocator{
-				idc:          d.cfg.IDC[i],
-				weight:       idcFreeItems[d.cfg.IDC[i]],
-				diffRack:     d.cfg.RackAware,
-				diffHost:     d.cfg.HostAware,
-				rackStorages: idcRackStgs[d.cfg.IDC[i]],
-				nodeStorages: idcNodeStgs[d.cfg.IDC[i]],
-				disks:        idcDiskStgs[d.cfg.IDC[i]],
+			idc := d.cfg.IDC[i]
+			allocatableNodeCount := int64(0)
+			for _, nodeStg := range idcNodeStgs[idc] {
+				if creatableNodeStgs[nodeStg] {
+					allocatableNodeCount++
+				}
 			}
-			freeChunk += idcFreeItems[d.cfg.IDC[i]]
+			ret[idc] = &idcAllocator{
+				idc:            idc,
+				weight:         idcFreeItems[idc],
+				diffRack:       d.cfg.RackAware,
+				diffHost:       d.cfg.HostAware,
+				rackStorages:   idcRackStgs[idc],
+				nodeStorages:   idcNodeStgs[idc],
+				disks:          idcDiskStgs[idc],
+				creatableNodes: allocatableNodeCount,
+				creatableDisks: idcCreatableDisks[idc],
+			}
+			freeChunk += idcFreeItems[idc]
 		}
 		spaceStatInfo.WritableSpace += d.calculateWritable(idcNodeStgs)
 	}

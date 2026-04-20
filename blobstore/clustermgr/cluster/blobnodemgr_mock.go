@@ -9,6 +9,7 @@ import (
 	reflect "reflect"
 
 	clustermgr "github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	codemode "github.com/cubefs/cubefs/blobstore/common/codemode"
 	proto "github.com/cubefs/cubefs/blobstore/common/proto"
 	gomock "github.com/golang/mock/gomock"
 )
@@ -184,17 +185,17 @@ func (mr *MockBlobNodeManagerAPIMockRecorder) GetNodeInfo(arg0, arg1 interface{}
 }
 
 // HasEnoughSpace mocks base method.
-func (m *MockBlobNodeManagerAPI) HasEnoughSpace(arg0 context.Context) bool {
+func (m *MockBlobNodeManagerAPI) HasEnoughSpace(arg0 context.Context, arg1 codemode.CodeMode) bool {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "HasEnoughSpace", arg0)
+	ret := m.ctrl.Call(m, "HasEnoughSpace", arg0, arg1)
 	ret0, _ := ret[0].(bool)
 	return ret0
 }
 
 // HasEnoughSpace indicates an expected call of HasEnoughSpace.
-func (mr *MockBlobNodeManagerAPIMockRecorder) HasEnoughSpace(arg0 interface{}) *gomock.Call {
+func (mr *MockBlobNodeManagerAPIMockRecorder) HasEnoughSpace(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasEnoughSpace", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).HasEnoughSpace), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasEnoughSpace", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).HasEnoughSpace), arg0, arg1)
 }
 
 // IsDiskWritable mocks base method.
