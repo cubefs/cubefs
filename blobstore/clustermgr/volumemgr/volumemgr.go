@@ -78,6 +78,7 @@ var (
 	ErrInvalidVolume            = errors.New(" volume is invalid ")
 	ErrInvalidToken             = errors.New("retain token is invalid")
 	ErrRepeatUpdateUnit         = errors.New("repeat update volume unit")
+	ErrVolumeUnitEpochOverflow  = errors.New("volume unit epoch overflow")
 )
 
 // VolumeMgr defines volume manager interface
@@ -815,8 +816,9 @@ func (v *VolumeMgr) loop() {
 				if !modeConfig.enable {
 					continue
 				}
-				// do not create new volume when diskMgr has not enough space
-				if hasEnoughSpace := v.diskMgr.HasEnoughSpace(ctx); !hasEnoughSpace {
+
+				if !v.diskMgr.HasEnoughSpace(ctx, modeConfig.mode) {
+					span.Warnf("cluster[%d] has no allocatable nodes for mode %s", v.ClusterID, modeConfig.mode)
 					continue
 				}
 

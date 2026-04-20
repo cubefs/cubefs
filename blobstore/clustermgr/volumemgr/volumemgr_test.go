@@ -316,7 +316,7 @@ func Test_NewVolumeMgr(t *testing.T) {
 	mockDiskMgr.EXPECT().Stat(gomock.Any(), proto.DiskTypeHDD).AnyTimes().Return(&clustermgr.SpaceStatInfo{TotalDisk: 100})
 	mockDiskMgr.EXPECT().IsDiskWritable(gomock.Any(), gomock.Any()).AnyTimes().Return(true, nil)
 	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockGetDiskInfo)
-	mockDiskMgr.EXPECT().HasEnoughSpace(gomock.Any()).AnyTimes().Return(true)
+	mockDiskMgr.EXPECT().HasEnoughSpace(gomock.Any(), gomock.Any()).AnyTimes().Return(true)
 
 	mockVolumeMgr, err := NewVolumeMgr(volConfig, mockDiskMgr, mockScopeMgr, mockConfigMgr, volumeDB)
 	require.NoError(t, err)

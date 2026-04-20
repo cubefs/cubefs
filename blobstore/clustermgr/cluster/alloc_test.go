@@ -21,6 +21,7 @@ import (
 	"path"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1133,4 +1134,848 @@ func TestAllocWithReserveChunk(t *testing.T) {
 		_, err := allocator.alloc(ctx, 6, nil, false)
 		require.Equal(t, ErrNoEnoughSpace, err)
 	}
+}
+
+// buildECAllocator builds an allocator with only an EC nodeSet/diskSet.
+// Each IDC has `nodesPerIDC` nodes, each node has `freeChunksPerNode` free chunks
+// spread across a single virtual disk (simplifies weight accounting).
+func buildECAllocator(idcNames []string, nodesPerIDC int, freeChunksPerNode int64, diffHost bool) *allocator {
+	idcAllocs := make(map[string]*idcAllocator, len(idcNames))
+	totalWeight := int64(0)
+	nodeID := proto.NodeID(1)
+	diskID := proto.DiskID(1)
+
+	for _, idc := range idcNames {
+		nodeStgs := make([]*nodeAllocator, 0, nodesPerIDC)
+		idcWeight := int64(0)
+		for n := 0; n < nodesPerIDC; n++ {
+			ni := &nodeItem{nodeID: nodeID}
+			nodeID++
+			di := &diskItem{
+				diskID: diskID,
+				info: diskItemInfo{
+					DiskInfo: clustermgr.DiskInfo{Idc: idc, Status: proto.DiskStatusNormal},
+					extraInfo: &clustermgr.DiskHeartBeatInfo{
+						MaxChunkCnt:  freeChunksPerNode * 2,
+						FreeChunkCnt: freeChunksPerNode,
+					},
+				},
+				weightGetter:   blobNodeDiskWeightGetter,
+				weightDecrease: blobNodeDiskWeightDecrease,
+			}
+			diskID++
+			ns := &nodeAllocator{
+				node:   ni,
+				weight: freeChunksPerNode,
+				disks:  []*diskItem{di},
+			}
+			nodeStgs = append(nodeStgs, ns)
+			idcWeight += freeChunksPerNode
+		}
+		allocatableCount := int64(0)
+		for _, ns := range nodeStgs {
+			if ns.weight > 0 {
+				allocatableCount++
+			}
+		}
+		var allDisks []*diskItem
+		for _, ns := range nodeStgs {
+			allDisks = append(allDisks, ns.disks...)
+		}
+		idcAllocs[idc] = &idcAllocator{
+			idc:            idc,
+			weight:         idcWeight,
+			creatableNodes: allocatableCount,
+			diffHost:       diffHost,
+			nodeStorages:   nodeStgs,
+			disks:          allDisks,
+		}
+		totalWeight += idcWeight
+	}
+
+	ds := newDiskSetAllocator(ecDiskSetID, totalWeight, idcAllocs)
+	ns := newNodeSetAllocator(ecNodeSetID)
+	ns.addDiskSet(ds)
+	return newAllocator(allocatorConfig{
+		nodeSets: map[proto.DiskType]nodeSetAllocatorMap{proto.DiskTypeHDD: {ecNodeSetID: ns}},
+		diskSets: map[proto.DiskType]diskSetAllocatorMap{proto.DiskTypeHDD: {ecDiskSetID: ds}},
+		diffHost: diffHost,
+	})
+}
+
+// buildReplicateAllocator builds an allocator with a single non-EC nodeSet/diskSet,
+// suitable for testing replicate mode. Each IDC gets `nodesPerIDC` nodes.
+func buildReplicateAllocator(idcNames []string, nodesPerIDC int, freeChunksPerNode int64, diffHost bool) *allocator {
+	const replicateNodeSetID = proto.NodeSetID(2)
+	const replicateDiskSetID = proto.DiskSetID(2)
+
+	idcAllocs := make(map[string]*idcAllocator, len(idcNames))
+	totalWeight := int64(0)
+	nodeID := proto.NodeID(1)
+	diskID := proto.DiskID(1)
+
+	for _, idc := range idcNames {
+		nodeStgs := make([]*nodeAllocator, 0, nodesPerIDC)
+		idcWeight := int64(0)
+		for n := 0; n < nodesPerIDC; n++ {
+			ni := &nodeItem{nodeID: nodeID}
+			nodeID++
+			di := &diskItem{
+				diskID: diskID,
+				info: diskItemInfo{
+					DiskInfo: clustermgr.DiskInfo{Idc: idc, Status: proto.DiskStatusNormal},
+					extraInfo: &clustermgr.DiskHeartBeatInfo{
+						MaxChunkCnt:  freeChunksPerNode * 2,
+						FreeChunkCnt: freeChunksPerNode,
+					},
+				},
+				weightGetter:   blobNodeDiskWeightGetter,
+				weightDecrease: blobNodeDiskWeightDecrease,
+			}
+			diskID++
+			ns := &nodeAllocator{
+				node:   ni,
+				weight: freeChunksPerNode,
+				disks:  []*diskItem{di},
+			}
+			nodeStgs = append(nodeStgs, ns)
+			idcWeight += freeChunksPerNode
+		}
+		allocatableCount := int64(0)
+		for _, ns := range nodeStgs {
+			if ns.weight > 0 {
+				allocatableCount++
+			}
+		}
+		var allDisks []*diskItem
+		for _, ns := range nodeStgs {
+			allDisks = append(allDisks, ns.disks...)
+		}
+		idcAllocs[idc] = &idcAllocator{
+			idc:            idc,
+			weight:         idcWeight,
+			creatableNodes: allocatableCount,
+			diffHost:       diffHost,
+			nodeStorages:   nodeStgs,
+			disks:          allDisks,
+		}
+		totalWeight += idcWeight
+	}
+
+	ds := newDiskSetAllocator(replicateDiskSetID, totalWeight, idcAllocs)
+	ns := newNodeSetAllocator(replicateNodeSetID)
+	ns.addDiskSet(ds)
+
+	tg := &mockTopoGetter{nodeNum: nodesPerIDC * len(idcNames)}
+
+	return newAllocator(allocatorConfig{
+		nodeSets: map[proto.DiskType]nodeSetAllocatorMap{proto.DiskTypeHDD: {replicateNodeSetID: ns}},
+		diskSets: map[proto.DiskType]diskSetAllocatorMap{proto.DiskTypeHDD: {replicateDiskSetID: ds}},
+		diffHost: diffHost,
+		tg:       tg,
+	})
+}
+
+// mockTopoGetter implements topoInfoGetter for tests.
+type mockTopoGetter struct{ nodeNum int }
+
+func (m *mockTopoGetter) getNodeNum(_ proto.DiskType, _ proto.NodeSetID) int { return m.nodeNum }
+
+func TestCanAllocForMode(t *testing.T) {
+	idcs := []string{"z0", "z1", "z2"}
+
+	// EC15P12: 27 shards, 9 per IDC (3 IDCs)
+	// EC6P6:   12 shards, 4 per IDC (3 IDCs)
+	// Replica3: 3 shards, 1 per IDC (3 IDCs, replicate mode)
+
+	t.Run("ec_mode_enough_space_diffhost", func(t *testing.T) {
+		// 10 nodes per IDC, each with 5 free chunks; EC6P6 needs 4 nodes per IDC
+		alloc := buildECAllocator(idcs, 10, 5, true)
+		require.True(t, alloc.canAllocForMode(proto.DiskTypeHDD, codemode.EC6P6))
+		require.True(t, alloc.canAllocForMode(proto.DiskTypeHDD, codemode.EC15P12))
+	})
+
+	t.Run("ec_mode_exact_boundary_diffhost", func(t *testing.T) {
+		// exactly 4 nodes per IDC → EC6P6 needs 4 → should pass
+		alloc := buildECAllocator(idcs, 4, 5, true)
+		require.True(t, alloc.canAllocForMode(proto.DiskTypeHDD, codemode.EC6P6))
+	})
+
+	t.Run("ec_mode_one_fewer_node_diffhost", func(t *testing.T) {
+		// 3 nodes per IDC → EC6P6 needs 4 → should fail
+		alloc := buildECAllocator(idcs, 3, 5, true)
+		require.False(t, alloc.canAllocForMode(proto.DiskTypeHDD, codemode.EC6P6))
+	})
+
+	t.Run("ec_mode_one_idc_exhausted", func(t *testing.T) {
+		// Build with 10 nodes per IDC, then zero out z1's creatableNodes
+		alloc := buildECAllocator(idcs, 10, 5, true)
+		ds := alloc.nodeSets[proto.DiskTypeHDD][ecNodeSetID].diskSets[ecDiskSetID]
+		atomic.StoreInt64(&ds.idcAllocators["z1"].creatableNodes, 0)
+		require.False(t, alloc.canAllocForMode(proto.DiskTypeHDD, codemode.EC6P6))
+	})
+
+	t.Run("ec_mode_nodeset_weight_too_low", func(t *testing.T) {
+		// total nodeSet weight < shardNum → fail at first check
+		alloc := buildECAllocator(idcs, 2, 1, true)
+		ns := alloc.nodeSets[proto.DiskTypeHDD][ecNodeSetID]
+		atomic.StoreInt64(&ns.weight, 1) // EC6P6 needs 12 shards
+		require.False(t, alloc.canAllocForMode(proto.DiskTypeHDD, codemode.EC6P6))
+	})
+
+	t.Run("ec_mode_no_nodeset", func(t *testing.T) {
+		// diskType has no nodeSets at all
+		alloc := buildECAllocator(idcs, 10, 5, true)
+		delete(alloc.nodeSets, proto.DiskTypeHDD)
+		require.False(t, alloc.canAllocForMode(proto.DiskTypeHDD, codemode.EC6P6))
+	})
+
+	t.Run("ec_mode_diffhost_false_weight_sufficient", func(t *testing.T) {
+		// diffHost=false: weight AND disk count both satisfy chunksPerIDC.
+		// EC6P6 needs 4 chunks per IDC; build 4 nodes × 1 disk (freeChunk=3) per IDC
+		// → weight=12, disks=4 → pass.
+		alloc := buildECAllocator(idcs, 4, 3, false)
+		require.True(t, alloc.canAllocForMode(proto.DiskTypeHDD, codemode.EC6P6))
+	})
+
+	t.Run("ec_mode_diffhost_false_weight_insufficient", func(t *testing.T) {
+		// diffHost=false: 1 node × 1 free chunk = 1 weight, EC6P6 needs 4 → fail
+		alloc := buildECAllocator(idcs, 1, 1, false)
+		require.False(t, alloc.canAllocForMode(proto.DiskTypeHDD, codemode.EC6P6))
+	})
+
+	t.Run("allocatable_nodes_decrements_on_node_depletion", func(t *testing.T) {
+		// 4 nodes per IDC, each with exactly 1 free chunk.
+		// EC6P6 needs 4 allocatable nodes per IDC → initially true.
+		// defaultAllocTolerateBuff would cause totalWeight(4) - 50 < 0, preventing alloc.
+		// Zero it out for this test to isolate the creatableNodes maintenance logic.
+		origBuff := defaultAllocTolerateBuff
+		defaultAllocTolerateBuff = 0
+		origReserved := defaultDiskReservedFreeChunk
+		defaultDiskReservedFreeChunk = 0
+		defer func() {
+			defaultAllocTolerateBuff = origBuff
+			defaultDiskReservedFreeChunk = origReserved
+		}()
+
+		_, ctx := trace.StartSpanFromContext(context.Background(), "")
+		alloc := buildECAllocator(idcs, 4, 1, true)
+		require.True(t, alloc.canAllocForMode(proto.DiskTypeHDD, codemode.EC6P6))
+
+		ds := alloc.nodeSets[proto.DiskTypeHDD][ecNodeSetID].diskSets[ecDiskSetID]
+		idcAlloc := ds.idcAllocators["z0"]
+		before := atomic.LoadInt64(&idcAlloc.creatableNodes)
+
+		// alloc 1 chunk: one node's weight drops to 0 → creatableNodes decrements
+		_, err := idcAlloc.alloc(ctx, 1, nil, false)
+		require.NoError(t, err)
+
+		after := atomic.LoadInt64(&idcAlloc.creatableNodes)
+		require.Equal(t, before-1, after)
+
+		// z0 now has 3 allocatable nodes < 4 needed for EC6P6 → false
+		require.False(t, alloc.canAllocForMode(proto.DiskTypeHDD, codemode.EC6P6))
+	})
+
+	t.Run("replicate_mode_enough_space", func(t *testing.T) {
+		// Replica3: 3 IDCs, 1 shard per IDC; 5 nodes per IDC → pass
+		alloc := buildReplicateAllocator(idcs, 5, 10, true)
+		require.True(t, alloc.canAllocForMode(proto.DiskTypeHDD, codemode.Replica3))
+	})
+
+	t.Run("replicate_mode_no_qualifying_nodeset", func(t *testing.T) {
+		// Replica3: 3 IDCs, but total weight in nodeSet < shardNum(3)
+		alloc := buildReplicateAllocator(idcs, 1, 1, true)
+		ns := alloc.nodeSets[proto.DiskTypeHDD]
+		for _, n := range ns {
+			if n.nodeSetID != ecNodeSetID {
+				atomic.StoreInt64(&n.weight, 0)
+			}
+		}
+		require.False(t, alloc.canAllocForMode(proto.DiskTypeHDD, codemode.Replica3))
+	})
+
+	t.Run("replicate_mode_diffhost_node_count_insufficient", func(t *testing.T) {
+		// diffHost=true, nodeNum=1, Replica3 needs 3 shards → topo check fails
+		alloc := buildReplicateAllocator(idcs, 5, 10, true)
+		// override tg to report only 2 nodes total
+		alloc.cfg.tg = &mockTopoGetter{nodeNum: 2}
+		require.False(t, alloc.canAllocForMode(proto.DiskTypeHDD, codemode.Replica3))
+	})
+
+	t.Run("ec_mode_diffhost_false_exact_disk_boundary", func(t *testing.T) {
+		// diffHost=false: exactly chunksPerIDC disks per IDC → should pass (>= boundary)
+		// EC6P6 needs 4 chunks per IDC; build 4 nodes × 1 disk each per IDC
+		alloc := buildECAllocator(idcs, 4, 2, false)
+		require.True(t, alloc.canAllocForMode(proto.DiskTypeHDD, codemode.EC6P6))
+	})
+
+	t.Run("ec_mode_diffhost_false_one_fewer_disk", func(t *testing.T) {
+		// diffHost=false: 3 disks per IDC but EC6P6 needs 4 chunks per IDC
+		// weight per IDC = 3 × 2 = 6 ≥ 4 (passes weight check), but len(disks)=3 < 4 → fail
+		alloc := buildECAllocator(idcs, 3, 2, false)
+		require.False(t, alloc.canAllocForMode(proto.DiskTypeHDD, codemode.EC6P6))
+	})
+}
+
+// TestAllocatableNodesConcurrentSafe verifies that concurrent allocations targeting
+// the same scarce node do NOT over-decrement creatableNodes below the true count.
+// This guards the "cross-zero boundary" check in idcAllocator.alloc:
+//
+//	if newWeight <= 0 && newWeight+int64(num) > 0 { ... }
+//
+// Without the boundary check, N concurrent allocs that all pick the same node with
+// weight=1 would each decrement creatableNodes (it becomes 1-N, i.e. negative),
+// poisoning subsequent canAllocForMode checks.
+func TestAllocatableNodesConcurrentSafe(t *testing.T) {
+	origBuff := defaultAllocTolerateBuff
+	defaultAllocTolerateBuff = 0
+	origReserved := defaultDiskReservedFreeChunk
+	defaultDiskReservedFreeChunk = 0
+	defer func() {
+		defaultAllocTolerateBuff = origBuff
+		defaultDiskReservedFreeChunk = origReserved
+	}()
+
+	// 1 IDC, 1 node, 1 disk with exactly 1 free chunk.
+	// Any number of concurrent alloc(1) calls may all pick this single node
+	// before anyone decrements its weight.
+	alloc := buildECAllocator([]string{"z0"}, 1, 1, true)
+	ds := alloc.nodeSets[proto.DiskTypeHDD][ecNodeSetID].diskSets[ecDiskSetID]
+	idcAlloc := ds.idcAllocators["z0"]
+
+	require.Equal(t, int64(1), atomic.LoadInt64(&idcAlloc.creatableNodes))
+
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	concurrency := 50
+	var wg sync.WaitGroup
+	wg.Add(concurrency)
+	for i := 0; i < concurrency; i++ {
+		go func() {
+			defer wg.Done()
+			_, _ = idcAlloc.alloc(ctx, 1, nil, false)
+		}()
+	}
+	wg.Wait()
+
+	// Regardless of how many concurrent callers successfully picked the node,
+	// creatableNodes should drop from 1 to exactly 0 — never below.
+	got := atomic.LoadInt64(&idcAlloc.creatableNodes)
+	require.Equal(t, int64(0), got,
+		"creatableNodes must not drop below 0 under concurrent alloc; got %d", got)
+}
+
+// TestApplyNodeWeightDecrements_CrossZeroGuard is a white-box regression test
+// for the cross-zero boundary guard in idcAllocator.applyNodeWeightDecrements:
+//
+//	if newWeight <= 0 && newWeight+int64(num) > 0 { ... }
+//
+// Concurrent callers of idcAllocator.alloc may all observe the same positive
+// node.weight in allocFromNodeStorages (TOCTOU), each picking the node into
+// their own chosenDataStorages. The subsequent atomic AddInt64 from each caller
+// can drive node.weight well below zero. Without the cross-zero guard, every
+// caller whose AddInt64 returns ≤0 would decrement creatableNodes, poisoning
+// it below zero and causing canAllocForMode to spuriously return false.
+//
+// This test deterministically reproduces that scenario by calling the helper
+// directly on progressively-decrementing state.
+//
+// Expected behavior: creatableNodes is decremented EXACTLY ONCE — when weight
+// crosses from positive to ≤ 0. Further decrements while weight is already ≤ 0
+// must be ignored.
+func TestApplyNodeWeightDecrements_CrossZeroGuard(t *testing.T) {
+	idc := &idcAllocator{creatableNodes: 1}
+	stg := &nodeAllocator{weight: 1}
+
+	// 1st caller (would be G1 in a race): weight 1 → 0, cross-zero, decrement.
+	idc.applyNodeWeightDecrements(map[*nodeAllocator]int{stg: 1})
+	require.EqualValues(t, 0, atomic.LoadInt64(&stg.weight))
+	require.EqualValues(t, 0, atomic.LoadInt64(&idc.creatableNodes))
+
+	// 2nd caller (G2): weight 0 → -1. Old code would decrement again to -1.
+	idc.applyNodeWeightDecrements(map[*nodeAllocator]int{stg: 1})
+	require.EqualValues(t, -1, atomic.LoadInt64(&stg.weight))
+	require.EqualValues(t, 0, atomic.LoadInt64(&idc.creatableNodes),
+		"must not decrement again once weight already crossed zero")
+
+	// 3rd caller with num>1: weight -1 → -4. Still no decrement.
+	idc.applyNodeWeightDecrements(map[*nodeAllocator]int{stg: 3})
+	require.EqualValues(t, -4, atomic.LoadInt64(&stg.weight))
+	require.EqualValues(t, 0, atomic.LoadInt64(&idc.creatableNodes))
+}
+
+// TestApplyNodeWeightDecrements_CrossZeroBySingleLargeBatch verifies that a
+// single caller whose batch size exceeds current weight still triggers exactly
+// one creatableNodes decrement (e.g. weight=2, num=5 → newWeight=-3, crosses zero once).
+func TestApplyNodeWeightDecrements_CrossZeroBySingleLargeBatch(t *testing.T) {
+	idc := &idcAllocator{creatableNodes: 3}
+	stg := &nodeAllocator{weight: 2}
+
+	idc.applyNodeWeightDecrements(map[*nodeAllocator]int{stg: 5})
+	require.EqualValues(t, -3, atomic.LoadInt64(&stg.weight))
+	require.EqualValues(t, 2, atomic.LoadInt64(&idc.creatableNodes))
+}
+
+// TestApplyNodeWeightDecrements_StillPositiveNoDecrement verifies the common path:
+// when weight stays positive after subtraction, creatableNodes is not touched.
+func TestApplyNodeWeightDecrements_StillPositiveNoDecrement(t *testing.T) {
+	idc := &idcAllocator{creatableNodes: 5}
+	stg := &nodeAllocator{weight: 10}
+
+	idc.applyNodeWeightDecrements(map[*nodeAllocator]int{stg: 3})
+	require.EqualValues(t, 7, atomic.LoadInt64(&stg.weight))
+	require.EqualValues(t, 5, atomic.LoadInt64(&idc.creatableNodes))
+}
+
+// TestAllocatableNodesResetByRefresh verifies that refresh() re-initializes
+// creatableNodes from the latest disk stats, preventing cumulative drift
+// across long-running processes.
+func TestAllocatableNodesResetByRefresh(t *testing.T) {
+	testDiskMgr, closeFunc := initTestBlobNodeMgr(t)
+	defer closeFunc()
+	testDiskMgr.cfg.HeartbeatExpireIntervalS = 6000
+	testDiskMgr.cfg.HostAware = true
+
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+
+	// 6 nodes per IDC, 10 chunks each → enough for EC6P6 (4 per IDC)
+	initTestBlobNodeMgrNodes(t, testDiskMgr, 1, 6, testIdcs...)
+	initTestBlobNodeMgrDisksWithChunk(t, testDiskMgr, 1, 360, 10, false, testIdcs...)
+	testDiskMgr.refresh(ctx)
+
+	allocators := testDiskMgr.manager.allocator.Load().(*allocator)
+	idcAlloc := allocators.nodeSets[proto.DiskTypeHDD][ecNodeSetID].diskSets[ecDiskSetID].idcAllocators[testIdcs[0]]
+	before := atomic.LoadInt64(&idcAlloc.creatableNodes)
+	require.Greater(t, before, int64(0))
+
+	// Forcibly poison creatableNodes to simulate accumulated drift
+	atomic.StoreInt64(&idcAlloc.creatableNodes, -10)
+
+	// refresh rebuilds allocator state from current disk snapshot
+	testDiskMgr.refresh(ctx)
+	allocators = testDiskMgr.manager.allocator.Load().(*allocator)
+	idcAllocAfter := allocators.nodeSets[proto.DiskTypeHDD][ecNodeSetID].diskSets[ecDiskSetID].idcAllocators[testIdcs[0]]
+	after := atomic.LoadInt64(&idcAllocAfter.creatableNodes)
+	require.Equal(t, before, after, "refresh must reset creatableNodes to the correct value")
+}
+
+// TestDiskReservedFreeChunkFilterKeepsStats verifies that disks with
+// free chunks ≤ DiskReservedFreeChunk are excluded from the allocator
+// (so canAllocForMode won't over-count them), yet still contribute to
+// public DiskStatInfo counters (TotalChunk, TotalFreeChunk, etc.).
+func TestDiskReservedFreeChunkFilterKeepsStats(t *testing.T) {
+	testDiskMgr, closeFunc := initTestBlobNodeMgr(t)
+	defer closeFunc()
+	testDiskMgr.cfg.HeartbeatExpireIntervalS = 6000
+	testDiskMgr.cfg.HostAware = true
+	testDiskMgr.cfg.DiskReservedFreeChunk = 1 // any disk with freeChunk <= 1 is reserved
+
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+
+	initTestBlobNodeMgrNodes(t, testDiskMgr, 1, 6, testIdcs...)
+	initTestBlobNodeMgrDisksWithChunk(t, testDiskMgr, 1, 360, 10, false, testIdcs...)
+
+	// Mark the first 60 disks in z0 as nearly full (freeChunk=1, below reserved).
+	// MaxChunkCnt stays at 10, so they still count toward total capacity.
+	nearlyFullCount := 60
+	testDiskMgr.metaLock.RLock()
+	for i := 1; i <= nearlyFullCount; i++ {
+		di, ok := testDiskMgr.allDisks[proto.DiskID(i)]
+		if !ok {
+			continue
+		}
+		di.lock.Lock()
+		di.info.extraInfo.(*clustermgr.DiskHeartBeatInfo).FreeChunkCnt = 1
+		di.lock.Unlock()
+	}
+	testDiskMgr.metaLock.RUnlock()
+	testDiskMgr.refresh(ctx)
+
+	// Stat accounting: TotalChunk should still include the nearly-full disks
+	stat := testDiskMgr.Stat(ctx, proto.DiskTypeHDD)
+	var totalChunk int64
+	for _, s := range stat.DisksStatInfos {
+		totalChunk += s.TotalChunk
+	}
+	// 3 IDCs × 360 disks × 10 MaxChunkCnt = 10800; all disks (including reserved) must be counted
+	expected := int64(len(testIdcs) * 360 * 10)
+	require.Equal(t, expected, totalChunk,
+		"DiskReservedFreeChunk filter must not corrupt TotalChunk stats")
+
+	// Allocator check: reserved disks now remain in the allocator so that background
+	// tasks (repair/migrate) can reach them via isCreateVolume=false / reserveChunk=false.
+	// z0 has 360 disks total; all must be present in idcAlloc.disks.
+	allocators := testDiskMgr.manager.allocator.Load().(*allocator)
+	idcAlloc := allocators.nodeSets[proto.DiskTypeHDD][ecNodeSetID].diskSets[ecDiskSetID].idcAllocators[testIdcs[0]]
+	require.Equal(t, 360, len(idcAlloc.disks),
+		"all disks (including reserved) must remain in the allocator for background tasks")
+
+	// creatableDisks must only count disks with freeChunk > DiskReservedFreeChunk.
+	// z0: 360 total − 60 nearly-full = 300 creation-eligible.
+	require.Equal(t, int64(300), atomic.LoadInt64(&idcAlloc.creatableDisks),
+		"creatableDisks must exclude reserved disks")
+
+	// creatableNodes counts nodes that have ≥1 creation-eligible disk.
+	// All 6 nodes in z0 have some non-reserved disks remaining.
+	require.Equal(t, int64(6), atomic.LoadInt64(&idcAlloc.creatableNodes),
+		"creatableNodes must count nodes with at least one creation-eligible disk")
+}
+
+// TestReservedDisksAccessibleByBackgroundTask verifies that disks with free chunks at or
+// below DiskReservedFreeChunk remain in the allocator and can be reached by background
+// tasks (non-empty excludes → isCreateVolume=false → reserveChunk=false), while volume
+// creation (empty excludes → isCreateVolume=true → reserveChunk=true) is still blocked.
+func TestReservedDisksAccessibleByBackgroundTask(t *testing.T) {
+	testDiskMgr, closeFunc := initTestBlobNodeMgr(t)
+	defer closeFunc()
+	testDiskMgr.cfg.HeartbeatExpireIntervalS = 6000
+	testDiskMgr.cfg.HostAware = false // disk-granularity allocation, no node isolation
+	testDiskMgr.cfg.DiskReservedFreeChunk = 2
+
+	origReserved := defaultDiskReservedFreeChunk
+	defaultDiskReservedFreeChunk = 2
+	defer func() { defaultDiskReservedFreeChunk = origReserved }()
+
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+
+	// 1 node, 1 disk per IDC with exactly freeChunk=2 (at the reserve threshold).
+	initTestBlobNodeMgrNodes(t, testDiskMgr, 1, 1, testIdcs[0])
+	initTestBlobNodeMgrDisksWithChunk(t, testDiskMgr, 1, 1, 2, false, testIdcs[0])
+	testDiskMgr.refresh(ctx)
+
+	alloc := testDiskMgr.manager.allocator.Load().(*allocator)
+	idcAlloc := alloc.nodeSets[proto.DiskTypeHDD][ecNodeSetID].diskSets[ecDiskSetID].idcAllocators[testIdcs[0]]
+
+	// The disk is in the allocator (background tasks can reach it).
+	require.Equal(t, 1, len(idcAlloc.disks), "reserved disk must be in allocator")
+	// But creatableDisks=0: the disk is below the reserve threshold for volume creation.
+	require.Equal(t, int64(0), atomic.LoadInt64(&idcAlloc.creatableDisks),
+		"disk at reserve threshold must not count as creatable")
+
+	// Background task: pass a non-empty excludes map so isCreateVolume=false.
+	// The disk should be selected even though its weight == DiskReservedFreeChunk.
+	fakeExclude := map[proto.DiskID]*diskItem{proto.DiskID(9999): {}}
+	chosen := idcAlloc.disks[0].withRLocked(func() error { return nil })
+	_ = chosen // just confirm disk is accessible; actual alloc tested via allocDisk below
+	disk := idcAlloc.nodeStorages[0].allocDisk(ctx, fakeExclude, false /* reserveChunk=false */)
+	require.NotNil(t, disk, "background task must be able to allocate from reserved disk")
+
+	// Volume creation: empty excludes → isCreateVolume=true → reserveChunk=true → blocked.
+	diskForCreate := idcAlloc.nodeStorages[0].allocDisk(ctx, map[proto.DiskID]*diskItem{}, true /* reserveChunk=true */)
+	require.Nil(t, diskForCreate, "volume creation must not use reserved disk")
+}
+
+// TestAllNodesOnlyReservedChunks verifies that when every disk is at or below the reserve
+// threshold, both allocatableNodes and creatableDisks are 0, and HasEnoughSpace returns false.
+func TestAllNodesOnlyReservedChunks(t *testing.T) {
+	testDiskMgr, closeFunc := initTestBlobNodeMgr(t)
+	defer closeFunc()
+	testDiskMgr.cfg.HeartbeatExpireIntervalS = 6000
+	testDiskMgr.cfg.HostAware = true
+	testDiskMgr.cfg.DiskReservedFreeChunk = 5
+
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+
+	initTestBlobNodeMgrNodes(t, testDiskMgr, 1, 4, testIdcs...)
+	initTestBlobNodeMgrDisksWithChunk(t, testDiskMgr, 1, 40, 10, false, testIdcs...)
+
+	// Drain all disks to exactly the reserve threshold.
+	testDiskMgr.metaLock.RLock()
+	for _, di := range testDiskMgr.allDisks {
+		di.lock.Lock()
+		di.info.extraInfo.(*clustermgr.DiskHeartBeatInfo).FreeChunkCnt = 5
+		di.lock.Unlock()
+	}
+	testDiskMgr.metaLock.RUnlock()
+	testDiskMgr.refresh(ctx)
+
+	alloc := testDiskMgr.manager.allocator.Load().(*allocator)
+	idcAlloc := alloc.nodeSets[proto.DiskTypeHDD][ecNodeSetID].diskSets[ecDiskSetID].idcAllocators[testIdcs[0]]
+
+	// All disks are in the allocator (background tasks still have access).
+	require.NotEmpty(t, idcAlloc.disks, "disks must stay in allocator even at reserve threshold")
+	// No disk is eligible for volume creation.
+	require.Equal(t, int64(0), atomic.LoadInt64(&idcAlloc.creatableDisks))
+	require.Equal(t, int64(0), atomic.LoadInt64(&idcAlloc.creatableNodes))
+
+	// HasEnoughSpace must return false for any code mode.
+	require.False(t, testDiskMgr.HasEnoughSpace(ctx, codemode.EC6P6))
+}
+
+// TestHasEnoughSpaceIntegration verifies BlobNodeManager.HasEnoughSpace via real refresh.
+func TestHasEnoughSpaceIntegration(t *testing.T) {
+	testDiskMgr, closeFunc := initTestBlobNodeMgr(t)
+	defer closeFunc()
+	testDiskMgr.cfg.HeartbeatExpireIntervalS = 6000
+	testDiskMgr.cfg.HostAware = true
+
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+
+	// Add enough nodes and disks across all 3 IDCs
+	initTestBlobNodeMgrNodes(t, testDiskMgr, 1, 10, testIdcs...)
+	initTestBlobNodeMgrDisksWithChunk(t, testDiskMgr, 1, 600, 20, false, testIdcs...)
+	testDiskMgr.refresh(ctx)
+
+	// EC6P6 needs 4 nodes per IDC; we have 10 nodes per IDC → should pass
+	require.True(t, testDiskMgr.HasEnoughSpace(ctx, codemode.EC6P6))
+
+	// Drain all free chunks on all disks to simulate full cluster
+	testDiskMgr.metaLock.RLock()
+	for _, di := range testDiskMgr.allDisks {
+		di.lock.Lock()
+		di.info.extraInfo.(*clustermgr.DiskHeartBeatInfo).FreeChunkCnt = 0
+		di.lock.Unlock()
+	}
+	testDiskMgr.metaLock.RUnlock()
+	testDiskMgr.refresh(ctx)
+
+	// All disks full → HasEnoughSpace should return false
+	require.False(t, testDiskMgr.HasEnoughSpace(ctx, codemode.EC6P6))
+}
+
+// realisticFreeChunks returns a free chunk count that mimics real-world disk fill distribution
+// at ~90% water level. Disks are categorized by index:
+//   - 5%  new disks:     25-30 free  (~90% free)
+//   - 15% moderate:      5-8  free   (~20% free)
+//   - 80% nearly full:   0-2  free   (~5% free)
+//
+// Overall average ≈ 10% free → 90% water level.
+func realisticFreeChunks(diskIdx, maxChunks int, rng *rand.Rand) int {
+	switch diskIdx % 20 {
+	case 0: // new disk (5%)
+		return maxChunks*7/10 + rng.Intn(maxChunks*3/10+1)
+	case 1, 2, 3: // moderate (15%)
+		return maxChunks/6 + rng.Intn(maxChunks/8+1)
+	default: // nearly full (80%)
+		return rng.Intn(maxChunks/10 + 1) // 0 ~ 3 for maxChunks=30
+	}
+}
+
+// buildBenchAllocator constructs an allocator directly without BlobNodeManager overhead.
+//
+// Topology:
+//   - numIDC IDCs, nodesPerIDC nodes each, disksPerNode disks each
+//   - maxChunks: MaxChunkCnt per disk
+//   - Free chunk counts follow a realistic bimodal distribution (~90% water level on average)
+//   - diffHost: whether host-aware allocation is enabled
+func buildBenchAllocator(numIDC, nodesPerIDC, disksPerNode, maxChunks int, diffHost bool) *allocator {
+	rng := rand.New(rand.NewSource(42)) // deterministic seed for reproducibility
+
+	idcNames := make([]string, numIDC)
+	for i := range idcNames {
+		idcNames[i] = "z" + strconv.Itoa(i)
+	}
+
+	idcAllocs := make(map[string]*idcAllocator, numIDC)
+	totalWeight := int64(0)
+
+	diskID := proto.DiskID(1)
+	nodeID := proto.NodeID(1)
+
+	for _, idc := range idcNames {
+		nodeStgs := make([]*nodeAllocator, 0, nodesPerIDC)
+		idcWeight := int64(0)
+
+		for n := 0; n < nodesPerIDC; n++ {
+			ni := &nodeItem{nodeID: nodeID}
+			nodeID++
+
+			disks := make([]*diskItem, 0, disksPerNode)
+			nodeWeight := int64(0)
+			for d := 0; d < disksPerNode; d++ {
+				free := int64(realisticFreeChunks(int(diskID), maxChunks, rng))
+				di := &diskItem{
+					diskID: diskID,
+					info: diskItemInfo{
+						DiskInfo: clustermgr.DiskInfo{
+							Idc:    idc,
+							Status: proto.DiskStatusNormal,
+						},
+						extraInfo: &clustermgr.DiskHeartBeatInfo{
+							MaxChunkCnt:  int64(maxChunks),
+							FreeChunkCnt: free,
+						},
+					},
+					weightGetter:   blobNodeDiskWeightGetter,
+					weightDecrease: blobNodeDiskWeightDecrease,
+				}
+				diskID++
+				disks = append(disks, di)
+				nodeWeight += free
+			}
+
+			ns := &nodeAllocator{
+				node:   ni,
+				weight: nodeWeight,
+				disks:  disks,
+			}
+			nodeStgs = append(nodeStgs, ns)
+			idcWeight += nodeWeight
+		}
+
+		allocatableCount := int64(0)
+		for _, ns := range nodeStgs {
+			if ns.weight > 0 {
+				allocatableCount++
+			}
+		}
+
+		var allDisks []*diskItem
+		for _, ns := range nodeStgs {
+			allDisks = append(allDisks, ns.disks...)
+		}
+
+		idcAllocs[idc] = &idcAllocator{
+			idc:            idc,
+			weight:         idcWeight,
+			creatableNodes: allocatableCount,
+			diffHost:       diffHost,
+			nodeStorages:   nodeStgs,
+			disks:          allDisks,
+		}
+		totalWeight += idcWeight
+	}
+
+	ds := newDiskSetAllocator(ecDiskSetID, totalWeight, idcAllocs)
+	ns := newNodeSetAllocator(ecNodeSetID)
+	ns.addDiskSet(ds)
+
+	return newAllocator(allocatorConfig{
+		nodeSets: map[proto.DiskType]nodeSetAllocatorMap{
+			proto.DiskTypeHDD: {ecNodeSetID: ns},
+		},
+		diskSets: map[proto.DiskType]diskSetAllocatorMap{
+			proto.DiskTypeHDD: {ecDiskSetID: ds},
+		},
+		diffHost: diffHost,
+	})
+}
+
+// BenchmarkCanAllocForMode_EC15P12 benchmarks canAllocForMode with a production-scale
+// cluster: ~13,000 disks (222 nodes × 59 disks), 3 IDCs, realistic ~90% water level.
+// Free chunk distribution: 5% new disks (high free), 15% moderate, 80% nearly full.
+func BenchmarkCanAllocForMode_EC15P12(b *testing.B) {
+	const (
+		numIDC       = 3
+		nodesPerIDC  = 74 // 222 nodes total
+		disksPerNode = 59 // ~13,098 disks total
+		maxChunks    = 30
+	)
+
+	alloc := buildBenchAllocator(numIDC, nodesPerIDC, disksPerNode, maxChunks, true)
+	mode := codemode.EC15P12
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = alloc.canAllocForMode(proto.DiskTypeHDD, mode)
+	}
+}
+
+// BenchmarkCanAllocForMode_EC6P6 benchmarks canAllocForMode with EC6P6 mode,
+// same production-scale topology and realistic free chunk distribution.
+func BenchmarkCanAllocForMode_EC6P6(b *testing.B) {
+	const (
+		numIDC       = 3
+		nodesPerIDC  = 74
+		disksPerNode = 59
+		maxChunks    = 30
+	)
+
+	alloc := buildBenchAllocator(numIDC, nodesPerIDC, disksPerNode, maxChunks, true)
+	mode := codemode.EC6P6
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = alloc.canAllocForMode(proto.DiskTypeHDD, mode)
+	}
+}
+
+// TestAlloc_ErrorBranches covers the error paths of Alloc / allocNodeSet /
+// allocDiskSet that the broader AllocChunks tests don't exercise.
+func TestAlloc_ErrorBranches(t *testing.T) {
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+
+	t.Run("unknown_disk_type", func(t *testing.T) {
+		a := &allocator{
+			nodeSets: map[proto.DiskType]nodeSetAllocatorMap{},
+			cfg:      allocatorConfig{},
+		}
+		_, err := a.Alloc(ctx, proto.DiskTypeHDD, codemode.EC15P12, nil)
+		require.ErrorIs(t, err, ErrNoEnoughSpace)
+
+		_, err = a.allocNodeSet(ctx, proto.DiskTypeHDD, codemode.EC15P12)
+		require.ErrorIs(t, err, ErrNoEnoughSpace)
+	})
+
+	t.Run("ec_nodeset_weight_not_enough", func(t *testing.T) {
+		a := &allocator{
+			nodeSets: map[proto.DiskType]nodeSetAllocatorMap{
+				proto.DiskTypeHDD: {
+					ecNodeSetID: {nodeSetID: ecNodeSetID, weight: 1, diskSets: map[proto.DiskSetID]*diskSetAllocator{}},
+				},
+			},
+			cfg: allocatorConfig{},
+		}
+		_, err := a.allocNodeSet(ctx, proto.DiskTypeHDD, codemode.EC15P12)
+		require.ErrorIs(t, err, ErrNoEnoughSpace)
+	})
+
+	t.Run("replicate_no_candidate_nodeset", func(t *testing.T) {
+		// Replicate mode but only an ecNodeSetID exists, so the loop body
+		// filters it out and leaves totalWeight == 0 => ErrNoEnoughSpace.
+		a := &allocator{
+			nodeSets: map[proto.DiskType]nodeSetAllocatorMap{
+				proto.DiskTypeHDD: {
+					ecNodeSetID: {nodeSetID: ecNodeSetID, weight: 100, diskSets: map[proto.DiskSetID]*diskSetAllocator{}},
+				},
+			},
+			cfg: allocatorConfig{diffHost: false, tg: newTopoMgr()},
+		}
+		_, err := a.allocNodeSet(ctx, proto.DiskTypeHDD, codemode.Replica3)
+		require.ErrorIs(t, err, ErrNoEnoughSpace)
+	})
+
+	t.Run("allocDiskSet_all_excluded", func(t *testing.T) {
+		ds := &diskSetAllocator{diskSetID: proto.DiskSetID(10), weight: 100}
+		ns := &nodeSetAllocator{
+			nodeSetID: proto.NodeSetID(3),
+			weight:    100,
+			diskSets:  map[proto.DiskSetID]*diskSetAllocator{ds.diskSetID: ds},
+		}
+		_, err := ns.allocDiskSet(ctx, 1, []proto.DiskSetID{ds.diskSetID})
+		require.ErrorIs(t, err, ErrNoEnoughSpace)
+	})
+
+	t.Run("allocDiskSet_count_too_large", func(t *testing.T) {
+		ds := &diskSetAllocator{diskSetID: proto.DiskSetID(11), weight: 5}
+		ns := &nodeSetAllocator{
+			nodeSetID: proto.NodeSetID(4),
+			weight:    5,
+			diskSets:  map[proto.DiskSetID]*diskSetAllocator{ds.diskSetID: ds},
+		}
+		_, err := ns.allocDiskSet(ctx, 100, nil)
+		require.ErrorIs(t, err, ErrNoEnoughSpace)
+	})
+}
+
+// TestAlloc_HostAwareFilter exercises the diffHost filter inside allocNodeSet:
+// when diffHost=true and the nodeSet does not have enough distinct nodes the
+// filter kicks in and totalWeight falls to 0 => ErrNoEnoughSpace.
+func TestAlloc_HostAwareFilter(t *testing.T) {
+	mgr, closeMgr := initTestBlobNodeMgr(t)
+	defer closeMgr()
+	mgr.cfg.HeartbeatExpireIntervalS = 6000
+	mgr.cfg.HostAware = true
+
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	// only 1 node / 1 disk is never enough for Replica3 which needs 3 distinct hosts
+	initTestBlobNodeMgrNodes(t, mgr, 1, 1, testIdcs[0])
+	initTestBlobNodeMgrDisks(t, mgr, 1, 1, true, testIdcs[0])
+	mgr.refresh(ctx)
+
+	alloc := mgr.manager.allocator.Load().(*allocator)
+	_, err := alloc.allocNodeSet(ctx, proto.DiskTypeHDD, codemode.Replica3)
+	require.ErrorIs(t, err, ErrNoEnoughSpace)
 }
