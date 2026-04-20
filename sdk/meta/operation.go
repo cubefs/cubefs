@@ -1094,7 +1094,7 @@ func (mw *MetaWrapper) lookup(mp *MetaPartition, parentID uint64, name string, v
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
 	}()
 
-	packet, err = mw.sendToMetaPartition(mp, packet)
+	packet, err = mw.sendToMetaPartition(mp, packet, parentID)
 	if err != nil {
 		log.LogErrorf("lookup: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		errMetric := exporter.NewCounter("fileOpenFailed")

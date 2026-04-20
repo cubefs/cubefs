@@ -126,7 +126,7 @@ func (mw *MetaWrapper) Statfs() (total, used, inodeCount uint64) {
 	return
 }
 
-func (mw *MetaWrapper) Create_ll(parentID uint64, name string, mode, uid, gid uint32, target []byte, fullPath string, ignoreExist bool, isAsync bool) (*proto.InodeInfo, error) {
+func (mw *MetaWrapper) Create_ll(parentID uint64, name string, mode, uid, gid uint32, target []byte, fullPath string, ignoreExist bool, isAsync bool) (info *proto.InodeInfo, err error) {
 	// if mw.EnableTransaction {
 	var txMask proto.TxOpMask
 	if proto.IsRegular(mode) {
@@ -162,6 +162,21 @@ func (mw *MetaWrapper) txCreate_ll(parentID uint64, name string, mode, uid, gid 
 		log.LogErrorf("txCreate_ll: No parent partition, parentID(%v)", parentID)
 		return nil, syscall.ENOENT
 	}
+
+	defer func() {
+		if err != nil || info == nil {
+			return
+		}
+
+		if mw.nearReadEnabled(parentMP) {
+			mw.dirtyInodes.mark(parentID)
+		}
+
+		newMp := mw.getPartitionByInode(info.Inode)
+		if newMp != nil && mw.nearReadEnabled(newMp) {
+			mw.dirtyInodes.mark(info.Inode)
+		}
+	}()
 
 	var quotaIds []uint32
 	if mw.EnableQuota {
@@ -241,6 +256,21 @@ func (mw *MetaWrapper) create_ll(parentID uint64, name string, mode, uid, gid ui
 		log.LogErrorf("Create_ll: No parent partition, parentID(%v)", parentID)
 		return nil, syscall.ENOENT
 	}
+
+	defer func() {
+		if err != nil || info == nil {
+			return
+		}
+
+		if mw.nearReadEnabled(parentMP) {
+			mw.dirtyInodes.mark(parentID)
+		}
+
+		if mw.nearReadEnabled(mp) {
+			mw.dirtyInodes.mark(info.Inode)
+		}
+	}()
+
 	if mw.EnableQuota {
 		status, info, err = mw.iget(parentMP, parentID, mw.LastVerSeq, isAsync)
 		if err != nil || status != statusOK {
@@ -769,6 +799,10 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool, ful
 		return nil, syscall.ENOENT
 	}
 
+	if mw.nearReadEnabled(parentMP) {
+		mw.dirtyInodes.mark(parentID)
+	}
+
 	if !mw.disableTrash && !mw.disableTrashByClient {
 		if mw.trashPolicy == nil {
 			log.LogDebugf("TRACE Remove:TrashPolicy is nil")
@@ -895,6 +929,7 @@ deleteDirectly:
 	if mw.trashPolicy != nil && !mw.disableTrash {
 		mw.trashPolicy.CleanTrashPatchCache(mw.getCurrentPath(parentID), name)
 	}
+
 	return info, preErr
 }
 
@@ -919,6 +954,10 @@ func (mw *MetaWrapper) Delete_ll_EX(parentID uint64, name string, isDir bool, ve
 	if parentMP == nil {
 		log.LogErrorf("delete_ll: No parent partition, parentID(%v) name(%v)", parentID, name)
 		return nil, syscall.ENOENT
+	}
+
+	if mw.nearReadEnabled(parentMP) {
+		mw.dirtyInodes.mark(parentID)
 	}
 
 	if !mw.disableTrash && !mw.disableTrashByClient {
@@ -1094,6 +1133,10 @@ func (mw *MetaWrapper) deletewithcond_ll(parentID, cond uint64, name string, isD
 		return nil, syscall.ENOENT
 	}
 
+	if mw.nearReadEnabled(parentMP) {
+		mw.dirtyInodes.mark(parentID)
+	}
+
 	if isDir {
 		status, inode, mode, err = mw.lookup(parentMP, parentID, name, mw.LastVerSeq, isAsync)
 		if err != nil || status != statusOK {
@@ -1192,6 +1235,14 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 	dstParentMP := mw.getPartitionByInode(dstParentID)
 	if dstParentMP == nil {
 		return syscall.ENOENT
+	}
+
+	if mw.nearReadEnabled(srcParentMP) {
+		mw.dirtyInodes.mark(srcParentID)
+	}
+
+	if mw.nearReadEnabled(dstParentMP) {
+		mw.dirtyInodes.mark(dstParentID)
 	}
 	// look up for the src ino
 	status, srcInode, srcMode, err := mw.lookup(srcParentMP, srcParentID, srcName, mw.LastVerSeq, isAsync)
@@ -1323,6 +1374,14 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 	dstParentMP := mw.getPartitionByInode(dstParentID)
 	if dstParentMP == nil {
 		return syscall.ENOENT
+	}
+
+	if mw.nearReadEnabled(srcParentMP) {
+		mw.dirtyInodes.mark(srcParentID)
+	}
+
+	if mw.nearReadEnabled(dstParentMP) {
+		mw.dirtyInodes.mark(dstParentID)
 	}
 
 	status, info, err := mw.iget(dstParentMP, dstParentID, mw.VerReadSeq, isAsync)
@@ -1687,6 +1746,15 @@ func (mw *MetaWrapper) txLink(parentID uint64, name string, ino uint64, fullPath
 		log.LogErrorf("txLink: No target inode partition, ino(%v)", ino)
 		return nil, syscall.ENOENT
 	}
+
+	if mw.nearReadEnabled(parentMP) {
+		mw.dirtyInodes.mark(parentID)
+	}
+
+	if mw.nearReadEnabled(mp) {
+		mw.dirtyInodes.mark(ino)
+	}
+
 	var tx *Transaction
 
 	defer func() {
@@ -1787,6 +1855,14 @@ func (mw *MetaWrapper) link(parentID uint64, name string, ino uint64, fullPath s
 		return nil, syscall.ENOENT
 	}
 
+	if mw.nearReadEnabled(parentMP) {
+		mw.dirtyInodes.mark(parentID)
+	}
+
+	if mw.nearReadEnabled(mp) {
+		mw.dirtyInodes.mark(ino)
+	}
+
 	// increase inode nlink
 	status, info, err = mw.ilink(mp, ino, fullPath, false)
 	if err != nil || status != statusOK {
@@ -1824,6 +1900,10 @@ func (mw *MetaWrapper) Evict(inode uint64, fullPath string, isAsync bool) error 
 	if mp == nil {
 		log.LogWarnf("Evict: No such partition, ino(%v)", inode)
 		return syscall.EINVAL
+	}
+
+	if mw.nearReadEnabled(mp) {
+		mw.dirtyInodes.mark(inode)
 	}
 
 	log.LogDebugf("Evict: ino(%v) mp(%v)", inode, mp.PartitionID)

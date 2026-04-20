@@ -16,6 +16,7 @@ package meta
 
 import (
 	"net"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"syscall"
@@ -388,6 +389,11 @@ func (mw *MetaWrapper) enableTx(mask proto.TxOpMask) bool {
 
 // nearReadEnabled reports whether meta near-read is active (follower read + near read both on).
 func (mw *MetaWrapper) nearReadEnabled(mp *MetaPartition) bool {
+	if mp == nil {
+		log.LogWarnf("nearReadEnabled: mp is nil, stack %v", string(debug.Stack()))
+		return false
+	}
+
 	if mw.defaultMetaRegion == mp.Region {
 		return mw.FollowerRead && mw.NearRead
 	}
