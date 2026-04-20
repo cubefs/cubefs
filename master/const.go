@@ -193,6 +193,7 @@ const (
 	remoteCacheReadTimeout       = "remoteCacheReadTimeout"
 	remoteCacheMaxFileSizeGB     = "remoteCacheMaxFileSizeGB"
 	remoteCacheMaxFileSizeMB     = "remoteCacheMaxFileSizeMB"
+	minReadAheadSize             = "minReadAheadSize"
 	remoteCacheMultiRead         = "remoteCacheMultiRead"
 	flashNodeTimeoutCount        = "flashNodeTimeoutCount"
 	remoteCacheSameZoneTimeout   = "remoteCacheSameZoneTimeout"

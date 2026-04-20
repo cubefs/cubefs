@@ -164,7 +164,7 @@ type ExtentConfig struct {
 	AheadReadTotalMem     int64
 	AheadReadBlockTimeOut int
 	AheadReadWindowCnt    int
-	MinReadAheadSize      int
+	MinReadAheadSize      uint64
 	// remoteCache
 	NeedRemoteCache  bool
 	ForceRemoteCache bool
@@ -458,6 +458,19 @@ func (client *ExtentClient) UpdateRemoteCacheConfig(view *proto.SimpleVolView) {
 		client.RemoteCache.UpdateRemoteCacheConfig(client, view)
 	} else {
 		log.LogInfof("UpdateRemoteCacheConfig do nothing, client.extentConfig.NeedRemoteCache %v", client.extentConfig.NeedRemoteCache)
+	}
+}
+
+func (client *ExtentClient) UpdateMinReadAheadSize(minReadAheadSize int64) {
+	if client.extentConfig == nil {
+		return
+	}
+	if minReadAheadSize <= 0 {
+		minReadAheadSize = proto.DefaultMinReadAheadSize
+	}
+	newVal := uint64(minReadAheadSize)
+	if newVal != atomic.LoadUint64(&client.extentConfig.MinReadAheadSize) {
+		atomic.StoreUint64(&client.extentConfig.MinReadAheadSize, newVal)
 	}
 }
 

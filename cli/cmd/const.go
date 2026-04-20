@@ -192,6 +192,7 @@ const (
 	CliFlagRemoteCacheReadTimeout       = "remoteCacheReadTimeout"
 	CliFlagRemoteCacheMaxFileSizeGB     = "remoteCacheMaxFileSizeGB"
 	CliFlagRemoteCacheMaxFileSizeMB     = "remoteCacheMaxFileSizeMB"
+	CliFlagMinReadAheadSize             = "minReadAheadSize"
 	CliFlagRemoteCacheMultiRead         = "remoteCacheMultiRead"
 	CliFlagFlashNodeTimeoutCount        = "flashNodeTimeoutCount"
 	CliFlagRemoteCacheSameZoneTimeout   = "remoteCacheSameZoneTimeout"

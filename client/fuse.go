@@ -899,6 +899,9 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 				continue
 			}
 			super.SetTransaction(volumeInfo.EnableTransactionV1, volumeInfo.TxTimeout, volumeInfo.TxConflictRetryNum, volumeInfo.TxConflictRetryInterval)
+			if GlobalMountOptions[proto.MinReadAheadSize].GetInt64() < 0 {
+				super.SetMinReadAheadSize(volumeInfo.MinReadAheadSize)
+			}
 			if proto.IsCold(opt.VolType) || proto.IsStorageClassBlobStore(opt.VolStorageClass) {
 				super.EbsBlockSize = volumeInfo.ObjBlockSize
 			} else if proto.IsVolSupportStorageClass(opt.VolAllowedStorageClass, proto.StorageClass_BlobStore) {
@@ -1248,6 +1251,12 @@ func loadConfFromMaster(opt *proto.MountOptions) (err error) {
 	opt.TxConflictRetryInterval = volumeInfo.TxConflictRetryInterval
 	opt.VolStorageClass = volumeInfo.VolStorageClass
 	opt.VolAllowedStorageClass = volumeInfo.AllowedStorageClass
+	if opt.MinReadAheadSize < 0 {
+		opt.MinReadAheadSize = volumeInfo.MinReadAheadSize
+		if opt.MinReadAheadSize <= 0 {
+			opt.MinReadAheadSize = proto.DefaultMinReadAheadSize
+		}
+	}
 
 	var clusterInfo *proto.ClusterInfo
 	clusterInfo, err = mc.AdminAPI().GetClusterInfo()

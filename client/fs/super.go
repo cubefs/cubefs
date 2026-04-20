@@ -334,7 +334,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		AheadReadTotalMem:     opt.AheadReadTotalMem,
 		AheadReadBlockTimeOut: opt.AheadReadBlockTimeOut,
 		AheadReadWindowCnt:    opt.AheadReadWindowCnt,
-		MinReadAheadSize:      int(opt.MinReadAheadSize),
+		MinReadAheadSize:      uint64(opt.MinReadAheadSize),
 		NeedRemoteCache:       true,
 		ForceRemoteCache:      opt.ForceRemoteCache,
 		EnableAsyncFlush:      opt.EnableAsyncFlush,
@@ -982,6 +982,13 @@ func (s *Super) SetTransaction(txMaskStr string, timeout int64, retryNum int64, 
 	s.mw.TxConflictRetryInterval = retryInterval
 	log.LogDebugf("SetTransaction: mask[%v], op[%v], timeout[%v], retryNum[%v], retryInterval[%v ms]",
 		mask, txMaskStr, timeout, retryNum, retryInterval)
+}
+
+func (s *Super) SetMinReadAheadSize(minReadAheadSize int64) {
+	if s.ec == nil {
+		return
+	}
+	s.ec.UpdateMinReadAheadSize(minReadAheadSize)
 }
 
 // loopWarmUpMetaPaths periodically checks WarmUpMetaPaths and warms up inode cache

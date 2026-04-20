@@ -499,6 +499,7 @@ type volValue struct {
 	RemoteCacheReadTimeout       int64 // ms
 	RemoteCacheMaxFileSizeGB     int64
 	RemoteCacheMaxFileSizeMB     int64
+	MinReadAheadSize             int64
 	RemoteCacheOnlyForNotSSD     bool
 	RemoteCacheMultiRead         bool
 	FlashNodeTimeoutCount        int64
@@ -607,6 +608,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		RemoteCachePath:              vol.remoteCachePath,
 		RemoteCacheMaxFileSizeGB:     vol.remoteCacheMaxFileSizeGB,
 		RemoteCacheMaxFileSizeMB:     vol.remoteCacheMaxFileSizeMB,
+		MinReadAheadSize:             vol.minReadAheadSize,
 		RemoteCacheOnlyForNotSSD:     true,
 		RemoteCacheMultiRead:         vol.remoteCacheMultiRead,
 		FlashNodeTimeoutCount:        vol.flashNodeTimeoutCount,

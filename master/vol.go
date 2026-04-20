@@ -78,6 +78,7 @@ type VolVarargs struct {
 	remoteCacheReadTimeout       int64 // ms
 	remoteCacheMaxFileSizeGB     int64
 	remoteCacheMaxFileSizeMB     int64
+	minReadAheadSize             int64
 	remoteCacheOnlyForNotSSD     bool
 	remoteCacheMultiRead         bool
 	flashNodeTimeoutCount        int64
@@ -112,6 +113,7 @@ type TxSubItem struct {
 	remoteCacheReadTimeout       int64 // ms
 	remoteCacheMaxFileSizeGB     int64
 	remoteCacheMaxFileSizeMB     int64
+	minReadAheadSize             int64
 	remoteCacheOnlyForNotSSD     bool
 	remoteCacheMultiRead         bool
 	flashNodeTimeoutCount        int64
@@ -295,6 +297,7 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.remoteCacheEnable = vv.RemoteCacheEnable
 	vol.remoteCacheMaxFileSizeGB = vv.RemoteCacheMaxFileSizeGB
 	vol.remoteCacheMaxFileSizeMB = vv.RemoteCacheMaxFileSizeMB
+	vol.minReadAheadSize = vv.MinReadAheadSize
 	vol.remoteCacheOnlyForNotSSD = true
 	vol.remoteCacheMultiRead = vv.RemoteCacheMultiRead
 	vol.flashNodeTimeoutCount = vv.FlashNodeTimeoutCount
@@ -431,6 +434,9 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	}
 	if vol.remoteCacheMaxFileSizeMB == 0 {
 		vol.remoteCacheMaxFileSizeMB = proto.DefaultRemoteCacheMaxFileSizeMB
+	}
+	if vol.minReadAheadSize == 0 {
+		vol.minReadAheadSize = proto.DefaultMinReadAheadSize
 	}
 	if vol.flashNodeTimeoutCount == 0 {
 		vol.flashNodeTimeoutCount = proto.DefaultFlashNodeTimeoutCount
@@ -2109,6 +2115,7 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.remoteCacheReadTimeout = args.remoteCacheReadTimeout
 	vol.remoteCacheMaxFileSizeGB = args.remoteCacheMaxFileSizeGB
 	vol.remoteCacheMaxFileSizeMB = args.remoteCacheMaxFileSizeMB
+	vol.minReadAheadSize = args.minReadAheadSize
 	vol.remoteCacheMultiRead = args.remoteCacheMultiRead
 	vol.flashNodeTimeoutCount = args.flashNodeTimeoutCount
 	vol.remoteCacheSameZoneTimeout = args.remoteCacheSameZoneTimeout
@@ -2210,6 +2217,7 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		remoteCacheReadTimeout:       vol.remoteCacheReadTimeout,
 		remoteCacheMaxFileSizeGB:     vol.remoteCacheMaxFileSizeGB,
 		remoteCacheMaxFileSizeMB:     vol.remoteCacheMaxFileSizeMB,
+		minReadAheadSize:             vol.minReadAheadSize,
 		remoteCacheOnlyForNotSSD:     true,
 		remoteCacheMultiRead:         vol.remoteCacheMultiRead,
 		flashNodeTimeoutCount:        vol.flashNodeTimeoutCount,

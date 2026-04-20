@@ -5203,6 +5203,7 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 		RemoteCacheReadTimeout:       req.remoteCacheReadTimeout,
 		RemoteCacheMaxFileSizeGB:     req.remoteCacheMaxFileSizeGB,
 		RemoteCacheMaxFileSizeMB:     req.remoteCacheMaxFileSizeMB,
+		MinReadAheadSize:             req.minReadAheadSize,
 		RemoteCacheOnlyForNotSSD:     req.remoteCacheOnlyForNotSSD,
 		RemoteCacheMultiRead:         req.remoteCacheMultiRead,
 		FlashNodeTimeoutCount:        req.flashNodeTimeoutCount,
