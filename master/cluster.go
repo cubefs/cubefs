@@ -6569,24 +6569,36 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 	var (
 		node                *DataNode
 		err                 error
+		ok                  bool
 		badPartitionIds     []uint64
 		lastBadPartitionIds []uint64
 		// tmpIds              []uint64
 		badPartitions []*DataPartition
 		rstMsg        string
+		execSeq       uint64
 		zone          *Zone
 		ns            *nodeSet
 	)
+	if execSeq, ok = disk.beginDecommissionAttempt(); !ok {
+		return
+	}
+	defer disk.finishDecommissionAttempt(execSeq)
 	defer func() {
 		if err != nil {
 			disk.DecommissionTimes++
 		}
-		auditlog.LogMasterOp("DiskDecommission", rstMsg, err)
+		if rstMsg != "" || err != nil {
+			auditlog.LogMasterOp("DiskDecommission", rstMsg, err)
+		}
 		c.syncUpdateDecommissionDisk(disk)
 	}()
 	if node, err = c.dataNode(disk.SrcAddr); err != nil {
 		log.LogWarnf("action[TryDecommissionDisk] cannot find dataNode[%s]", disk.SrcAddr)
-		disk.markDecommissionFailed()
+		if !disk.commitDecommissionAttempt(execSeq, func() {
+			disk.markDecommissionFailed()
+		}) {
+			err = nil
+		}
 		return
 	}
 	badPartitions = node.badPartitions(disk.DiskPath, c, false)
@@ -6610,9 +6622,13 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 		log.LogInfof("action[TryDecommissionDisk] receive decommissionDisk node[%v] "+
 			"no any partitions on disk[%v],offline successfully",
 			node.Addr, disk.DiskPath)
+		if !disk.commitDecommissionAttempt(execSeq, func() {
+			disk.markDecommissionSuccess()
+			disk.DecommissionDpTotal = 0
+		}) {
+			return
+		}
 		rstMsg = fmt.Sprintf("no any partitions on disk[%v],offline successfully", disk.decommissionInfo())
-		disk.markDecommissionSuccess()
-		disk.DecommissionDpTotal = 0
 		if disk.DiskDisable {
 			c.addAndSyncDecommissionedDisk(node, disk.DiskPath)
 		}
@@ -6641,13 +6657,21 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 	if zone, err = c.t.getZone(node.ZoneName); err != nil {
 		log.LogWarnf("action[TryDecommissionDisk] find datanode[%s] zone failed[%v]",
 			node.Addr, err.Error())
-		disk.markDecommissionFailed()
+		if !disk.commitDecommissionAttempt(execSeq, func() {
+			disk.markDecommissionFailed()
+		}) {
+			err = nil
+		}
 		return
 	}
 	if ns, err = zone.getNodeSet(node.NodeSetID); err != nil {
 		log.LogWarnf("action[TryDecommissionDisk] find datanode[%s] nodeset[%v] failed[%v]",
 			node.Addr, node.NodeSetID, err.Error())
-		disk.markDecommissionFailed()
+		if !disk.commitDecommissionAttempt(execSeq, func() {
+			disk.markDecommissionFailed()
+		}) {
+			err = nil
+		}
 		return
 	}
 	var ignoreIDs []uint64
@@ -6731,8 +6755,12 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 		c.syncUpdateDataPartition(dp)
 		badPartitionIds = append(badPartitionIds, dp.PartitionID)
 	}
-	disk.SetDecommissionStatus(DecommissionRunning)
-	disk.IgnoreDecommissionDps = IgnoreDecommissionDps
+	if !disk.commitDecommissionAttempt(execSeq, func() {
+		disk.SetDecommissionStatus(DecommissionRunning)
+		disk.IgnoreDecommissionDps = IgnoreDecommissionDps
+	}) {
+		return
+	}
 	rstMsg = fmt.Sprintf("disk[%v] badPartitionIds %v offline successfully, ignore (%v) %v",
 		disk.decommissionInfo(), badPartitionIds, len(ignoreIDs), ignoreIDs)
 	log.LogInfof("action[TryDecommissionDisk] %s", rstMsg)

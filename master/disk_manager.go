@@ -352,6 +352,8 @@ type DecommissionDisk struct {
 	Type                     uint32
 	DecommissionCompleteTime int64
 	UpdateMutex              sync.RWMutex `json:"-"`
+	execSeq                  uint64       `json:"-"`
+	execActive               bool         `json:"-"`
 }
 
 func (dd *DecommissionDisk) GenerateKey() string {
@@ -503,6 +505,41 @@ func (dd *DecommissionDisk) GetDecommissionStatus() uint32 {
 
 func (dd *DecommissionDisk) SetDecommissionStatus(status uint32) {
 	atomic.StoreUint32(&dd.DecommissionStatus, status)
+}
+
+func (dd *DecommissionDisk) beginDecommissionAttempt() (seq uint64, ok bool) {
+	dd.UpdateMutex.Lock()
+	defer dd.UpdateMutex.Unlock()
+
+	if dd.GetDecommissionStatus() != markDecommission || dd.execActive {
+		return 0, false
+	}
+
+	dd.execSeq++
+	dd.execActive = true
+	return dd.execSeq, true
+}
+
+func (dd *DecommissionDisk) finishDecommissionAttempt(seq uint64) {
+	dd.UpdateMutex.Lock()
+	defer dd.UpdateMutex.Unlock()
+
+	if dd.execSeq == seq {
+		dd.execActive = false
+	}
+}
+
+func (dd *DecommissionDisk) commitDecommissionAttempt(seq uint64, apply func()) bool {
+	dd.UpdateMutex.Lock()
+	defer dd.UpdateMutex.Unlock()
+
+	status := dd.GetDecommissionStatus()
+	if dd.execSeq != seq || status == DecommissionCancel || status == DecommissionPause {
+		return false
+	}
+
+	apply()
+	return true
 }
 
 func (dd *DecommissionDisk) markDecommissionSuccess() {
@@ -669,6 +706,12 @@ func (dd *DecommissionDisk) cancelDecommission(cluster *Cluster, srcNs *nodeSet)
 			dd.SrcAddr, dd.DiskPath, time.Since(begin))
 	}()
 
+	dd.UpdateMutex.Lock()
+	dd.execSeq++
+	dd.execActive = false
+	dd.SetDecommissionStatus(DecommissionCancel)
+	dd.UpdateMutex.Unlock()
+
 	dps, queuedDps := cluster.getAllDecommissionDataPartitionByDiskAndTerm(dd.SrcAddr, dd.DiskPath, dd.DecommissionTerm)
 	success, failed := cluster.cancelDecommissionWorker(dps, srcNs, "cancelDecommission")
 
@@ -677,7 +720,6 @@ func (dd *DecommissionDisk) cancelDecommission(cluster *Cluster, srcNs *nodeSet)
 		success = append(success, dp.PartitionID)
 	}
 
-	dd.SetDecommissionStatus(DecommissionCancel)
 	msg := fmt.Sprintf("disk(%v) cancel decommission dps(%v) with failed(%v)", dd.decommissionInfo(), success, failed)
 	err = cluster.syncUpdateDecommissionDisk(dd)
 	auditlog.LogMasterOp("CancelDiskDecommission", msg, err)
