@@ -37,6 +37,16 @@ var (
 	ErrReadOnClosed  = errors.New("crc32block: read on closed")
 )
 
+func DecoderBufferSize(shardSize int64) int64 {
+	buffSize := util.AlignedFull(EncodeSize(shardSize, gBlockSize), baseBlockLen)
+
+	if buffSize > gBlockSize {
+		return gBlockSize
+	}
+
+	return buffSize
+}
+
 func isValidBlockLen(blockLen int64) bool {
 	return blockLen > 0 && blockLen%baseBlockLen == 0
 }
