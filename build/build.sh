@@ -75,6 +75,14 @@ esac
 
 CPUTYPE=${CPUTYPE} | tr 'A-Z' 'a-z'
 
+# Script flow overview:
+# 1. Prepare build paths, version flags, and platform-specific defaults.
+# 2. Build the native third-party libraries needed by CGO targets.
+# 3. Initialize the GOPATH-style workspace used by downstream go commands.
+# 4. Run the requested build, unit test, or coverage workflow.
+# 5. Optionally clean generated binaries or the local dependency cache.
+#
+# Build the vendored zlib static library and install its headers if missing.
 build_zlib() {
     ZLIB_VER=1.2.13
     if [ -f "${BuildDependsLibPath}/libz.a" ]; then
@@ -97,6 +105,7 @@ build_zlib() {
     popd
 }
 
+# Build the vendored bzip2 static library and install its headers if missing.
 build_bzip2() {
     BZIP2_VER=1.0.6
     if [ -f "${BuildDependsLibPath}/libbz2.a" ]; then
@@ -121,6 +130,7 @@ build_bzip2() {
     popd
 }
 
+# Build the vendored lz4 static library and install its headers if missing.
 build_lz4() {
     LZ4_VER=1.8.3
     if [ -f "${BuildDependsLibPath}/liblz4.a" ]; then
@@ -142,6 +152,7 @@ build_lz4() {
     popd
 }
 
+# Build the vendored zstd static library and install its headers if missing.
 build_zstd() {
     ZSTD_VER=1.4.0
     if [ -f "${BuildDependsLibPath}/libzstd.a" ]; then
@@ -164,6 +175,7 @@ build_zstd() {
 }
 
 
+# Build the vendored snappy static library and install its headers if missing.
 build_snappy() {
     SNAPPY_VER=1.1.7
     if [ -f "${BuildDependsLibPath}/libsnappy.a" ]; then
@@ -186,6 +198,7 @@ build_snappy() {
     popd
 }
 
+# Build the vendored tcmalloc static library and install its headers if missing.
 build_tcmalloc() {
     TCMALLOC_VER=2.9.1
     if [ -f "${BuildDependsLibPath}/libtcmalloc.a" ]; then
@@ -207,6 +220,7 @@ build_tcmalloc() {
     popd
 }
 
+# Build the vendored rocksdb static library against the prepared compression libraries.
 build_rocksdb() {
     ROCKSDB_VER=6.3.6
     if [ -f "${BuildDependsLibPath}/librocksdb.a" ]; then
@@ -243,6 +257,7 @@ build_rocksdb() {
     popd
 }
 
+# Prepare the GOPATH-style workspace and symlink used by subsequent go commands.
 init_gopath() {
     export GO111MODULE=${gomod}
     export GOPATH=$HOME/tmp/cfs/go
@@ -258,6 +273,7 @@ init_gopath() {
     fi
 }
 
+# Build native dependencies, export CGO flags, and initialize the build workspace.
 pre_build() {
     build_zlib $1
     build_bzip2 $1
@@ -274,6 +290,7 @@ pre_build() {
     init_gopath
 }
 
+# Temporarily switch CGO link flags to the tcmalloc-enabled variant.
 build_with_tcmalloc() {
     cgo_ldflags_tcmalloc="-L${BuildDependsLibPath} -ldl -ltcmalloc -lm -lrocksdb -lz -lbz2 -lsnappy -llz4 -lzstd -lstdc++"
     if [ "${use_clang}" != "" ]; then
@@ -282,6 +299,7 @@ build_with_tcmalloc() {
     export CGO_LDFLAGS="${cgo_ldflags_tcmalloc}"
 }
 
+# Run the standard unit test suite and emit a single coverage profile.
 run_test() {
     pushd $SrcPath >/dev/null
     export JENKINS_TEST=1
@@ -293,45 +311,173 @@ run_test() {
     exit $ret
 }
 
+# Keep the intended coverage scope and the execution shards separate so split
+# go test runs can be verified without treating any single module as special.
+# Append a temporary coverage profile into the merged report while skipping its header.
+_cover_merge_profile() {
+    local src dst
+    src="$1"
+    dst="$2"
+    sed '1d' "${src}" >> "${dst}" && rm -f "${src}"
+}
+
+# Verify that the union of split coverage shards exactly matches the intended package scope.
+_cover_verify_scope_matches_shards() {
+    local label expected_fn tmpd expected actual missing extra shard_fn
+    label="$1"
+    expected_fn="$2"
+    shift 2
+
+    tmpd=$(mktemp -d) || return 1
+    expected="${tmpd}/expected"
+    actual="${tmpd}/actual"
+    "${expected_fn}" | sort -u >"${expected}"
+    for shard_fn in "$@"; do
+        "${shard_fn}"
+    done | sort -u >"${actual}"
+    missing=$(comm -23 "${expected}" "${actual}")
+    extra=$(comm -13 "${expected}" "${actual}")
+    rm -rf "${tmpd}"
+    if [ -n "${missing}" ] || [ -n "${extra}" ]; then
+        echo "ERROR: ${label} package list mismatch (expected coverage scope vs union of go test args)."
+        if [ -n "${missing}" ]; then
+            echo "Packages in scope but not covered by any go test run:"
+            echo "${missing}"
+        fi
+        if [ -n "${extra}" ]; then
+            echo "Packages in go test runs but outside intended scope (adjust ${label} shard definitions):"
+            echo "${extra}"
+        fi
+        return 1
+    fi
+    return 0
+}
+
+# List the full package scope for the combined testcover workflow.
+_cover_list_run_test_cover_scope() {
+    go list ./... | grep -v depends | grep -v '/blobstore/cmd' | grep -v '/blobstore/common/tcmalloc'
+}
+
+# List the primary shard for the combined testcover workflow.
+_cover_list_run_test_cover_shard_main() {
+    _cover_list_run_test_cover_scope | grep -v /blobstore/shardnode
+}
+
+# List an additional shard that is merged back into the combined testcover report.
+_cover_list_run_test_cover_shard_extra_1() {
+    go list ./... | grep /blobstore/shardnode/catalog/allocator
+}
+
+# List an additional shard that is merged back into the combined testcover report.
+_cover_list_run_test_cover_shard_extra_2() {
+    go list ./... | grep /blobstore/shardnode | grep -v /catalog/allocator
+}
+
+# Check that all split shards for testcover still cover the full intended package set.
+_cover_verify_run_test_cover_union() {
+    _cover_verify_scope_matches_shards \
+        "run_test_cover" \
+        _cover_list_run_test_cover_scope \
+        _cover_list_run_test_cover_shard_main \
+        _cover_list_run_test_cover_shard_extra_1 \
+        _cover_list_run_test_cover_shard_extra_2
+}
+
+# List the full package scope for the cubefs-only coverage workflow.
+_cover_list_run_test_cover_cubefs_scope() {
+    go list ./... | grep -v /cubefs/depends/ | grep -v /cubefs/blobstore
+}
+
+# List the primary shard for the cubefs-only coverage workflow.
+_cover_list_run_test_cover_cubefs_shard_main() {
+    _cover_list_run_test_cover_cubefs_scope
+}
+
+# Check that all split shards for testcovercubefs still cover the full intended package set.
+_cover_verify_run_test_cover_cubefs_union() {
+    _cover_verify_scope_matches_shards \
+        "run_test_cover_cubefs" \
+        _cover_list_run_test_cover_cubefs_scope \
+        _cover_list_run_test_cover_cubefs_shard_main
+}
+
+# List the full package scope for the blobstore-only coverage workflow.
+_cover_list_run_test_cover_blobstore_scope() {
+    go list ./blobstore/... | grep -v '/blobstore/cmd' | grep -v '/blobstore/common/tcmalloc'
+}
+
+# List the primary shard for the blobstore-only coverage workflow.
+_cover_list_run_test_cover_blobstore_shard_main() {
+    _cover_list_run_test_cover_blobstore_scope | grep -v /blobstore/shardnode
+}
+
+# List an additional shard that is merged back into the blobstore coverage report.
+_cover_list_run_test_cover_blobstore_shard_extra_1() {
+    go list ./blobstore/... | grep /blobstore/shardnode/catalog/allocator
+}
+
+# List an additional shard that is merged back into the blobstore coverage report.
+_cover_list_run_test_cover_blobstore_shard_extra_2() {
+    go list ./blobstore/... | grep /blobstore/shardnode | grep -v /catalog/allocator
+}
+
+# Check that all split shards for testcoverblobstore still cover the full intended package set.
+_cover_verify_run_test_cover_blobstore_union() {
+    _cover_verify_scope_matches_shards \
+        "run_test_cover_blobstore" \
+        _cover_list_run_test_cover_blobstore_scope \
+        _cover_list_run_test_cover_blobstore_shard_main \
+        _cover_list_run_test_cover_blobstore_shard_extra_1 \
+        _cover_list_run_test_cover_blobstore_shard_extra_2
+}
+
+# Run the full split coverage workflow for the repository and merge all shard profiles.
 run_test_cover() {
     pushd $SrcPath >/dev/null
     export JENKINS_TEST=1
     ulimit -n 65536
     echo -n "${TPATH}"
 
+    _cover_verify_run_test_cover_union || exit 1
+
     go test -trimpath -covermode=count --coverprofile coverage.txt \
-        $(go list ./... | grep -v depends | grep -v /blobstore/shardnode | grep -v /blobstore/cmd | grep -v /blobstore/common/tcmalloc)
+        $(_cover_list_run_test_cover_shard_main)
     if [ $? -ne 0 ]; then
         exit 1
     fi
 
+    # Append each separately executed shard back into the merged profile so the
+    # final report still reflects the full intended coverage scope.
     go test -trimpath -covermode=count --coverprofile cover.txt \
-        $(go list ./... | grep /blobstore/shardnode/catalog/allocator)
+        $(_cover_list_run_test_cover_shard_extra_1)
     if [ $? -ne 0 ]; then
         exit 1
     fi
-    sed '1d' cover.txt >> coverage.txt && rm -f cover.txt
+    _cover_merge_profile cover.txt coverage.txt
 
     build_with_tcmalloc
     go test -trimpath -covermode=count --coverprofile cover.txt \
-        $(go list ./... | grep /blobstore/shardnode | grep -v /catalog/allocator)
+        $(_cover_list_run_test_cover_shard_extra_2)
     if [ $? -ne 0 ]; then
         exit 1
     fi
-    sed '1d' cover.txt >> coverage.txt && rm -f cover.txt
+    _cover_merge_profile cover.txt coverage.txt
     export CGO_LDFLAGS="${cgo_ldflags}"
 
     popd >/dev/null
     exit 0
 }
 
+# Run the split coverage workflow for cubefs packages and merge all shard profiles.
 run_test_cover_cubefs() {
     pushd $SrcPath >/dev/null
     ulimit -n 65536
     echo -n "${TPATH}"
 
+    _cover_verify_run_test_cover_cubefs_union || exit 1
+
     go test -trimpath -covermode=count --coverprofile coverage.txt \
-        $(go list ./... | grep -v /cubefs/depends/ | grep -v /cubefs/blobstore)
+        $(_cover_list_run_test_cover_cubefs_shard_main)
     if [ $? -ne 0 ]; then
         exit 1
     fi
@@ -340,38 +486,42 @@ run_test_cover_cubefs() {
     exit 0
 }
 
+# Run the split coverage workflow for blobstore packages and merge all shard profiles.
 run_test_cover_blobstore() {
     pushd $SrcPath >/dev/null
     export JENKINS_TEST=1
     ulimit -n 65536
     echo -n "${TPATH}"
 
+    _cover_verify_run_test_cover_blobstore_union || exit 1
+
     go test -trimpath -covermode=count --coverprofile coverage.txt \
-        $(go list ./blobstore/... | grep -v /blobstore/shardnode | grep -v /blobstore/cmd | grep -v /blobstore/common/tcmalloc)
+        $(_cover_list_run_test_cover_blobstore_shard_main)
     if [ $? -ne 0 ]; then
         exit 1
     fi
 
     go test -trimpath -covermode=count --coverprofile cover.txt \
-        $(go list ./blobstore/... | grep /blobstore/shardnode/catalog/allocator)
+        $(_cover_list_run_test_cover_blobstore_shard_extra_1)
     if [ $? -ne 0 ]; then
         exit 1
     fi
-    sed '1d' cover.txt >> coverage.txt && rm -f cover.txt
+    _cover_merge_profile cover.txt coverage.txt
 
     build_with_tcmalloc
     go test -trimpath -covermode=count --coverprofile cover.txt \
-        $(go list ./blobstore/... | grep /blobstore/shardnode | grep -v /catalog/allocator)
+        $(_cover_list_run_test_cover_blobstore_shard_extra_2)
     if [ $? -ne 0 ]; then
         exit 1
     fi
-    sed '1d' cover.txt >> coverage.txt && rm -f cover.txt
+    _cover_merge_profile cover.txt coverage.txt
     export CGO_LDFLAGS="${cgo_ldflags}"
 
     popd >/dev/null
     exit 0
 }
 
+# Build the main CubeFS server binary.
 build_server() {
     pushd $SrcPath >/dev/null
     echo -n "build cfs-server   "
@@ -379,42 +529,49 @@ build_server() {
     popd >/dev/null
 }
 
+# Build the blobstore clustermgr binary.
 build_clustermgr() {
     pushd $SrcPath/blobstore/cmd/clustermgr >/dev/null
     CGO_ENABLED=1 go build ${MODFLAGS} -gcflags=all=-trimpath=${BlobPath} -asmflags=all=-trimpath=${BlobPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore .
     popd >/dev/null
 }
 
+# Build the blobstore blobnode binary.
 build_blobnode() {
     pushd $SrcPath/blobstore/cmd/blobnode >/dev/null
     CGO_ENABLED=1 go build ${MODFLAGS} -gcflags=all=-trimpath=${BlobPath} -asmflags=all=-trimpath=${BlobPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore .
     popd >/dev/null
 }
 
+# Build the blobstore access binary.
 build_access() {
     pushd $SrcPath/blobstore/cmd/access >/dev/null
     CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${BlobPath} -asmflags=all=-trimpath=${BlobPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore .
     popd >/dev/null
 }
 
+# Build the blobstore scheduler binary.
 build_scheduler() {
     pushd $SrcPath/blobstore/cmd/scheduler >/dev/null
     CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${BlobPath} -asmflags=all=-trimpath=${BlobPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore .
     popd >/dev/null
 }
 
+# Build the blobstore proxy binary.
 build_proxy() {
     pushd $SrcPath/blobstore/cmd/proxy >/dev/null
     CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${BlobPath} -asmflags=all=-trimpath=${BlobPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore .
     popd >/dev/null
 }
 
+# Build the blobstore CLI binary.
 build_blobstore_cli() {
     pushd $SrcPath/blobstore/cli/cli >/dev/null
     CGO_ENABLED=1 go build ${MODFLAGS} -gcflags=all=-trimpath=${BlobPath} -asmflags=all=-trimpath=${BlobPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore/blobstore-cli .
     popd >/dev/null
 }
 
+# Build the blobstore shardnode binary with the tcmalloc-enabled link flags.
 build_shardnode() {
     pushd $SrcPath/blobstore/cmd/shardnode >/dev/null
     build_with_tcmalloc
@@ -423,10 +580,12 @@ build_shardnode() {
     popd >/dev/null
 }
 
+# Build the standalone blobstore dial test helper binary.
 build_blobstore_dialtest_bin() {
     CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${BlobPath} -asmflags=all=-trimpath=${BlobPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore/blobstore-dialtest ${SrcPath}/blobstore/testing/dial/main
 }
 
+# Build the blobstore benchmark tool.
 build_blobstore_bench() {
     pushd $SrcPath > /dev/null
     echo -n "build blobstore bench"
@@ -434,6 +593,7 @@ build_blobstore_bench() {
     popd > /dev/null
 }
 
+# Build the full blobstore binary set as a grouped target.
 build_blobstore() {
     pushd $SrcPath >/dev/null
     echo -n "build blobstore    "
@@ -441,6 +601,7 @@ build_blobstore() {
     popd >/dev/null
 }
 
+# Build the blobstore dial test target and print a success/failure summary.
 build_blobstore_dialtest() {
     pushd $SrcPath >/dev/null
     echo -n "build blobstore dialtest"
@@ -448,6 +609,7 @@ build_blobstore_dialtest() {
     popd >/dev/null
 }
 
+# Build the cfs-client binary.
 build_client() {
     pushd $SrcPath >/dev/null
     echo -n "build cfs-client   "
@@ -455,6 +617,7 @@ build_client() {
     popd >/dev/null
 }
 
+# Build the cfs-authtool binary.
 build_authtool() {
     pushd $SrcPath >/dev/null
     echo -n "build cfs-authtool "
@@ -462,6 +625,7 @@ build_authtool() {
     popd >/dev/null
 }
 
+# Build the cfs-cli binary with the CGO dependencies it requires.
 build_cli() {
     #cli need gorocksdb too
     pushd $SrcPath >/dev/null
@@ -473,6 +637,7 @@ build_cli() {
 
 
 
+# Build the cfs-deploy binary with the CGO dependencies it requires.
 build_cfs_deploy() {
     #cfs_deploy need gorocksdb too
     pushd $SrcPath >/dev/null
@@ -481,6 +646,7 @@ build_cfs_deploy() {
     popd >/dev/null
 }
 
+# Build the cfs-fsck binary.
 build_fsck() {
     pushd $SrcPath >/dev/null
     echo -n "build cfs-fsck      "
@@ -488,6 +654,7 @@ build_fsck() {
     popd >/dev/null
 }
 
+# Build the cfs-snapshot binary.
 build_snapshot() {
     pushd $SrcPath >/dev/null
     echo -n "build cfs-snapshot	"
@@ -495,6 +662,7 @@ build_snapshot() {
     popd >/dev/null
 }
 
+# Build only the libcfs shared library without packaging the Java artifacts.
 build_libsdkpre() {
     case `uname` in
         Linux)
@@ -511,6 +679,7 @@ build_libsdkpre() {
     popd > /dev/null
 }
 
+# Build the libcfs shared library and then package the Java SDK artifacts.
 build_libsdk() {
     case `uname` in
         Linux)
@@ -535,6 +704,7 @@ build_libsdk() {
     popd >/dev/null
 }
 
+# Build the fdstore helper binary.
 build_fdstore() {
     pushd $SrcPath >/dev/null
     echo -n "build fdstore "
@@ -542,6 +712,7 @@ build_fdstore() {
     popd >/dev/null
 }
 
+# Build the cfs-bcache binary.
 build_bcache(){
     pushd $SrcPath >/dev/null
     echo -n "build cfs-blockcache      "
@@ -549,6 +720,7 @@ build_bcache(){
     popd >/dev/null
 }
 
+# Build the remote cache benchmark binary.
 build_rctest(){
     pushd $SrcPath >/dev/null
     echo -n "build cfs-remotecache-benchmark      "
@@ -556,6 +728,7 @@ build_rctest(){
     popd >/dev/null
 }
 
+# Build the remote cache config helper binary.
 build_rcconfig(){
     pushd $SrcPath >/dev/null
     echo -n "build cfs-remotecache-config      "
@@ -563,10 +736,12 @@ build_rcconfig(){
     popd >/dev/null
 }
 
+# Remove generated binaries while keeping the unpacked dependencies.
 clean() {
     $RM -rf ${BuildBinPath}
 }
 
+# Remove generated binaries together with unpacked dependencies and headers.
 dist_clean() {
     $RM -rf ${BuildBinPath}
     $RM -rf ${BuildOutPath}
@@ -584,6 +759,7 @@ elif [ "${cmd}" == "clean" ]; then
     exit 0
 fi
 
+# Return the detected CPU core count for default build parallelism.
 get_cpu_cores() {
     cores=`cat /proc/cpuinfo | grep processor | wc -l`
     return $cores
