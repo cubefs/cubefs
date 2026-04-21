@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/pprof"
 	"os"
@@ -161,6 +162,9 @@ func createDefaultMasterServerForTest() *Server {
 	if err != nil {
 		panic(err)
 	}
+	if err = waitForMasterReady(masterAddr, 15*time.Second); err != nil {
+		panic(err)
+	}
 	// add data node
 	mockDataServers = make([]*mocktest.MockDataServer, 0)
 	mockDataServers = append(mockDataServers, addDataServer(mds1Addr, testZone1, defaultMediaType))
@@ -254,6 +258,21 @@ func createDefaultMasterServerForTest() *Server {
 	}
 
 	return testServer
+}
+
+func waitForMasterReady(addr string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		conn, err := net.DialTimeout("tcp", addr, 200*time.Millisecond)
+		if err == nil {
+			_ = conn.Close()
+			return nil
+		}
+		lastErr = err
+		time.Sleep(200 * time.Millisecond)
+	}
+	return fmt.Errorf("wait for master listener %s: %w", addr, lastErr)
 }
 
 func createUserWithPolicy(testServer *Server) (err error) {

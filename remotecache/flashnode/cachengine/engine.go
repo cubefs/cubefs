@@ -1724,19 +1724,21 @@ func (c *CacheEngine) GetAndResetVolStats() map[string]*VolCacheStats {
 }
 
 func (c *CacheEngine) UpdateVolPreheatReadBytes(vol string, size uint64) {
-	if c.statCh != nil {
-		select {
-		case c.statCh <- StatUpdate{Key: vol, Type: StatPreheatReadBytes, Count: int64(size)}:
-		default:
-		}
+	if c == nil || c.statCh == nil {
+		return
+	}
+	select {
+	case c.statCh <- StatUpdate{Key: vol, Type: StatPreheatReadBytes, Count: int64(size)}:
+	default:
 	}
 }
 
 func (c *CacheEngine) UpdateVolPreheatErrorCount(vol string) {
-	if c.statCh != nil {
-		select {
-		case c.statCh <- StatUpdate{Key: vol, Type: StatPreheatErrorCount, Count: 1}:
-		default:
-		}
+	if c == nil || c.statCh == nil {
+		return
+	}
+	select {
+	case c.statCh <- StatUpdate{Key: vol, Type: StatPreheatErrorCount, Count: 1}:
+	default:
 	}
 }

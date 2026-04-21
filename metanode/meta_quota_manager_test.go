@@ -17,6 +17,7 @@ package metanode
 import (
 	"bytes"
 	"encoding/binary"
+	"sync"
 	"testing"
 	"time"
 
@@ -318,10 +319,30 @@ func TestMetaQuotaManagerStatisticRebuildFin(t *testing.T) {
 
 	// Test rebuild = true
 	mgr.rbuildbySnapshot = true
-	oldStatisticBase := mgr.statisticBase
+	oldStoreRebuildBase := mgr.storeRebuildBase
+	rebuiltInfo := proto.QuotaUsedInfo{
+		UsedFiles: 7,
+		UsedBytes: 2048,
+	}
+	mgr.storeRebuildBase.Store(testQuotaID, rebuiltInfo)
 	mgr.statisticRebuildFin(true)
 	assert.False(t, mgr.rbuildbySnapshot)
-	assert.Equal(t, oldStatisticBase, mgr.statisticBase)
+	assert.Same(t, oldStoreRebuildBase, mgr.statisticBase)
+	assert.NotSame(t, oldStoreRebuildBase, mgr.storeRebuildBase)
+	assertSyncMapQuotaEntries(t, mgr.statisticBase, map[uint32]proto.QuotaUsedInfo{
+		testQuotaID: rebuiltInfo,
+	})
+	assertSyncMapQuotaEntries(t, mgr.storeRebuildBase, map[uint32]proto.QuotaUsedInfo{})
+}
+
+func assertSyncMapQuotaEntries(t *testing.T, m *sync.Map, expected map[uint32]proto.QuotaUsedInfo) {
+	t.Helper()
+	actual := make(map[uint32]proto.QuotaUsedInfo)
+	m.Range(func(key, value interface{}) bool {
+		actual[key.(uint32)] = value.(proto.QuotaUsedInfo)
+		return true
+	})
+	assert.Equal(t, expected, actual)
 }
 
 func TestMetaQuotaManagerIsOverQuota(t *testing.T) {

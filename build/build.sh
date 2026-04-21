@@ -435,6 +435,9 @@ _cover_verify_run_test_cover_blobstore_union() {
 run_test_cover() {
     pushd $SrcPath >/dev/null
     export JENKINS_TEST=1
+    # Align local coverage runs with the docker test environment so flashnode
+    # disk-path tests do not depend on host mount-point setup.
+    export DOCKER_FLASHNODE_TMPFS_OFF=on
     ulimit -n 65536
     echo -n "${TPATH}"
 
@@ -471,6 +474,9 @@ run_test_cover() {
 # Run the split coverage workflow for cubefs packages and merge all shard profiles.
 run_test_cover_cubefs() {
     pushd $SrcPath >/dev/null
+    # Align local coverage runs with the docker test environment so flashnode
+    # disk-path tests do not depend on host mount-point setup.
+    export DOCKER_FLASHNODE_TMPFS_OFF=on
     ulimit -n 65536
     echo -n "${TPATH}"
 
