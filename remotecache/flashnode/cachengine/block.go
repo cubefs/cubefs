@@ -545,6 +545,7 @@ func (cb *CacheBlock) Init(sources []*proto.DataSource, readDataNodeTimeout int)
 	}
 
 	cb.notifyReady()
+	cb.cacheEngine.incrementVolCounter(cb.volume, cb.getUsedSize())
 }
 
 func (cb *CacheBlock) prepareSource(ctx context.Context, sourceCh <-chan *proto.DataSource, readDataNodeTimeout int) (err error) {
