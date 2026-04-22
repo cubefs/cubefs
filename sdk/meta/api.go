@@ -679,10 +679,10 @@ func (mw *MetaWrapper) BatchGetXAttr(inodes []uint64, keys []string) ([]*proto.X
 	return xattrs, nil
 }
 
-func (mw *MetaWrapper) shouldNotMoveToTrash(parentMP *MetaPartition, parentIno uint64, entry string, isDir bool) (error, bool) {
+func (mw *MetaWrapper) shouldNotMoveToTrash(parentMP *MetaPartition, parentIno uint64, entry string, isDir bool, isAsync bool) (error, bool) {
 	log.LogDebugf("action[shouldNotMoveToTrash]: parentIno(%v) entry(%v)", parentIno, entry)
 
-	status, inode, mode, err := mw.lookup(parentMP, parentIno, entry, mw.LastVerSeq, false)
+	status, inode, mode, err := mw.lookup(parentMP, parentIno, entry, mw.LastVerSeq, isAsync)
 	if err != nil || status != statusOK {
 		return statusToErrno(status), false
 	}
@@ -691,7 +691,7 @@ func (mw *MetaWrapper) shouldNotMoveToTrash(parentMP *MetaPartition, parentIno u
 		log.LogErrorf("shouldNotMoveToTrash: No inode partition, parentID(%v) name(%v) ino(%v)", parentIno, entry, inode)
 		return syscall.EAGAIN, false
 	}
-	status, info, err := mw.iget(mp, inode, mw.LastVerSeq, true)
+	status, info, err := mw.iget(mp, inode, mw.LastVerSeq, isAsync)
 	if err != nil || status != statusOK {
 		return statusToErrno(status), false
 	}
@@ -704,7 +704,7 @@ func (mw *MetaWrapper) shouldNotMoveToTrash(parentMP *MetaPartition, parentIno u
 			return syscall.ENOTEMPTY, false
 		}
 		if mw.EnableQuota {
-			quotaInfos, err := mw.GetInodeQuota_ll(inode, true)
+			quotaInfos, err := mw.GetInodeQuota_ll(inode, isAsync)
 			if err != nil {
 				log.LogErrorf("get inode [%v] quota failed [%v]", inode, err)
 				return syscall.ENOENT, false
@@ -723,8 +723,14 @@ func (mw *MetaWrapper) shouldNotMoveToTrash(parentMP *MetaPartition, parentIno u
 			return err, false
 		}
 	}
-	// remove .Trash directly
-	if mw.trashPolicy.IsTrashRoot(parentIno, entry) {
+	// can't remove .Trash
+	isTrashRoot, err := mw.trashPolicy.IsTrashRoot(parentIno, entry)
+	if err != nil {
+		log.LogWarnf("action[shouldNotMoveToTrash]: IsTrashRoot check failed parentIno(%v) entry(%v): %v",
+			parentIno, entry, err)
+		return err, false
+	}
+	if isTrashRoot {
 		return syscall.EOPNOTSUPP, false
 	}
 	// check if is sub dir of .Trash
@@ -811,7 +817,7 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool, ful
 			}
 		}
 		// cannot delete .Trash
-		err, ret := mw.shouldNotMoveToTrash(parentMP, parentID, name, isDir)
+		err, ret := mw.shouldNotMoveToTrash(parentMP, parentID, name, isDir, isAsync)
 		if err != nil {
 			if strings.Contains(err.Error(), "operation rate limited") {
 				log.LogWarnf("Delete_ll: shouldNotMoveToTrash name %v failed %v, retry later", name, err)
@@ -822,7 +828,7 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool, ful
 		}
 		if !ret {
 			parentPathAbsolute := mw.getCurrentPath(parentID)
-			err = mw.trashPolicy.MoveToTrash(parentPathAbsolute, parentID, name, isDir)
+			err = mw.trashPolicy.MoveToTrash(parentPathAbsolute, parentID, name, isDir, isAsync)
 			if err != nil {
 				// delete directly if trash is full (quota exceeded, no space, or inode full)
 				if strings.Contains(err.Error(), syscall.EDQUOT.Error()) ||
@@ -968,7 +974,7 @@ func (mw *MetaWrapper) Delete_ll_EX(parentID uint64, name string, isDir bool, ve
 			}
 		}
 		// cannot delete .Trash
-		err, ret := mw.shouldNotMoveToTrash(parentMP, parentID, name, isDir)
+		err, ret := mw.shouldNotMoveToTrash(parentMP, parentID, name, isDir, isAsync)
 		if err != nil {
 			if strings.Contains(err.Error(), "operation rate limited") {
 				log.LogWarnf("Delete_ll: shouldNotMoveToTrash name %v failed %v, retry later", name, err)
@@ -979,7 +985,7 @@ func (mw *MetaWrapper) Delete_ll_EX(parentID uint64, name string, isDir bool, ve
 		}
 		if !ret {
 			parentPathAbsolute := mw.getCurrentPath(parentID)
-			err = mw.trashPolicy.MoveToTrash(parentPathAbsolute, parentID, name, isDir)
+			err = mw.trashPolicy.MoveToTrash(parentPathAbsolute, parentID, name, isDir, isAsync)
 			if err != nil {
 				// delete directly if trash is full (quota exceeded, no space, or inode full)
 				if strings.Contains(err.Error(), syscall.EDQUOT.Error()) ||
