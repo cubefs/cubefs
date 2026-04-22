@@ -21,6 +21,10 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 )
 
+const (
+	CodeReaderError = 499
+)
+
 var (
 	// 2xx
 	ErrExist = newError(http.StatusCreated, "Data Already Exist")
@@ -31,7 +35,7 @@ var (
 	ErrRequestTimeout               = newError(http.StatusRequestTimeout, "Request Timeout")
 	ErrRequestedRangeNotSatisfiable = newError(http.StatusRequestedRangeNotSatisfiable, "Request Range Not Satisfiable")
 	ErrRequestNotAllow              = newError(http.StatusBadRequest, "Request Not Allow")
-	ErrReaderError                  = newError(499, "Reader Error")
+	ErrReaderError                  = newError(CodeReaderError, "Reader Error")
 
 	// 5xx errUnexpected - unexpected error, requires manual intervention.
 	ErrUnexpected = newError(http.StatusInternalServerError, "Unexpected Error")

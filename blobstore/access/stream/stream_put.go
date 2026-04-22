@@ -338,6 +338,11 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 				}
 
 				switch code {
+				// reader error from server side, retry directly without punish
+				case errcode.CodeReaderError:
+					span.Warnf("reader error retry disk:%d host:%s", diskID, host)
+					return false, err
+
 				// EIO and Readonly error, then we need to punish disk in local and no necessary to retry
 				case errcode.CodeVUIDReadonly:
 					h.punishVolume(ctx, clusterID, vid, host, "BrokenOrRO")
