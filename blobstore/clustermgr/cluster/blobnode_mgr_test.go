@@ -487,3 +487,125 @@ func TestBlobNodeManager_Disk(t *testing.T) {
 		require.NoError(t, err)
 	}
 }
+
+func TestHasEnoughSpace(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name                 string
+		idcReservedFreeChunk int64
+		disksStatInfos       []clustermgr.DiskStatInfo
+		expected             bool
+	}{
+		{
+			name:                 "all_idc_has_enough_space",
+			idcReservedFreeChunk: 100,
+			disksStatInfos: []clustermgr.DiskStatInfo{
+				{IDC: "z0", TotalOversoldFreeChunk: 200},
+				{IDC: "z1", TotalOversoldFreeChunk: 300},
+				{IDC: "z2", TotalOversoldFreeChunk: 400},
+			},
+			expected: true,
+		},
+		{
+			name:                 "one_idc_not_enough_space",
+			idcReservedFreeChunk: 100,
+			disksStatInfos: []clustermgr.DiskStatInfo{
+				{IDC: "z0", TotalOversoldFreeChunk: 200},
+				{IDC: "z1", TotalOversoldFreeChunk: 50},
+				{IDC: "z2", TotalOversoldFreeChunk: 400},
+			},
+			expected: false,
+		},
+		{
+			name:                 "one_idc_equal_to_reserved",
+			idcReservedFreeChunk: 100,
+			disksStatInfos: []clustermgr.DiskStatInfo{
+				{IDC: "z0", TotalOversoldFreeChunk: 200},
+				{IDC: "z1", TotalOversoldFreeChunk: 100},
+				{IDC: "z2", TotalOversoldFreeChunk: 400},
+			},
+			expected: false,
+		},
+		{
+			name:                 "one_idc_above_reserved",
+			idcReservedFreeChunk: 100,
+			disksStatInfos: []clustermgr.DiskStatInfo{
+				{IDC: "z0", TotalOversoldFreeChunk: 101},
+				{IDC: "z1", TotalOversoldFreeChunk: 300},
+				{IDC: "z2", TotalOversoldFreeChunk: 400},
+			},
+			expected: true,
+		},
+		{
+			name:                 "empty_disks_stat_infos",
+			idcReservedFreeChunk: 100,
+			disksStatInfos:       []clustermgr.DiskStatInfo{},
+			expected:             false,
+		},
+		{
+			name:                 "all_idc_zero_free_chunk",
+			idcReservedFreeChunk: 100,
+			disksStatInfos: []clustermgr.DiskStatInfo{
+				{IDC: "z0", TotalOversoldFreeChunk: 0},
+				{IDC: "z1", TotalOversoldFreeChunk: 0},
+				{IDC: "z2", TotalOversoldFreeChunk: 0},
+			},
+			expected: false,
+		},
+		{
+			name:                 "reserved_free_chunk_zero",
+			idcReservedFreeChunk: 0,
+			disksStatInfos: []clustermgr.DiskStatInfo{
+				{IDC: "z0", TotalOversoldFreeChunk: 0},
+				{IDC: "z1", TotalOversoldFreeChunk: 0},
+				{IDC: "z2", TotalOversoldFreeChunk: 0},
+			},
+			expected: false,
+		},
+		{
+			name:                 "large_reserved_free_chunk",
+			idcReservedFreeChunk: 1000,
+			disksStatInfos: []clustermgr.DiskStatInfo{
+				{IDC: "z0", TotalOversoldFreeChunk: 2000},
+				{IDC: "z1", TotalOversoldFreeChunk: 1500},
+				{IDC: "z2", TotalOversoldFreeChunk: 3000},
+			},
+			expected: true,
+		},
+		{
+			name:                 "single_idc",
+			idcReservedFreeChunk: 50,
+			disksStatInfos: []clustermgr.DiskStatInfo{
+				{IDC: "z0", TotalOversoldFreeChunk: 100},
+			},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := DiskMgrConfig{
+				IDC: []string{"z0", "z1", "z2"},
+			}
+			cfg.IDCReservedFreeChunk = tt.idcReservedFreeChunk
+
+			manager := &manager{
+				cfg: cfg,
+			}
+
+			bm := &BlobNodeManager{
+				manager: manager,
+			}
+
+			bm.manager.spaceStatInfo.Store(map[proto.DiskType]*clustermgr.SpaceStatInfo{
+				proto.DiskTypeHDD: {
+					DisksStatInfos: tt.disksStatInfos,
+				},
+			})
+
+			result := bm.HasEnoughSpace(ctx)
+			require.True(t, result == tt.expected)
+		})
+	}
+}

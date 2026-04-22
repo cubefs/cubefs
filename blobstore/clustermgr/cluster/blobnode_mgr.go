@@ -532,6 +532,12 @@ func (b *BlobNodeManager) AllocChunks(ctx context.Context, policy AllocPolicy) (
 func (b *BlobNodeManager) HasEnoughSpace(ctx context.Context) bool {
 	span, _ := trace.StartSpanFromContext(context.Background(), "")
 	spaceStat := b.Stat(ctx, proto.DiskTypeHDD)
+
+	if len(spaceStat.DisksStatInfos) == 0 {
+		span.Warnf("space disk stat info is empty for type %v", proto.DiskTypeHDD)
+		return false
+	}
+
 	for _, diskStatInfo := range spaceStat.DisksStatInfos {
 		if diskStatInfo.TotalOversoldFreeChunk <= b.cfg.IDCReservedFreeChunk {
 			span.Warnf("IDC[%s] free chunk[%d] is smaller than reserved free chunk[%d]", diskStatInfo.IDC,
