@@ -240,8 +240,15 @@ func formatNodeViewPoolColumn(view *proto.NodeView) string {
 	return fmt.Sprintf("%d", view.PoolId)
 }
 
+func formatNodeSetIDColumn(nodeSetID uint64) string {
+	if nodeSetID == 0 {
+		return "-"
+	}
+	return fmt.Sprintf("%d", nodeSetID)
+}
+
 func nodeViewTableHeaderRow() []interface{} {
-	return arow("ID", "ADDRESS", "DP", "MAX_DP", "WRITABLE", "ALLOCATABLE", "ACTIVE", "MEDIA", "ZONE", "POOL", "RACK", "ForbidWriteOfVer0", "TAG")
+	return arow("ID", "NODESET", "ADDRESS", "DP", "MAX_DP", "WRITABLE", "ALLOCATABLE", "ACTIVE", "MEDIA", "ZONE", "POOL", "RACK", "ForbidWriteOfVer0", "TAG")
 }
 
 // nodeViewTableCells builds one data-node table row. fixedZone/fixedPool override ZONE/POOL when non-empty (e.g. zone view).
@@ -259,6 +266,7 @@ func nodeViewTableCells(view *proto.NodeView, fixedZone, fixedPool string) []int
 	}
 	return []interface{}{
 		view.ID,
+		formatNodeSetIDColumn(view.NodeSetID),
 		formatAddr(view.Addr, view.DomainAddr),
 		view.DataPartitionCount,
 		view.PartitionLimitCnt,
@@ -2222,7 +2230,7 @@ func formatMetaPartitionFreeze(freeze int8) string {
 }
 
 func metaNodeViewTableHeaderRow() []interface{} {
-	return arow("ID", "ADDRESS", "MP", "MAX_MP", "WRITABLE", "ALLOCATABLE", "ACTIVE", "MEDIA", "RACK",
+	return arow("ID", "NODESET", "ADDRESS", "MP", "MAX_MP", "WRITABLE", "ALLOCATABLE", "ACTIVE", "MEDIA", "RACK",
 		"ForbidWriteOfVer0", "RocksdbWritable", "REGION", "ZONE", "TAG")
 }
 
@@ -2244,6 +2252,7 @@ func metaNodeViewTableCells(view *proto.NodeView, fixedRegion, fixedZone string)
 	}
 	return []interface{}{
 		view.ID,
+		formatNodeSetIDColumn(view.NodeSetID),
 		formatAddr(view.Addr, view.DomainAddr),
 		view.MetaPartitionCount,
 		view.PartitionLimitCnt,

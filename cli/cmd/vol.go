@@ -2202,6 +2202,7 @@ func newVolGetInodeByIdCmd(client *master.MasterClient) *cobra.Command {
 				return fmt.Errorf("failed to marshal inode detail to JSON: %v", err.Error())
 			}
 
+			stdoutf("MetaPartitionID: %d\n", mpId)
 			stdoutln(string(jsonBytes))
 			return nil
 		},

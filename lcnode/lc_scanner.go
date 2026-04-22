@@ -712,6 +712,9 @@ func isSkipErr(err error) bool {
 	if strings.Contains(err.Error(), "file modified when migrating") {
 		return true
 	}
+	if strings.Contains(err.Error(), "NotExistErr") {
+		return true
+	}
 	return false
 }
 
