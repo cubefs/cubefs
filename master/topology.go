@@ -2666,6 +2666,17 @@ func updateDecommissionWeight(dps []*DataPartition, c *Cluster) {
 				log.LogWarnf("action[DecommissionListTraverse] skip dp(%v) discard(%v)", dp.PartitionID, dp.IsDiscard)
 				continue
 			}
+
+			// if decommission src for dp is not reset and decommission dst is already repaired
+			srcReplica, _ := dp.getReplica(dp.DecommissionSrcAddr)
+			if len(dp.Replicas) == int(dp.ReplicaNum) && srcReplica == nil {
+				triggerCondition := fmt.Sprintf("decommissionListTraverse_srcReplica(%v)_hasBeenDeleted", dp.DecommissionSrcAddr)
+				dp.SetDecommissionStatus(DecommissionSuccess, triggerCondition, "")
+				log.LogWarnf("action[DecommissionListTraverse] dp(%v) status(%v) is already decommissioned",
+					dp.PartitionID, dp.Status)
+				continue
+			}
+
 			diskErrReplicaNum := dp.getReplicaDiskErrorNum()
 			if diskErrReplicaNum == dp.ReplicaNum || diskErrReplicaNum == uint8(len(dp.Peers)) {
 				log.LogWarnf("action[DecommissionListTraverse] dp[%v] all live replica is unavailable", dp.decommissionInfo())
@@ -2764,12 +2775,12 @@ func (l *DecommissionDataPartitionList) handleDpTraverseToReleaseToken(dp *DataP
 		// rollback fail/success need release token
 		dp.ReleaseDecommissionToken(c)
 		dp.ReleaseDecommissionFirstHostToken(c)
+		msg := fmt.Sprintf("ns %v(%p) dp %v decommission failed, remove %v", l.nsId, l, dp.decommissionInfo(), remove)
+		auditlog.LogMasterOp("TraverseDataPartition", msg, nil)
 		if remove {
 			dp.traverseDecommissionTaskQueue(c)
 		}
 		c.syncUpdateDataPartition(dp)
-		msg := fmt.Sprintf("ns %v(%p) dp %v decommission failed, remove %v", l.nsId, l, dp.decommissionInfo(), remove)
-		auditlog.LogMasterOp("TraverseDataPartition", msg, nil)
 	case DecommissionPause:
 		log.LogDebugf("action[DecommissionListTraverse]ns %v(%p) Remove dp[%v] for paused ",
 			l.nsId, l, dp.PartitionID)
