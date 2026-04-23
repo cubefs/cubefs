@@ -31,6 +31,46 @@ import (
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 )
 
+func TestValidMigrateTask(t *testing.T) {
+	taskID := GenMigrateTaskID(proto.TaskTypeDiskRepair, proto.DiskID(1), 1)
+	require.True(t, ValidMigrateTask(proto.TaskTypeDiskRepair, taskID))
+	require.False(t, ValidMigrateTask(proto.TaskTypeBalance, taskID))
+}
+
+func TestDiskInfoSimpleIsRepaired(t *testing.T) {
+	disk := &DiskInfoSimple{Status: proto.DiskStatusRepaired}
+	require.True(t, disk.IsRepaired())
+	disk.Status = proto.DiskStatusNormal
+	require.False(t, disk.IsRepaired())
+}
+
+func TestShardNodeDiskInfoMethods(t *testing.T) {
+	disk := &ShardNodeDiskInfo{}
+
+	disk.Status = proto.DiskStatusNormal
+	require.True(t, disk.IsHealth())
+	require.False(t, disk.IsBroken())
+	require.False(t, disk.IsDropped())
+	require.False(t, disk.IsRepaired())
+	require.True(t, disk.CanDropped())
+
+	disk.Status = proto.DiskStatusBroken
+	require.False(t, disk.IsHealth())
+	require.True(t, disk.IsBroken())
+	require.False(t, disk.CanDropped())
+
+	disk.Status = proto.DiskStatusDropped
+	require.True(t, disk.IsDropped())
+	require.True(t, disk.CanDropped())
+
+	disk.Status = proto.DiskStatusRepaired
+	require.True(t, disk.IsRepaired())
+	require.True(t, disk.CanDropped())
+
+	disk.Status = proto.DiskStatusRepairing
+	require.False(t, disk.CanDropped())
+}
+
 var (
 	defaultVolumeListMarker = proto.Vid(0)
 	defaultDiskListMarker   = proto.DiskID(0)
@@ -550,5 +590,218 @@ func TestClustermgrClient(t *testing.T) {
 		cli.client.(*MockClusterManager).EXPECT().DeleteKV(any, any).Return(nil)
 		err = cli.DeleteVolumeDegradeStats(ctx)
 		require.NoError(t, err)
+	}
+}
+
+func TestClustermgrClientExtra(t *testing.T) {
+	cli := NewClusterMgrClient(&cmapi.Config{}).(*clustermgrClient)
+	mockCli := NewMockClusterManager(gomock.NewController(t))
+	cli.client = mockCli
+
+	ctx := context.Background()
+	any := gomock.Any()
+	errMock := errors.New("fake error")
+
+	{
+		// set config
+		mockCli.EXPECT().SetConfig(any, any, any).Return(nil)
+		err := cli.SetConfig(ctx, "key", "value")
+		require.NoError(t, err)
+
+		mockCli.EXPECT().SetConfig(any, any, any).Return(errMock)
+		err = cli.SetConfig(ctx, "key", "value")
+		require.True(t, errors.Is(err, errMock))
+	}
+	{
+		// get service - matching clusterID
+		mockCli.EXPECT().GetService(any, any).Return(cmapi.ServiceInfo{
+			Nodes: []cmapi.ServiceNode{
+				{ClusterID: 1, Host: "127.0.0.1:8080"},
+				{ClusterID: 2, Host: "127.0.0.2:8080"},
+			},
+		}, nil)
+		hosts, err := cli.GetService(ctx, "scheduler", proto.ClusterID(1))
+		require.NoError(t, err)
+		require.Equal(t, 1, len(hosts))
+		require.Equal(t, "127.0.0.1:8080", hosts[0])
+
+		mockCli.EXPECT().GetService(any, any).Return(cmapi.ServiceInfo{}, errMock)
+		_, err = cli.GetService(ctx, "scheduler", proto.ClusterID(1))
+		require.True(t, errors.Is(err, errMock))
+	}
+	{
+		// list migrate tasks (public wrapper)
+		task1 := &proto.MigrateTask{TaskID: GenMigrateTaskID(proto.TaskTypeDiskRepair, proto.DiskID(1), 1), TaskType: proto.TaskTypeDiskRepair}
+		task1Bytes, _ := json.Marshal(task1)
+		opts := &cmapi.ListKvOpts{Prefix: GenMigrateTaskPrefix(proto.TaskTypeDiskRepair), Count: 10}
+		mockCli.EXPECT().ListKV(any, any).Return(cmapi.ListKvRet{
+			Kvs: []*cmapi.KeyValue{{Key: task1.TaskID, Value: task1Bytes}}, Marker: "",
+		}, nil)
+		tasks, marker, err := cli.ListMigrateTasks(ctx, proto.TaskTypeDiskRepair, opts)
+		require.NoError(t, err)
+		require.Equal(t, 1, len(tasks))
+		require.Equal(t, "", marker)
+	}
+	{
+		// get migrate task - task type mismatch
+		task1, _ := (&proto.MigrateTask{
+			TaskID:   GenMigrateTaskID(proto.TaskTypeDiskRepair, proto.DiskID(1), 1),
+			TaskType: proto.TaskTypeDiskRepair,
+		}).ToTask()
+		taskBytes, _ := task1.Marshal()
+		mockCli.EXPECT().GetKV(any, any).Return(cmapi.GetKvRet{Value: taskBytes}, nil)
+		_, err := cli.GetMigrateTask(ctx, proto.TaskTypeBalance, task1.TaskID)
+		require.ErrorIs(t, err, errcode.ErrIllegalTaskType)
+	}
+	{
+		// get migrating disk - task type mismatch
+		diskMeta := &MigratingDiskMeta{Disk: &DiskInfoSimple{DiskID: proto.DiskID(1)}, TaskType: proto.TaskTypeDiskDrop}
+		diskMetaBytes, _ := json.Marshal(diskMeta)
+		mockCli.EXPECT().GetKV(any, any).Return(cmapi.GetKvRet{Value: diskMetaBytes}, nil)
+		_, err := cli.GetMigratingDisk(ctx, proto.TaskTypeBalance, proto.DiskID(1))
+		require.ErrorIs(t, err, errcode.ErrIllegalTaskType)
+
+		// get migrating disk - disk ID mismatch
+		diskMeta2 := &MigratingDiskMeta{Disk: &DiskInfoSimple{DiskID: proto.DiskID(99)}, TaskType: proto.TaskTypeDiskDrop}
+		diskMeta2Bytes, _ := json.Marshal(diskMeta2)
+		mockCli.EXPECT().GetKV(any, any).Return(cmapi.GetKvRet{Value: diskMeta2Bytes}, nil)
+		_, err = cli.GetMigratingDisk(ctx, proto.TaskTypeDiskDrop, proto.DiskID(1))
+		require.ErrorIs(t, err, errcode.ErrIllegalTaskType)
+	}
+}
+
+func TestClustermgrClientShardMethods(t *testing.T) {
+	cli := NewClusterMgrClient(&cmapi.Config{}).(*clustermgrClient)
+	mockCli := NewMockClusterManager(gomock.NewController(t))
+	cli.client = mockCli
+
+	ctx := context.Background()
+	any := gomock.Any()
+	errMock := errors.New("fake error")
+
+	{
+		// get shard info - error
+		mockCli.EXPECT().GetShardInfo(any, any).Return(nil, errMock)
+		_, err := cli.GetShardInfo(ctx, proto.ShardID(1))
+		require.True(t, errors.Is(err, errMock))
+
+		// get shard info - success
+		shardInfo := &cmapi.Shard{
+			ShardID:      proto.ShardID(10),
+			AppliedIndex: 100,
+			LeaderDiskID: proto.DiskID(2),
+			Units: []cmapi.ShardUnit{
+				{Suid: proto.Suid(1), DiskID: proto.DiskID(1), Host: "127.0.0.1:xxx"},
+				{Suid: proto.Suid(2), DiskID: proto.DiskID(2), Host: "127.0.0.2:xxx"},
+			},
+		}
+		mockCli.EXPECT().GetShardInfo(any, any).Return(shardInfo, nil)
+		ret, err := cli.GetShardInfo(ctx, proto.ShardID(10))
+		require.NoError(t, err)
+		require.Equal(t, proto.ShardID(10), ret.ShardID)
+		require.Equal(t, 2, len(ret.ShardUnitInfos))
+	}
+	{
+		// update shard - error
+		mockCli.EXPECT().UpdateShard(any, any).Return(errMock)
+		err := cli.UpdateShard(ctx, &UpdateShardArgs{NewSuid: proto.Suid(1), OldSuid: proto.Suid(2)})
+		require.True(t, errors.Is(err, errMock))
+
+		// update shard - success
+		mockCli.EXPECT().UpdateShard(any, any).Return(nil)
+		err = cli.UpdateShard(ctx, &UpdateShardArgs{NewSuid: proto.Suid(3), OldSuid: proto.Suid(2)})
+		require.NoError(t, err)
+	}
+	{
+		// alloc shard unit - error
+		mockCli.EXPECT().AllocShardUnit(any, any).Return(nil, errMock)
+		_, err := cli.AllocShardUnit(ctx, proto.Suid(1), nil)
+		require.True(t, errors.Is(err, errMock))
+
+		// alloc shard unit - success
+		allocRet := &cmapi.AllocShardUnitRet{Suid: proto.Suid(5), DiskID: proto.DiskID(3), Host: "127.0.0.3:xxx"}
+		mockCli.EXPECT().AllocShardUnit(any, any).Return(allocRet, nil)
+		info, err := cli.AllocShardUnit(ctx, proto.Suid(1), nil)
+		require.NoError(t, err)
+		require.Equal(t, proto.Suid(5), info.Suid)
+		require.True(t, info.Learner)
+	}
+	{
+		// list disk shard units - error
+		mockCli.EXPECT().ListShardUnit(any, any).Return(nil, errMock)
+		_, err := cli.ListDiskShardUnits(ctx, proto.DiskID(1))
+		require.True(t, errors.Is(err, errMock))
+
+		// list disk shard units - success
+		units := []cmapi.ShardUnitInfo{
+			{Suid: proto.Suid(1), DiskID: proto.DiskID(1), Host: "host1", AppliedIndex: 10},
+		}
+		mockCli.EXPECT().ListShardUnit(any, any).Return(units, nil)
+		ret, err := cli.ListDiskShardUnits(ctx, proto.DiskID(1))
+		require.NoError(t, err)
+		require.Equal(t, 1, len(ret))
+		require.Equal(t, proto.Suid(1), ret[0].Suid)
+	}
+	{
+		// list shard - stub, always returns nil
+		shards, _, err := cli.ListShard(ctx, proto.ShardID(0), 10)
+		require.NoError(t, err)
+		require.Nil(t, shards)
+	}
+	{
+		// list shard disk (normal status)
+		disk1 := &cmapi.ShardNodeDiskInfo{
+			DiskInfo:                   cmapi.DiskInfo{Status: proto.DiskStatusNormal},
+			ShardNodeDiskHeartbeatInfo: cmapi.ShardNodeDiskHeartbeatInfo{DiskID: proto.DiskID(1)},
+		}
+		mockCli.EXPECT().ListShardNodeDisk(any, any).Return(cmapi.ListShardNodeDiskRet{
+			Disks: []*cmapi.ShardNodeDiskInfo{disk1}, Marker: defaultListDiskMarker,
+		}, nil)
+		disks, err := cli.ListShardDisk(ctx)
+		require.NoError(t, err)
+		require.Equal(t, 1, len(disks))
+
+		// list broken shard disk - error
+		mockCli.EXPECT().ListShardNodeDisk(any, any).Return(cmapi.ListShardNodeDiskRet{}, errMock)
+		_, err = cli.ListBrokenShardDisk(ctx)
+		require.True(t, errors.Is(err, errMock))
+
+		// list repairing shard disk - success
+		mockCli.EXPECT().ListShardNodeDisk(any, any).Return(cmapi.ListShardNodeDiskRet{
+			Disks: []*cmapi.ShardNodeDiskInfo{disk1}, Marker: defaultListDiskMarker,
+		}, nil)
+		disks, err = cli.ListRepairingShardDisk(ctx)
+		require.NoError(t, err)
+		require.Equal(t, 1, len(disks))
+	}
+	{
+		// set shard disk repairing
+		mockCli.EXPECT().SetShardNodeDisk(any, any, any).Return(nil)
+		err := cli.SetShardDiskRepairing(ctx, proto.DiskID(1))
+		require.NoError(t, err)
+
+		// set shard disk repaired
+		mockCli.EXPECT().SetShardNodeDisk(any, any, any).Return(nil)
+		err = cli.SetShardDiskRepaired(ctx, proto.DiskID(1))
+		require.NoError(t, err)
+	}
+	{
+		// get shard disk info - error
+		mockCli.EXPECT().ShardNodeDiskInfo(any, any).Return(nil, errMock)
+		_, err := cli.GetShardDiskInfo(ctx, proto.DiskID(1))
+		require.True(t, errors.Is(err, errMock))
+
+		// get shard disk info - success, also covers ShardNodeDiskInfo.set
+		info := &cmapi.ShardNodeDiskInfo{
+			DiskInfo: cmapi.DiskInfo{Status: proto.DiskStatusNormal, Host: "127.0.0.1:xxx"},
+			ShardNodeDiskHeartbeatInfo: cmapi.ShardNodeDiskHeartbeatInfo{
+				DiskID: proto.DiskID(1), FreeShardCnt: 10, UsedShardCnt: 5,
+			},
+		}
+		mockCli.EXPECT().ShardNodeDiskInfo(any, any).Return(info, nil)
+		disk, err := cli.GetShardDiskInfo(ctx, proto.DiskID(1))
+		require.NoError(t, err)
+		require.Equal(t, proto.DiskID(1), disk.DiskID)
+		require.True(t, disk.IsHealth())
 	}
 }

@@ -227,6 +227,7 @@ func TestDiskMgr_Heartbeat(t *testing.T) {
 	defer closeTestDiskMgr()
 	initTestBlobNodeMgrNodes(t, testDiskMgr, 1, 1, testIdcs[0])
 	initTestBlobNodeMgrDisks(t, testDiskMgr, 1, 10, false, testIdcs[0])
+	testDiskMgr.RegisterDiskUsageCallback(func(proto.DiskID, float64) {})
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 
 	heartbeatInfos := make([]*clustermgr.DiskHeartBeatInfo, 0)
@@ -972,6 +973,69 @@ func TestBlobNodeManager_ListNodes(t *testing.T) {
 	require.Contains(t, normalIDs, proto.NodeID(3))
 	require.Contains(t, normalIDs, proto.NodeID(4))
 	require.NotContains(t, normalIDs, proto.NodeID(1)) // node 1 is Dropped
+}
+
+func TestBlobNodeMgr_DiskUsageListener(t *testing.T) {
+	mgr, closeMgr := initTestBlobNodeMgr(t)
+	defer closeMgr()
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+
+	initTestBlobNodeMgrNodes(t, mgr, 1, 1, testIdcs[0])
+	initTestBlobNodeMgrDisks(t, mgr, 1, 1, true, testIdcs[0])
+
+	const diskID = proto.DiskID(1)
+	const total = int64(100 * 1024 * 1024 * 1024) // 100 GiB
+
+	var lastID proto.DiskID
+	var lastRatio float64
+	mgr.RegisterDiskUsageCallback(func(id proto.DiskID, ratio float64) {
+		lastID = id
+		lastRatio = ratio
+	})
+	const watermark = 0.8
+
+	sendHeartbeat := func(used int64) {
+		infos := []*clustermgr.DiskHeartBeatInfo{{
+			DiskID: diskID,
+			Size:   total,
+			Used:   used,
+		}}
+		require.NoError(t, mgr.applyHeartBeatDiskInfo(ctx, infos))
+	}
+
+	t.Run("unknown disk skips listener", func(t *testing.T) {
+		lastRatio = 0
+		require.NoError(t, mgr.applyHeartBeatDiskInfo(ctx, []*clustermgr.DiskHeartBeatInfo{
+			{DiskID: proto.DiskID(9999), Size: total, Free: total / 2},
+		}))
+		require.Equal(t, proto.DiskID(0), lastID)
+	})
+
+	t.Run("zero-size disk skips callback", func(t *testing.T) {
+		prevID := lastID
+		require.NoError(t, mgr.applyHeartBeatDiskInfo(ctx, []*clustermgr.DiskHeartBeatInfo{
+			{DiskID: diskID, Size: 0, Used: 0},
+		}))
+		require.Equal(t, prevID, lastID)
+	})
+
+	t.Run("below watermark notifies ratio < threshold", func(t *testing.T) {
+		sendHeartbeat(79 * 1024 * 1024 * 1024) // 79%
+		require.Equal(t, diskID, lastID)
+		require.Less(t, lastRatio, watermark)
+	})
+
+	t.Run("at watermark boundary notifies ratio >= threshold", func(t *testing.T) {
+		sendHeartbeat(80 * 1024 * 1024 * 1024) // exactly 80%
+		require.Equal(t, diskID, lastID)
+		require.GreaterOrEqual(t, lastRatio, watermark)
+	})
+
+	t.Run("above watermark notifies ratio >= threshold", func(t *testing.T) {
+		sendHeartbeat(95 * 1024 * 1024 * 1024) // 95%
+		require.Equal(t, diskID, lastID)
+		require.GreaterOrEqual(t, lastRatio, watermark)
+	})
 }
 
 // TestDiskMgr_DroppingNode covers applyDroppingNode/applyDroppedNode corner cases:

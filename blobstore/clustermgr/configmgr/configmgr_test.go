@@ -43,10 +43,16 @@ func TestConfigMgr(t *testing.T) {
 		"enable_recycle":     false,
 		"idc":                []interface{}{"idc1", "idc2"},
 		"test_map1":          map[string]interface{}{"a": 1, "b": 2},
+		"region":             "cn-south",
 	}
 
 	configMgr, err := New(kvMgr, cfMap)
 	require.NoError(t, err)
+
+	// string default values are stored directly
+	regionVal, err := configMgr.Get(ctx, "region")
+	require.NoError(t, err)
+	require.Equal(t, "cn-south", regionVal)
 
 	ret, _ := configMgr.Get(ctx, "enable_recycle")
 	var enableRec bool
@@ -67,4 +73,19 @@ func TestConfigMgr(t *testing.T) {
 	var vv3 map[string]interface{}
 	json.Unmarshal([]byte(idcRet2), &vv3)
 	require.Equal(t, map[string]interface{}{"a": float64(1), "b": float64(2)}, vv3)
+
+	// cover Get path that returns value directly from DB
+	err = configMgr.Set(ctx, "db_only_key", "db_value")
+	require.NoError(t, err)
+	dbVal, err := configMgr.Get(ctx, "db_only_key")
+	require.NoError(t, err)
+	require.Equal(t, "db_value", dbVal)
+
+	// cover Get path that returns error for empty key
+	_, err = configMgr.Get(ctx, "")
+	require.Error(t, err)
+
+	// cover Get path when key is not in DB or default config
+	_, err = configMgr.Get(ctx, "totally_nonexistent_key")
+	require.Error(t, err)
 }

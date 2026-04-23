@@ -57,6 +57,8 @@ type BlobNodeManagerAPI interface {
 	AllocChunks(ctx context.Context, policy AllocPolicy) ([]proto.DiskID, []proto.Vuid, error)
 	// HasEnoughSpace reports whether the cluster currently has enough space to create
 	HasEnoughSpace(ctx context.Context, mode codemode.CodeMode) bool
+	// RegisterDiskUsageCallback registers a callback that is invoked on every disk heartbeat.
+	RegisterDiskUsageCallback(fn func(diskID proto.DiskID, ratio float64))
 
 	NodeManagerAPI
 	persistentHandler
@@ -147,6 +149,12 @@ type BlobNodeManager struct {
 
 	nodeDiskTable  *normaldb.BlobNodeDiskTable
 	blobNodeClient blobnode.StorageAPI
+
+	diskUsageCallback func(diskID proto.DiskID, ratio float64)
+}
+
+func (b *BlobNodeManager) RegisterDiskUsageCallback(fn func(diskID proto.DiskID, ratio float64)) {
+	b.diskUsageCallback = fn
 }
 
 func (b *BlobNodeManager) Start() {
@@ -957,6 +965,10 @@ func (b *BlobNodeManager) applyHeartBeatDiskInfo(ctx context.Context, infos []*c
 			disk.expireTime = expireTime
 			return nil
 		})
+
+		if info.Size > 0 && b.diskUsageCallback != nil {
+			b.diskUsageCallback(info.DiskID, float64(info.Used)/float64(info.Size))
+		}
 
 	}
 	return nil

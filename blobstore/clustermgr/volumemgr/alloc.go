@@ -39,6 +39,7 @@ type allocConfig struct {
 	allocatableSize              uint64
 	codeModes                    map[codemode.CodeMode]codeModeConf
 	shardNum                     int
+	diskUsageThreshold           float64
 }
 
 type idleItem struct {
@@ -136,14 +137,21 @@ type activeVolumes struct {
 	sync.RWMutex
 }
 
-// volume allocator, use for allocating volume
 type volumeAllocator struct {
 	// idle volumes
 	idles map[codemode.CodeMode]*idleVolumes
 	// actives volumes
 	actives *activeVolumes
+	// diskHighUsage holds the latest high-watermark state per disk.
+	diskHighUsage sync.Map // map[proto.DiskID]bool
 
 	allocConfig
+}
+
+// UpdateDiskHighUsage is called on every disk heartbeat to record whether a
+// disk currently exceeds the high-usage threshold.
+func (a *volumeAllocator) UpdateDiskHighUsage(diskID proto.DiskID, ratio float64) {
+	a.diskHighUsage.Store(diskID, ratio > a.diskUsageThreshold)
 }
 
 type sortVid []vidLoad
@@ -240,11 +248,11 @@ func (a *volumeAllocator) Insert(v *volume, mode codemode.CodeMode) {
 	a.idles[mode].addAllocatable(v)
 }
 
-// PreAlloc select volumes which can alloc
-// 1. when EnableDiskLoad=false, all volume will range by health, the healthier volume will range in front of the optional head
-// 2. when EnableDiskLoad=true, if do not hash enough volumes to alloc ,
-//  1. first add disk's load and retry, each time add one until disk's load equal to diskLoadThreshold will set EnableDiskLoad=false
-//  2. second minus volume score and retry , each time minus one until volume's score equal to scoreThreshold
+// PreAlloc pre-allocates up to count volumes for the given code mode.
+// When a.diskChecker is set, volumes with any high-watermark disk are deferred
+// to a later retry pass so that volumes on emptier disks are preferred.
+// The fallback guarantees service continuity: when no low usage disk candidates
+// remain, high disk usage volumes are included automatically.
 func (a *volumeAllocator) PreAlloc(ctx context.Context, mode codemode.CodeMode, count int) ([]proto.Vid, int) {
 	span := trace.SpanFromContextSafe(ctx)
 	idleVolumes := a.idles[mode]
@@ -260,6 +268,9 @@ func (a *volumeAllocator) PreAlloc(ctx context.Context, mode codemode.CodeMode, 
 	scoreThreshold := healthiestScore
 	// diskLoadThreshold start half of allocatableDiskLoadThreshold,avoid loop too much times
 	diskLoadThreshold := a.allocatableDiskLoadThreshold / 2
+	// skipWatermark becomes true after disk-load is fully relaxed, allowing
+	// volumes on high-watermark disks to be included as a last-resort fallback.
+	skipDiskUsageCheck := a.diskUsageThreshold <= 0
 	// optionalVids include all volume id which satisfied with our condition(idle/enough free size/health/not over disk load)
 	// all vid will range by health, the healthier volume will range in front of the optional head
 	optionalVids := make([]proto.Vid, 0)
@@ -281,7 +292,10 @@ RETRY:
 	now := time.Now()
 	for idx, volume := range allIdles {
 		volume.lock.RLock()
-		if volume.canAlloc(a.allocatableSize, scoreThreshold) && (!isEnableDiskLoad || !a.isOverload(volume.vUnits, diskLoadThreshold)) {
+		hasHighUsageDisk := !skipDiskUsageCheck && a.hasHighUsageDisk(volume.vUnits, mode)
+		if volume.canAlloc(a.allocatableSize, scoreThreshold) &&
+			(!isEnableDiskLoad || !a.isOverload(volume.vUnits, diskLoadThreshold)) &&
+			!hasHighUsageDisk {
 			optionalVids = append(optionalVids, volume.vid)
 			// only insufficient free size or unhealthy volume move to temporary head,
 			// ignore over diskLoad volume
@@ -296,8 +310,10 @@ RETRY:
 			break
 		}
 
-		// go to the end, first retry with high disk load volume
-		// second  lower health score volume
+		// Relaxation order on retry:
+		//   1. raise diskLoadThreshold step by step
+		//   2. disable disk-load check entirely and relax disk high usage filter (skipDiskCheck = true)
+		//   3. lower scoreThreshold
 		if isLastShard && idx == len(allIdles)-1 {
 			span.Infof("assignable volume length is %d", len(assignable))
 			if len(assignable) == 0 {
@@ -307,10 +323,14 @@ RETRY:
 			if isEnableDiskLoad && diskLoadThreshold < a.allocatableDiskLoadThreshold {
 				// When diskLoad exceeds the threshold, retry 3 times at most
 				diskLoadThreshold += int(math.Ceil(float64(a.allocatableDiskLoadThreshold) / 6.0))
-			} else if isEnableDiskLoad {
+				span.Infof("increase diskload to %d", diskLoadThreshold)
+			} else if !skipDiskUsageCheck || isEnableDiskLoad {
+				skipDiskUsageCheck = true
 				isEnableDiskLoad = false
+				span.Info("close diskload and disk usage check")
 			} else if scoreThreshold > allocatableScoreThreshold {
 				scoreThreshold -= 1
+				span.Warnf("lower volume health score %d", scoreThreshold)
 			}
 			allIdles = assignable
 			assignable = assignable[:0]
@@ -425,6 +445,20 @@ func (a *volumeAllocator) isEnableDiskLoad() bool {
 func (a *volumeAllocator) getShardNum(mode codemode.CodeMode) int {
 	modeConf := a.codeModes[mode]
 	return modeConf.tactic.N + modeConf.tactic.M + modeConf.tactic.L
+}
+
+// hasHighUsageDisk reports whether any disk in vUnits exceeds the high usage threshold.
+func (a *volumeAllocator) hasHighUsageDisk(vUnits []*volumeUnit, mode codemode.CodeMode) bool {
+	count := mode.GetShardNum() - mode.T().PutQuorum
+	for _, unit := range vUnits {
+		if v, ok := a.diskHighUsage.Load(unit.vuInfo.DiskID); ok && v.(bool) {
+			count = count - 1
+			if count < 0 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (a *volumeAllocator) sortVidByHealthAndDiskLoad(mode codemode.CodeMode, vids []proto.Vid) (ret []proto.Vid) {

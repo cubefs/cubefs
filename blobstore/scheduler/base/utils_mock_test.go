@@ -50,3 +50,13 @@ func (mr *MockAllocVunitMockRecorder) AllocVolumeUnit(arg0, arg1, arg2, arg3 int
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AllocVolumeUnit", reflect.TypeOf((*MockAllocVunit)(nil).AllocVolumeUnit), arg0, arg1, arg2, arg3)
 }
+
+// mockAllocShardUnit is a simple manual mock for IAllocShardUnit.
+type mockAllocShardUnit struct {
+	ret *client.AllocShardUnitInfo
+	err error
+}
+
+func (m *mockAllocShardUnit) AllocShardUnit(_ context.Context, _ proto.Suid, _ []proto.DiskID) (*client.AllocShardUnitInfo, error) {
+	return m.ret, m.err
+}

@@ -103,6 +103,7 @@ func initMockVolumeMgr(t testing.TB) (*VolumeMgr, func()) {
 	mockDiskMgr.EXPECT().Stat(gomock.Any(), proto.DiskTypeHDD).AnyTimes().Return(&clustermgr.SpaceStatInfo{TotalDisk: 35})
 	mockDiskMgr.EXPECT().IsDiskWritable(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockIsDiskWritable)
 	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockGetDiskInfo)
+	mockDiskMgr.EXPECT().RegisterDiskUsageCallback(gomock.Any()).Times(1)
 
 	mockVolumeMgr, err := NewVolumeMgr(testConfig, mockDiskMgr, mockScopeMgr, mockConfigMgr, volumeDB)
 	require.NoError(t, err)
@@ -317,6 +318,7 @@ func Test_NewVolumeMgr(t *testing.T) {
 	mockDiskMgr.EXPECT().IsDiskWritable(gomock.Any(), gomock.Any()).AnyTimes().Return(true, nil)
 	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockGetDiskInfo)
 	mockDiskMgr.EXPECT().HasEnoughSpace(gomock.Any(), gomock.Any()).AnyTimes().Return(true)
+	mockDiskMgr.EXPECT().RegisterDiskUsageCallback(gomock.Any()).Times(1)
 
 	mockVolumeMgr, err := NewVolumeMgr(volConfig, mockDiskMgr, mockScopeMgr, mockConfigMgr, volumeDB)
 	require.NoError(t, err)
@@ -1198,6 +1200,166 @@ func BenchmarkVolumeMgr_AllocVolume(b *testing.B) {
 			require.NoError(b, err)
 			require.Equal(b, len(ret.AllocVolumeInfos), 2)
 		}
+	})
+}
+
+// TestPreAlloc_HighWatermarkFallback verifies the two-pass watermark behavior:
+//  1. When allocating 2 volumes from a pool of 4 high-watermark + 2 low-watermark
+//     volumes (all other conditions equal), the 2 low-watermark volumes are returned.
+//  2. When allocating all 6, the full set is returned via graceful fallback.
+func TestPreAlloc_HighWatermarkFallback(t *testing.T) {
+	testConfig.checkAndFix()
+	codeModes := make(map[codemode.CodeMode]codeModeConf)
+	for _, policy := range testConfig.CodeModePolicies {
+		cm := policy.ModeName.GetCodeMode()
+		codeModes[cm] = codeModeConf{
+			mode:      cm,
+			sizeRatio: policy.SizeRatio,
+			tactic:    cm.Tactic(),
+			enable:    policy.Enable,
+		}
+	}
+	mode := codemode.EC15P12
+
+	newAllocator := func() *volumeAllocator {
+		a := newVolumeAllocator(allocConfig{
+			codeModes:                    codeModes,
+			allocatableSize:              testConfig.AllocatableSize,
+			allocFactor:                  testConfig.AllocFactor,
+			allocatableDiskLoadThreshold: testConfig.AllocatableDiskLoadThreshold,
+			shardNum:                     testConfig.ShardNum,
+			diskUsageThreshold:           0.85,
+		})
+		// vid 1..4: high-watermark disks (ID <= 1000); vid 5..6: low-watermark disks (ID > 1000).
+		const watermarkBoundary = proto.DiskID(1000)
+		allVols := generateVolume(mode, 6, 1)
+		for i, vol := range allVols {
+			for j := range vol.vUnits {
+				if i < 4 {
+					vol.vUnits[j].vuInfo.DiskID = proto.DiskID(j + 1)
+				} else {
+					vol.vUnits[j].vuInfo.DiskID = watermarkBoundary + proto.DiskID(j+1)
+				}
+			}
+			vol.volInfoBase.Status = proto.VolumeStatusIdle
+			a.idles[mode].addAllocatable(vol)
+		}
+		// mark disks with ID <= watermarkBoundary as high-usage via the heartbeat-driven path.
+		for _, vol := range allVols {
+			for _, unit := range vol.vUnits {
+				var ratio float64
+				if unit.vuInfo.DiskID <= watermarkBoundary {
+					ratio = 0.9 // above threshold
+				} else {
+					ratio = 0.5 // below threshold
+				}
+				a.UpdateDiskHighUsage(unit.vuInfo.DiskID, ratio)
+			}
+		}
+		return a
+	}
+
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	lowWatermarkVids := map[proto.Vid]struct{}{5: {}, 6: {}}
+
+	t.Run("prefer low-watermark volumes", func(t *testing.T) {
+		ret, _ := newAllocator().PreAlloc(ctx, mode, 2)
+		require.Equal(t, 2, len(ret))
+		for _, vid := range ret {
+			require.Contains(t, lowWatermarkVids, vid, "expected only low-watermark vids, got vid=%d", vid)
+		}
+	})
+
+	t.Run("fallback allocates all volumes", func(t *testing.T) {
+		ret, _ := newAllocator().PreAlloc(ctx, mode, 6)
+		require.Equal(t, 6, len(ret))
+	})
+
+	t.Run("disabled when threshold is zero", func(t *testing.T) {
+		// diskUsageThreshold=0 → skipDiskUsageCheck=true from the start;
+		// even disks at 90% usage are eligible without fallback.
+		a := newVolumeAllocator(allocConfig{
+			codeModes:                    codeModes,
+			allocatableSize:              testConfig.AllocatableSize,
+			allocFactor:                  testConfig.AllocFactor,
+			allocatableDiskLoadThreshold: testConfig.AllocatableDiskLoadThreshold,
+			shardNum:                     testConfig.ShardNum,
+			diskUsageThreshold:           0,
+		})
+		vols := generateVolume(mode, 4, 1)
+		for _, vol := range vols {
+			vol.volInfoBase.Status = proto.VolumeStatusIdle
+			a.idles[mode].addAllocatable(vol)
+			for _, unit := range vol.vUnits {
+				a.UpdateDiskHighUsage(unit.vuInfo.DiskID, 0.9)
+			}
+		}
+		ret, _ := a.PreAlloc(ctx, mode, 2)
+		require.Equal(t, 2, len(ret))
+	})
+
+	t.Run("ratio at threshold is not high", func(t *testing.T) {
+		// ratio > threshold is strict; ratio == threshold must NOT be treated as high.
+		const threshold = 0.85
+		a := newVolumeAllocator(allocConfig{
+			codeModes:                    codeModes,
+			allocatableSize:              testConfig.AllocatableSize,
+			allocFactor:                  testConfig.AllocFactor,
+			allocatableDiskLoadThreshold: testConfig.AllocatableDiskLoadThreshold,
+			shardNum:                     testConfig.ShardNum,
+			diskUsageThreshold:           threshold,
+		})
+		vols := generateVolume(mode, 4, 1)
+		for _, vol := range vols {
+			vol.volInfoBase.Status = proto.VolumeStatusIdle
+			a.idles[mode].addAllocatable(vol)
+			for _, unit := range vol.vUnits {
+				a.UpdateDiskHighUsage(unit.vuInfo.DiskID, threshold)
+			}
+		}
+		ret, _ := a.PreAlloc(ctx, mode, 2)
+		require.Equal(t, 2, len(ret))
+	})
+
+	t.Run("disk usage update overrides previous state", func(t *testing.T) {
+		// EC15P12: count = N+M+L-PutQuorum = 27-24 = 3 (tolerance).
+		// hasHighUsageDisk returns true only when > count (i.e. ≥ 4) disks are high
+		// (count<0 condition), meaning fewer than PutQuorum disks remain available.
+		const threshold = 0.85
+		const (
+			diskA = proto.DiskID(9001)
+			diskB = proto.DiskID(9002)
+			diskC = proto.DiskID(9003)
+			diskD = proto.DiskID(9004)
+		)
+		a := newVolumeAllocator(allocConfig{
+			codeModes:                    codeModes,
+			allocatableSize:              testConfig.AllocatableSize,
+			allocFactor:                  testConfig.AllocFactor,
+			allocatableDiskLoadThreshold: testConfig.AllocatableDiskLoadThreshold,
+			shardNum:                     testConfig.ShardNum,
+			diskUsageThreshold:           threshold,
+		})
+		units := []*volumeUnit{
+			{vuInfo: &clustermgr.VolumeUnitInfo{DiskID: diskA}},
+			{vuInfo: &clustermgr.VolumeUnitInfo{DiskID: diskB}},
+			{vuInfo: &clustermgr.VolumeUnitInfo{DiskID: diskC}},
+			{vuInfo: &clustermgr.VolumeUnitInfo{DiskID: diskD}},
+		}
+
+		// 3 high disks == count(3): count reaches 0 but not <0, still allowed.
+		a.UpdateDiskHighUsage(diskA, 0.9)
+		a.UpdateDiskHighUsage(diskB, 0.9)
+		a.UpdateDiskHighUsage(diskC, 0.9)
+		require.False(t, a.hasHighUsageDisk(units, mode))
+
+		// 4th disk also high → count goes negative → blocked.
+		a.UpdateDiskHighUsage(diskD, 0.9)
+		require.True(t, a.hasHighUsageDisk(units, mode))
+
+		// Drop diskA below threshold: only 3 of 4 remain high → unblocked.
+		a.UpdateDiskHighUsage(diskA, 0.3)
+		require.False(t, a.hasHighUsageDisk(units, mode))
 	})
 }
 

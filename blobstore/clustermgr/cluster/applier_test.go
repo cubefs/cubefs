@@ -47,6 +47,7 @@ func TestApplier_Others(t *testing.T) {
 
 	// test flush
 	{
+		testDiskMgr.RegisterDiskUsageCallback(func(proto.DiskID, float64) {})
 		heartbeatInfos := make([]*clustermgr.DiskHeartBeatInfo, 0)
 		for i := 1; i <= 10; i++ {
 			diskInfo, err := testDiskMgr.GetDiskInfo(ctx, proto.DiskID(i))
