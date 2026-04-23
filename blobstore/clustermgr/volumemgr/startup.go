@@ -54,6 +54,8 @@ type VolumeMgrConfig struct {
 	MinWritableVolumeSpace       uint64 `json:"min_writable_volume_space"`
 	AllocatableDiskLoadThreshold int    `json:"allocatable_disk_load_threshold"`
 	AllocFactor                  int    `json:"alloc_factor"`
+
+	AllocDiskUsageThreshold float64 `json:"alloc_disk_usage_threshold"`
 	// the volume free size must big than AllocatableSize can alloc
 	AllocatableSize uint64 `json:"allocatable_size"`
 	// the number of volume partitions that can be allocated
@@ -171,8 +173,11 @@ func NewVolumeMgr(conf VolumeMgrConfig, diskMgr cluster.BlobNodeManagerAPI, scop
 		allocFactor:                  conf.AllocFactor,
 		allocatableDiskLoadThreshold: conf.AllocatableDiskLoadThreshold,
 		shardNum:                     conf.ShardNum,
+		diskUsageThreshold:           conf.AllocDiskUsageThreshold,
 	}
 	volAllocator := newVolumeAllocator(allocConfig)
+	diskMgr.RegisterDiskUsageCallback(volAllocator.UpdateDiskHighUsage)
+
 	volumeMgr.allocator = volAllocator
 
 	// initial register change status callback func

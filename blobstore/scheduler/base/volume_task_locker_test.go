@@ -42,3 +42,22 @@ func TestVolTaskLocker(t *testing.T) {
 	err = mu.TryLock(ctx, 1)
 	require.NoError(t, err)
 }
+
+func TestShardTaskLockerInst(t *testing.T) {
+	ctx := context.Background()
+
+	// singleton: two calls return same instance
+	locker1 := ShardTaskLockerInst()
+	locker2 := ShardTaskLockerInst()
+	require.Equal(t, locker1, locker2)
+
+	// TryLock and Unlock
+	err := locker1.TryLock(ctx, 9999)
+	require.NoError(t, err)
+	err = locker1.TryLock(ctx, 9999)
+	require.EqualError(t, err, ErrVidTaskConflict.Error())
+	locker1.Unlock(ctx, 9999)
+	err = locker1.TryLock(ctx, 9999)
+	require.NoError(t, err)
+	locker1.Unlock(ctx, 9999)
+}

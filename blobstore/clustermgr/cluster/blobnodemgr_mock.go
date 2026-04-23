@@ -198,6 +198,18 @@ func (mr *MockBlobNodeManagerAPIMockRecorder) HasEnoughSpace(arg0, arg1 interfac
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasEnoughSpace", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).HasEnoughSpace), arg0, arg1)
 }
 
+// RegisterDiskUsageCallback mocks base method.
+func (m *MockBlobNodeManagerAPI) RegisterDiskUsageCallback(fn func(proto.DiskID, float64)) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "RegisterDiskUsageCallback", fn)
+}
+
+// RegisterDiskUsageCallback indicates an expected call of RegisterDiskUsageCallback.
+func (mr *MockBlobNodeManagerAPIMockRecorder) RegisterDiskUsageCallback(fn interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterDiskUsageCallback", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).RegisterDiskUsageCallback), fn)
+}
+
 // IsDiskWritable mocks base method.
 func (m *MockBlobNodeManagerAPI) IsDiskWritable(arg0 context.Context, arg1 proto.DiskID) (bool, error) {
 	m.ctrl.T.Helper()
