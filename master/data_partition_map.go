@@ -370,12 +370,23 @@ func (dpMap *DataPartitionMap) updateCompressCache(needsUpdate bool, minPartitio
 		log.LogErrorf("action[updateCompressCache]updateResponseCache failed,err:%+v", err)
 		return
 	}
+
 	if body, err = compressor.New(compressor.EncodingGzip).Compress(body); err != nil {
 		log.LogErrorf("action[updateCompressCache]GzipCompressor.Compress failed,err:%+v", err)
 		err = proto.ErrCompressFailed
 		return
 	}
 	dpMap.setDataPartitionCompressCache(body, poolAware)
+
+	// set compress cache for non-pool aware
+	newBody := dpMap.getDataPartitionResponseCache(!poolAware)
+	if newBody, err = compressor.New(compressor.EncodingGzip).Compress(newBody); err != nil {
+		log.LogErrorf("action[updateCompressCache]GzipCompressor.Compress failed,err:%+v", err)
+		err = proto.ErrCompressFailed
+		return
+	}
+	dpMap.setDataPartitionCompressCache(newBody, !poolAware)
+
 	return
 }
 

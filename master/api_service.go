@@ -7259,8 +7259,8 @@ func (m *Server) getDataPartitions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.LogInfof("action[getDataPartitions] current is leader[%v], compress[%v]",
-		m.cluster.partition.IsRaftLeader(), compress)
+	log.LogInfof("action[getDataPartitions] current is leader[%v], compress[%v], poolAware[%v]",
+		m.cluster.partition.IsRaftLeader(), compress, poolAware)
 	if !m.cluster.partition.IsRaftLeader() {
 		var ok bool
 		if body, ok = m.cluster.followerReadManager.getVolViewAsFollower(name, compress, poolAware); !ok {
