@@ -6166,7 +6166,7 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 	log.LogInfof("action[TryDecommissionDataNode] try decommission dp[%v] %v from dataNode[%s] ",
 		len(toBeOffLinePartitionsFinalIds), toBeOffLinePartitionsFinalIds, dataNode.Addr)
 	for _, persistDisk := range dataNode.AllDisks {
-		if _, ok := dpToDecommissionByDisk[persistDisk]; !ok {
+		if shouldDisableDiskDirectlyForDataNodeDecommission(dataNode.DecommissionLimit, persistDisk, dpToDecommissionByDisk) {
 			c.addAndSyncDecommissionedDisk(dataNode, persistDisk)
 			msg := fmt.Sprintf("no dp left on %v_%v, disable it directly", dataNode.Addr, persistDisk)
 			auditlog.LogMasterOp("DiskDecommission", msg, nil)
@@ -6232,6 +6232,15 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 		decommissionDiskList, dataNode.Addr, dataNode.DecommissionRaftForce, dataNode.DecommissionDstAddr, dataNode.DecommissionDpTotal)
 	log.LogInfof("action[TryDecommissionDataNode] %v", msg)
 	auditlog.LogMasterOp("DataNodeDecommission", msg, nil)
+}
+
+func shouldDisableDiskDirectlyForDataNodeDecommission(limit int, diskPath string, dpToDecommissionByDisk map[string]int) bool {
+	if limit != 0 {
+		return false
+	}
+
+	_, ok := dpToDecommissionByDisk[diskPath]
+	return !ok
 }
 
 func (c *Cluster) checkZoneDataMediaTypeForDecommission(srcAddr string, dstNodeSetID uint64) (err error) {

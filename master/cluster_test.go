@@ -1347,3 +1347,19 @@ func TestPreReservedSpaceFunctions(t *testing.T) {
 		require.Equal(t, uint32(0), testDataNode.PreReservedDpCount)
 	})
 }
+
+func TestShouldDisableDiskDirectlyForDataNodeDecommission(t *testing.T) {
+	t.Run("partial decommission keeps unrelated disks allocatable", func(t *testing.T) {
+		dpToDecommissionByDisk := map[string]int{"/data1": 15}
+
+		require.False(t, shouldDisableDiskDirectlyForDataNodeDecommission(20, "/data2", dpToDecommissionByDisk))
+		require.False(t, shouldDisableDiskDirectlyForDataNodeDecommission(20, "/data1", dpToDecommissionByDisk))
+	})
+
+	t.Run("full decommission disables disks without partitions to migrate", func(t *testing.T) {
+		dpToDecommissionByDisk := map[string]int{"/data1": 15}
+
+		require.True(t, shouldDisableDiskDirectlyForDataNodeDecommission(0, "/data2", dpToDecommissionByDisk))
+		require.False(t, shouldDisableDiskDirectlyForDataNodeDecommission(0, "/data1", dpToDecommissionByDisk))
+	})
+}
