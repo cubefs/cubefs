@@ -1333,11 +1333,11 @@ func (c *Cluster) updateMetaNodeDeleteWorkerSleepMs(val uint64) {
 
 func (c *Cluster) updateFollowerReadLeaseTime(val uint64) {
 	if val < proto.MinFollowerReadLeaseTimeSec {
-		log.LogWarnf("action[updateFollowerReadLeaseTime] value %d below min %d, capping", val, proto.MinFollowerReadLeaseTimeSec)
+		log.LogInfof("action[updateFollowerReadLeaseTime] value %d below min %d, capping", val, proto.MinFollowerReadLeaseTimeSec)
 		val = proto.MinFollowerReadLeaseTimeSec
 	}
 	if val > proto.MaxFollowerReadLeaseTimeSec {
-		log.LogWarnf("action[updateFollowerReadLeaseTime] value %d exceeds max %d, capping", val, proto.MaxFollowerReadLeaseTimeSec)
+		log.LogInfof("action[updateFollowerReadLeaseTime] value %d exceeds max %d, capping", val, proto.MaxFollowerReadLeaseTimeSec)
 		val = proto.MaxFollowerReadLeaseTimeSec
 	}
 	atomic.StoreUint64(&c.cfg.FollowerReadLeaseTime, val)
@@ -2036,10 +2036,14 @@ func (c *Cluster) loadDataNodes() (err error) {
 		dataNode.Tag = dnv.Tag
 		olddn, ok := c.dataNodes.Load(dataNode.Addr)
 		if ok {
-			if olddn.(*DataNode).ID >= dataNode.ID {
-				log.LogWarnf("action[loadDataNodes]: skip addr %v old %v current %v", dataNode.Addr, olddn.(*DataNode).ID, dataNode.ID)
+			olddn := olddn.(*DataNode)
+			if olddn.ID >= dataNode.ID {
+				log.LogWarnf("action[loadDataNodes]: skip addr %v old %v current %v", dataNode.Addr, olddn.ID, dataNode.ID)
 				continue
 			}
+
+			c.t.deleteDataNode(olddn)
+			log.LogWarnf("action[loadDataNodes]: delete old dataNode %v", olddn.Addr)
 		}
 		c.dataNodes.Store(dataNode.Addr, dataNode)
 		c.t.putDataNode(dataNode)
