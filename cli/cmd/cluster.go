@@ -909,7 +909,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	// cmd.Flags().StringVar(&optRemoteCacheSameRegionTimeout, CliFlagRemoteCacheSameRegionTimeout, "", "Remote cache same region timeout millisecond(must > 0)")
 	cmd.Flags().StringVar(&optFlashHotKeyMissCount, CliFlagFlashHotKeyMissCount, "", "Flash hot key miss count(must > 0)")
 	cmd.Flags().StringVar(&optPreheatTotalTask, CliFlagPreheatTotalTask, "", "Preheat total task(must > 0)")
-	cmd.Flags().StringVar(&optMaxDisableFlashGroupPercent, CliFlagMaxDisableFlashGroupPercent, "", "Max ratio (percent 1-100) of empty-slot flash groups before recovering reserved slots; threshold = fgCount * X / 100")
+	cmd.Flags().StringVar(&optMaxDisableFlashGroupPercent, CliFlagMaxDisableFlashGroupPercent, "", "Max percentage (1-100) of unavailable flash groups tolerated before the system forces them back online")
 	cmd.Flags().StringVar(&optFlashReadFlowLimit, CliFlagFlashReadFlowLimit, "", "Flash read flow limit(must >= 0)")
 	cmd.Flags().StringVar(&optFlashWriteFlowLimit, CliFlagFlashWriteFlowLimit, "", "Flash write flow limit(must >= 0)")
 	cmd.Flags().StringVar(&optFlashKeyFlowLimit, CliFlagFlashKeyFlowLimit, "", "Flash key flow limit(must >= 0)")
