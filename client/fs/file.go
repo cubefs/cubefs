@@ -545,6 +545,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	}
 
 	defer func() {
+		f.super.SetDirtyDir(f.parentIno, ino)
 		f.super.ic.Delete(ino)
 	}()
 
@@ -696,6 +697,7 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 		}
 
 		if openForWrite {
+			f.super.SetDirtyDir(f.parentIno, f.info.Inode)
 			f.super.ic.Delete(f.info.Inode)
 		}
 
@@ -740,6 +742,16 @@ func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 
 		return ParseError(err)
 	}
+
+	openForWrite := false
+	if req.Flags&0x0f != syscall.O_RDONLY {
+		openForWrite = true
+	}
+
+	if openForWrite {
+		f.super.SetDirtyDir(f.parentIno, f.info.Inode)
+	}
+
 	f.super.ic.Delete(f.info.Inode)
 	elapsed := time.Since(start)
 	log.LogDebugf("TRACE Fsync: ino(%v) (%v)ns", f.info.Inode, elapsed.Nanoseconds())
@@ -787,6 +799,9 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 		if err := f.super.ec.Truncate(f.super.mw, f.parentIno, ino, int(req.Size), fullPath); err != nil {
 			log.LogErrorf("Setattr: truncate ino(%v) size(%v) err(%v)", ino, req.Size, err)
 			return ParseError(err)
+		}
+		if openForWrite {
+			f.super.SetDirtyDir(f.parentIno, ino)
 		}
 		f.super.ic.Delete(ino)
 		f.super.ec.RefreshExtentsCache(ino)

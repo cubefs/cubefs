@@ -114,6 +114,9 @@ type Super struct {
 
 	// client specified pool ID for new inodes (0 means use volume default)
 	clientPoolId uint8
+
+	dirDirtyCache     map[uint64]bool
+	dirDirtyCacheLock sync.Mutex
 }
 
 // Functions that Super needs to implement
@@ -133,6 +136,7 @@ const (
 func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	s = new(Super)
 	s.ebsc = make(map[uint8]*blobstore.BlobStoreClient)
+	s.dirDirtyCache = make(map[uint64]bool)
 	masters := strings.Split(opt.Master, meta.HostsSeparator)
 	metaConfig := &meta.MetaConfig{
 		Volume:          opt.Volname,
@@ -388,6 +392,56 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	go s.loopUpdatePoolCache()
 
 	return s, nil
+}
+
+func (s *Super) AddDirtyDir(ino uint64) {
+	if !s.metaCacheAcceleration {
+		return
+	}
+	s.dirDirtyCacheLock.Lock()
+	defer s.dirDirtyCacheLock.Unlock()
+	s.dirDirtyCache[ino] = false
+}
+
+func (s *Super) SetDirtyDir(ino uint64, childIno uint64) {
+	if !s.metaCacheAcceleration {
+		return
+	}
+	s.dirDirtyCacheLock.Lock()
+	defer s.dirDirtyCacheLock.Unlock()
+
+	if _, ok := s.dirDirtyCache[ino]; !ok {
+		return
+	}
+
+	log.LogInfof("SetDirtyDir: ino(%v) is set to dirty, childIno(%v)", ino, childIno)
+	s.dirDirtyCache[ino] = true
+}
+
+func (s *Super) RemoveDirtyDir(ino uint64) {
+	if !s.metaCacheAcceleration {
+		return
+	}
+	s.dirDirtyCacheLock.Lock()
+	defer s.dirDirtyCacheLock.Unlock()
+	delete(s.dirDirtyCache, ino)
+}
+
+func (s *Super) CheckDirDirty(ino uint64, f func()) {
+	if !s.metaCacheAcceleration {
+		f()
+		return
+	}
+
+	s.dirDirtyCacheLock.Lock()
+	defer s.dirDirtyCacheLock.Unlock()
+
+	if dirty := s.dirDirtyCache[ino]; dirty {
+		log.LogInfof("CheckDirDirty: ino(%v) is dirty", ino)
+		return
+	}
+
+	f()
 }
 
 func (s *Super) getBlobStoreClient(poolId uint8) (*blobstore.BlobStoreClient, error) {

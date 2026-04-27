@@ -11242,6 +11242,14 @@ func (m *Server) createStoragePool(w http.ResponseWriter, r *http.Request) {
 		AuditLog(r, proto.AdminCreateStoragePool, fmt.Sprintf("create pool id[%d] name[%s]", poolInfo.Id, poolInfo.Name), err)
 	}()
 
+	if !proto.IsStorageClassBlobStore(uint32(poolInfo.StorageClass)) {
+		if r.FormValue(poolCIdKey) != "" || strings.TrimSpace(poolInfo.ECAddr) != "" {
+			err = fmt.Errorf("cId and ecAddr are only supported for BlobStore storage pools")
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+			return
+		}
+	}
+
 	if poolInfo.Id == 0 {
 		err = fmt.Errorf("pool id is required")
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})

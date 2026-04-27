@@ -110,6 +110,7 @@ type Dir struct {
 	name        string
 	openCnt     int64
 	missCount   uint32
+	lastDone    int32
 	lastTime    int64
 }
 
@@ -328,6 +329,7 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 // Remove handles the remove request.
 func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 	start := time.Now()
+	d.super.SetDirtyDir(d.info.Inode, 0)
 	d.dcache.Delete(req.Name)
 	dcacheKey := d.buildDcacheKey(d.info.Inode, req.Name)
 	d.super.dc.Delete(dcacheKey)
@@ -490,6 +492,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 				d.super.fslock.Lock()
 				delete(d.super.nodeCache, ino)
 				d.super.fslock.Unlock()
+				d.super.SetDirtyDir(d.info.Inode, ino)
 				d.super.ic.Delete(ino)
 				_, err = d.super.InodeGet(ino)
 				if err == nil {
@@ -510,16 +513,20 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 
 	if missCache && d.super.metaCacheAcceleration {
 		now := timeutil.GetCurrentTime()
-		if atomic.AddUint32(&d.missCount, 1) > 5 && (atomic.LoadInt64(&d.lastTime) == 0 || now.Sub(time.Unix(d.lastTime, 0)) >= 5*time.Minute) {
+		if atomic.AddUint32(&d.missCount, 1) > 5 && (atomic.LoadInt64(&d.lastTime) == 0 || now.Sub(time.Unix(d.lastTime, 0)) >= 5*time.Minute) &&
+			atomic.LoadInt32(&d.lastDone) == 1 {
 			log.LogDebugf("trigger ReadDirAll for missCache %v Nlink %v missCount %v metaCacheAcceleration %v ino(%v) name(%v)",
 				missCache, d.info.Nlink, atomic.LoadUint32(&d.missCount), d.super.metaCacheAcceleration, d.info.Inode, d.getCwd())
 			atomic.StoreInt64(&d.lastTime, now.Unix())
 			atomic.StoreUint32(&d.missCount, 0)
+			atomic.StoreInt32(&d.lastDone, 0)
+
 			if d.super.readDirPool != nil {
 				d.super.readDirPool.Run(func() {
 					log.LogDebugf("trigger ReadDirAll for ino(%v) name(%v)", d.info.Inode, d.getCwd())
 					auditlog.LogClientOp("TriggerReadDirAllParent", d.getCwd(), "", err, time.Since(*bgTime).Microseconds(), ino, 0)
 					d.ReadDirAll(context.Background())
+					atomic.StoreInt32(&d.lastDone, 1)
 				})
 			}
 		}
@@ -722,6 +729,9 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 
 // ReadDirAll gets all the dentries in a directory and puts them into the cache.
 func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
+	d.super.AddDirtyDir(d.info.Inode)
+	defer d.super.RemoveDirtyDir(d.info.Inode)
+
 	start := time.Now()
 	bgTime := stat.BeginStat()
 	var err error
@@ -796,14 +806,18 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 		infos = d.super.mw.BatchInodeGet(inodes)
 	}
 
-	maxElements := int(float64(d.super.inodeLruLimit) * 0.8)
-	if len(infos) > maxElements && d.super.metaCacheAcceleration {
-		infos = infos[:maxElements]
-	}
-	for _, info := range infos {
-		d.super.ic.Put(info)
-	}
-	d.dcache = dcache
+	d.super.CheckDirDirty(d.info.Inode, func() {
+		maxElements := int(float64(d.super.inodeLruLimit) * 0.8)
+		if len(infos) > maxElements && d.super.metaCacheAcceleration {
+			infos = infos[:maxElements]
+		}
+		for _, info := range infos {
+			d.super.ic.Put(info)
+		}
+
+		d.dcache = dcache
+	})
+
 	elapsed := time.Since(start)
 	log.LogDebugf("TRACE ReadDirAll: ino(%v) (%v)ns", d.info.Inode, elapsed.Nanoseconds())
 	return dirents, nil
@@ -832,6 +846,9 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 			srcInode = ino
 		}
 	}
+
+	d.super.SetDirtyDir(d.info.Inode, srcInode)
+	d.super.SetDirtyDir(dstDir.info.Inode, dstInode)
 	d.dcache.Delete(req.OldName)
 	dcacheKey := d.buildDcacheKey(d.info.Inode, req.OldName)
 	d.super.dc.Delete(dcacheKey)

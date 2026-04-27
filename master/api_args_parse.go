@@ -2931,6 +2931,7 @@ func parseRequestToUpdateStoragePool(r *http.Request) (poolId uint8, poolInfo *p
 		Id: poolId,
 	}
 
+	updated := false
 	// Parse pool name (optional)
 	poolInfo.Name = r.FormValue(nameKey)
 	// Validate pool name: only letters and numbers, max 32 characters
@@ -2938,6 +2939,7 @@ func parseRequestToUpdateStoragePool(r *http.Request) (poolId uint8, poolInfo *p
 		if err = validatePoolName(poolInfo.Name); err != nil {
 			return 0, nil, err
 		}
+		updated = true
 	}
 
 	// Parse CId (EC cluster ID, optional)
@@ -2945,10 +2947,18 @@ func parseRequestToUpdateStoragePool(r *http.Request) (poolId uint8, poolInfo *p
 		if poolInfo.CId, err = strconv.Atoi(cidStr); err != nil {
 			return 0, nil, fmt.Errorf("invalid cId: %v", err)
 		}
+		updated = true
 	}
 
 	// Parse ECAddr (EC cluster address, optional)
 	poolInfo.ECAddr = r.FormValue(poolECAddrKey)
+	if poolInfo.ECAddr != "" {
+		updated = true
+	}
+
+	if !updated {
+		return 0, nil, fmt.Errorf("at least one of name, cId, or ecAddr is required besides pool id")
+	}
 
 	return
 }
