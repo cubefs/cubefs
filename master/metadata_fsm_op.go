@@ -1332,6 +1332,9 @@ func (c *Cluster) updateMetaNodeDeleteWorkerSleepMs(val uint64) {
 }
 
 func (c *Cluster) updateFollowerReadLeaseTime(val uint64) {
+	if val == 0 {
+		val = defaultFollowerReadLeaseTime
+	}
 	if val < proto.MinFollowerReadLeaseTimeSec {
 		log.LogInfof("action[updateFollowerReadLeaseTime] value %d below min %d, capping", val, proto.MinFollowerReadLeaseTimeSec)
 		val = proto.MinFollowerReadLeaseTimeSec
@@ -2101,6 +2104,8 @@ func (c *Cluster) loadMetaNodes() (err error) {
 				log.LogWarnf("action[loadMetaNodes] skip addr %v old %v current %v", metaNode.Addr, oldmn.(*MetaNode).ID, metaNode.ID)
 				continue
 			}
+			c.t.deleteMetaNode(oldmn.(*MetaNode))
+			log.LogWarnf("action[loadMetaNodes]: delete old metaNode %v", oldmn.(*MetaNode).Addr)
 		}
 		c.metaNodes.Store(metaNode.Addr, metaNode)
 		c.t.putMetaNode(metaNode)
@@ -2206,6 +2211,11 @@ func (c *Cluster) loadVols() (err error) {
 			fmt.Println("errtest", err, vol.Name, vol.allowedPools, vol.defaultPoolId, vol.volStorageClass)
 			log.LogErrorf("action[loadVols],vol[%v] setPoolForLegacyVol error %v", vol.Name, err)
 			return err
+		}
+
+		if !vol.DefaultStoreMode.Valid() {
+			log.LogWarnf("action[loadVols],vol[%v] defaultStoreMode is not valid, set to %v", vol.Name, c.cfg.DefaultVolStoreMode)
+			vol.DefaultStoreMode = c.cfg.DefaultVolStoreMode
 		}
 
 		if len(vol.QuotaByClass) == 0 {
