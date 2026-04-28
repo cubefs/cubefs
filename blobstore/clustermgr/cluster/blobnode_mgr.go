@@ -59,6 +59,8 @@ type BlobNodeManagerAPI interface {
 	HasEnoughSpace(ctx context.Context, mode codemode.CodeMode) bool
 	// RegisterDiskUsageCallback registers a callback that is invoked on every disk heartbeat.
 	RegisterDiskUsageCallback(fn func(diskID proto.DiskID, ratio float64))
+	// AllDiskSnapshots returns base disk in local memory
+	AllDiskSnapshots() []clustermgr.BlobNodeDiskInfo
 
 	NodeManagerAPI
 	persistentHandler
@@ -646,6 +648,27 @@ func (b *BlobNodeManager) HasEnoughSpace(ctx context.Context, mode codemode.Code
 
 func (b *BlobNodeManager) GetModuleName() string {
 	return "DiskMgr" // never change this
+}
+
+// AllDiskSnapshots returns a point-in-time snapshot of every disk in the cluster.
+func (b *BlobNodeManager) AllDiskSnapshots() []clustermgr.BlobNodeDiskInfo {
+	allDisks := b.getAllDisk()
+	snaps := make([]clustermgr.BlobNodeDiskInfo, 0, len(allDisks))
+	for _, disk := range allDisks {
+		var snap clustermgr.BlobNodeDiskInfo
+		disk.withRLocked(func() error {
+			snap.Idc = disk.info.Idc
+			snap.NodeID = disk.info.NodeID
+			snap.DiskID = disk.diskID
+			snap.Path = disk.info.Path
+			snap.Status = disk.info.Status
+			snap.Readonly = disk.info.Readonly
+			snap.DiskHeartBeatInfo = *disk.info.extraInfo.(*clustermgr.DiskHeartBeatInfo)
+			return nil
+		})
+		snaps = append(snaps, snap)
+	}
+	return snaps
 }
 
 func (b *BlobNodeManager) LoadData(ctx context.Context) error {

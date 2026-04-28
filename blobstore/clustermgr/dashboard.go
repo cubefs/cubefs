@@ -22,12 +22,17 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 )
 
-const rebuildCooldown = 5 * time.Second
+const (
+	rebuildCooldown = 5 * time.Second
+
+	SpaceIDScopeName = "space_id"
+)
 
 func (s *Service) Dashboard(c *rpc.Context) {
 	ctx := c.Request.Context()
@@ -132,9 +137,16 @@ func (d *dashboardMgr) loopFresh() {
 }
 
 func (d *dashboardMgr) fresh() {
+	scope := buildScope(d.service.ScopeMgr.Stat())
+	disk := buildDisk(d.service.BlobNodeMgr.AllDiskSnapshots())
+
+	score := scope.Score.Max(disk.Score)
+
 	d.snapshot.Store(&dashboardSnapshot{
 		dashboard: clustermgr.ClusterDashboard{
-			Scope:       d.buildScope(),
+			Score:       score,
+			Scope:       scope,
+			Disk:        disk,
 			GeneratedAt: time.Now().UnixNano(),
 		},
 	})
@@ -150,35 +162,89 @@ func (d *dashboardMgr) fresh() {
 	}
 }
 
-func (d *dashboardMgr) buildScope() clustermgr.ScopeStat {
-	return buildScopeFromMap(d.service.ScopeMgr.Stat())
-}
-
-func buildScopeFromMap(rawScopes map[string]uint64) clustermgr.ScopeStat {
+func buildScope(rawScopes map[string]uint64) clustermgr.ScopeStat {
 	scopeMaxValue := func(name string) uint64 {
 		switch name {
-		case BidScopeName, "space_id":
+		case BidScopeName, SpaceIDScopeName:
 			return math.MaxUint64
 		default:
 			return math.MaxUint32
 		}
 	}
-
-	score := clustermgr.DashboardScoreOK
 	scopes := make([]clustermgr.ScopeUsage, 0, len(rawScopes))
 	for name, cur := range rawScopes {
-		maxVal := scopeMaxValue(name)
-		if cur > maxVal/2 {
-			score = clustermgr.DashboardScoreNotice
-		}
 		scopes = append(scopes, clustermgr.ScopeUsage{
 			Name:     name,
 			Current:  cur,
-			MaxValue: maxVal,
+			MaxValue: scopeMaxValue(name),
 		})
 	}
-	sort.Slice(scopes, func(i, j int) bool {
-		return scopes[i].Name < scopes[j].Name
-	})
-	return clustermgr.ScopeStat{Score: score, Scopes: scopes}
+	sort.Slice(scopes, func(i, j int) bool { return scopes[i].Name < scopes[j].Name })
+	stat := clustermgr.ScopeStat{Scopes: scopes}
+	stat.CalcScore()
+	return stat
+}
+
+// buildDisk aggregates a flat disk snapshot list into DiskStat.
+//
+// For each physical slot (NodeID, Path), only the disk with the highest DiskID
+// is considered "current". Older disks on the same slot are ignored.
+//
+// ByStatusIDC keys produced:
+//   - proto.DiskStatus.String() — "normal" | "broken" | "repairing" | "dropped"
+//   - "__replace__" — current disk is Repaired; physical drive not yet swapped
+//   - "__total__"   — all active slots: normal + broken + repairing + __replace__
+func buildDisk(snaps []clustermgr.BlobNodeDiskInfo) clustermgr.DiskStat {
+	raw := make(map[string]map[string]clustermgr.DiskEntry)
+
+	addEntry := func(key, idc string, hb *clustermgr.DiskHeartBeatInfo) {
+		if raw[key] == nil {
+			raw[key] = make(map[string]clustermgr.DiskEntry)
+		}
+		e := raw[key][idc]
+		e.Count++
+		e.UsedBytes += hb.Used
+		e.FreeBytes += hb.Free
+		e.TotalBytes += hb.Size
+		e.MaxChunks += hb.MaxChunkCnt
+		e.FreeChunks += hb.FreeChunkCnt
+		e.UsedChunks += hb.UsedChunkCnt
+		e.OversoldChunks += hb.OversoldFreeChunkCnt
+		raw[key][idc] = e
+	}
+
+	type slotKey struct {
+		nodeID proto.NodeID
+		path   string
+	}
+	type slotEntry struct {
+		diskID proto.DiskID
+		snap   *clustermgr.BlobNodeDiskInfo
+	}
+	slotMax := make(map[slotKey]slotEntry)
+	for i := range snaps {
+		s := &snaps[i]
+		k := slotKey{s.NodeID, s.Path}
+		if cur, ok := slotMax[k]; !ok || s.DiskID > cur.diskID {
+			slotMax[k] = slotEntry{s.DiskID, s}
+		}
+	}
+
+	for _, e := range slotMax {
+		s := e.snap
+		if s.Status == proto.DiskStatusDropped {
+			addEntry(s.Status.String(), s.Idc, &s.DiskHeartBeatInfo)
+			continue
+		}
+		if s.Status == proto.DiskStatusRepaired {
+			addEntry("__replace__", s.Idc, &s.DiskHeartBeatInfo)
+		} else {
+			addEntry(s.Status.String(), s.Idc, &s.DiskHeartBeatInfo)
+		}
+		addEntry("__total__", s.Idc, &s.DiskHeartBeatInfo)
+	}
+
+	stat := clustermgr.DiskStat{ByStatusIDC: raw}
+	stat.CalcScore()
+	return stat
 }
