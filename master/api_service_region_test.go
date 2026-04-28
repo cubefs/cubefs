@@ -6,6 +6,7 @@
 package master
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"sort"
@@ -420,4 +421,233 @@ func TestClusterUpdateMetaPartitionRegionByID(t *testing.T) {
 	require.NoError(t, err)
 	region := mp.Region
 	require.NoError(t, server.cluster.updateMetaPartitionRegion(mpID, region))
+}
+
+func TestMpRegionPolicyFormValueMeansClear(t *testing.T) {
+	t.Parallel()
+	require.False(t, mpRegionPolicyFormValueMeansClear(""))
+	require.False(t, mpRegionPolicyFormValueMeansClear("cn-west:rocksdb"))
+	require.True(t, mpRegionPolicyFormValueMeansClear("empty"))
+	require.True(t, mpRegionPolicyFormValueMeansClear("  EMPTY  "))
+}
+
+// TestVolRegionHTTP_* exercises api_service_region.go HTTP handlers against the shared test master (serial only).
+func TestVolRegionHTTP_getMpRegionPolicy(t *testing.T) {
+	require.NotNil(t, commonVol)
+	reqURL := fmt.Sprintf("%s%s?name=%s", hostAddr, proto.AdminVolGetMpRegionPolicy, commonVol.Name)
+	reply := process(reqURL, t)
+	require.NotNil(t, reply.Data)
+	raw, err := json.Marshal(reply.Data)
+	require.NoError(t, err)
+	var statuses []*proto.MpRegionPolicyStatus
+	require.NoError(t, json.Unmarshal(raw, &statuses))
+	require.NotEmpty(t, statuses)
+}
+
+func TestVolRegionHTTP_paramErrors(t *testing.T) {
+	auth := url.QueryEscape(buildAuthKey(testOwner))
+
+	t.Run("getMpPolicy_missing_name", func(t *testing.T) {
+		u := fmt.Sprintf("%s%s", hostAddr, proto.AdminVolGetMpRegionPolicy)
+		reply := processNoCheck(u, t)
+		require.NotNil(t, reply)
+		require.NotEqual(t, int32(0), reply.Code)
+	})
+
+	t.Run("addRegion_missing_name", func(t *testing.T) {
+		u := fmt.Sprintf("%s%s?authKey=%s&region=%s", hostAddr, proto.AdminVolAddRegion, auth, proto.DefaultRegion)
+		reply := processNoCheck(u, t)
+		require.NotNil(t, reply)
+		require.NotEqual(t, int32(0), reply.Code)
+	})
+
+	t.Run("addRegion_missing_authKey", func(t *testing.T) {
+		u := fmt.Sprintf("%s%s?name=%s&region=%s", hostAddr, proto.AdminVolAddRegion, commonVol.Name, proto.DefaultRegion)
+		reply := processNoCheck(u, t)
+		require.NotNil(t, reply)
+		require.NotEqual(t, int32(0), reply.Code)
+	})
+
+	t.Run("addRegion_vol_not_exists", func(t *testing.T) {
+		u := fmt.Sprintf("%s%s?name=no_such_vol_for_region_test_zz&region=%s&authKey=%s",
+			hostAddr, proto.AdminVolAddRegion, proto.DefaultRegion, auth)
+		reply := processNoCheck(u, t)
+		require.NotNil(t, reply)
+		require.NotEqual(t, int32(0), reply.Code)
+	})
+
+	t.Run("addRegion_invalid_cluster_region", func(t *testing.T) {
+		u := fmt.Sprintf("%s%s?name=%s&region=no_such_cluster_region_xyz&authKey=%s",
+			hostAddr, proto.AdminVolAddRegion, commonVol.Name, auth)
+		reply := processNoCheck(u, t)
+		require.NotNil(t, reply)
+		require.NotEqual(t, int32(0), reply.Code)
+	})
+
+	t.Run("addRegion_default_already_allowed", func(t *testing.T) {
+		// Empty region form -> default; volume already allows default
+		u := fmt.Sprintf("%s%s?name=%s&authKey=%s", hostAddr, proto.AdminVolAddRegion, commonVol.Name, auth)
+		reply := processNoCheck(u, t)
+		require.NotNil(t, reply)
+		require.NotEqual(t, int32(0), reply.Code)
+	})
+
+	t.Run("updateDefaultRegion_missing_region", func(t *testing.T) {
+		u := fmt.Sprintf("%s%s?name=%s&authKey=%s", hostAddr, proto.AdminVolUpdateDefaultRegion, commonVol.Name, auth)
+		reply := processNoCheck(u, t)
+		require.NotNil(t, reply)
+		require.NotEqual(t, int32(0), reply.Code)
+	})
+
+	t.Run("updateDefaultRegion_region_not_allowed", func(t *testing.T) {
+		u := fmt.Sprintf("%s%s?name=%s&region=not-in-allowed-list-region&authKey=%s",
+			hostAddr, proto.AdminVolUpdateDefaultRegion, commonVol.Name, auth)
+		reply := processNoCheck(u, t)
+		require.NotNil(t, reply)
+		require.NotEqual(t, int32(0), reply.Code)
+	})
+
+	t.Run("updateMpRegionPolicy_missing_region", func(t *testing.T) {
+		u := fmt.Sprintf("%s%s?name=%s&authKey=%s&policy=empty", hostAddr, proto.AdminVolUpdateMpRegionPolicy, commonVol.Name, auth)
+		reply := processNoCheck(u, t)
+		require.NotNil(t, reply)
+		require.NotEqual(t, int32(0), reply.Code)
+	})
+
+	t.Run("updateMpRegionPolicy_region_not_allowed", func(t *testing.T) {
+		u := fmt.Sprintf("%s%s?name=%s&region=not-allowed&authKey=%s&policy=empty",
+			hostAddr, proto.AdminVolUpdateMpRegionPolicy, commonVol.Name, auth)
+		reply := processNoCheck(u, t)
+		require.NotNil(t, reply)
+		require.NotEqual(t, int32(0), reply.Code)
+	})
+
+	t.Run("updateMpRegionPolicy_learner_off_rejects_non_clear", func(t *testing.T) {
+		if server.cluster.EnableMpDecommissionByLearner {
+			t.Skip("cluster already has learner decommission enabled")
+		}
+		pol := url.QueryEscape(fmt.Sprintf("%s:memory", proto.DefaultRegion))
+		u := fmt.Sprintf("%s%s?name=%s&region=%s&authKey=%s&policy=%s",
+			hostAddr, proto.AdminVolUpdateMpRegionPolicy, commonVol.Name, proto.DefaultRegion, auth, pol)
+		reply := processNoCheck(u, t)
+		require.NotNil(t, reply)
+		require.NotEqual(t, int32(0), reply.Code)
+	})
+}
+
+func TestVolRegionHTTP_addRegion_updateDefault_updateMpPolicy_success(t *testing.T) {
+	require.NotNil(t, commonVol)
+	auth := buildAuthKey(testOwner)
+
+	zone, err := server.cluster.t.getZone(testZone2)
+	require.NoError(t, err)
+	oldMetaRegion := zone.MetaRegion
+	extraRegion := "cassini_region_http_flow_1"
+	zone.MetaRegion = extraRegion
+
+	vol, err := server.cluster.getVol(commonVol.Name)
+	require.NoError(t, err)
+	restoreArgs := getVolVarargs(vol)
+	// LIFO: restore zone MetaRegion before rolling back volume (updateVol validates zones vs regions).
+	defer func() {
+		_ = server.cluster.updateVol(commonVol.Name, auth, restoreArgs)
+	}()
+	defer func() {
+		zone.MetaRegion = oldMetaRegion
+	}()
+
+	// commonVol is created with a single zoneName and crossZone=false. volAddRegion sets crossZone=true
+	// while keeping that zoneName, which fails checkZoneName; pre-switch to cross-zone + empty zoneName
+	// so the HTTP add-region path matches a valid updateVol configuration (defer still restores restoreArgs).
+	prepArgs := getVolVarargs(vol)
+	prepArgs.crossZone = true
+	prepArgs.zoneName = ""
+	require.NoError(t, server.cluster.updateVol(commonVol.Name, auth, prepArgs))
+
+	addU := fmt.Sprintf("%s%s?name=%s&region=%s&authKey=%s",
+		hostAddr, proto.AdminVolAddRegion, commonVol.Name, extraRegion, url.QueryEscape(auth))
+	process(addU, t)
+
+	vol2, err := server.cluster.getVol(commonVol.Name)
+	require.NoError(t, err)
+	require.True(t, vol2.crossZone, "volAddRegion should set crossZone when adding a region")
+	require.Contains(t, vol2.allowedRegions, extraRegion)
+
+	defU := fmt.Sprintf("%s%s?name=%s&region=%s&authKey=%s",
+		hostAddr, proto.AdminVolUpdateDefaultRegion, commonVol.Name, extraRegion, url.QueryEscape(auth))
+	process(defU, t)
+
+	vol3, err := server.cluster.getVol(commonVol.Name)
+	require.NoError(t, err)
+	require.Equal(t, extraRegion, vol3.defaultRegion)
+
+	oldLearner := server.cluster.EnableMpDecommissionByLearner
+	learnerURL := fmt.Sprintf("%s%s?%s=%v&dirSizeLimit=0", hostAddr, proto.AdminSetNodeInfo, enableMpDecommissionByLearnerKey, true)
+	process(learnerURL, t)
+	defer func() {
+		restoreL := fmt.Sprintf("%s%s?%s=%v&dirSizeLimit=0", hostAddr, proto.AdminSetNodeInfo, enableMpDecommissionByLearnerKey, oldLearner)
+		process(restoreL, t)
+	}()
+
+	// Source region extraRegion, learner in default (must differ from source)
+	policy := url.QueryEscape(fmt.Sprintf("%s:rocksdb", proto.DefaultRegion))
+	mpU := fmt.Sprintf("%s%s?name=%s&region=%s&authKey=%s&policy=%s",
+		hostAddr, proto.AdminVolUpdateMpRegionPolicy, commonVol.Name, extraRegion, url.QueryEscape(auth), policy)
+	process(mpU, t)
+
+	clearU := fmt.Sprintf("%s%s?name=%s&region=%s&authKey=%s&policy=empty",
+		hostAddr, proto.AdminVolUpdateMpRegionPolicy, commonVol.Name, extraRegion, url.QueryEscape(auth))
+	process(clearU, t)
+
+	getU := fmt.Sprintf("%s%s?name=%s", hostAddr, proto.AdminVolGetMpRegionPolicy, commonVol.Name)
+	reply := process(getU, t)
+	require.NotNil(t, reply.Data)
+}
+
+func TestVolRegionHTTP_updateMpPolicy_bad_auth(t *testing.T) {
+	require.NotNil(t, commonVol)
+	badAuth := url.QueryEscape("not-the-real-auth-key")
+	u := fmt.Sprintf("%s%s?name=%s&region=%s&authKey=%s&policy=empty",
+		hostAddr, proto.AdminVolUpdateMpRegionPolicy, commonVol.Name, proto.DefaultRegion, badAuth)
+	reply := processNoCheck(u, t)
+	require.NotNil(t, reply)
+	require.NotEqual(t, int32(0), reply.Code)
+}
+
+func TestVolRegionHTTP_getMpPolicy_unknown_vol(t *testing.T) {
+	u := fmt.Sprintf("%s%s?name=no_such_vol_mp_policy_xyz", hostAddr, proto.AdminVolGetMpRegionPolicy)
+	reply := processNoCheck(u, t)
+	require.NotNil(t, reply)
+	require.NotEqual(t, int32(0), reply.Code)
+}
+
+func TestVolRegionHTTP_updateMpPolicy_clear_without_learner_flag(t *testing.T) {
+	require.NotNil(t, commonVol)
+	auth := url.QueryEscape(buildAuthKey(testOwner))
+	if server.cluster.EnableMpDecommissionByLearner {
+		t.Skip("exercise clear path when learner flag is off")
+	}
+	u := fmt.Sprintf("%s%s?name=%s&region=%s&authKey=%s&policy=empty",
+		hostAddr, proto.AdminVolUpdateMpRegionPolicy, commonVol.Name, proto.DefaultRegion, auth)
+	process(u, t)
+}
+
+func TestVolRegionHTTP_updateMpPolicy_parse_error(t *testing.T) {
+	require.NotNil(t, commonVol)
+	oldLearner := server.cluster.EnableMpDecommissionByLearner
+	if !oldLearner {
+		on := fmt.Sprintf("%s%s?%s=%v&dirSizeLimit=0", hostAddr, proto.AdminSetNodeInfo, enableMpDecommissionByLearnerKey, true)
+		process(on, t)
+		defer func() {
+			off := fmt.Sprintf("%s%s?%s=%v&dirSizeLimit=0", hostAddr, proto.AdminSetNodeInfo, enableMpDecommissionByLearnerKey, oldLearner)
+			process(off, t)
+		}()
+	}
+	auth := url.QueryEscape(buildAuthKey(testOwner))
+	badPol := url.QueryEscape(":::invalid-policy")
+	u := fmt.Sprintf("%s%s?name=%s&region=%s&authKey=%s&policy=%s",
+		hostAddr, proto.AdminVolUpdateMpRegionPolicy, commonVol.Name, proto.DefaultRegion, auth, badPol)
+	reply := processNoCheck(u, t)
+	require.NotNil(t, reply)
+	require.NotEqual(t, int32(0), reply.Code)
 }

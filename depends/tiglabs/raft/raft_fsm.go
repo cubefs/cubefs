@@ -426,7 +426,7 @@ func (r *raftFsm) recoverCommit() error {
 }
 
 func (r *raftFsm) applyConfChange(cc *proto.ConfChange) (ok bool) {
-	log.LogWarnf("raft[%v] applyConfChange start, cc[%v]", r.id, cc)
+	log.LogWarnf("raft[%v] applyConfChange start, cc[%v]", r.id, cc.String())
 
 	if cc.Peer.ID == NoLeader {
 		r.pendingConf = false

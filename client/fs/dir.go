@@ -1251,7 +1251,7 @@ func (d *Dir) getCwd() string {
 		d.super.fslock.Unlock()
 
 		if !ok {
-			log.LogErrorf("Get node cache failed: ino(%v)", curIno)
+			log.LogWarnf("Get node cache failed: ino(%v)", curIno)
 			return "unknown" + buildPath(pathComponents)
 		}
 

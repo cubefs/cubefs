@@ -107,21 +107,6 @@ func (f *File) getStorageClassByPoolId(poolId uint8) *proto.StoragePoolInfo {
 	return getStorageClassByPoolIdFromSuper(f.super, poolId)
 }
 
-// // getECAddrByPoolId returns EC address based on pool ID
-// // Returns empty string if pool is not EC pool or not found
-// func (f *File) getECAddrByPoolId(poolId uint8) string {
-// 	if poolId == 0 {
-// 		return ""
-// 	}
-
-// 	// Try to get pool info from cache
-// 	if pool, found := f.super.getPoolInfo(poolId); found {
-// 		return pool.ECAddr
-// 	}
-
-// 	return ""
-// }
-
 // NewFile returns a new file.
 func NewFile(s *Super, i *proto.InodeInfo, flag uint32, pino uint64, filename string) fs.Node {
 	// Get storage class from poolId if available, otherwise use existing StorageClass
@@ -219,12 +204,6 @@ func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
 
 	fillAttr(info, a)
 	a.ParentIno = f.parentIno
-
-	// var fileSize int64
-	// var gen uint64
-	// if info.Extents != nil {
-	// 	a.Size = uint64(info.Extents.Size)
-	// }
 
 	fileSize, gen := f.fileSizeVersion2(ino)
 	log.LogDebugf("Attr: ino(%v) fileSize(%v) gen(%v) inode.gen(%v)", ino, fileSize, gen, info.Generation)

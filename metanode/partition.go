@@ -1516,11 +1516,6 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 	return
 }
 
-// UpdatePeers updates the peers.
-func (mp *metaPartition) UpdatePeers(peers []proto.Peer) {
-	mp.config.Peers = peers
-}
-
 // DeleteRaft deletes the raft partition.
 func (mp *metaPartition) DeleteRaft() (err error) {
 	err = mp.raftPartition.Delete()
