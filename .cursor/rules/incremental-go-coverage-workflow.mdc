@@ -6,6 +6,13 @@ alwaysApply: true
 # Incremental Go Coverage Workflow
 
 - 当用户要求“提高增量覆盖率”“自动补齐测试用例”“只看改动代码覆盖率”时，优先使用项目级 skill `incremental-go-coverage`。
+- 当用户传入 `base commit` 时，必须先执行 `git rev-parse --verify <commit>` 校验基线是否存在。
+- 支持可选阈值参数 `target_coverage`（默认 80），用于指定目标增量覆盖率。
+- 如果 `base commit` 不存在：必须立即报错并停止，不允许继续跑测试或覆盖率。
+- 如果 `target_coverage` 非法（非数字或超出 0-100）：必须立即报错并停止。
+- `base commit` 校验失败时，回复中必须附带正确用法示例：
+  - `incremental-coverage-autofix <valid_commit> [target_coverage]`
+  - `incremental-coverage-autofix [target_coverage]`（不带 commit 时只检查未提交改动）
 - 优先走**最小变更包范围**的 `go test -coverprofile`，不要默认整仓 `bash build/build.sh testcover`。
 - 用 `.cursor/skills/incremental-go-coverage/scripts/check_incremental_go_coverage.py` 做 changed-line 覆盖率计算。
 - 低于阈值时，优先补已有 `_test.go` 中的 focused tests，再重新执行覆盖率校验。

@@ -19,9 +19,12 @@ Use this skill when the user wants to:
 1. Decide the diff base:
    - current uncommitted changes: no base argument
    - a specific commit up to the current working tree: pass `--base <commit>`
-2. Prefer a targeted coverprofile for the changed Go packages instead of full-repo `testcover`, unless the scope is unclear.
-3. Run the incremental coverage checker script.
-4. If coverage is below the threshold, inspect uncovered changed lines, add or update focused tests, and rerun until the threshold is met.
+2. Decide the target threshold:
+   - default threshold is `80`
+   - allow user-provided threshold (`0-100`)
+3. Prefer a targeted coverprofile for the changed Go packages instead of full-repo `testcover`, unless the scope is unclear.
+4. Run the incremental coverage checker script.
+5. If coverage is below the threshold, inspect uncovered changed lines, add or update focused tests, and rerun until the threshold is met.
 
 ## Coverage generation
 
@@ -31,6 +34,7 @@ Preferred targeted workflow in this repository:
 
 ```bash
 base=<commit>
+threshold=80
 . build/cgo_env.sh
 pkgs=$(
   {
@@ -44,7 +48,7 @@ pkgs=$(
 )
 coverpkg=$(printf '%s\n' "$pkgs" | paste -sd, -)
 go test -covermode=count -coverprofile coverage.txt -coverpkg="$coverpkg" $pkgs
-python3 .cursor/skills/incremental-go-coverage/scripts/check_incremental_go_coverage.py --repo . --coverprofile coverage.txt --base "$base" --threshold 80
+python3 .cursor/skills/incremental-go-coverage/scripts/check_incremental_go_coverage.py --repo . --coverprofile coverage.txt --base "$base" --threshold "$threshold"
 ```
 
 Fallback full-repo commands when package scope is broad or uncertain:
@@ -64,13 +68,13 @@ Focused package coverage is acceptable only when the coverprofile definitely inc
 Current uncommitted Go changes:
 
 ```bash
-python3 .cursor/skills/incremental-go-coverage/scripts/check_incremental_go_coverage.py --coverprofile coverage.txt --threshold 80
+python3 .cursor/skills/incremental-go-coverage/scripts/check_incremental_go_coverage.py --coverprofile coverage.txt --threshold <target_coverage>
 ```
 
 Changes since a commit, including committed, staged, unstaged, and untracked changes:
 
 ```bash
-python3 .cursor/skills/incremental-go-coverage/scripts/check_incremental_go_coverage.py --coverprofile coverage.txt --base <commit> --threshold 80
+python3 .cursor/skills/incremental-go-coverage/scripts/check_incremental_go_coverage.py --coverprofile coverage.txt --base <commit> --threshold <target_coverage>
 ```
 
 ## What the script reports
