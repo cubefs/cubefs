@@ -114,6 +114,14 @@ type Dir struct {
 	lastTime    int64
 }
 
+// dirLookupMetaCacheAccelerationGate is the condition under which Lookup may trigger background ReadDirAll
+// on dentry-cache miss (meta cache acceleration). missAfterIncr is the value after AddUint32 on missCount.
+func dirLookupMetaCacheAccelerationGate(missAfterIncr uint32, lastTimeUnix int64, now time.Time, lastDoing int32) bool {
+	return missAfterIncr > 5 &&
+		(lastTimeUnix == 0 || now.Sub(time.Unix(lastTimeUnix, 0)) >= 5*time.Minute) &&
+		lastDoing == 0
+}
+
 // Functions that Dir needs to implement
 var (
 	_ fs.Node                = (*Dir)(nil)
@@ -513,8 +521,8 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 
 	if missCache && d.super.metaCacheAcceleration {
 		now := timeutil.GetCurrentTime()
-		if atomic.AddUint32(&d.missCount, 1) > 5 && (atomic.LoadInt64(&d.lastTime) == 0 || now.Sub(time.Unix(d.lastTime, 0)) >= 5*time.Minute) &&
-			atomic.LoadInt32(&d.lastDoing) == 0 {
+		missAfter := atomic.AddUint32(&d.missCount, 1)
+		if dirLookupMetaCacheAccelerationGate(missAfter, atomic.LoadInt64(&d.lastTime), now, atomic.LoadInt32(&d.lastDoing)) {
 			log.LogDebugf("trigger ReadDirAll for missCache %v Nlink %v missCount %v metaCacheAcceleration %v ino(%v) name(%v)",
 				missCache, d.info.Nlink, atomic.LoadUint32(&d.missCount), d.super.metaCacheAcceleration, d.info.Inode, d.getCwd())
 			atomic.StoreInt64(&d.lastTime, now.Unix())

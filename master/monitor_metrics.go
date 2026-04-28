@@ -106,6 +106,14 @@ const (
 	txLabel = "tx"
 )
 
+// nodeStatTagLabel normalizes node Tag for Prometheus node_stat labels (empty becomes "null").
+func nodeStatTagLabel(tag string) string {
+	if tag == "" {
+		return "null"
+	}
+	return tag
+}
+
 var WarnMetrics *warningMetrics
 
 type monitorMetrics struct {
@@ -1200,7 +1208,7 @@ func (mm *monitorMetrics) updateMetaNodesStat() {
 		media := "default"
 		mAddr := metaNode.Addr
 		rack := metaNode.Rack
-		tag := metaNode.Tag
+		tag := nodeStatTagLabel(metaNode.Tag)
 
 		writable := "false"
 		if metaNode.IsWriteAble() {
@@ -1209,10 +1217,6 @@ func (mm *monitorMetrics) updateMetaNodesStat() {
 		alloc := "false"
 		if metaNode.PartitionCntLimited() && metaNode.IsWriteAble() {
 			alloc = "true"
-		}
-
-		if tag == "" {
-			tag = "null"
 		}
 
 		region := metaNode.Region
@@ -1257,7 +1261,7 @@ func (mm *monitorMetrics) updateDataNodesStat() {
 		dAddr := dataNode.Addr
 		rack := dataNode.Rack
 		poolId := mm.cluster.getPoolNameById(dataNode.PoolId)
-		tag := dataNode.Tag
+		tag := nodeStatTagLabel(dataNode.Tag)
 
 		writable := "false"
 		if dataNode.IsWriteAble() {
@@ -1266,10 +1270,6 @@ func (mm *monitorMetrics) updateDataNodesStat() {
 		alloc := "false"
 		if dataNode.canAllocDp() {
 			alloc = "true"
-		}
-
-		if tag == "" {
-			tag = "null"
 		}
 
 		mm.nodeStat.Delete(map[string]string{"addr": dAddr})

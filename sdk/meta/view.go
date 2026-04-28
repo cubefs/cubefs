@@ -273,6 +273,12 @@ func (mw *MetaWrapper) forceUpdateMetaPartitions() error {
 }
 
 // Should be protected by partMutex, otherwise the caller might not be signaled.
+
+// hostLatencyTimerResetAfterTick is the duration passed to updateHostLatencyTimer.Reset after each updateHostLatency in refresh().
+func hostLatencyTimerResetAfterTick() time.Duration {
+	return 600 * time.Second
+}
+
 func (mw *MetaWrapper) triggerAndWaitForceUpdate() {
 	mw.partMutex.Lock()
 	select {
@@ -310,7 +316,7 @@ func (mw *MetaWrapper) refresh() {
 			t.Reset(RefreshMetaPartitionsInterval)
 		case <-updateHostLatencyTimer.C:
 			mw.updateHostLatency()
-			updateHostLatencyTimer.Reset(600 * time.Second)
+			updateHostLatencyTimer.Reset(hostLatencyTimerResetAfterTick())
 		case <-mw.forceUpdate:
 			log.LogInfof("Start forceUpdateMetaPartitions")
 			mw.partMutex.Lock()

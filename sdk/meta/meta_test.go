@@ -18,6 +18,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	masterSDK "github.com/cubefs/cubefs/sdk/master"
+	"github.com/stretchr/testify/require"
 )
 
 func TestPingHosts(t *testing.T) {
@@ -92,4 +95,25 @@ func TestPingHosts(t *testing.T) {
 			t.Error("HostLatency should not be recovered after threshold is reached")
 		}
 	})
+}
+
+// Covers updateHostLatency in meta.go (start/defer logging and early-return on master failure).
+func TestMetaWrapper_updateHostLatency_noPanicWhenMasterUnreachable(t *testing.T) {
+	t.Parallel()
+	mw := &MetaWrapper{
+		mc: masterSDK.NewMasterClient([]string{"127.0.0.1:1"}, false),
+	}
+	mw.updateHostLatency()
+}
+
+// Covers getMetaHostsMap in meta.go when AdminAPI fails (same path as updateHostLatency early return).
+func TestMetaWrapper_getMetaHostsMap_errorFromMaster(t *testing.T) {
+	t.Parallel()
+	mw := &MetaWrapper{
+		mc: masterSDK.NewMasterClient([]string{"127.0.0.1:1"}, false),
+	}
+	hosts, err := mw.getMetaHostsMap()
+	require.Error(t, err)
+	require.NotNil(t, hosts)
+	require.Equal(t, 0, len(hosts))
 }
