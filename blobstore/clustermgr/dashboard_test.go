@@ -425,9 +425,12 @@ func TestDashboardDisk_EmptyOnFreshService(t *testing.T) {
 	}
 
 	snap := svc.dashboardMgr.GetSnapshot()
-	// A freshly initialised service has no disks registered, so Disk.Score must be OK.
+	// No disks registered → Disk.Score is OK.
 	require.Equal(t, clustermgr.DashboardScoreOK, snap.dashboard.Disk.Score)
-	require.Equal(t, clustermgr.DashboardScoreOK, snap.dashboard.Score)
+	// No service nodes registered → PROXY/WORKER/BLOBNODE all absent → Service.Score is Major.
+	require.Equal(t, clustermgr.DashboardScoreMajor, snap.dashboard.Service.Score)
+	// Overall score is dominated by Service.
+	require.Equal(t, clustermgr.DashboardScoreMajor, snap.dashboard.Score)
 }
 
 func TestDashboardGetSnapshot_NeverNil(t *testing.T) {
@@ -452,4 +455,82 @@ func TestDashboardLoopFresh_ForceRefresh(t *testing.T) {
 
 	snap := d.GetSnapshot()
 	require.Greater(t, snap.dashboard.GeneratedAt, origAt)
+}
+
+// buildService
+
+func svcNode(name, idc, host string, expireAt int64) clustermgr.ServiceNode {
+	return clustermgr.ServiceNode{Name: name, Idc: idc, Host: host, ExpireAt: expireAt}
+}
+
+// noHost is a stub getHost for tests that don't involve disk expiry.
+func noHost(proto.NodeID) string { return "" }
+
+func TestBuildService_Empty(t *testing.T) {
+	s := buildService(nil, nil, noHost)
+	require.Nil(t, s.OfflineNodes)
+	require.Empty(t, s.OnlineByTypeIDC)
+	require.Equal(t, 0, s.ExpiredDisks)
+	require.Nil(t, s.ExpiredByNode)
+}
+
+func TestBuildService_AllOnline(t *testing.T) {
+	now := time.Now()
+	services := []clustermgr.ServiceNode{
+		svcNode(proto.ServiceNameProxy, "idc1", "h1", now.Add(60*time.Second).Unix()),
+		svcNode(proto.ServiceNameProxy, "idc1", "h2", now.Add(60*time.Second).Unix()),
+		svcNode(proto.ServiceNameScheduler, "idc1", "h1", now.Add(60*time.Second).Unix()),
+		svcNode(proto.ServiceNameWorker, "idc1", "h1", now.Add(60*time.Second).Unix()),
+		svcNode(proto.ServiceNameWorker, "idc1", "h2", now.Add(60*time.Second).Unix()),
+		svcNode(proto.ServiceNameBlobNode, "idc1", "h1", now.Add(60*time.Second).Unix()),
+		svcNode(proto.ServiceNameBlobNode, "idc1", "h2", now.Add(60*time.Second).Unix()),
+	}
+	s := buildService(services, nil, noHost)
+	require.Equal(t, clustermgr.DashboardScoreOK, s.Score)
+	require.Nil(t, s.OfflineNodes)
+}
+
+func TestBuildService_SomeOffline(t *testing.T) {
+	now := time.Now()
+	services := []clustermgr.ServiceNode{
+		svcNode(proto.ServiceNameProxy, "idc1", "h1", now.Add(60*time.Second).Unix()),
+		svcNode(proto.ServiceNameProxy, "idc1", "h2", now.Add(-1*time.Second).Unix()), // offline
+		svcNode(proto.ServiceNameScheduler, "idc1", "h1", now.Add(60*time.Second).Unix()),
+		svcNode(proto.ServiceNameWorker, "idc1", "h1", now.Add(60*time.Second).Unix()),
+		svcNode(proto.ServiceNameBlobNode, "idc1", "h1", now.Add(60*time.Second).Unix()),
+	}
+	s := buildService(services, nil, noHost)
+	require.Equal(t, clustermgr.DashboardScoreWarning, s.Score) // proxy idc1: 1 online → Warning
+	require.Equal(t, 1, s.OnlineByTypeIDC[proto.ServiceNameProxy]["idc1"])
+	require.Len(t, s.OfflineNodes, 1)
+}
+
+func TestBuildService_OfflineNodes(t *testing.T) {
+	now := time.Now()
+	services := []clustermgr.ServiceNode{
+		svcNode("sched", "idc1", "h1", now.Add(30*time.Second).Unix()),
+		svcNode("sched", "idc1", "h2", now.Add(-1*time.Second).Unix()), // offline
+	}
+	s := buildService(services, nil, noHost)
+	require.Len(t, s.OfflineNodes, 1)
+	require.Equal(t, "h2", s.OfflineNodes[0].Host)
+}
+
+func TestBuildService_ExpiredDisksGroupedByHost(t *testing.T) {
+	hosts := map[proto.NodeID]string{1: "h1", 2: "h2"}
+	getHost := func(id proto.NodeID) string { return hosts[id] }
+	expired := []clustermgr.BlobNodeDiskInfo{
+		{DiskInfo: clustermgr.DiskInfo{NodeID: 1}, DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{DiskID: 1}}, // node 1 → h1
+		{DiskInfo: clustermgr.DiskInfo{NodeID: 2}, DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{DiskID: 3}}, // node 2 → h2
+	}
+	s := buildService(nil, expired, getHost)
+	require.Equal(t, 2, s.ExpiredDisks)
+	require.ElementsMatch(t, []proto.DiskID{1}, s.ExpiredByNode["h1"])
+	require.ElementsMatch(t, []proto.DiskID{3}, s.ExpiredByNode["h2"])
+}
+
+func TestBuildService_NoExpiredDisks(t *testing.T) {
+	s := buildService(nil, nil, noHost)
+	require.Equal(t, 0, s.ExpiredDisks)
+	require.Nil(t, s.ExpiredByNode)
 }

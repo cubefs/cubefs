@@ -59,8 +59,9 @@ type BlobNodeManagerAPI interface {
 	HasEnoughSpace(ctx context.Context, mode codemode.CodeMode) bool
 	// RegisterDiskUsageCallback registers a callback that is invoked on every disk heartbeat.
 	RegisterDiskUsageCallback(fn func(diskID proto.DiskID, ratio float64))
-	// AllDiskSnapshots returns base disk in local memory
-	AllDiskSnapshots() []clustermgr.BlobNodeDiskInfo
+	// DisksSnapshot returns a snapshot of every disk (all) and a sub-slice
+	// of Normal disks whose heartbeat has expired (expired).
+	DisksSnapshot() (all []clustermgr.BlobNodeDiskInfo, expired []clustermgr.BlobNodeDiskInfo)
 
 	NodeManagerAPI
 	persistentHandler
@@ -650,12 +651,15 @@ func (b *BlobNodeManager) GetModuleName() string {
 	return "DiskMgr" // never change this
 }
 
-// AllDiskSnapshots returns a point-in-time snapshot of every disk in the cluster.
-func (b *BlobNodeManager) AllDiskSnapshots() []clustermgr.BlobNodeDiskInfo {
+
+// DisksSnapshot returns a point-in-time snapshot of every disk in the cluster.
+func (b *BlobNodeManager) DisksSnapshot() (all []clustermgr.BlobNodeDiskInfo, expired []clustermgr.BlobNodeDiskInfo) {
+	now := time.Now()
 	allDisks := b.getAllDisk()
-	snaps := make([]clustermgr.BlobNodeDiskInfo, 0, len(allDisks))
+	all = make([]clustermgr.BlobNodeDiskInfo, 0, len(allDisks))
 	for _, disk := range allDisks {
 		var snap clustermgr.BlobNodeDiskInfo
+		var isExpired bool
 		disk.withRLocked(func() error {
 			snap.Idc = disk.info.Idc
 			snap.NodeID = disk.info.NodeID
@@ -664,11 +668,15 @@ func (b *BlobNodeManager) AllDiskSnapshots() []clustermgr.BlobNodeDiskInfo {
 			snap.Status = disk.info.Status
 			snap.Readonly = disk.info.Readonly
 			snap.DiskHeartBeatInfo = *disk.info.extraInfo.(*clustermgr.DiskHeartBeatInfo)
+			isExpired = disk.info.Status == proto.DiskStatusNormal && now.After(disk.expireTime)
 			return nil
 		})
-		snaps = append(snaps, snap)
+		all = append(all, snap)
+		if isExpired {
+			expired = append(expired, snap)
+		}
 	}
-	return snaps
+	return
 }
 
 func (b *BlobNodeManager) LoadData(ctx context.Context) error {

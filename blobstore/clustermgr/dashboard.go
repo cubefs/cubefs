@@ -15,6 +15,7 @@
 package clustermgr
 
 import (
+	"context"
 	"math"
 	"sort"
 	"sync"
@@ -137,17 +138,28 @@ func (d *dashboardMgr) loopFresh() {
 }
 
 func (d *dashboardMgr) fresh() {
+	now := time.Now()
+
 	scope := buildScope(d.service.ScopeMgr.Stat())
-	disk := buildDisk(d.service.BlobNodeMgr.AllDiskSnapshots())
+	svcInfo, _ := d.service.ServiceMgr.ListServiceInfo()
+	allDisks, expiredDisks := d.service.BlobNodeMgr.DisksSnapshot()
+	disk := buildDisk(allDisks)
+	service := buildService(svcInfo.Nodes, expiredDisks, func(nodeID proto.NodeID) string {
+		info, err := d.service.BlobNodeMgr.GetNodeInfo(context.Background(), nodeID)
+		if err != nil || info == nil {
+			return ""
+		}
+		return info.Host
+	})
 
-	score := scope.Score.Max(disk.Score)
-
+	score := scope.Score.Max(disk.Score, service.Score)
 	d.snapshot.Store(&dashboardSnapshot{
 		dashboard: clustermgr.ClusterDashboard{
 			Score:       score,
 			Scope:       scope,
 			Disk:        disk,
-			GeneratedAt: time.Now().UnixNano(),
+			Service:     service,
+			GeneratedAt: now.UnixNano(),
 		},
 	})
 
@@ -245,6 +257,49 @@ func buildDisk(snaps []clustermgr.BlobNodeDiskInfo) clustermgr.DiskStat {
 	}
 
 	stat := clustermgr.DiskStat{ByStatusIDC: raw}
+	stat.CalcScore()
+	return stat
+}
+
+func buildService(services []clustermgr.ServiceNode,
+	expired []clustermgr.BlobNodeDiskInfo, getHost func(proto.NodeID) string,
+) clustermgr.ServiceStat {
+	var offlineNodes []clustermgr.ServiceNode
+	onlineByTypeIDC := make(map[string]map[string]int)
+	now := time.Now().Unix()
+	for _, n := range services {
+		if onlineByTypeIDC[n.Name] == nil {
+			onlineByTypeIDC[n.Name] = make(map[string]int)
+		}
+		if _, ok := onlineByTypeIDC[n.Name][n.Idc]; !ok {
+			onlineByTypeIDC[n.Name][n.Idc] = 0
+		}
+		if n.ExpireAt < now {
+			offlineNodes = append(offlineNodes, n)
+		} else {
+			onlineByTypeIDC[n.Name][n.Idc]++
+		}
+	}
+
+	byNodeID := make(map[proto.NodeID][]proto.DiskID)
+	for _, disk := range expired {
+		byNodeID[disk.NodeID] = append(byNodeID[disk.NodeID], disk.DiskID)
+	}
+	var expiredByNode map[string][]proto.DiskID
+	if len(byNodeID) > 0 {
+		expiredByNode = make(map[string][]proto.DiskID, len(byNodeID))
+		for nodeID, ids := range byNodeID {
+			host := getHost(nodeID)
+			expiredByNode[host] = append(expiredByNode[host], ids...)
+		}
+	}
+
+	stat := clustermgr.ServiceStat{
+		OfflineNodes:    offlineNodes,
+		OnlineByTypeIDC: onlineByTypeIDC,
+		ExpiredDisks:    len(expired),
+		ExpiredByNode:   expiredByNode,
+	}
 	stat.CalcScore()
 	return stat
 }

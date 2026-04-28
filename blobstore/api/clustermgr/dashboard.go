@@ -48,8 +48,9 @@ type ClusterDashboard struct {
 	Score       DashboardScore `json:"score"`
 	GeneratedAt int64          `json:"generated_at"` // Unix nanoseconds
 
-	Scope ScopeStat `json:"scope"`
-	Disk  DiskStat  `json:"disk"`
+	Scope   ScopeStat   `json:"scope"`
+	Disk    DiskStat    `json:"disk"`
+	Service ServiceStat `json:"service"`
 }
 
 // DiskStat holds disk metrics grouped by status key × IDC.
@@ -151,6 +152,69 @@ type ScopeUsage struct {
 	Name     string `json:"name"`
 	Current  uint64 `json:"current"`
 	MaxValue uint64 `json:"max_value"`
+}
+
+// ServiceStat is the online/offline summary for all registered service nodes,
+// and includes blobnode disk heartbeat expiry as part of service health.
+type ServiceStat struct {
+	Score DashboardScore `json:"score"`
+
+	OfflineNodes    []ServiceNode             `json:"offline_nodes,omitempty"`
+	OnlineByTypeIDC map[string]map[string]int `json:"online_by_type_idc,omitempty"`
+
+	// Expired blobnode disks: Normal disks whose heartbeat has timed out, grouped by node host.
+	ExpiredDisks  int                       `json:"expired_disks,omitempty"`
+	ExpiredByNode map[string][]proto.DiskID `json:"expired_by_node,omitempty"`
+}
+
+func (s *ServiceStat) CalcScore() {
+	score := DashboardScoreOK
+
+	idcScore := func(byIDC map[string]int) DashboardScore {
+		sc := DashboardScoreOK
+		for _, cnt := range byIDC {
+			switch cnt {
+			case 0:
+				sc = sc.Max(DashboardScoreMajor)
+			case 1:
+				sc = sc.Max(DashboardScoreWarning)
+			}
+		}
+		return sc
+	}
+	for _, svc := range []string{
+		proto.ServiceNameProxy,
+		proto.ServiceNameWorker,
+		proto.ServiceNameBlobNode,
+	} {
+		byIDC, ok := s.OnlineByTypeIDC[svc]
+		if !ok {
+			score = score.Max(DashboardScoreMajor)
+		} else {
+			score = score.Max(idcScore(byIDC))
+		}
+	}
+
+	if byIDC, ok := s.OnlineByTypeIDC[proto.ServiceNameScheduler]; ok {
+		total := 0
+		for _, cnt := range byIDC {
+			total += cnt
+		}
+		if total == 0 {
+			score = score.Max(DashboardScoreWarning)
+		}
+	} else {
+		score = score.Max(DashboardScoreWarning)
+	}
+
+	if s.ExpiredDisks > 0 {
+		score = score.Max(DashboardScoreNotice)
+	}
+	if s.ExpiredDisks > 120 {
+		score = score.Max(DashboardScoreWarning)
+	}
+
+	s.Score = score
 }
 
 func (c *Client) Dashboard(ctx context.Context, args *DashboardArgs) (ret ClusterDashboard, err error) {
