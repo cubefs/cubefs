@@ -130,6 +130,7 @@ type Config struct {
 	ChunkSize                uint64                    `json:"chunk_size"`
 	MetricReportIntervalM    int                       `json:"metric_report_interval_m"`
 	ConsistentCheckIntervalM int                       `json:"consistent_check_interval_m"`
+	DashboardFreshIntervalS  int                       `json:"dashboard_fresh_interval_s"`
 
 	BrokenVolumeUnitReportNum int `json:"broken_volume_unit_report_num"`
 	BrokenShardUnitReportNum  int `json:"broken_shard_unit_report_num"`
@@ -166,6 +167,8 @@ type Service struct {
 	closeCh                chan interface{}
 	consulClient           *api.Client
 	*Config
+
+	dashboardMgr *dashboardMgr
 }
 
 func init() {
@@ -362,6 +365,9 @@ func New(cfg *Config) (*Service, error) {
 
 	// start raft node background progress
 	go raftNode.Start()
+
+	service.dashboardMgr = newDashboardMgr(service)
+	go service.dashboardMgr.loopFresh()
 
 	// start service background loop
 	go service.loop()
