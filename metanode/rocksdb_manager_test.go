@@ -19,8 +19,25 @@ import (
 	"testing"
 
 	"github.com/cubefs/cubefs/metanode"
+	"github.com/cubefs/cubefs/util/diskmon"
 	"github.com/stretchr/testify/require"
 )
+
+func skipIfRocksdbDiskSelectionWouldFail(t *testing.T, dbDir string, usableFactor float64) {
+	t.Helper()
+
+	stat, err := diskmon.NewDiskStat(dbDir)
+	require.NoError(t, err)
+
+	if usableFactor <= 0 || usableFactor > 1 {
+		usableFactor = diskmon.DefaultMAXFsUsedFactor
+	}
+
+	spaceLimit := float64(stat.Total) * usableFactor
+	if (stat.Total - stat.Available) > uint64(spaceLimit) {
+		t.Skipf("skip rocksdb disk selection check: disk usage for %s exceeds usableFactor %.2f", dbDir, usableFactor)
+	}
+}
 
 func testRocksdbManager(t *testing.T, manager metanode.RocksdbManager) {
 	dbDir, err := os.MkdirTemp("", "")
@@ -41,6 +58,7 @@ func testRocksdbManager(t *testing.T, manager metanode.RocksdbManager) {
 	count, err = manager.GetPartitionCount(dbDir)
 	require.NoError(t, err)
 	require.EqualValues(t, 0, count)
+	skipIfRocksdbDiskSelectionWouldFail(t, dbDir, 0)
 	disk, err := manager.SelectRocksdbDisk(0)
 	require.NoError(t, err)
 	require.EqualValues(t, dbDir, disk)
@@ -74,6 +92,7 @@ func testPartitionRocksdbManager(t *testing.T, manager metanode.RocksdbManager) 
 	count, err = manager.GetPartitionCount(dbDir)
 	require.NoError(t, err)
 	require.EqualValues(t, 0, count)
+	skipIfRocksdbDiskSelectionWouldFail(t, dbDir, 0)
 	disk, err := manager.SelectRocksdbDisk(0)
 	require.NoError(t, err)
 	require.EqualValues(t, dbDir, disk)
