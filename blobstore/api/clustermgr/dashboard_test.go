@@ -18,6 +18,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
 func TestMaxScore(t *testing.T) {
@@ -106,4 +108,129 @@ func TestDiskScore(t *testing.T) {
 		"broken":    {"idc1": {Count: 60}},
 		"__total__": {"idc1": {Count: 2000}},
 	}))
+}
+
+type typeIDC = map[string]map[string]int
+
+func makeSvcStat(m typeIDC, expiredDisks int) ServiceStat {
+	return ServiceStat{OnlineByTypeIDC: m, ExpiredDisks: expiredDisks}
+}
+
+var healthyIDC = typeIDC{
+	proto.ServiceNameProxy:     {"idc1": 2, "idc2": 2},
+	proto.ServiceNameScheduler: {"idc1": 1},
+	proto.ServiceNameWorker:    {"idc1": 2},
+	proto.ServiceNameBlobNode:  {"idc1": 3},
+}
+
+func TestServiceScore_ServiceOnline(t *testing.T) {
+	cases := []struct {
+		name  string
+		m     typeIDC
+		score DashboardScore
+	}{
+		{
+			name:  "no services → Major",
+			m:     nil,
+			score: DashboardScoreMajor,
+		},
+		{
+			name:  "all healthy → OK",
+			m:     healthyIDC,
+			score: DashboardScoreOK,
+		},
+		// PROXY
+		{
+			name: "proxy 1 per idc → Warning",
+			m: typeIDC{
+				proto.ServiceNameProxy:     {"idc1": 1, "idc2": 1},
+				proto.ServiceNameScheduler: {"idc1": 1},
+				proto.ServiceNameWorker:    {"idc1": 2},
+				proto.ServiceNameBlobNode:  {"idc1": 2},
+			},
+			score: DashboardScoreWarning,
+		},
+		{
+			name: "proxy 0 in idc2 → Major",
+			m: typeIDC{
+				proto.ServiceNameProxy:     {"idc1": 2, "idc2": 0},
+				proto.ServiceNameScheduler: {"idc1": 1},
+				proto.ServiceNameWorker:    {"idc1": 2},
+				proto.ServiceNameBlobNode:  {"idc1": 2},
+			},
+			score: DashboardScoreMajor,
+		},
+		// WORKER
+		{
+			name: "worker 1 per idc → Warning",
+			m: typeIDC{
+				proto.ServiceNameProxy:     {"idc1": 2},
+				proto.ServiceNameScheduler: {"idc1": 1},
+				proto.ServiceNameWorker:    {"idc1": 1},
+				proto.ServiceNameBlobNode:  {"idc1": 2},
+			},
+			score: DashboardScoreWarning,
+		},
+		// BLOBNODE
+		{
+			name: "blobnode 0 in idc2 → Major",
+			m: typeIDC{
+				proto.ServiceNameProxy:     {"idc1": 2, "idc2": 2},
+				proto.ServiceNameScheduler: {"idc1": 1},
+				proto.ServiceNameWorker:    {"idc1": 2, "idc2": 2},
+				proto.ServiceNameBlobNode:  {"idc1": 3, "idc2": 0},
+			},
+			score: DashboardScoreMajor,
+		},
+		// SCHEDULER
+		{
+			name: "scheduler absent → Warning",
+			m: typeIDC{
+				proto.ServiceNameProxy:    {"idc1": 2},
+				proto.ServiceNameWorker:   {"idc1": 2},
+				proto.ServiceNameBlobNode: {"idc1": 2},
+			},
+			score: DashboardScoreWarning,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := makeSvcStat(tc.m, 0)
+			s.CalcScore()
+			require.Equal(t, tc.score, s.Score)
+		})
+	}
+}
+
+func TestServiceScore_ExpiredDisks(t *testing.T) {
+	cases := []struct {
+		name         string
+		expiredDisks int
+		score        DashboardScore
+	}{
+		{"few expired disks → Notice", 3, DashboardScoreNotice},
+		{"99 expired disks → Notice", 99, DashboardScoreNotice},
+		{"121 expired disks → Warning", 121, DashboardScoreWarning},
+		// Major from IDC gap dominates expired-disk Warning/Notice.
+		{"IDC gap + expired disks → Major", 2, DashboardScoreMajor},
+	}
+
+	majorIDC := typeIDC{
+		proto.ServiceNameProxy:     {"idc1": 2, "idc2": 0}, // triggers Major
+		proto.ServiceNameScheduler: {"idc1": 1},
+		proto.ServiceNameWorker:    {"idc1": 2},
+		proto.ServiceNameBlobNode:  {"idc1": 2},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := healthyIDC
+			if tc.score == DashboardScoreMajor {
+				m = majorIDC
+			}
+			s := makeSvcStat(m, tc.expiredDisks)
+			s.CalcScore()
+			require.Equal(t, tc.score, s.Score)
+		})
+	}
 }
