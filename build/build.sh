@@ -16,7 +16,10 @@ fi
 cgo_cflags="-I${BuildDependsIncludePath}"
 cgo_cxxflags="-I${BuildDependsIncludePath}"
 MODFLAGS=""
-gomod=${2:-"on"}
+gomod="on"
+if [ "${2:-}" == "on" ] || [ "${2:-}" == "off" ]; then
+    gomod="${2}"
+fi
 
 if [ "${gomod}" == "off" ]; then
     MODFLAGS="-mod=vendor"
@@ -321,6 +324,33 @@ _cover_merge_profile() {
     sed '1d' "${src}" >> "${dst}" && rm -f "${src}"
 }
 
+# Run the optional incremental Go coverage gate against the merged coverprofile.
+_run_incremental_coverage_check() {
+    local coverprofile checker
+    coverprofile="$1"
+    checker="${RootPath}/build/check_incremental_go_coverage.py"
+    if [ -z "${incremental_coverage_threshold}" ]; then
+        return 0
+    fi
+    if [ ! -f "${checker}" ]; then
+        echo "ERROR: incremental coverage checker not found: ${checker}"
+        return 1
+    fi
+    echo "Running incremental Go coverage check (threshold=${incremental_coverage_threshold}${incremental_coverage_base:+, base=${incremental_coverage_base}})"
+    if [ -n "${incremental_coverage_base}" ]; then
+        PYTHONDONTWRITEBYTECODE=1 python3 "${checker}" \
+            --repo "${RootPath}" \
+            --coverprofile "${coverprofile}" \
+            --threshold "${incremental_coverage_threshold}" \
+            --base "${incremental_coverage_base}"
+    else
+        PYTHONDONTWRITEBYTECODE=1 python3 "${checker}" \
+            --repo "${RootPath}" \
+            --coverprofile "${coverprofile}" \
+            --threshold "${incremental_coverage_threshold}"
+    fi
+}
+
 # Verify that the union of split coverage shards exactly matches the intended package scope.
 _cover_verify_scope_matches_shards() {
     local label expected_fn tmpd expected actual missing extra shard_fn
@@ -467,6 +497,8 @@ run_test_cover() {
     _cover_merge_profile cover.txt coverage.txt
     export CGO_LDFLAGS="${cgo_ldflags}"
 
+    _run_incremental_coverage_check coverage.txt || exit 1
+
     popd >/dev/null
     exit 0
 }
@@ -487,6 +519,8 @@ run_test_cover_cubefs() {
     if [ $? -ne 0 ]; then
         exit 1
     fi
+
+    _run_incremental_coverage_check coverage.txt || exit 1
 
     popd > /dev/null
     exit 0
@@ -522,6 +556,8 @@ run_test_cover_blobstore() {
     fi
     _cover_merge_profile cover.txt coverage.txt
     export CGO_LDFLAGS="${cgo_ldflags}"
+
+    _run_incremental_coverage_check coverage.txt || exit 1
 
     popd >/dev/null
     exit 0
@@ -772,6 +808,8 @@ get_cpu_cores() {
 }
 
 threads=0
+incremental_coverage_threshold=""
+incremental_coverage_base=""
 for para in $*
 do
     check=`echo $para | grep "^--threads=" | wc -l`
@@ -782,6 +820,16 @@ do
         then
             threads=`echo "$para" | grep -o "[0-9]\{1,\}"`
         fi
+    fi
+    check=`echo $para | grep "^--incremental-coverage=" | wc -l`
+    if test $check -eq 1
+    then
+        incremental_coverage_threshold=`echo "$para" | sed 's/^--incremental-coverage=//'`
+    fi
+    check=`echo $para | grep "^--incremental-base=" | wc -l`
+    if test $check -eq 1
+    then
+        incremental_coverage_base=`echo "$para" | sed 's/^--incremental-base=//'`
     fi
 done
 
