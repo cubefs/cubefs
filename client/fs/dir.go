@@ -110,7 +110,7 @@ type Dir struct {
 	name        string
 	openCnt     int64
 	missCount   uint32
-	lastDone    int32
+	lastDoing   int32
 	lastTime    int64
 }
 
@@ -514,19 +514,19 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 	if missCache && d.super.metaCacheAcceleration {
 		now := timeutil.GetCurrentTime()
 		if atomic.AddUint32(&d.missCount, 1) > 5 && (atomic.LoadInt64(&d.lastTime) == 0 || now.Sub(time.Unix(d.lastTime, 0)) >= 5*time.Minute) &&
-			atomic.LoadInt32(&d.lastDone) == 1 {
+			atomic.LoadInt32(&d.lastDoing) == 0 {
 			log.LogDebugf("trigger ReadDirAll for missCache %v Nlink %v missCount %v metaCacheAcceleration %v ino(%v) name(%v)",
 				missCache, d.info.Nlink, atomic.LoadUint32(&d.missCount), d.super.metaCacheAcceleration, d.info.Inode, d.getCwd())
 			atomic.StoreInt64(&d.lastTime, now.Unix())
 			atomic.StoreUint32(&d.missCount, 0)
-			atomic.StoreInt32(&d.lastDone, 0)
+			atomic.StoreInt32(&d.lastDoing, 1)
 
 			if d.super.readDirPool != nil {
 				d.super.readDirPool.Run(func() {
 					log.LogDebugf("trigger ReadDirAll for ino(%v) name(%v)", d.info.Inode, d.getCwd())
 					auditlog.LogClientOp("TriggerReadDirAllParent", d.getCwd(), "", err, time.Since(*bgTime).Microseconds(), ino, 0)
 					d.ReadDirAll(context.Background())
-					atomic.StoreInt32(&d.lastDone, 1)
+					atomic.StoreInt32(&d.lastDoing, 0)
 				})
 			}
 		}

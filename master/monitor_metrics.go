@@ -1211,6 +1211,10 @@ func (mm *monitorMetrics) updateMetaNodesStat() {
 			alloc = "true"
 		}
 
+		if tag == "" {
+			tag = "null"
+		}
+
 		region := metaNode.Region
 		mm.nodeStat.Delete(map[string]string{"addr": mAddr})
 
@@ -1262,6 +1266,10 @@ func (mm *monitorMetrics) updateDataNodesStat() {
 		alloc := "false"
 		if dataNode.canAllocDp() {
 			alloc = "true"
+		}
+
+		if tag == "" {
+			tag = "null"
 		}
 
 		mm.nodeStat.Delete(map[string]string{"addr": dAddr})

@@ -433,6 +433,9 @@ func (mw *MetaWrapper) GetMasterClient() *masterSDK.MasterClient {
 
 // updateHostLatency updates the ping latency information for meta hosts
 func (mw *MetaWrapper) updateHostLatency() {
+	log.LogInfof("action[updateHostLatency] start")
+	defer log.LogInfof("action[updateHostLatency] end")
+
 	hosts, err := mw.getMetaHostsMap()
 	if err != nil {
 		log.LogWarnf("action[updateHostLatency] failed to get cluster meta nodes, err(%v)", err)

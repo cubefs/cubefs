@@ -1081,7 +1081,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optReplicaNum, CliFlagReplicaNum, "", "Specify data partition replicas number(default 3 for normal volume,1 for low volume)")
 	cmd.Flags().StringVar(&optEnableQuota, CliFlagEnableQuota, "", "Enable quota")
 	cmd.Flags().Int64Var(&optDeleteLockTime, CliFlagDeleteLockTime, -1, "Specify delete lock time[Unit: hour] for volume")
-	cmd.Flags().Int64Var(&optLeaderRetryTime, "leader-retry-timeout", -1, "Specify leader retry timeout for mp read [Unit: second] for volume, default 0")
+	cmd.Flags().Int64Var(&optLeaderRetryTime, "leader-retry-timeout", -1, "Specify leader retry timeout for mp read [Unit: second] for volume")
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	cmd.Flags().StringVar(&optEnableDpAutoMetaRepair, CliFlagAutoDpMetaRepair, "", "Enable or disable dp auto meta repair")
 	cmd.Flags().StringVar(&optEnableMpAutoMetaRepair, CliFlagAutoMpMetaRepair, "", "Enable or disable mp auto meta repair")

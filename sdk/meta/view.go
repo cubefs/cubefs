@@ -310,7 +310,7 @@ func (mw *MetaWrapper) refresh() {
 			t.Reset(RefreshMetaPartitionsInterval)
 		case <-updateHostLatencyTimer.C:
 			mw.updateHostLatency()
-			updateHostLatencyTimer.Reset(30 * time.Second)
+			updateHostLatencyTimer.Reset(600 * time.Second)
 		case <-mw.forceUpdate:
 			log.LogInfof("Start forceUpdateMetaPartitions")
 			mw.partMutex.Lock()
