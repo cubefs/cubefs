@@ -1,0 +1,16 @@
+---
+description: 增量 Go 覆盖率补测工作流；当用户要求提高增量覆盖率、自动补测试或只检查改动代码覆盖率时使用
+alwaysApply: true
+---
+
+# Incremental Go Coverage Workflow
+
+- 当用户要求“提高增量覆盖率”“自动补齐测试用例”“只看改动代码覆盖率”时，优先使用项目级 skill `incremental-go-coverage`。
+- 优先走**最小变更包范围**的 `go test -coverprofile`，不要默认整仓 `bash build/build.sh testcover`。
+- 用 `.cursor/skills/incremental-go-coverage/scripts/check_incremental_go_coverage.py` 做 changed-line 覆盖率计算。
+- 低于阈值时，优先补已有 `_test.go` 中的 focused tests，再重新执行覆盖率校验。
+- 汇报结果时明确说明：
+  - 当前增量覆盖率
+  - 使用的基线 commit 或“当前未提交代码”
+  - 运行过的定向测试命令
+  - 仍未覆盖的关键文件或关键路径
