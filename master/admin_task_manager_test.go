@@ -165,7 +165,7 @@ func TestAdminTaskManager_getToBeDeletedTasks_SendTimeTimeout(t *testing.T) {
 	// Simulate a task that was sent more than ResponseTimeOut seconds ago.
 	task := proto.NewAdminTask(proto.OpDeleteDataPartition, "old", nil)
 	task.SendTime = time.Now().Unix() - int64(proto.ResponseTimeOut) - 10 // definitely expired
-	task.SendCount = 1                                                     // > 0 so warn is triggered
+	task.SendCount = 1                                                    // > 0 so warn is triggered
 
 	mgr.AddTask(task)
 
