@@ -18,6 +18,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Cluster balance tests focus on deterministic planning helpers first, then
+// cover the heavier handler-like flows with narrow fixtures. Most tests build
+// only the fields read by the function under test, which keeps them independent
+// from a fully running master cluster.
+
 func TestGetMigrateDestAddr(t *testing.T) {
 	// Construct test parameters
 	freeSize := uint64(metaNodeReserveMemorySize + 1024)
@@ -1713,6 +1718,9 @@ func TestIsRetryMigrateMpError(t *testing.T) {
 }
 
 func TestCalculateMetaNodeEstimate(t *testing.T) {
+	// Estimate calculation determines how many meta partitions should be moved
+	// away from each overloaded node. The table covers normal input, invalid
+	// ratio input, and the minimum-estimate clamp.
 	tests := []struct {
 		name             string
 		overLoadNodes    []*proto.MetaNodeBalanceInfo
@@ -1747,6 +1755,8 @@ func TestCalculateMetaNodeEstimate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// CalculateMetaNodeEstimate mutates each node record in place by
+			// filling the Estimate field.
 			err := CalculateMetaNodeEstimate(tt.overLoadNodes)
 			if tt.expectedError != nil {
 				if err == nil || err.Error() != tt.expectedError.Error() {
@@ -1760,6 +1770,8 @@ func TestCalculateMetaNodeEstimate(t *testing.T) {
 				if tt.expectedError != nil {
 					continue
 				}
+				// Successful cases should leave the expected migration estimate
+				// on the corresponding overloaded node.
 				if metaNode.Estimate != tt.expectedEstimate[i] {
 					t.Errorf("CalculateMetaNodeEstimate() Estimate = %v, want %v", metaNode.Estimate, tt.expectedEstimate[i])
 				}
@@ -1770,7 +1782,8 @@ func TestCalculateMetaNodeEstimate(t *testing.T) {
 
 func TestGetLowMemPressureTopology(t *testing.T) {
 	size10GB := uint64(10 * 1024 * 1024 * 1024)
-	// Create a Cluster instance
+	// Create a Cluster instance with one zone and one nodeset containing two
+	// low-pressure metanodes.
 	cluster := &Cluster{
 		ClusterTopoSubItem: ClusterTopoSubItem{
 			t: &topology{
@@ -1789,10 +1802,14 @@ func TestGetLowMemPressureTopology(t *testing.T) {
 			},
 		},
 	}
+	// The nodes are active and have enough reserved memory, so both should appear
+	// in the low-pressure topology.
 	cluster.t.zones[0].nodeSetMap[1].metaNodes.Store("node1", &MetaNode{ID: 101, Ratio: 0.1, IsActive: true, MaxMemAvailWeight: size10GB})
 	cluster.t.zones[0].nodeSetMap[1].metaNodes.Store("node2", &MetaNode{ID: 102, Ratio: 0.2, IsActive: true, MaxMemAvailWeight: size10GB})
 	cluster.t.zoneMap.Store(cluster.t.zones[0].name, cluster.t.zones[0])
 
+	// GetLowMemPressureTopology writes eligible memory and rocksdb candidates
+	// into these maps.
 	migratePlan := &proto.ClusterPlan{
 		Low:        make(map[string]*proto.ZonePressureView),
 		RocksdbLow: make(map[string]*proto.ZonePressureView),
@@ -1804,7 +1821,8 @@ func TestGetLowMemPressureTopology(t *testing.T) {
 		t.Errorf("Expect no error. but get: %s", err.Error())
 	}
 
-	// Verify the result
+	// Verify the result. The assertion focuses on node count because the full
+	// MetaNodeBalanceInfo records contain many fields unrelated to this test.
 	expectedZoneView := &proto.ZonePressureView{
 		ZoneName: "zone1",
 		NodeSet: map[uint64]*proto.NodeSetPressureView{
@@ -1829,7 +1847,8 @@ func TestGetLowMemPressureTopology(t *testing.T) {
 }
 
 func TestVerifyMetaReplicaPlanNotAllInit(t *testing.T) {
-	// Test case 1: all statuses are PlanTaskInit
+	// Test case 1: all statuses are PlanTaskInit, so there is no in-flight or
+	// completed replica work yet.
 	mpPlan1 := &proto.MetaBalancePlan{
 		Plan: []*proto.MrBalanceInfo{
 			{Status: PlanTaskInit},
@@ -1840,7 +1859,8 @@ func TestVerifyMetaReplicaPlanNotAllInit(t *testing.T) {
 		t.Errorf("Expected false, got true")
 	}
 
-	// Test case 2: one status is not PlanTaskInit
+	// Test case 2: one status is not PlanTaskInit, which indicates that the plan
+	// has started progressing.
 	mpPlan2 := &proto.MetaBalancePlan{
 		Plan: []*proto.MrBalanceInfo{
 			{Status: PlanTaskInit},
@@ -1851,7 +1871,8 @@ func TestVerifyMetaReplicaPlanNotAllInit(t *testing.T) {
 		t.Errorf("Expected true, got false")
 	}
 
-	// Test case 3: empty Plan slice
+	// Test case 3: empty Plan slice should be treated as "all init" because no
+	// replica has progressed.
 	mpPlan3 := &proto.MetaBalancePlan{
 		Plan: []*proto.MrBalanceInfo{},
 	}
@@ -1862,7 +1883,8 @@ func TestVerifyMetaReplicaPlanNotAllInit(t *testing.T) {
 
 func TestVerifyMetaNodeExceedMemMid(t *testing.T) {
 	size10GB := uint64(10 * 1024 * 1024 * 1024)
-	// Test case 1: Ratio greater than or equal to metaNodeMemMidPer
+	// Test case 1: node1 is above the mid watermark and should be treated as
+	// exceeding the target load.
 	cluster := &Cluster{}
 	cluster.metaNodes.Store("node1", &MetaNode{ID: 101, Ratio: 0.8, IsActive: true, MaxMemAvailWeight: size10GB})
 	cluster.metaNodes.Store("node2", &MetaNode{ID: 102, Ratio: 0.5, IsActive: true, MaxMemAvailWeight: size10GB})
@@ -1872,13 +1894,14 @@ func TestVerifyMetaNodeExceedMemMid(t *testing.T) {
 		t.Errorf("Expected true, got %v, err: %v", result1, err1)
 	}
 
-	// Test case 2: Ratio less than metaNodeMemMidPer
+	// Test case 2: node2 is below the mid watermark and should not be considered
+	// overloaded for this check.
 	result2, err2 := cluster.VerifyMetaNodeExceedMemMid("node2", proto.StoreModeMem)
 	if err2 != nil || result2 {
 		t.Errorf("Expected false, got %v, err: %v", result2, err2)
 	}
 
-	// Test case 3: failed to get metaNode
+	// Test case 3: missing metanodes return an error and a false result.
 	result3, err3 := cluster.VerifyMetaNodeExceedMemMid("node3", proto.StoreModeMem)
 	if err3 == nil || result3 {
 		t.Errorf("Expected error, got %v, result: %v", err3, result3)
@@ -1887,7 +1910,8 @@ func TestVerifyMetaNodeExceedMemMid(t *testing.T) {
 
 func TestUpdateMigrateDestination(t *testing.T) {
 	size10GB := uint64(10 * 1024 * 1024 * 1024)
-	// Test case 1: all methods succeed
+	// Test case 1: all methods succeed. The topology has enough low-pressure
+	// nodes in the same zone for destination assignment.
 	totalSize := uint64(metaNodeReserveMemorySize * 2)
 	cluster := &Cluster{
 		ClusterTopoSubItem: ClusterTopoSubItem{
@@ -1907,6 +1931,7 @@ func TestUpdateMigrateDestination(t *testing.T) {
 			},
 		},
 	}
+	// Populate the topology with eligible destination nodes.
 	cluster.t.zones[0].nodeSetMap[1].metaNodes.Store("node1", &MetaNode{
 		ID: 101, Addr: "node1", Ratio: 0.1, Total: totalSize,
 		NodeMemTotal: totalSize, ZoneName: "zone1", NodeSetID: 1,
@@ -1923,10 +1948,12 @@ func TestUpdateMigrateDestination(t *testing.T) {
 		IsActive: true, MaxMemAvailWeight: size10GB,
 	})
 	cluster.t.zoneMap.Store(cluster.t.zones[0].name, cluster.t.zones[0])
+	// UpdateMigrateDestination expects the low-pressure maps to be initialized.
 	migratePlan := &proto.ClusterPlan{
 		Low:        map[string]*proto.ZonePressureView{},
 		RocksdbLow: map[string]*proto.ZonePressureView{},
 	}
+	// CrossZone=true drives the retain-zone destination path.
 	mpPlan := &proto.MetaBalancePlan{
 		CrossZone: true,
 		OverLoad: []*proto.MrBalanceInfo{
@@ -1942,7 +1969,8 @@ func TestUpdateMigrateDestination(t *testing.T) {
 		t.Errorf("Expected no error, got %v", err1)
 	}
 
-	// Test case 3: FindMigrateDestRetainZone fails
+	// Test case 2: CrossZone=false drives the one-nodeset path. The low-pressure
+	// topology still has enough candidates to satisfy the request.
 	mpPlan = &proto.MetaBalancePlan{
 		CrossZone: false,
 		Original: []*proto.MrBalanceInfo{
@@ -1977,7 +2005,8 @@ func TestUpdateMigrateDestination(t *testing.T) {
 }
 
 func TestFindMigrateDestInOneNodeSet(t *testing.T) {
-	// Mock data
+	// Mock data: low-pressure candidates exist in the same zone and nodeset as
+	// the overloaded source, which should let the helper build a plan directly.
 	freeSize := uint64(metaNodeReserveMemorySize * 2)
 	migratePlan := &proto.ClusterPlan{
 		Low: map[string]*proto.ZonePressureView{
@@ -2054,6 +2083,9 @@ func TestFindMigrateDestInOneNodeSet(t *testing.T) {
 }
 
 func TestAddMetaPartitionIntoPlan(t *testing.T) {
+	// The cluster fixture contains one volume with two meta partitions on the
+	// same overloaded source node. This is the minimal shape needed for
+	// AddMetaPartitionIntoPlan to scan volume metadata and create candidate plans.
 	cluster := &Cluster{
 		ClusterVolSubItem: ClusterVolSubItem{
 			vols: map[string]*Vol{
@@ -2088,11 +2120,15 @@ func TestAddMetaPartitionIntoPlan(t *testing.T) {
 			},
 		},
 	}
+	// The source metanode must exist in the cluster cache because
+	// AddMetaPartitionIntoPlan enriches replica records from metanode metadata.
 	cluster.metaNodes.Store("node1", &MetaNode{ID: 101, Ratio: 0.8})
 	metaNode := &proto.MetaNodeBalanceInfo{
 		Addr:     "node1",
 		Estimate: 1,
 	}
+	// overLoads provides the memory baseline used to estimate how much each
+	// source replica contributes to the overloaded node.
 	migratePlan := &proto.ClusterPlan{}
 	overLoads := []*proto.MetaNodeBalanceInfo{
 		{
@@ -2103,6 +2139,8 @@ func TestAddMetaPartitionIntoPlan(t *testing.T) {
 		},
 	}
 
+	// The assertion is intentionally broad here: the test verifies that the
+	// minimal fixture is sufficient to build plan entries without error.
 	err := cluster.AddMetaPartitionIntoPlan(metaNode, migratePlan, overLoads)
 	if err != nil {
 		t.Errorf("AddMetaPartitionIntoPlan failed: %v", err)
@@ -2110,14 +2148,18 @@ func TestAddMetaPartitionIntoPlan(t *testing.T) {
 }
 
 func TestCreateMetaPartitionMigratePlan(t *testing.T) {
-	// Create a cluster instance
+	// Create a cluster instance with one high-pressure metanode. The function
+	// under test reads c.metaNodes and converts eligible nodes into a migrate
+	// plan skeleton.
 	cluster := &Cluster{}
 	cluster.metaNodes.Store("node1", &MetaNode{ID: 101, Ratio: 0.8, NodeMemTotal: 1000000, NodeMemUsed: 900000, MetaPartitionCount: 1000})
 
-	// Create a mock migrate plan
+	// The migrate plan starts empty; CreateMetaPartitionMigratePlan is expected
+	// to populate it from the current cluster pressure view.
 	migratePlan := &proto.ClusterPlan{}
 
-	// Test case 1: Normal case
+	// Normal case: a high-pressure node exists, so plan creation should not
+	// return an error for this compact fixture.
 	err := cluster.CreateMetaPartitionMigratePlan(migratePlan)
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
@@ -2125,6 +2167,8 @@ func TestCreateMetaPartitionMigratePlan(t *testing.T) {
 }
 
 func PrintMigratePlan(plan *proto.ClusterPlan) {
+	// This helper is used only while debugging test fixtures. It prints both the
+	// low-pressure topology and the generated plan in a stable JSON form.
 	body, err := json.MarshalIndent(plan.Low, "", "    ")
 	if err != nil {
 		fmt.Println("Error to encode as json:", err.Error())
@@ -2141,6 +2185,8 @@ func PrintMigratePlan(plan *proto.ClusterPlan) {
 }
 
 func TestGetMetaNodePressureView(t *testing.T) {
+	// The pressure view test builds a small two-zone topology. zone2 contains
+	// one overloaded source replica and several low-pressure destinations.
 	size10GB := uint64(10 * 1024 * 1024 * 1024)
 	cluster := &Cluster{
 		ClusterVolSubItem: ClusterVolSubItem{
@@ -2203,6 +2249,8 @@ func TestGetMetaNodePressureView(t *testing.T) {
 		},
 	}
 	totalSize := uint64(metaNodeReserveMemorySize * 2)
+	// node4 is the overloaded source; node5 and node6 are healthy peers in the
+	// same partition and should be considered original replicas, not targets.
 	cluster.metaNodes.Store("node4", &MetaNode{
 		ID: 201, Addr: "node4", NodeSetID: 20,
 		MetaPartitionCount: 10, ZoneName: "zone2", Ratio: 0.8,
@@ -2222,6 +2270,8 @@ func TestGetMetaNodePressureView(t *testing.T) {
 		IsActive: true, MaxMemAvailWeight: size10GB,
 	})
 
+	// node10 is a low-pressure node in the same nodeset as the overloaded source,
+	// so it exercises the first destination preference path.
 	cluster.t.zones[1].nodeSetMap[20].metaNodes.Store("node10", &MetaNode{
 		ID: 110, Addr: "node10", Ratio: 0.1,
 		Total: totalSize, NodeMemTotal: totalSize,
@@ -2229,6 +2279,8 @@ func TestGetMetaNodePressureView(t *testing.T) {
 		IsActive: true, MaxMemAvailWeight: size10GB,
 	})
 
+	// node7, node8, and node9 provide additional low-pressure capacity in a
+	// different nodeset in the same zone for fallback selection.
 	cluster.t.zones[1].nodeSetMap[30].metaNodes.Store("node7", &MetaNode{
 		ID: 107, Addr: "node7", Ratio: 0.1,
 		Total: totalSize, NodeMemTotal: totalSize,
@@ -2248,6 +2300,7 @@ func TestGetMetaNodePressureView(t *testing.T) {
 		IsActive: true, MaxMemAvailWeight: size10GB,
 	})
 
+	// zone1 nodes make the cross-zone fallback topology non-empty.
 	cluster.t.zones[0].nodeSetMap[1].metaNodes.Store("node1", &MetaNode{
 		ID: 101, Addr: "node1", Ratio: 0.1,
 		Total: totalSize, NodeMemTotal: totalSize,
@@ -2272,7 +2325,8 @@ func TestGetMetaNodePressureView(t *testing.T) {
 
 	// Case 1: find meta node under the same node set.
 	result, err := cluster.GetMetaNodePressureView()
-	// Check for errors
+	// A non-empty plan proves the pressure scan found the overloaded source and
+	// at least one suitable destination.
 	if err != nil {
 		t.Errorf("GetMetaNodePressureView returned an error: %v", err)
 	}
@@ -2374,6 +2428,9 @@ func TestGetMetaNodePressureView(t *testing.T) {
 }
 
 func TestCheckPlanSourceChanged(t *testing.T) {
+	// The plan's Original list should match the current replica set. If any
+	// planned source disappears from the partition, migration should be treated
+	// as stale.
 	mp := &MetaPartition{
 		Replicas: []*MetaReplica{
 			{Addr: "node1"},
@@ -2391,12 +2448,16 @@ func TestCheckPlanSourceChanged(t *testing.T) {
 	ret := checkPlanSourceChanged(mpPlan, mp)
 	require.False(t, ret)
 
+	// Changing one planned source to a node not present in replicas simulates a
+	// partition membership change after the plan was created.
 	mpPlan.Original[0].Source = "node4"
 	ret = checkPlanSourceChanged(mpPlan, mp)
 	require.True(t, ret)
 }
 
 func TestVerifyDestinationInMetaReplicas(t *testing.T) {
+	// verifyDestinationInMetaReplicas is a simple guard against migrating to a
+	// destination that is already a partition member.
 	mp := &MetaPartition{
 		Replicas: []*MetaReplica{
 			{Addr: "node1"},
@@ -2412,9 +2473,11 @@ func TestVerifyDestinationInMetaReplicas(t *testing.T) {
 }
 
 func TestHandleMetaPartitionPlan_BasicFlow(t *testing.T) {
-	// Setup cluster and mp
+	// Setup a cluster with just enough state for handleMetaPartitionPlan to find
+	// the target partition and send a successful admin task.
 	c := &Cluster{stopc: make(chan bool, 1)}
-	// meta node and mp
+	// The local listener acts as a fake metanode and returns an OpOk packet for
+	// the admin task sent by the migration handler.
 	ln, _ := net.Listen("tcp", ":0")
 	defer ln.Close()
 	go func() {
@@ -2430,24 +2493,307 @@ func TestHandleMetaPartitionPlan_BasicFlow(t *testing.T) {
 		}
 	}()
 	addr := ln.Addr().String()
+	// Disable connection pooling so the test talks directly to the listener
+	// above and does not depend on shared connection state.
 	prev := useConnPool
 	useConnPool = false
 	defer func() { useConnPool = prev }()
 	mn := &MetaNode{ID: 1, Addr: addr, Sender: newAdminTaskManager(addr, "test-cluster")}
 	c.metaNodes.Store(addr, mn)
 
+	// The partition has a single leader replica on the fake metanode. This keeps
+	// the flow focused on handler status transitions rather than leader changes.
 	mp := &MetaPartition{
 		PartitionID: 100,
 		Replicas:    []*MetaReplica{{Addr: addr, IsLeader: true, metaNode: mn}},
 	}
-	// add into a vol so getMetaPartitionByID can find it
+	// Add the partition into a volume so getMetaPartitionByID can locate it.
 	c.ClusterVolSubItem.vols = map[string]*Vol{
 		"v": {Name: "v", MetaPartitions: map[uint64]*MetaPartition{100: mp}, mpsLock: new(mpsLockManager)},
 	}
-	// plan and mrPlan
+	// The plan contains one source-to-destination pair; both addresses are the
+	// fake metanode so the admin task can complete inside this test.
 	plan := &proto.ClusterPlan{}
 	mpPlan := &proto.MetaBalancePlan{ID: 100, Plan: []*proto.MrBalanceInfo{{Source: addr, Destination: addr}}}
+	// handleMetaPartitionPlan requires the cluster plan state to be running.
 	c.SetClusterPlanRunning()
 	err := c.handleMetaPartitionPlan(plan, mpPlan)
 	require.NoError(t, err)
+}
+
+// These helper tests cover learner and ready-replica accounting without running
+// a migration. The replica metadata is enough to exercise zone, nodeset, tag,
+// and store-mode selection branches.
+func TestMetaPartitionLearnerAndReadyReplicaHelpers(t *testing.T) {
+	// Peers define learner membership, while Replicas carry node metadata used
+	// for ready-replica counting by zone, nodeset, tag, and store mode.
+	mp := &MetaPartition{
+		Peers: []proto.Peer{
+			{Addr: "addr-1", Type: raftproto.PeerNormal},
+			{Addr: "addr-2", Type: raftproto.PeerLearner},
+			{Addr: "addr-3", Type: raftproto.PeerLearner},
+		},
+		Replicas: []*MetaReplica{
+			{
+				Addr:      "addr-1",
+				StoreMode: proto.StoreModeMem,
+				metaNode:  &MetaNode{ZoneName: "zone-1", NodeSetID: 1, Tag: "tag-a"},
+			},
+			{
+				Addr:      "addr-2",
+				StoreMode: proto.StoreModeMem,
+				metaNode:  &MetaNode{ZoneName: "zone-1", NodeSetID: 2, Tag: "tag-b"},
+			},
+			{
+				Addr:      "addr-3",
+				StoreMode: proto.StoreModeRocksDb,
+				metaNode:  &MetaNode{ZoneName: "zone-2", NodeSetID: 3, Tag: "tag-a"},
+			},
+		},
+	}
+
+	// Learner helpers read from Peers and should ignore normal voters.
+	require.Equal(t, []string{"addr-2", "addr-3"}, GetMetaPartitionLearnerList(mp))
+	require.Equal(t, 2, GetMetaPartitionLearnerCount(mp))
+	require.True(t, IsMetaReplicaLearner(mp, "addr-2"))
+	require.False(t, IsMetaReplicaLearner(mp, "addr-1"))
+
+	// Ready-replica counts are driven by ClusterPlan selection mode. Each
+	// assertion below pins one selection branch.
+	require.Equal(t, 2, GetMetaPartitionReadyReplicaCount(&proto.ClusterPlan{
+		SelectType: SelectTypeZoneName,
+		ZoneName:   "zone-1",
+	}, mp))
+	require.Equal(t, 1, GetMetaPartitionReadyReplicaCount(&proto.ClusterPlan{
+		SelectType: SelectTypeNodeSetId,
+		NodeSetID:  2,
+	}, mp))
+	require.Equal(t, 2, GetMetaPartitionReadyReplicaCount(&proto.ClusterPlan{
+		SelectType: SelectTypeNodeAddrs,
+		Tag:        "tag-a",
+	}, mp))
+	require.Equal(t, 1, GetMetaPartitionReadyReplicaCount(&proto.ClusterPlan{
+		Mode: proto.StoreModeRocksDb,
+	}, mp))
+}
+
+// SelectOneReplicaToDelete first tries the strict selector and then falls back
+// to any non-excluded replica. The fixture keeps one replica outside each
+// requested placement rule so the strict path is visible.
+func TestSelectOneReplicaToDelete(t *testing.T) {
+	// addr-3 is intentionally outside zone-1, nodeset 1, tag-a, and memory mode,
+	// making it the strict deletion candidate for all selector variants.
+	mp := &MetaPartition{
+		Replicas: []*MetaReplica{
+			{
+				Addr:      "addr-1",
+				StoreMode: proto.StoreModeMem,
+				metaNode:  &MetaNode{ZoneName: "zone-1", NodeSetID: 1, Tag: "tag-a"},
+			},
+			{
+				Addr:      "addr-2",
+				StoreMode: proto.StoreModeMem,
+				metaNode:  &MetaNode{ZoneName: "zone-1", NodeSetID: 1, Tag: "tag-a"},
+			},
+			{
+				Addr:      "addr-3",
+				StoreMode: proto.StoreModeRocksDb,
+				metaNode:  &MetaNode{ZoneName: "zone-2", NodeSetID: 2, Tag: "tag-b"},
+			},
+		},
+	}
+
+	// Strict selection should prefer the replica that violates the requested
+	// placement rule.
+	require.Equal(t, "addr-3", SelectOneReplicaStrickly(mp, nil, &MetaPartitionPlanUserParams{
+		SelectType: SelectTypeZoneName,
+		ZoneName:   "zone-1",
+	}))
+	require.Equal(t, "addr-3", SelectOneReplicaStrickly(mp, nil, &MetaPartitionPlanUserParams{
+		SelectType: SelectTypeNodeSetId,
+		NodeSetID:  1,
+	}))
+	require.Equal(t, "addr-3", SelectOneReplicaStrickly(mp, nil, &MetaPartitionPlanUserParams{
+		SelectType: SelectTypeNodeAddrs,
+		Tag:        "tag-a",
+	}))
+	require.Equal(t, "addr-3", SelectOneReplicaStrickly(mp, nil, &MetaPartitionPlanUserParams{
+		Mode: proto.StoreModeMem,
+	}))
+
+	// Once the strict candidate is excluded, SelectOneReplicaToDelete falls back
+	// to the first non-excluded replica.
+	require.Empty(t, SelectOneReplicaStrickly(mp, []string{"addr-3"}, &MetaPartitionPlanUserParams{
+		SelectType: SelectTypeZoneName,
+		ZoneName:   "zone-1",
+	}))
+	require.Equal(t, "addr-1", SelectOneReplicaToDelete(mp, []string{"addr-3"}, &MetaPartitionPlanUserParams{
+		SelectType: SelectTypeZoneName,
+		ZoneName:   "zone-1",
+	}))
+	// If every replica is excluded, no deletion source can be selected.
+	require.Empty(t, SelectOneReplicaToDelete(mp, []string{"addr-1", "addr-2", "addr-3"}, &MetaPartitionPlanUserParams{}))
+}
+
+// FillLearnerPlanDestination mutates destination records when auto-promote is
+// enabled. These assertions pin both the selected source address and the copied
+// source metadata used later by the migration executor.
+func TestFillLearnerPlanDestination(t *testing.T) {
+	cluster := &Cluster{}
+	// Destination records are produced earlier by target selection. Auto-promote
+	// fills in the source side of these records.
+	dest := []*proto.MrBalanceInfo{
+		{Destination: "dst-1", DstId: 11},
+		{Destination: "dst-2", DstId: 12},
+	}
+	// Original records carry source metadata that must be copied onto the chosen
+	// destination records for later execution.
+	mpPlan := &proto.MetaBalancePlan{
+		ID: 100,
+		Original: []*proto.MrBalanceInfo{
+			{Source: "addr-1", SrcMemSize: 1, SrcNodeSetId: 1, SrcZoneName: "zone-1", SrcRack: "rack-1"},
+			{Source: "addr-2", SrcMemSize: 2, SrcNodeSetId: 1, SrcZoneName: "zone-1", SrcRack: "rack-2"},
+			{Source: "addr-3", SrcMemSize: 3, SrcNodeSetId: 2, SrcZoneName: "zone-2", SrcRack: "rack-3"},
+		},
+	}
+	// addr-3 is outside the requested zone and should be chosen first by the
+	// strict deletion selector.
+	mp := &MetaPartition{
+		PartitionID: 100,
+		Replicas: []*MetaReplica{
+			{Addr: "addr-1", metaNode: &MetaNode{ZoneName: "zone-1", NodeSetID: 1, Tag: "tag-a"}},
+			{Addr: "addr-2", metaNode: &MetaNode{ZoneName: "zone-1", NodeSetID: 1, Tag: "tag-a"}},
+			{Addr: "addr-3", metaNode: &MetaNode{ZoneName: "zone-2", NodeSetID: 2, Tag: "tag-b"}},
+		},
+	}
+	param := &MetaPartitionPlanUserParams{
+		SelectType: SelectTypeZoneName,
+		ZoneName:   "zone-1",
+	}
+
+	// Auto-promote mutates the destination records by selecting source replicas
+	// and copying their source metadata.
+	err := cluster.FillLearnerPlanDestination(&proto.ClusterPlan{AutoPromote: true}, mpPlan, dest, param, mp)
+	require.NoError(t, err)
+	require.Len(t, mpPlan.Plan, 2)
+	require.Equal(t, "addr-3", mpPlan.Plan[0].Source)
+	require.Equal(t, uint64(3), mpPlan.Plan[0].SrcMemSize)
+	require.Equal(t, uint64(2), mpPlan.Plan[0].SrcNodeSetId)
+	require.Equal(t, "zone-2", mpPlan.Plan[0].SrcZoneName)
+	require.Equal(t, "rack-3", mpPlan.Plan[0].SrcRack)
+	require.Equal(t, "addr-1", mpPlan.Plan[1].Source)
+	require.Equal(t, uint64(1), mpPlan.Plan[1].SrcMemSize)
+
+	// Without AutoPromote, the function should preserve the destination records
+	// exactly as supplied.
+	manualPlan := &proto.MetaBalancePlan{ID: 101}
+	manualDest := []*proto.MrBalanceInfo{{Destination: "manual-dst"}}
+	err = cluster.FillLearnerPlanDestination(&proto.ClusterPlan{}, manualPlan, manualDest, param, mp)
+	require.NoError(t, err)
+	require.Same(t, manualDest[0], manualPlan.Plan[0])
+
+	// Empty destination lists are invalid because there is nothing to fill.
+	err = cluster.FillLearnerPlanDestination(&proto.ClusterPlan{AutoPromote: true}, &proto.MetaBalancePlan{ID: 102}, nil, param, mp)
+	require.Error(t, err)
+}
+
+func TestCopyMd5SumToChecksumInfo(t *testing.T) {
+	cluster := &Cluster{}
+	// Two fresh checksum responses share the same apply ID and md5. A third stale
+	// response proves LastApplyID filtering is honored.
+	mp := &MetaPartition{
+		PartitionID: 100,
+		LoadResponse: []*proto.MetaPartitionLoadResponse{
+			{Addr: "addr-1", Md5ApplyId: 10, Md5Sum: "same-md5"},
+			{Addr: "addr-2", Md5ApplyId: 10, Md5Sum: "same-md5"},
+			{Addr: "addr-3", Md5ApplyId: 8, Md5Sum: "stale-md5"},
+		},
+	}
+	// Only addr-1 and addr-2 are expected by the checksum plan.
+	checksumInfo := &proto.MetaPartitionChecksumInfo{
+		LastApplyID: 9,
+		Replicas: []*proto.MetaReplicaChecksumInfo{
+			{Addr: "addr-1"},
+			{Addr: "addr-2"},
+		},
+	}
+
+	// Successful copy should fill each requested replica with the fresh checksum
+	// result.
+	require.NoError(t, cluster.CopyMd5SumToChecksumInfo(mp, checksumInfo))
+	require.Equal(t, uint64(10), checksumInfo.Replicas[0].ApplyID)
+	require.Equal(t, "same-md5", checksumInfo.Replicas[0].Md5Sum)
+	require.Equal(t, uint64(10), checksumInfo.Replicas[1].ApplyID)
+	require.Equal(t, "same-md5", checksumInfo.Replicas[1].Md5Sum)
+
+	// Missing expected replicas should fail because the checksum plan requires a
+	// complete result set.
+	require.Error(t, cluster.CopyMd5SumToChecksumInfo(mp, &proto.MetaPartitionChecksumInfo{}))
+	require.Error(t, cluster.CopyMd5SumToChecksumInfo(mp, &proto.MetaPartitionChecksumInfo{
+		LastApplyID: 9,
+		Replicas:    []*proto.MetaReplicaChecksumInfo{{Addr: "addr-1"}, {Addr: "missing"}},
+	}))
+
+	// All replicas must report the same apply ID.
+	mismatchApplyID := &MetaPartition{
+		PartitionID: 101,
+		LoadResponse: []*proto.MetaPartitionLoadResponse{
+			{Addr: "addr-1", Md5ApplyId: 10, Md5Sum: "same-md5"},
+			{Addr: "addr-2", Md5ApplyId: 11, Md5Sum: "same-md5"},
+		},
+	}
+	require.Error(t, cluster.CopyMd5SumToChecksumInfo(mismatchApplyID, &proto.MetaPartitionChecksumInfo{
+		Replicas: []*proto.MetaReplicaChecksumInfo{{Addr: "addr-1"}, {Addr: "addr-2"}},
+	}))
+
+	// All replicas must also report the same md5 sum.
+	mismatchMd5 := &MetaPartition{
+		PartitionID: 102,
+		LoadResponse: []*proto.MetaPartitionLoadResponse{
+			{Addr: "addr-1", Md5ApplyId: 10, Md5Sum: "md5-a"},
+			{Addr: "addr-2", Md5ApplyId: 10, Md5Sum: "md5-b"},
+		},
+	}
+	require.Error(t, cluster.CopyMd5SumToChecksumInfo(mismatchMd5, &proto.MetaPartitionChecksumInfo{
+		Replicas: []*proto.MetaReplicaChecksumInfo{{Addr: "addr-1"}, {Addr: "addr-2"}},
+	}))
+}
+
+func TestCreateTaskToCalculateCheckSum(t *testing.T) {
+	// The checksum task should encode the partition ID both in the request body
+	// and in the task metadata used by task tracking.
+	mp := &MetaPartition{
+		PartitionID: 12345,
+		volName:     "vol-test",
+	}
+
+	// Building the task is pure; no metanode or network fixture is required.
+	task, err := mp.createTaskToCalculateCheckSum("leader-addr")
+	require.NoError(t, err)
+	require.NotNil(t, task)
+	require.Equal(t, proto.OpCalcMetaPartitionMd5Sum, task.OpCode)
+	require.Equal(t, "leader-addr", task.OperatorAddr)
+	require.Equal(t, mp.PartitionID, task.PartitionID)
+	require.Contains(t, task.ID, "pid[12345]")
+
+	// The request payload is what the metanode receives to start checksum
+	// calculation.
+	req, ok := task.Request.(*proto.CalcMetaPartitionMd5SumRequest)
+	require.True(t, ok)
+	require.Equal(t, mp.PartitionID, req.PartitionID)
+}
+
+func TestIsRocksdbDirInMetaPartition(t *testing.T) {
+	// LoadResponse carries the last reported rocksdb directory per replica.
+	mp := &MetaPartition{
+		LoadResponse: []*proto.MetaPartitionLoadResponse{
+			{Addr: "addr-1", RocksdbDir: "/disk-a/rocksdb"},
+			{Addr: "addr-2", RocksdbDir: "/disk-b/rocksdb"},
+		},
+	}
+
+	// A match requires both the replica address and rocksdb directory to match.
+	require.True(t, IsRocksdbDirInMetaPartition(mp, "addr-1", "/disk-a/rocksdb"))
+	require.False(t, IsRocksdbDirInMetaPartition(mp, "addr-1", "/disk-b/rocksdb"))
+	require.False(t, IsRocksdbDirInMetaPartition(mp, "addr-missing", "/disk-a/rocksdb"))
 }
