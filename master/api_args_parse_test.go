@@ -33,6 +33,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// copyVolForTest returns a shallow copy of v for isolated test mutations.
+// Vol embeds sync.RWMutex through TopoSubItem; this is safe in tests where
+// the mutex is guaranteed to be unlocked at the point of copy.
+func copyVolForTest(v *Vol) Vol {
+	return *v //nolint:govet
+}
+
 func apiArgsNewGet(t *testing.T, rawQuery string) *http.Request {
 	t.Helper()
 	u := "http://127.0.0.1/admin?"
@@ -155,7 +162,7 @@ func TestParseDecomNodeReqs(t *testing.T) {
 	require.Equal(t, "10.0.0.1:17320", addr)
 	require.Equal(t, 5, lim)
 
-	addr, lim, err = parseDecomDataNodeReq(r)
+	_, lim, err = parseDecomDataNodeReq(r)
 	require.NoError(t, err)
 	require.Equal(t, 5, lim)
 
@@ -243,7 +250,7 @@ func TestParseColdArgs(t *testing.T) {
 func TestParseVolUpdateReq_minimal(t *testing.T) {
 	v0, err := server.cluster.getVol(commonVolName)
 	require.NoError(t, err)
-	vol := *v0
+	vol := copyVolForTest(v0)
 	// commonVol may have empty allowedStorageClass; parseVolUpdateReq validates requested class against it.
 	vol.allowedStorageClass = []uint32{vol.volStorageClass}
 	req := &updateVolReq{}
@@ -315,10 +322,10 @@ func TestParseDataReplicaAndDecommission(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(5), id)
 
-	id, _, err = parseRequestToRemoveDataReplica(apiArgsNewGet(t, "id=6&addr=10.0.0.6:17320"))
+	_, _, err = parseRequestToRemoveDataReplica(apiArgsNewGet(t, "id=6&addr=10.0.0.6:17320"))
 	require.NoError(t, err)
 
-	id, _, err = parseRequestToDecommissionDataPartition(apiArgsNewGet(t, "id=7&addr=10.0.0.7:17320"))
+	_, _, err = parseRequestToDecommissionDataPartition(apiArgsNewGet(t, "id=7&addr=10.0.0.7:17320"))
 	require.NoError(t, err)
 }
 
@@ -568,7 +575,7 @@ func TestParseQuotaParams(t *testing.T) {
 	require.Equal(t, "myvol12", vn)
 	require.Equal(t, uint32(4), qid)
 
-	vn, qid, err = parseGetQuotaParam(apiArgsNewGet(t, "name=myvol13&quotaId=5"))
+	_, qid, err = parseGetQuotaParam(apiArgsNewGet(t, "name=myvol13&quotaId=5"))
 	require.NoError(t, err)
 	require.Equal(t, uint32(5), qid)
 }
@@ -874,7 +881,7 @@ func TestExtractNodesetID(t *testing.T) {
 func TestParseVolUpdateReq_extended(t *testing.T) {
 	v0, err := server.cluster.getVol(commonVolName)
 	require.NoError(t, err)
-	vol := *v0
+	vol := copyVolForTest(v0)
 	vol.allowedStorageClass = []uint32{vol.volStorageClass}
 	vol.allowedPools = []uint8{proto.DefaultSSDPoolId}
 
@@ -953,7 +960,7 @@ func TestParseRequestToCreateVol_invalidStoreMode(t *testing.T) {
 func TestParseVolUpdateReq_quotaAndErrors(t *testing.T) {
 	v0, err := server.cluster.getVol(commonVolName)
 	require.NoError(t, err)
-	vol := *v0
+	vol := copyVolForTest(v0)
 	vol.allowedStorageClass = []uint32{proto.StorageClass_Replica_SSD, proto.StorageClass_Replica_HDD}
 	vol.allowedPools = []uint8{proto.DefaultSSDPoolId}
 	vol.Capacity = 300
@@ -1024,7 +1031,7 @@ func TestParseVolUpdateReq_branches(t *testing.T) {
 	t.Run("invalid_vol_capacity", func(t *testing.T) {
 		v0, err := server.cluster.getVol(commonVolName)
 		require.NoError(t, err)
-		vol := *v0
+		vol := copyVolForTest(v0)
 		vol.allowedStorageClass = []uint32{proto.StorageClass_Replica_SSD}
 		q := url.Values{}
 		baseTx(q)
@@ -1038,7 +1045,7 @@ func TestParseVolUpdateReq_branches(t *testing.T) {
 	t.Run("invalid_vol_storage_class", func(t *testing.T) {
 		v0, err := server.cluster.getVol(commonVolName)
 		require.NoError(t, err)
-		vol := *v0
+		vol := copyVolForTest(v0)
 		vol.allowedStorageClass = []uint32{proto.StorageClass_Replica_SSD, proto.StorageClass_Replica_HDD}
 		q := url.Values{}
 		baseTx(q)
@@ -1052,7 +1059,7 @@ func TestParseVolUpdateReq_branches(t *testing.T) {
 	t.Run("quota_class_invalid", func(t *testing.T) {
 		v0, err := server.cluster.getVol(commonVolName)
 		require.NoError(t, err)
-		vol := *v0
+		vol := copyVolForTest(v0)
 		vol.allowedStorageClass = []uint32{proto.StorageClass_Replica_SSD}
 		q := url.Values{}
 		baseTx(q)
@@ -1067,7 +1074,7 @@ func TestParseVolUpdateReq_branches(t *testing.T) {
 	t.Run("quota_of_class_missing", func(t *testing.T) {
 		v0, err := server.cluster.getVol(commonVolName)
 		require.NoError(t, err)
-		vol := *v0
+		vol := copyVolForTest(v0)
 		vol.allowedStorageClass = []uint32{proto.StorageClass_Replica_SSD}
 		q := url.Values{}
 		baseTx(q)
@@ -1081,7 +1088,7 @@ func TestParseVolUpdateReq_branches(t *testing.T) {
 	t.Run("quota_of_class_gt_capacity", func(t *testing.T) {
 		v0, err := server.cluster.getVol(commonVolName)
 		require.NoError(t, err)
-		vol := *v0
+		vol := copyVolForTest(v0)
 		vol.allowedStorageClass = []uint32{proto.StorageClass_Replica_SSD}
 		vol.Capacity = 50
 		q := url.Values{}
@@ -1098,7 +1105,7 @@ func TestParseVolUpdateReq_branches(t *testing.T) {
 	t.Run("quota_pool_not_allowed", func(t *testing.T) {
 		v0, err := server.cluster.getVol(commonVolName)
 		require.NoError(t, err)
-		vol := *v0
+		vol := copyVolForTest(v0)
 		vol.allowedStorageClass = []uint32{proto.StorageClass_Replica_SSD}
 		vol.allowedPools = []uint8{proto.DefaultSSDPoolId}
 		q := url.Values{}
@@ -1114,7 +1121,7 @@ func TestParseVolUpdateReq_branches(t *testing.T) {
 	t.Run("quota_pool_missing_quota_of_pool", func(t *testing.T) {
 		v0, err := server.cluster.getVol(commonVolName)
 		require.NoError(t, err)
-		vol := *v0
+		vol := copyVolForTest(v0)
 		vol.allowedStorageClass = []uint32{proto.StorageClass_Replica_SSD}
 		vol.allowedPools = []uint8{proto.DefaultSSDPoolId}
 		q := url.Values{}
@@ -1129,7 +1136,7 @@ func TestParseVolUpdateReq_branches(t *testing.T) {
 	t.Run("quota_of_pool_gt_capacity", func(t *testing.T) {
 		v0, err := server.cluster.getVol(commonVolName)
 		require.NoError(t, err)
-		vol := *v0
+		vol := copyVolForTest(v0)
 		vol.allowedStorageClass = []uint32{proto.StorageClass_Replica_SSD}
 		vol.allowedPools = []uint8{proto.DefaultSSDPoolId}
 		vol.Capacity = 10
@@ -1147,7 +1154,7 @@ func TestParseVolUpdateReq_branches(t *testing.T) {
 	t.Run("blob_vol_forbid_class_change", func(t *testing.T) {
 		v0, err := server.cluster.getVol(commonVolName)
 		require.NoError(t, err)
-		vol := *v0
+		vol := copyVolForTest(v0)
 		vol.volStorageClass = proto.StorageClass_BlobStore
 		vol.allowedStorageClass = []uint32{proto.StorageClass_BlobStore}
 		q := url.Values{}
@@ -1162,7 +1169,7 @@ func TestParseVolUpdateReq_branches(t *testing.T) {
 	t.Run("replica_class_change_ssd_to_hdd", func(t *testing.T) {
 		v0, err := server.cluster.getVol(commonVolName)
 		require.NoError(t, err)
-		vol := *v0
+		vol := copyVolForTest(v0)
 		vol.volStorageClass = proto.StorageClass_Replica_SSD
 		vol.allowedStorageClass = []uint32{proto.StorageClass_Replica_SSD, proto.StorageClass_Replica_HDD}
 		q := url.Values{}
@@ -1178,7 +1185,7 @@ func TestParseVolUpdateReq_branches(t *testing.T) {
 	t.Run("replica_target_not_in_allowed", func(t *testing.T) {
 		v0, err := server.cluster.getVol(commonVolName)
 		require.NoError(t, err)
-		vol := *v0
+		vol := copyVolForTest(v0)
 		vol.volStorageClass = proto.StorageClass_Replica_SSD
 		vol.allowedStorageClass = []uint32{proto.StorageClass_Replica_SSD}
 		q := url.Values{}
@@ -1193,7 +1200,7 @@ func TestParseVolUpdateReq_branches(t *testing.T) {
 	t.Run("replica_to_blob_denied", func(t *testing.T) {
 		v0, err := server.cluster.getVol(commonVolName)
 		require.NoError(t, err)
-		vol := *v0
+		vol := copyVolForTest(v0)
 		vol.volStorageClass = proto.StorageClass_Replica_SSD
 		vol.allowedStorageClass = []uint32{proto.StorageClass_Replica_SSD, proto.StorageClass_BlobStore}
 		q := url.Values{}
@@ -1208,7 +1215,7 @@ func TestParseVolUpdateReq_branches(t *testing.T) {
 	t.Run("invalid_default_pool_id", func(t *testing.T) {
 		v0, err := server.cluster.getVol(commonVolName)
 		require.NoError(t, err)
-		vol := *v0
+		vol := copyVolForTest(v0)
 		vol.allowedStorageClass = []uint32{vol.volStorageClass}
 		q := url.Values{}
 		baseTx(q)
@@ -1222,7 +1229,7 @@ func TestParseVolUpdateReq_branches(t *testing.T) {
 	t.Run("cold_args_invalid_ebs_on_blob", func(t *testing.T) {
 		v0, err := server.cluster.getVol(commonVolName)
 		require.NoError(t, err)
-		vol := *v0
+		vol := copyVolForTest(v0)
 		vol.volStorageClass = proto.StorageClass_BlobStore
 		vol.allowedStorageClass = []uint32{proto.StorageClass_BlobStore}
 		q := url.Values{}
@@ -1379,6 +1386,11 @@ func TestParseRequestToUpdateDecommissionDiskLimit_invalid(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestParseRequestToUpdateDecommissionDiskLimit_missing(t *testing.T) {
+	_, err := parseRequestToUpdateDecommissionDiskLimit(apiArgsNewGet(t, ""))
+	require.Error(t, err)
+}
+
 func TestExtractUint32WithDefault_invalid(t *testing.T) {
 	_, err := extractUint32WithDefault(apiArgsNewGet(t, "volStorageClass=xyz"), volStorageClassKey, 1)
 	require.Error(t, err)
@@ -1428,7 +1440,7 @@ func TestParseVolUpdateReq_quotaParseErrors(t *testing.T) {
 	}
 	v0, err := server.cluster.getVol(commonVolName)
 	require.NoError(t, err)
-	vol := *v0
+	vol := copyVolForTest(v0)
 	vol.allowedStorageClass = []uint32{proto.StorageClass_Replica_SSD}
 
 	t.Run("invalid_quota_class", func(t *testing.T) {
@@ -1463,7 +1475,7 @@ func TestParseVolUpdateReq_quotaParseErrors(t *testing.T) {
 		q := base()
 		q.Set(quotaPool, fmt.Sprintf("%d", proto.DefaultSSDPoolId))
 		q.Set(quotaOfPool, "z")
-		vol2 := vol
+		vol2 := copyVolForTest(&vol)
 		vol2.allowedPools = []uint8{proto.DefaultSSDPoolId}
 		u := "http://127.0.0.1/admin?" + q.Encode()
 		req := &updateVolReq{}
@@ -1547,6 +1559,34 @@ func TestParseAndExtractSetNodeInfoParams_moreParseErrors(t *testing.T) {
 		{metaBalanceLimitKey, "x"},
 		{metaManualAddReplicaLimitKey, "x"},
 		{metaManualLearnerLimitKey, "x"},
+		{flashNodeReadDataNodeTimeout, "x"},
+		{autoDecommissionDiskKey, "x"},
+		{autoDecommissionDiskIntervalKey, "x"},
+		{autoDpMetaRepairKey, "x"},
+		{autoDpMetaRepairParallelCntKey, "x"},
+		{autoMpMetaRepairKey, "x"},
+		{autoMpMetaRepairParallelCntKey, "x"},
+		{autoDistributionOptimizationKey, "x"},
+		{enableMpDecommissionByLearnerKey, "x"},
+		{distributionOptimizationConDpCntKey, "x"},
+		{distributionOptimizationThresholdKey, "x"},
+		{dpTimeoutKey, "x"},
+		{mpTimeoutKey, "x"},
+		{decommissionLimit, "x"},
+		{decommissionDiskLimit, "x"},
+		// extra keys in parseAndExtractSetNodeInfoParams
+		{nodeDpRepairTimeOutKey, "x"},
+		{nodeDpBackupKey, "x"},
+		{nodeDpMaxRepairErrCntKey, "x"},
+		{dpLimitSsdBaseCountKey, "x"},
+		{dpLimitSsdFactorKey, "x"},
+		{dpLimitHddBaseCountKey, "x"},
+		{dpLimitHddFactorKey, "x"},
+		{markDiskBrokenThresholdKey, "x"},
+		{flashNodeHandleReadTimeout, "x"},
+		{flashHotKeyMissCount, "x"},
+		{preheatTotalTask, "x"},
+		{maxDisableFlashGroupPercent, "x"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.key, func(t *testing.T) {
@@ -1762,7 +1802,7 @@ func TestParseRequestToUpdateDecommissionFirstHostParallelLimit_badLimit(t *test
 func TestParseVolUpdateReq_invalidEnablePosixAcl(t *testing.T) {
 	v0, err := server.cluster.getVol(commonVolName)
 	require.NoError(t, err)
-	vol := *v0
+	vol := copyVolForTest(v0)
 	vol.allowedStorageClass = []uint32{vol.volStorageClass}
 	q := url.Values{}
 	q.Set(txTimeoutKey, "1")
@@ -1778,7 +1818,7 @@ func TestParseVolUpdateReq_invalidEnablePosixAcl(t *testing.T) {
 func TestParseVolUpdateReq_invalidTxForceReset(t *testing.T) {
 	v0, err := server.cluster.getVol(commonVolName)
 	require.NoError(t, err)
-	vol := *v0
+	vol := copyVolForTest(v0)
 	vol.allowedStorageClass = []uint32{vol.volStorageClass}
 	q := url.Values{}
 	q.Set(txTimeoutKey, "1")
@@ -1805,7 +1845,7 @@ func TestParseRequestToSetVolCapacity_invalidCapacity(t *testing.T) {
 func TestParseVolUpdateReq_invalidTxMaskString(t *testing.T) {
 	v0, err := server.cluster.getVol(commonVolName)
 	require.NoError(t, err)
-	vol := *v0
+	vol := copyVolForTest(v0)
 	vol.allowedStorageClass = []uint32{vol.volStorageClass}
 	q := url.Values{}
 	q.Set(txTimeoutKey, "1")
@@ -1816,5 +1856,131 @@ func TestParseVolUpdateReq_invalidTxMaskString(t *testing.T) {
 	u := "http://127.0.0.1/admin?" + q.Encode()
 	req := &updateVolReq{}
 	err = parseVolUpdateReq(httptest.NewRequest(http.MethodGet, u, nil), &vol, req)
+	require.Error(t, err)
+}
+
+func TestExtractClientIDKey_missing(t *testing.T) {
+	r := apiArgsNewGet(t, "")
+	require.NoError(t, r.ParseForm())
+	_, err := extractClientIDKey(r)
+	require.Error(t, err)
+}
+
+func TestParseAndExtractPartitionInfo_errors(t *testing.T) {
+	_, err := parseAndExtractPartitionInfo(apiArgsNewGet(t, ""))
+	require.Error(t, err)
+	_, err = parseAndExtractPartitionInfo(apiArgsNewGet(t, "id=notuint"))
+	require.Error(t, err)
+}
+
+// --- additional helpers coverage ---
+
+func TestExtractStoreModeAndRocksDb(t *testing.T) {
+	// extractStoreMode: normal
+	sm, err := extractStoreMode(apiArgsNewGet(t, "storeMode=1"))
+	require.NoError(t, err)
+	require.Equal(t, 1, sm)
+
+	// extractStoreMode: empty value → 0, no error
+	sm, err = extractStoreMode(apiArgsNewGet(t, ""))
+	require.NoError(t, err)
+	require.Equal(t, 0, sm)
+
+	// extractStoreMode: invalid value
+	_, err = extractStoreMode(apiArgsNewGet(t, "storeMode=bad"))
+	require.Error(t, err)
+
+	// parseRocksDbFieldToUpdateVol: uses vol.DefaultStoreMode as default when key absent
+	vol, verr := server.cluster.getVol(commonVolName)
+	require.NoError(t, verr)
+	sm, err = parseRocksDbFieldToUpdateVol(apiArgsNewGet(t, ""), vol)
+	require.NoError(t, err)
+	require.Equal(t, int(vol.DefaultStoreMode), sm)
+}
+
+func TestParseRequestToCreateStoragePool_invalidCId(t *testing.T) {
+	// storageClass=1 (valid ReplicaSSD), cId is not an int
+	_, err := parseRequestToCreateStoragePool(apiArgsNewGet(t, "id=1&name=poolx&storageClass=1&cId=notint"))
+	require.Error(t, err)
+}
+
+func TestParseRequestToCreateStoragePool_invalidPoolIdRange(t *testing.T) {
+	// id=0 is out of range
+	_, err := parseRequestToCreateStoragePool(apiArgsNewGet(t, "id=0&name=poolx&storageClass=1"))
+	require.Error(t, err)
+}
+
+func TestParseRequestToBalanceMetaPartition_empty(t *testing.T) {
+	// succeeds even with empty params (both fields optional)
+	zones, nsids, err := parseRequestToBalanceMetaPartition(apiArgsNewGet(t, ""))
+	require.NoError(t, err)
+	require.Empty(t, zones)
+	require.Empty(t, nsids)
+}
+
+func TestParseAndExtractThreshold_errors(t *testing.T) {
+	_, err := parseAndExtractThreshold(apiArgsNewGet(t, ""))
+	require.Error(t, err)
+	_, err = parseAndExtractThreshold(apiArgsNewGet(t, "threshold=notfloat"))
+	require.Error(t, err)
+}
+
+func TestParseAndExtractVolDeletionDelayTime_errors(t *testing.T) {
+	_, err := parseAndExtractVolDeletionDelayTime(apiArgsNewGet(t, ""))
+	require.Error(t, err)
+}
+
+func TestParseAndExtractFlashTopoDeletionDelayTime_errors(t *testing.T) {
+	_, err := parseAndExtractFlashTopoDeletionDelayTime(apiArgsNewGet(t, ""))
+	require.Error(t, err)
+}
+
+func TestParseAndExtractMetaNodeGOGC_errors(t *testing.T) {
+	_, err := parseAndExtractMetaNodeGOGC(apiArgsNewGet(t, ""))
+	require.Error(t, err)
+}
+
+func TestParseAndExtractDataNodeGOGC_errors(t *testing.T) {
+	_, err := parseAndExtractDataNodeGOGC(apiArgsNewGet(t, ""))
+	require.Error(t, err)
+}
+
+func TestParseAndExtractFileStatsThresholds_emptyKey(t *testing.T) {
+	_, err := parseAndExtractFileStatsThresholds(apiArgsNewGet(t, ""))
+	require.Error(t, err)
+}
+
+func TestParseAndExtractSetNodeSetInfoParams_invalidCount(t *testing.T) {
+	_, err := parseAndExtractSetNodeSetInfoParams(apiArgsNewGet(t, "count=bad&id=1"))
+	require.Error(t, err)
+}
+
+func TestParseAndExtractSetNodeSetInfoParams_invalidId(t *testing.T) {
+	_, err := parseAndExtractSetNodeSetInfoParams(apiArgsNewGet(t, "count=1&id=notint"))
+	require.Error(t, err)
+}
+
+func TestExtractPositiveUint64_errors(t *testing.T) {
+	r := apiArgsNewGet(t, "")
+	require.NoError(t, r.ParseForm())
+	// missing key
+	_, err := extractPositiveUint64(r, "myKey")
+	require.Error(t, err)
+	// zero value
+	r2 := apiArgsNewGet(t, "myKey=0")
+	require.NoError(t, r2.ParseForm())
+	_, err = extractPositiveUint64(r2, "myKey")
+	require.Error(t, err)
+}
+
+func TestExtractMediaType_invalid(t *testing.T) {
+	r := apiArgsNewGet(t, "mediaType=notint")
+	require.NoError(t, r.ParseForm())
+	_, err := extractMediaType(r)
+	require.Error(t, err)
+}
+
+func TestParseRequestToUpdateStoragePool_invalidPoolId(t *testing.T) {
+	_, _, err := parseRequestToUpdateStoragePool(apiArgsNewGet(t, "id=notint&name=p1"))
 	require.Error(t, err)
 }
