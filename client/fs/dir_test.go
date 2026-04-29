@@ -12,8 +12,69 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cubefs/cubefs/depends/bazil.org/fuse/fs"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cubefs/cubefs/proto"
 )
+
+func TestDir_getCwd_nodeCacheMiss_immediate(t *testing.T) {
+	t.Parallel()
+	const rootIno uint64 = 1
+	super := &Super{
+		rootIno:   rootIno,
+		nodeCache: make(map[uint64]fs.Node),
+	}
+	d := &Dir{
+		super:     super,
+		info:      &proto.InodeInfo{Inode: 999},
+		parentIno: 2,
+		name:      "leaf",
+	}
+	require.Equal(t, "unknown/", d.getCwd())
+}
+
+func TestDir_getCwd_nodeCacheMiss_afterParentSegment(t *testing.T) {
+	t.Parallel()
+	const rootIno uint64 = 1
+	super := &Super{
+		rootIno:   rootIno,
+		nodeCache: make(map[uint64]fs.Node),
+	}
+	leaf := &Dir{
+		super:     super,
+		info:      &proto.InodeInfo{Inode: 100},
+		parentIno: 50,
+		name:      "leaf",
+	}
+	super.nodeCache[100] = leaf
+
+	require.Equal(t, "unknown/leaf", leaf.getCwd())
+}
+
+func TestDir_getCwd_nodeInCacheButNotDir(t *testing.T) {
+	t.Parallel()
+	const rootIno uint64 = 1
+	super := &Super{
+		rootIno:   rootIno,
+		nodeCache: make(map[uint64]fs.Node),
+	}
+	f := &File{
+		super:     super,
+		info:      &proto.InodeInfo{Inode: 200},
+		parentIno: rootIno,
+		name:      "notadir",
+	}
+	super.nodeCache[200] = f
+
+	d := &Dir{
+		super:     super,
+		info:      &proto.InodeInfo{Inode: 200},
+		parentIno: rootIno,
+		name:      "x",
+	}
+	require.Equal(t, "unknown/", d.getCwd())
+}
 
 func TestDir_Lookup_metaCacheMissReadDirGate(t *testing.T) {
 	t.Parallel()
