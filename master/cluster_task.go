@@ -2106,11 +2106,6 @@ func (c *Cluster) updateMetaNode(metaNode *MetaNode, metaPartitions []*proto.Met
 			}
 		}
 
-		// send latest end to replica metanode, including updating the end after MaxMP split when the old MaxMP is unavailable
-		if mr.End != mp.End {
-			mp.addUpdateMetaReplicaTask(c)
-		}
-
 		mp.updateMetaPartition(mr, metaNode, c)
 		vol.uidSpaceManager.pushUidMsg(mr)
 		vol.quotaManager.quotaUpdate(mr)

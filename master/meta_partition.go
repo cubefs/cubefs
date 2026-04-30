@@ -460,6 +460,12 @@ func (mp *MetaPartition) updateMetaPartition(mgr *proto.MetaPartitionReport, met
 	if !contains(mp.Hosts, metaNode.Addr) {
 		return
 	}
+
+	if mgr.End != mp.End {
+		log.LogWarnf("updateMetaPartition: mpId[%v], changed from [%v] to [%v], addr %v", mp.PartitionID, mp.End, mgr.End, metaNode.Addr)
+		mp.addUpdateMetaReplicaTask(c)
+	}
+
 	mp.Lock()
 	defer mp.Unlock()
 	mr, err := mp.getMetaReplica(metaNode.Addr)

@@ -517,3 +517,110 @@ func TestSetRestoreReplica(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, RestoreReplicaMetaForbidden, atomic.LoadUint32(&mp.RestoreReplicaMeta))
 }
+
+// TestUpdateMetaPartition_endMismatch_enqueuesUpdateMetaReplicaTask covers the
+// post-commit path in updateMetaPartition: when the heartbeat report's End
+// differs from the master's mp.End, addUpdateMetaReplicaTask is invoked so
+// replicas receive OpUpdateMetaPartition (requires a leader replica).
+func TestUpdateMetaPartition_endMismatch_enqueuesUpdateMetaReplicaTask(t *testing.T) {
+	t.Parallel()
+	const addr = "127.0.0.1:17210"
+
+	reportMN := &MetaNode{Addr: addr, IsActive: true}
+	regMN := &MetaNode{
+		Addr:     addr,
+		IsActive: true,
+		Sender:   newTestManager(addr),
+	}
+
+	c := &Cluster{Name: "test-cluster", cfg: &clusterConfig{}}
+	c.metaNodes.Store(addr, regMN)
+
+	leader := &MetaReplica{
+		Addr:     addr,
+		IsLeader: true,
+		Status:   proto.ReadWrite,
+		metaNode: reportMN,
+		ReportTime: time.Now().Unix(),
+	}
+
+	mp := &MetaPartition{
+		PartitionID: 501,
+		volName:     "vol-end",
+		Start:       0,
+		End:         1000,
+		Hosts:       []string{addr},
+		Replicas:    []*MetaReplica{leader},
+	}
+
+	mgr := &proto.MetaPartitionReport{
+		PartitionID: 501,
+		VolName:     "vol-end",
+		End:         2000,
+		Status:      proto.ReadWrite,
+		IsLeader:    true,
+	}
+
+	require.NotPanics(t, func() {
+		mp.updateMetaPartition(mgr, reportMN, c)
+	})
+
+	require.GreaterOrEqual(t, len(regMN.Sender.TaskMap), 1)
+	var sawUpdate bool
+	for _, task := range regMN.Sender.TaskMap {
+		if task != nil && task.OpCode == proto.OpUpdateMetaPartition {
+			sawUpdate = true
+			break
+		}
+	}
+	require.True(t, sawUpdate, "expected OpUpdateMetaPartition admin task to be queued")
+}
+
+// TestUpdateMetaPartition_endMatch_skipsUpdateTask ensures no OpUpdateMetaPartition
+// task is enqueued when report End matches master End (no mismatch branch).
+func TestUpdateMetaPartition_endMatch_skipsUpdateTask(t *testing.T) {
+	t.Parallel()
+	const addr = "127.0.0.1:17211"
+
+	reportMN := &MetaNode{Addr: addr, IsActive: true}
+	regMN := &MetaNode{
+		Addr:     addr,
+		IsActive: true,
+		Sender:   newTestManager(addr),
+	}
+	c := &Cluster{Name: "test-cluster", cfg: &clusterConfig{}}
+	c.metaNodes.Store(addr, regMN)
+
+	leader := &MetaReplica{
+		Addr:       addr,
+		IsLeader:   true,
+		Status:     proto.ReadWrite,
+		metaNode:   reportMN,
+		ReportTime: time.Now().Unix(),
+	}
+	const sameEnd uint64 = 5000
+	mp := &MetaPartition{
+		PartitionID: 502,
+		volName:     "vol-match",
+		Start:       0,
+		End:         sameEnd,
+		Hosts:       []string{addr},
+		Replicas:    []*MetaReplica{leader},
+	}
+	mgr := &proto.MetaPartitionReport{
+		PartitionID: 502,
+		VolName:     "vol-match",
+		End:         sameEnd,
+		Status:      proto.ReadWrite,
+		IsLeader:    true,
+	}
+
+	require.NotPanics(t, func() {
+		mp.updateMetaPartition(mgr, reportMN, c)
+	})
+	for _, task := range regMN.Sender.TaskMap {
+		if task != nil && task.OpCode == proto.OpUpdateMetaPartition {
+			t.Fatalf("unexpected OpUpdateMetaPartition when Ends match")
+		}
+	}
+}

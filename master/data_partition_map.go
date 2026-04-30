@@ -560,8 +560,8 @@ func (dpMap *DataPartitionMap) getReplicaDiskPaths(nodeAddr string) (diskPaths [
 }
 
 func (dpMap *DataPartitionMap) getMaxDataPartitionID() (maxPartitionID uint64) {
-	dpMap.Lock()
-	defer dpMap.Unlock()
+	dpMap.RLock()
+	defer dpMap.RUnlock()
 	curtime := timeutil.GetCurrentTimeUnix()
 	if curtime < dpMap.lastUpdateMaxDpIdTime+updateMaxDpIdInterval {
 		return dpMap.maxDpId
