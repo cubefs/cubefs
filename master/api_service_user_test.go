@@ -441,7 +441,12 @@ func TestDeleteUserVolPolicy_MissingName(t *testing.T) {
 }
 
 func TestDeleteUserVolPolicy_Success(t *testing.T) {
-	// A vol that has no policy can still be "cleared" without error.
+	// deleteVolPolicy requires a volUser entry to exist for the vol
+	// (getUsersOfVol returns ErrHaveNoPolicy when none is found).
+	// addUserToVol creates the entry directly, bypassing the updatePolicy
+	// owner check that would reject cfs (who owns commonVolName).
+	require.NoError(t, server.user.addUserToVol("cfs", commonVolName))
+
 	r, _ := http.NewRequest(http.MethodGet, proto.UserDeleteVolPolicy+"?name="+commonVolName, nil)
 	w := callHandler(server.deleteUserVolPolicy, r)
 	reply := decodeReply(t, w)
