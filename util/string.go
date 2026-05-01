@@ -15,9 +15,9 @@
 package util
 
 import (
-	"math/rand"
+	"crypto/rand"
+	"math/big"
 	"strings"
-	"time"
 )
 
 func SubString(sourceString string, begin, end int) string {
@@ -59,9 +59,9 @@ func RandomString(length int, seed RandomSeed) string {
 	runs := seed.Runes()
 	result := ""
 	for i := 0; i < length; i++ {
-		rand.Seed(time.Now().UnixNano())
-		randNumber := rand.Intn(len(runs))
-		result += string(runs[randNumber])
+		lenInt64 := int64(len(runs))
+		randNumber, _ := rand.Int(rand.Reader, big.NewInt(lenInt64))
+		result += string(runs[randNumber.Uint64()])
 	}
 	return result
 }
