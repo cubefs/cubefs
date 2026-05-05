@@ -47,6 +47,9 @@ if [[ "-x$RM" == "-x" ]] ; then
 fi
 
 Version=$(git describe --abbrev=0 --tags 2>/dev/null)
+if [ -z "${Version}" ]; then
+    Version="unknown-$(git rev-parse --short HEAD 2>/dev/null)"
+fi
 BranchName=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
 CommitID=$(git rev-parse HEAD 2>/dev/null)
 BuildTime=$(date +%Y-%m-%d\ %H:%M)
@@ -436,6 +439,20 @@ build_rcconfig(){
     popd >/dev/null
 }
 
+build_cfsio(){
+    pushd $SrcPath >/dev/null
+    echo -n "build cfs-io      "
+    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-io ${SrcPath}/tool/cfs-io/*.go  && echo "success" || echo "failed"
+    popd >/dev/null
+}
+
+build_cfssync(){
+    pushd $SrcPath >/dev/null
+    echo -n "build cfs-sync    "
+    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-sync ${SrcPath}/tool/cfs-sync && echo "success" || echo "failed"
+    popd >/dev/null
+}
+
 clean() {
     $RM -rf ${BuildBinPath}
 }
@@ -542,6 +559,12 @@ case "$cmd" in
         ;;
     "rcconfig")
         build_rcconfig
+        ;;
+    "cfsio")
+        build_cfsio
+        ;;
+    "cfssync")
+        build_cfssync
         ;;
     *)
         ;;

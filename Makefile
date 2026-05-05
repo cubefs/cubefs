@@ -9,7 +9,8 @@ phony := all
 all: build
 
 phony += build server authtool client cli libsdkpre libsdk fsck fdstore bcache blobstore deploy
-build: server authtool client cli libsdk fsck fdstore bcache blobstore deploy
+build: server authtool client cli libsdk fsck fdstore bcache blobstore deploy cfs-sync
+
 
 server:
 	@build/build.sh server $(GOMOD) --threads=$(threads)
@@ -52,6 +53,31 @@ rctest:
 rcconfig:
 	@build/build.sh rcconfig $(GOMOD) --threads=$(threads)
 
+
+# ── cfs-sync cross-compilation ──────────────────────────────────────────────
+# The CubeFS SDK only compiles for Linux; Darwin/Windows are not supported targets.
+# Usage:
+#   make cfs-sync                       # linux/amd64 (default)
+
+#
+# Output: build/bin/cfs-sync  (or build/bin/cfs-sync-linux-<GOARCH> for non-amd64)
+
+GOOS   := linux
+GOARCH ?= amd64
+_CFS_SYNC_BIN := build/bin/cfs-sync
+ifneq ($(GOARCH),amd64)
+_CFS_SYNC_BIN := build/bin/cfs-sync-linux-$(GOARCH)
+endif
+
+phony += cfs-sync
+cfs-sync:
+	@mkdir -p build/bin
+	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) \
+	  go build -trimpath \
+	    -o $(_CFS_SYNC_BIN) \
+	    github.com/cubefs/cubefs/tool/cfs-sync
+	@echo "built $(_CFS_SYNC_BIN)"
+
 phony += clean
 clean:
 	@$(RM) -rf build/bin
@@ -77,5 +103,12 @@ phony += docker
 docker:
 	@docker/run_docker.sh --build
 	@docker/run_docker.sh --clean
+
+IMAGE_NAME?=hub.shiyak-office.com/storage/cubefs:v3.5.3.rc1
+
+phony += image
+image:
+	docker build --platform linux/amd64 -t $(IMAGE_NAME) -f Dockerfile .
+	@echo "Built linux/amd64 image: $(IMAGE_NAME)"
 
 .PHONY: $(phony)
