@@ -113,6 +113,11 @@ const (
 	ConfigKeySmuxMaxBuffer     = "smuxMaxBuffer"      // int
 	ConfigKeySmuxTotalStream   = "sumxTotalStream"    // int
 
+	ConfigKeyEnableRDMA    = "rdmaEnable"    // bool
+	ConfigKeyRDMAPort      = "rdmaPort"      // int
+	ConfigKeyRDMANumSlots  = "rdmaNumSlots"  // int
+	ConfigKeyRDMASlotSize  = "rdmaSlotSize"  // int
+
 	// rate limit control enable
 	ConfigDiskQosEnable      = "diskQosEnable"      // bool
 	ConfigDiskAsyncQosEnable = "diskAsyncQosEnable" // bool
@@ -189,6 +194,12 @@ type DataNode struct {
 	smuxListener       net.Listener
 	smuxServerConfig   *smux.Config
 	smuxConnPoolConfig *util.SmuxConnPoolConfig
+
+	enableRDMA     bool
+	rdmaPort       int
+	rdmaNumSlots   int
+	rdmaSlotSize   int
+	rdmaCtx        *DataNodeRDMACtx
 
 	getRepairConnFunc func(target string) (net.Conn, error)
 	putRepairConnFunc func(conn net.Conn, forceClose bool)
@@ -303,6 +314,18 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 		return
 	}
 
+	// parse RDMA config (no error — rdmaEnable defaults to false)
+	s.enableRDMA = cfg.GetBool(ConfigKeyEnableRDMA)
+	s.rdmaPort = cfg.GetInt(ConfigKeyRDMAPort)
+	s.rdmaNumSlots = cfg.GetInt(ConfigKeyRDMANumSlots)
+	if s.rdmaNumSlots <= 0 {
+		s.rdmaNumSlots = 256
+	}
+	s.rdmaSlotSize = cfg.GetInt(ConfigKeyRDMASlotSize)
+	if s.rdmaSlotSize <= 0 {
+		s.rdmaSlotSize = 128 * 1024 // 128 KB default
+	}
+
 	s.startStat(cfg)
 
 	// connection pool must be created before initSpaceManager
@@ -393,6 +416,9 @@ func doShutdown(server common.Server) {
 	s.stopRaftServer()
 	s.stopSmuxService()
 	s.closeSmuxConnPool()
+	if s.rdmaCtx != nil {
+		s.rdmaCtx.Stop()
+	}
 	MasterClient.Stop()
 	// stop cpu sample
 	close(s.cpuSamplerDone)
@@ -1182,6 +1208,35 @@ func (s *DataNode) initConnPool() {
 		s.putRepairConnFunc = func(conn net.Conn, forceClose bool) {
 			log.LogDebugf("[dataNode.putRepairConnFunc] put tcp conn, addr(%v), forceClose(%v)", conn.RemoteAddr().String(), forceClose)
 			gConnPool.PutConnect(conn.(*net.TCPConn), forceClose)
+		}
+	}
+
+	if s.enableRDMA {
+		log.LogInfof("Start: init RDMA server on port %d", s.rdmaPort)
+		rdmaCfg := RDMAServerConfig{
+			Port:     s.rdmaPort,
+			NumSlots: s.rdmaNumSlots,
+			SlotSize: s.rdmaSlotSize,
+		}
+		ctx, err := NewDataNodeRDMACtx(rdmaCfg, func(p *repl.Packet, c net.Conn) error {
+			if err := s.Prepare(p); err != nil {
+				return err
+			}
+			return s.OperatePacket(p, c)
+		})
+		if err != nil {
+			log.LogWarnf("initConnPool: RDMA init failed, degraded to TCP-only: %v", err)
+		} else {
+			if err = ctx.Start(); err != nil {
+				log.LogWarnf("initConnPool: RDMA Start failed, degraded to TCP-only: %v", err)
+			} else {
+				s.rdmaCtx = ctx
+				if ferr := repl.EnableFollowerRDMA(s.rdmaNumSlots, s.rdmaSlotSize); ferr != nil {
+					log.LogWarnf("initConnPool: follower RDMA init failed, replication uses TCP: %v", ferr)
+				} else {
+					log.LogInfof("initConnPool: follower RDMA enabled (numSlots=%d slotSize=%d)", s.rdmaNumSlots, s.rdmaSlotSize)
+				}
+			}
 		}
 	}
 }

@@ -15,6 +15,10 @@ build: server authtool client cli libsdk fsck fdstore bcache blobstore deploy cf
 server:
 	@build/build.sh server $(GOMOD) --threads=$(threads)
 
+phony += server-notrdma
+server-notrdma:
+	@RDMA=0 build/build.sh server $(GOMOD) --threads=$(threads)
+
 
 deploy:
 	@build/build.sh deploy $(GOMOD) --threads=$(threads)

@@ -281,6 +281,14 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	}
 	s.mw.VerReadSeq = s.ec.GetReadVer()
 
+	if opt.EnableRDMA {
+		if rerr := stream.InitRDMAConnPool(int(opt.RDMANumSlots), int(opt.RDMASlotSize)); rerr != nil {
+			log.LogWarnf("NewSuper: RDMA init failed, falling back to TCP: %v", rerr)
+		} else {
+			log.LogInfof("NewSuper: RDMA client pool initialized (numSlots=%d slotSize=%d)", opt.RDMANumSlots, opt.RDMASlotSize)
+		}
+	}
+
 	needCreateBlobClient := false
 	if !proto.IsValidStorageClass(opt.VolStorageClass) {
 		// for compatability: old version server modules has no filed VolStorageClas

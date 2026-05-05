@@ -79,11 +79,12 @@ func DefaultSyncOptions() SyncOptions {
 
 // Task is a unit of work produced by the diff phase.
 type Task struct {
-	SrcKey string
-	DstKey string
-	Size   int64
-	Mtime  time.Time
-	Op     TaskOp
+	SrcKey  string
+	DstKey  string
+	Size    int64
+	DstSize int64
+	Mtime   time.Time
+	Op      TaskOp
 }
 
 // TaskOp is the operation type for a sync task.
@@ -192,7 +193,7 @@ func (s *Syncer) mergeDiff(
 		default:
 			// same key on both sides → checker decides
 			if !srcObj.IsDir && s.filter.Allow(srcObj.Key, srcObj.Size, srcObj.Mtime) {
-				if !emit(Task{SrcKey: srcObj.Key, DstKey: dstObj.Key, Size: srcObj.Size, Mtime: srcObj.Mtime, Op: OpCopy}) {
+				if !emit(Task{SrcKey: srcObj.Key, DstKey: dstObj.Key, Size: srcObj.Size, DstSize: dstObj.Size, Mtime: srcObj.Mtime, Op: OpCopy}) {
 					return
 				}
 			}
@@ -236,7 +237,13 @@ func (s *Syncer) runCheckers(ctx context.Context, in <-chan Task, out chan<- Tas
 				return
 			}
 
-			// By default forward all copy tasks; size/mtime comparison would go here.
+			// Size-only comparison: skip if both sides report a positive equal size.
+			if s.opts.SizeOnly && task.Size > 0 && task.DstSize > 0 && task.Size == task.DstSize {
+				s.stats.FilesSkipped.Add(1)
+				return
+			}
+
+			// By default forward all copy tasks; checksum comparison would go here.
 			select {
 			case <-ctx.Done():
 			case out <- task:

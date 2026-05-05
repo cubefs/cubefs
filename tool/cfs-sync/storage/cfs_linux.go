@@ -38,6 +38,10 @@ func NewCFS(cfg CFSConfig, root string) (*CFSStorage, error) {
 	if err != nil {
 		return nil, fmt.Errorf("get volume info: %w", err)
 	}
+	if proto.IsCold(volInfo.VolType) {
+		return nil, fmt.Errorf("cfs-sync does not support BlobStore (cold) volumes: vol %q has VolType=%d StorageClass=%d",
+			cfg.Vol, volInfo.VolType, volInfo.VolStorageClass)
+	}
 
 	mw, err := meta.NewMetaWrapper(&meta.MetaConfig{
 		Volume:        cfg.Vol,
@@ -269,6 +273,12 @@ func (c *CFSStorage) Put(_ context.Context, key string, r io.Reader, _ int64) er
 
 	if err = c.ec.OpenStream(ino, true, false, fpath); err != nil {
 		return fmt.Errorf("open stream %s: %w", fpath, err)
+	}
+	// Truncate extents to 0 before writing so stale tail data from a previous
+	// (larger) version of the file is not left behind.
+	if err = c.ec.Truncate(c.mw, dirIno, ino, 0, fpath); err != nil {
+		_ = c.ec.CloseStream(ino)
+		return fmt.Errorf("truncate %s: %w", fpath, err)
 	}
 
 	buf := make([]byte, 2*1024*1024)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"testing"
 
 	"github.com/cubefs/cubefs/tool/cfs-sync/storage"
@@ -95,5 +96,75 @@ func TestOpenStorage_CFSURIMissingMaster(t *testing.T) {
 	_, err := openStorage("cfs://my-vol/data", nil, storage.S3Config{}, "", "")
 	if err == nil {
 		t.Error("expected error for cfs:// with no masters, got nil")
+	}
+}
+
+func TestSeparateArgs(t *testing.T) {
+	newFS := func() *flag.FlagSet {
+		fs := flag.NewFlagSet("test", flag.ContinueOnError)
+		fs.String("endpoint", "", "")
+		fs.Bool("no-ssl", false, "")
+		fs.Int("transfers", 10, "")
+		return fs
+	}
+
+	tests := []struct {
+		name       string
+		args       []string
+		wantFlags  []string
+		wantPoslen int
+	}{
+		{
+			name:       "flags before positionals",
+			args:       []string{"--endpoint", "http://host", "src", "dst"},
+			wantFlags:  []string{"--endpoint", "http://host"},
+			wantPoslen: 2,
+		},
+		{
+			name:       "flags after positionals",
+			args:       []string{"src", "dst", "--endpoint", "http://host", "--no-ssl"},
+			wantFlags:  []string{"--endpoint", "http://host", "--no-ssl"},
+			wantPoslen: 2,
+		},
+		{
+			name:       "flags mixed with positionals",
+			args:       []string{"--transfers", "5", "src", "--no-ssl", "dst", "--endpoint", "http://host"},
+			wantFlags:  []string{"--transfers", "5", "--no-ssl", "--endpoint", "http://host"},
+			wantPoslen: 2,
+		},
+		{
+			name:       "flag=value form",
+			args:       []string{"src", "dst", "--endpoint=http://host"},
+			wantFlags:  []string{"--endpoint=http://host"},
+			wantPoslen: 2,
+		},
+		{
+			name:       "no flags",
+			args:       []string{"src", "dst"},
+			wantFlags:  nil,
+			wantPoslen: 2,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fs := newFS()
+			flagArgs, positionals := separateArgs(fs, tt.args)
+			if len(positionals) != tt.wantPoslen {
+				t.Errorf("positionals len = %d, want %d (got %v)", len(positionals), tt.wantPoslen, positionals)
+			}
+			if len(flagArgs) != len(tt.wantFlags) {
+				t.Errorf("flagArgs = %v, want %v", flagArgs, tt.wantFlags)
+				return
+			}
+			for i, f := range flagArgs {
+				if f != tt.wantFlags[i] {
+					t.Errorf("flagArgs[%d] = %q, want %q", i, f, tt.wantFlags[i])
+				}
+			}
+			// Verify Parse succeeds
+			if err := fs.Parse(flagArgs); err != nil {
+				t.Errorf("fs.Parse(flagArgs) error: %v", err)
+			}
+		})
 	}
 }

@@ -31,6 +31,10 @@ import (
 
 var gConnPool = util.NewConnectPool()
 
+// followerRDMASend is nil by default; non-nil only on builds with RDMA enabled.
+// When set, follower replication uses RDMA Write instead of TCP for data transfer.
+var followerRDMASend func(addr string, fp *FollowerPacket) error
+
 // ReplProtocol defines the struct of the replication protocol.
 // 1. ServerConn reads a packet from the client socket, and analyzes the addresses of the followers.
 // 2. After the preparation, the packet is send to toBeProcessedCh. If failure happens, send it to the response channel.
@@ -310,15 +314,22 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 
 func (rp *ReplProtocol) sendRequestToAllFollowers(request *Packet) (index int, err error) {
 	for index = 0; index < len(request.followersAddrs); index++ {
+		followerRequest := NewFollowerPacket()
+		copyPacket(request, followerRequest)
+		followerRequest.RemainingFollowers = 0
+		request.followerPackets[index] = followerRequest
+
+		if followerRDMASend != nil {
+			addr := request.followersAddrs[index]
+			go func(fp *FollowerPacket) { fp.respCh <- followerRDMASend(addr, fp) }(followerRequest)
+			continue
+		}
+
 		var transport *FollowerTransport
 		if transport, err = rp.allocateFollowersConns(request, index); err != nil {
 			request.PackErrorBody(ActionSendToFollowers, err.Error())
 			return
 		}
-		followerRequest := NewFollowerPacket()
-		copyPacket(request, followerRequest)
-		followerRequest.RemainingFollowers = 0
-		request.followerPackets[index] = followerRequest
 		transport.Write(followerRequest)
 	}
 

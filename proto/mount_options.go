@@ -100,6 +100,10 @@ const (
 	MinimumNlinkReadDir
 	InodeLruLimit
 	FuseServeThreads
+	// rdma
+	EnableRDMA
+	RDMANumSlots
+	RDMASlotSize
 	MaxMountOption
 )
 
@@ -209,6 +213,9 @@ func InitMountOptions(opts []MountOption) {
 	opts[MinimumNlinkReadDir] = MountOption{"minimumNlinkReadDir", "the minimum Nlink value of the directory that actively triggers the ReadDir operation", "", int64(10000)}
 	opts[InodeLruLimit] = MountOption{"inodeLruLimit", "capacity for inode lru", "", int64(10000000)}
 	opts[FuseServeThreads] = MountOption{"fuseServeThreads", "Fuse Serve Threads", "", int64(0)}
+	opts[EnableRDMA] = MountOption{"rdmaEnable", "Enable RDMA data path", "", false}
+	opts[RDMANumSlots] = MountOption{"rdmaNumSlots", "Number of RDMA slots per connection", "", int64(256)}
+	opts[RDMASlotSize] = MountOption{"rdmaSlotSize", "Size of each RDMA slot in bytes", "", int64(131072)} // 128 KB
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
 	}
@@ -401,4 +408,9 @@ type MountOptions struct {
 	InodeLruLimit         int64
 	FuseServeThreads      int64
 	MinReadAheadSize      int64
+
+	// rdma
+	EnableRDMA   bool
+	RDMANumSlots int64
+	RDMASlotSize int64
 }

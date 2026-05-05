@@ -14,6 +14,15 @@ if [ "${use_clang}" != "" ]; then
     cgo_ldflags="-L${BuildDependsLibPath} -lrocksdb -lz -lbz2 -lsnappy -llz4 -lzstd -lc++"
 fi
 cgo_cflags="-I${BuildDependsIncludePath}"
+
+# RDMA build: enabled by default on Linux (requires libibverbs-dev librdmacm-dev).
+# Set RDMA=0 to produce a plain TCP-only binary without RDMA dependencies.
+RDMA_TAGS="-tags rdma"
+if [ "${RDMA}" == "0" ]; then
+    RDMA_TAGS=""
+else
+    cgo_ldflags="${cgo_ldflags} -lrdmacm -libverbs"
+fi
 MODFLAGS=""
 gomod=${2:-"on"}
 
@@ -277,7 +286,7 @@ run_test_cover() {
 build_server() {
     pushd $SrcPath >/dev/null
     echo -n "build cfs-server   "
-    CGO_ENABLED=1 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-server ${SrcPath}/cmd/*.go && echo "success" || echo "failed"
+    CGO_ENABLED=1 go build ${MODFLAGS} ${RDMA_TAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-server ${SrcPath}/cmd/*.go && echo "success" || echo "failed"
     popd >/dev/null
 }
 
@@ -327,7 +336,7 @@ build_blobstore() {
 build_client() {
     pushd $SrcPath >/dev/null
     echo -n "build cfs-client   "
-    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-client ${SrcPath}/client/*.go  && echo "success" || echo "failed"
+    CGO_ENABLED=0 go build ${MODFLAGS} ${RDMA_TAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-client ${SrcPath}/client/*.go  && echo "success" || echo "failed"
     popd >/dev/null
 }
 

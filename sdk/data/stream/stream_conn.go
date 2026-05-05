@@ -276,6 +276,13 @@ func (sc *StreamConn) readActiveHosts(dp *wrapper.DataPartition, req *Packet, ge
 }
 
 func (sc *StreamConn) sendToDataPartitionByAddr(req *Packet, getReply GetReplyFunc) (err error) {
+	if rdmaConnPool != nil {
+		if err = sendPacketViaRDMA(sc.currAddr, req); err != nil {
+			log.LogWarnf("sendToDataPartition: rdma failed, addr(%v) reqPacket(%v) err(%v), fallthrough to TCP", sc.currAddr, req, err)
+		} else {
+			return
+		}
+	}
 	conn, err := StreamConnPool.GetConnect(sc.currAddr)
 	if err == nil {
 		log.LogDebugf("req opcode %v conn %v addr %v dp %v", req.Opcode, conn, sc.currAddr, sc.dp)

@@ -39,6 +39,10 @@ func newCFSClient(masters []string, vol, logDir, logLevel string) (*cfsClient, e
 	if err != nil {
 		return nil, fmt.Errorf("get volume info from master: %w", err)
 	}
+	if proto.IsCold(volInfo.VolType) {
+		return nil, fmt.Errorf("cfs-sync does not support BlobStore (cold) volumes: vol %q has VolType=%d StorageClass=%d",
+			vol, volInfo.VolType, volInfo.VolStorageClass)
+	}
 
 	mw, err := meta.NewMetaWrapper(&meta.MetaConfig{
 		Volume:        vol,
