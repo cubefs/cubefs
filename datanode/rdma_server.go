@@ -8,7 +8,6 @@ import (
 	"net"
 	"runtime"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/datanode/repl"
