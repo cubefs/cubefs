@@ -336,7 +336,8 @@ build_blobstore() {
 build_client() {
     pushd $SrcPath >/dev/null
     echo -n "build cfs-client   "
-    CGO_ENABLED=0 go build ${MODFLAGS} ${RDMA_TAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-client ${SrcPath}/client/*.go  && echo "success" || echo "failed"
+    # RDMA client path requires CGO (libibverbs/librdmacm); use CGO_ENABLED=1 when RDMA tags are active.
+    CGO_ENABLED=1 go build ${MODFLAGS} ${RDMA_TAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-client ${SrcPath}/client/*.go  && echo "success" || echo "failed"
     popd >/dev/null
 }
 
