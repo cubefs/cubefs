@@ -430,6 +430,36 @@ func TestShouldUseTagForMetaPartitionSelection_emptySrc(t *testing.T) {
 	require.False(t, use) // srcAddr=="" short-circuits before tag logic
 }
 
+func TestApplyMetaPartitionSelectionTag(t *testing.T) {
+	t.Parallel()
+
+	const srcAddr = "10.0.0.1:17210"
+	mp := &MetaPartition{
+		volName: "v",
+		Peers:   []proto.Peer{{Addr: srcAddr, Type: raftProto.PeerNormal}},
+	}
+
+	t.Run("default source tag skips tag filter", func(t *testing.T) {
+		c := &Cluster{cfg: &clusterConfig{DefaultMpTag: "old->new"}}
+		c.metaNodes.Store(srcAddr, &MetaNode{Addr: srcAddr, Tag: DefaultTag})
+		param := &selectParam{}
+
+		require.NoError(t, c.applyMetaPartitionSelectionTag(param, mp, srcAddr))
+		require.Equal(t, int32(0), param.selectType)
+		require.Equal(t, DefaultTag, param.tag)
+	})
+
+	t.Run("non-default source tag keeps tag filter", func(t *testing.T) {
+		c := &Cluster{cfg: &clusterConfig{DefaultMpTag: "old->new"}}
+		c.metaNodes.Store(srcAddr, &MetaNode{Addr: srcAddr, Tag: "old"})
+		param := &selectParam{}
+
+		require.NoError(t, c.applyMetaPartitionSelectionTag(param, mp, srcAddr))
+		require.Equal(t, int32(proto.SelectTypeTag), param.selectType)
+		require.Equal(t, "old", param.tag)
+	})
+}
+
 func TestSelectTargetMetaPeer_noHosts(t *testing.T) {
 	t.Parallel()
 	c := &Cluster{Name: "c", cfg: newClusterConfig(), ClusterTopoSubItem: ClusterTopoSubItem{t: newTopology()}}

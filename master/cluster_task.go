@@ -250,13 +250,8 @@ func (c *Cluster) selectTargetMetaPeer(mp *MetaPartition, srcAddr, targetAddr st
 
 	log.LogInfof("action[selectTargetMetaPeer] param[%v], nodeType[%v]", param.String(), nodeType)
 
-	useTag, err := c.shouldUseTagForMetaPartitionSelection(mp, srcAddr)
-	if err != nil {
+	if err = c.applyMetaPartitionSelectionTag(param, mp, srcAddr); err != nil {
 		return nil, finalDstStoreMode, err
-	}
-	if useTag {
-		param.selectType = proto.SelectTypeTag
-		param.tag = c.GetMetaNodeTag(srcAddr)
 	}
 
 	if targetAddr != "" {
@@ -418,6 +413,25 @@ func (c *Cluster) shouldUseTagForMetaPartitionSelection(mp *MetaPartition, srcAd
 	}
 
 	return true, nil
+}
+
+func (c *Cluster) applyMetaPartitionSelectionTag(param *selectParam, mp *MetaPartition, srcAddr string) error {
+	useTag, err := c.shouldUseTagForMetaPartitionSelection(mp, srcAddr)
+	if err != nil {
+		return err
+	}
+	if !useTag {
+		return nil
+	}
+
+	tag := c.GetMetaNodeTag(srcAddr)
+	if tag == DefaultTag {
+		return nil
+	}
+
+	param.selectType = proto.SelectTypeTag
+	param.tag = tag
+	return nil
 }
 
 // prepareMetaPartitionMigration prepares common parameters and validates for meta partition migration
