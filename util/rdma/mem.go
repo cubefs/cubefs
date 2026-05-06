@@ -4,6 +4,7 @@ package rdma
 
 /*
 #include <stdlib.h>
+#include <string.h>
 */
 import "C"
 
