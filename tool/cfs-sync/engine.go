@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -118,6 +119,25 @@ func NewSyncer(src, dst storage.Storage, opts SyncOptions) *Syncer {
 
 // Run executes the sync and returns the number of failed files.
 func (s *Syncer) Run(ctx context.Context) int64 {
+	statsInterval := s.opts.Stats
+	if s.opts.Progress && statsInterval <= 0 {
+		statsInterval = 5 * time.Second
+	}
+	if statsInterval > 0 {
+		go func() {
+			ticker := time.NewTicker(statsInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					s.stats.print()
+				}
+			}
+		}()
+	}
+
 	if s.opts.FilesFrom != "" {
 		return s.runFilesFrom(ctx)
 	}
@@ -278,7 +298,11 @@ func (s *Syncer) runWorkers(ctx context.Context, in <-chan Task) int64 {
 				defer func() { <-sem; wg.Done() }()
 				var err error
 				if s.opts.DryRun {
-					fmt.Printf("[dry-run] %s %s\n", opName(task.Op), task.SrcKey)
+					target := task.SrcKey
+					if task.Op == OpDelete {
+						target = task.DstKey
+					}
+					fmt.Printf("[dry-run] %s %s\n", opName(task.Op), target)
 				} else {
 					err = s.executeWithRetry(ctx, task)
 				}
@@ -292,10 +316,14 @@ func (s *Syncer) runWorkers(ctx context.Context, in <-chan Task) int64 {
 	var failed int64
 	for r := range results {
 		if r.err != nil {
-			failed++
-			s.stats.FilesFailed.Add(1)
-			if !s.opts.IgnoreErrors {
-				fmt.Fprintf(os.Stderr, "error: %v\n", r.err)
+			if errors.Is(r.err, context.Canceled) || errors.Is(r.err, context.DeadlineExceeded) {
+				s.stats.FilesSkipped.Add(1)
+			} else {
+				failed++
+				s.stats.FilesFailed.Add(1)
+				if !s.opts.IgnoreErrors {
+					fmt.Fprintf(os.Stderr, "error: %v\n", r.err)
+				}
 			}
 		}
 	}

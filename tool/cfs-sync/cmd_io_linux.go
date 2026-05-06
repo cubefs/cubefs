@@ -46,6 +46,11 @@ func runRead(args []string) {
 		readSize = int64(fileSize) - *offset
 	}
 	if readSize <= 0 {
+		if *offset > 0 && *offset >= int64(fileSize) {
+			fmt.Fprintf(os.Stderr, "error: offset %d exceeds file size %d\n", *offset, fileSize)
+			os.Exit(1)
+		}
+		// File is empty.
 		return
 	}
 

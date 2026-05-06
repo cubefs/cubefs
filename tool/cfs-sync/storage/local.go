@@ -41,7 +41,7 @@ func (l *LocalStorage) List(ctx context.Context, prefix string) (<-chan *Object,
 		base := l.fullPath(prefix)
 		var entries []string
 
-		err := filepath.WalkDir(base, func(path string, d os.DirEntry, err error) error {
+		err := filepath.WalkDir(base, func(p string, d os.DirEntry, err error) error {
 			if err != nil {
 				return err
 			}
@@ -50,7 +50,7 @@ func (l *LocalStorage) List(ctx context.Context, prefix string) (<-chan *Object,
 				return ctx.Err()
 			default:
 			}
-			entries = append(entries, path)
+			entries = append(entries, p)
 			return nil
 		})
 		if err != nil {
@@ -63,17 +63,21 @@ func (l *LocalStorage) List(ctx context.Context, prefix string) (<-chan *Object,
 		// sort for lexicographic order
 		sort.Strings(entries)
 
-		for _, path := range entries {
-			info, serr := os.Stat(path)
+		for _, p := range entries {
+			info, serr := os.Stat(p)
 			if serr != nil {
 				continue
 			}
-			rel, rerr := filepath.Rel(l.root, path)
+			rel, rerr := filepath.Rel(l.root, p)
 			if rerr != nil {
 				continue
 			}
 			key := filepath.ToSlash(rel)
 			if key == "." {
+				if !info.IsDir() {
+					// l.root itself is a plain file — emit as key="" for single-file sync.
+					objects <- &Object{Key: "", Size: info.Size(), Mtime: info.ModTime()}
+				}
 				continue
 			}
 			obj := &Object{

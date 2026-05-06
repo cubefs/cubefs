@@ -166,7 +166,7 @@ func runSync(args []string, deleteByDefault bool) {
 	syncer := NewSyncer(src, dst, opts)
 	failed := syncer.Run(ctx)
 
-	if failed > 0 {
+	if failed > 0 && !opts.IgnoreErrors {
 		os.Exit(1)
 	}
 }
@@ -238,6 +238,7 @@ func parseSize(s string) (int64, error) {
 		return 0, nil
 	}
 	multipliers := map[string]int64{
+		"B":                               1,
 		"K": 1024, "KB": 1024,
 		"M": 1024 * 1024, "MB": 1024 * 1024, "MIB": 1024 * 1024,
 		"G": 1024 * 1024 * 1024, "GB": 1024 * 1024 * 1024, "GIB": 1024 * 1024 * 1024,

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -157,9 +158,9 @@ func (c *cfsClient) openFile(filePath string, flags int, fileMode uint32) (*cfsF
 
 	if flags&syscall.O_CREAT != 0 {
 		info, cerr := c.mw.Create_ll(dirIno, name, fileMode, 0, 0, nil, filePath, flags&syscall.O_EXCL == 0)
-		if cerr == nil {
+		if cerr == nil && info != nil {
 			ino = info.Inode
-		} else if cerr == syscall.EEXIST && flags&syscall.O_EXCL == 0 {
+		} else if (errors.Is(cerr, syscall.EEXIST) || (cerr == nil && info == nil)) && flags&syscall.O_EXCL == 0 {
 			// File exists and O_EXCL not set: look up the existing inode.
 			child, _, lerr := c.mw.Lookup_ll(dirIno, name)
 			if lerr != nil {
@@ -182,7 +183,7 @@ func (c *cfsClient) openFile(filePath string, flags int, fileMode uint32) (*cfsF
 	}
 
 	if flags&syscall.O_TRUNC != 0 && openForWrite {
-		if terr := c.mw.Truncate(ino, 0, filePath); terr != nil {
+		if terr := c.ec.Truncate(c.mw, dirIno, ino, 0, filePath); terr != nil {
 			_ = c.ec.CloseStream(ino)
 			return nil, fmt.Errorf("truncate %s: %w", filePath, terr)
 		}
@@ -215,5 +216,5 @@ func isNotExist(err error) bool {
 }
 
 func isExist(err error) bool {
-	return err == syscall.EEXIST
+	return errors.Is(err, syscall.EEXIST)
 }

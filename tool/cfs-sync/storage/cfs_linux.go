@@ -91,6 +91,9 @@ func (c *CFSStorage) fullKey(key string) string {
 	if key == "" {
 		return c.root
 	}
+	if c.root == "/" {
+		return "/" + key
+	}
 	return c.root + "/" + key
 }
 
@@ -117,6 +120,23 @@ func (c *CFSStorage) List(ctx context.Context, prefix string) (<-chan *Object, <
 				return
 			}
 			errc <- fmt.Errorf("lookup %s: %w", baseDir, err)
+			return
+		}
+
+		// If baseDir resolves to a plain file (not a directory), emit it as a
+		// single object with key="" so that Get/PutWithMtime can address it via
+		// fullKey("") = c.root.
+		baseInfo, err := c.mw.InodeGet_ll(baseIno)
+		if err != nil {
+			errc <- fmt.Errorf("inode get %s: %w", baseDir, err)
+			return
+		}
+		if !proto.IsDir(baseInfo.Mode) {
+			objects <- &Object{
+				Key:   "",
+				Size:  int64(baseInfo.Size),
+				Mtime: baseInfo.ModifyTime,
+			}
 			return
 		}
 

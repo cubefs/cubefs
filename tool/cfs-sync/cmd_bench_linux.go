@@ -238,4 +238,7 @@ func runFlashBench(masters []string, mode string, bs, numjobs, runtime int, size
 
 	res := buildResult(mode, bs, numjobs, runtime, totalBytes, elapsed, errCount)
 	printFlashResult(res, output, writeBytes, readBytes, writeElapsed, readElapsed, writeErrCount, readErrCount)
+	if errCount > 0 {
+		os.Exit(1)
+	}
 }
