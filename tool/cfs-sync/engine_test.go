@@ -101,6 +101,10 @@ func (m *memStorage) Put(_ context.Context, key string, r io.Reader, _ int64) er
 	return nil
 }
 
+func (m *memStorage) PutWithMtime(ctx context.Context, key string, r io.Reader, size int64, _ time.Time) error {
+	return m.Put(ctx, key, r, size)
+}
+
 func (m *memStorage) Delete(_ context.Context, key string) error {
 	if m.delErr != nil {
 		return m.delErr
@@ -500,6 +504,9 @@ func (f *flakyStorage) Put(ctx context.Context, k string, r io.Reader, sz int64)
 	f.succeeded = true
 	f.mu.Unlock()
 	return f.inner.Put(ctx, k, r, sz)
+}
+func (f *flakyStorage) PutWithMtime(ctx context.Context, k string, r io.Reader, sz int64, _ time.Time) error {
+	return f.Put(ctx, k, r, sz)
 }
 func (f *flakyStorage) Delete(ctx context.Context, k string) error  { return f.inner.Delete(ctx, k) }
 func (f *flakyStorage) MkdirAll(ctx context.Context, k string) error { return f.inner.MkdirAll(ctx, k) }

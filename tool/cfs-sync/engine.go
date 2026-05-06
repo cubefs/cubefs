@@ -84,6 +84,7 @@ type Task struct {
 	Size    int64
 	DstSize int64
 	Mtime   time.Time
+	DstMtime time.Time
 	Op      TaskOp
 }
 
@@ -193,7 +194,7 @@ func (s *Syncer) mergeDiff(
 		default:
 			// same key on both sides → checker decides
 			if !srcObj.IsDir && s.filter.Allow(srcObj.Key, srcObj.Size, srcObj.Mtime) {
-				if !emit(Task{SrcKey: srcObj.Key, DstKey: dstObj.Key, Size: srcObj.Size, DstSize: dstObj.Size, Mtime: srcObj.Mtime, Op: OpCopy}) {
+				if !emit(Task{SrcKey: srcObj.Key, DstKey: dstObj.Key, Size: srcObj.Size, DstSize: dstObj.Size, Mtime: srcObj.Mtime, DstMtime: dstObj.Mtime, Op: OpCopy}) {
 					return
 				}
 			}
@@ -239,6 +240,14 @@ func (s *Syncer) runCheckers(ctx context.Context, in <-chan Task, out chan<- Tas
 
 			// Size-only comparison: skip if both sides report a positive equal size.
 			if s.opts.SizeOnly && task.Size > 0 && task.DstSize > 0 && task.Size == task.DstSize {
+				s.stats.FilesSkipped.Add(1)
+				return
+			}
+
+			// Default: skip if size and mtime both match (within 1-second tolerance for
+			// filesystems with coarse timestamp resolution).
+			if !s.opts.Checksum && task.Size == task.DstSize &&
+				!task.DstMtime.IsZero() && absDuration(task.Mtime.Sub(task.DstMtime)) < time.Second {
 				s.stats.FilesSkipped.Add(1)
 				return
 			}
@@ -333,12 +342,19 @@ func (s *Syncer) copyFile(ctx context.Context, task Task) error {
 	}
 	defer r.Close()
 
-	if err = s.dst.Put(ctx, task.DstKey, r, task.Size); err != nil {
+	if err = s.dst.PutWithMtime(ctx, task.DstKey, r, task.Size, task.Mtime); err != nil {
 		return fmt.Errorf("put %s: %w", task.DstKey, err)
 	}
 	s.stats.FilesTransferred.Add(1)
 	s.stats.BytesTransferred.Add(task.Size)
 	return nil
+}
+
+func absDuration(d time.Duration) time.Duration {
+	if d < 0 {
+		return -d
+	}
+	return d
 }
 
 func (s *Syncer) runFilesFrom(ctx context.Context) int64 {

@@ -114,20 +114,8 @@ func (l *LocalStorage) Get(_ context.Context, key string, off, size int64) (io.R
 	return f, nil
 }
 
-func (l *LocalStorage) Put(_ context.Context, key string, r io.Reader, _ int64) error {
-	dst := l.fullPath(key)
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-		return err
-	}
-	f, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	_, err = io.Copy(f, r)
-	if cerr := f.Close(); cerr != nil && err == nil {
-		err = cerr
-	}
-	return err
+func (l *LocalStorage) Put(ctx context.Context, key string, r io.Reader, size int64) error {
+	return l.PutWithMtime(ctx, key, r, size, time.Time{})
 }
 
 func (l *LocalStorage) PutWithMtime(_ context.Context, key string, r io.Reader, _ int64, mtime time.Time) error {

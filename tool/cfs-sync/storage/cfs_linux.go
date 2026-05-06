@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -19,10 +20,11 @@ import (
 
 // CFSStorage implements Storage using the CubeFS SDK directly (no FUSE).
 type CFSStorage struct {
-	cfg  CFSConfig
-	mw   *meta.MetaWrapper
-	ec   *stream.ExtentClient
-	root string // path prefix within the volume
+	cfg          CFSConfig
+	mw           *meta.MetaWrapper
+	ec           *stream.ExtentClient
+	root         string // path prefix within the volume
+	storageClass uint32
 }
 
 // NewCFS creates a CubeFS Storage backend.
@@ -51,6 +53,7 @@ func NewCFS(cfg CFSConfig, root string) (*CFSStorage, error) {
 	if err != nil {
 		return nil, fmt.Errorf("init meta: %w", err)
 	}
+	mw.DefaultStorageClass = volInfo.VolStorageClass
 
 	ec, err := stream.NewExtentClient(&stream.ExtentConfig{
 		Volume:                 cfg.Vol,
@@ -70,7 +73,7 @@ func NewCFS(cfg CFSConfig, root string) (*CFSStorage, error) {
 	// Normalise root: no trailing slash
 	root = "/" + strings.Trim(root, "/")
 
-	return &CFSStorage{cfg: cfg, mw: mw, ec: ec, root: root}, nil
+	return &CFSStorage{cfg: cfg, mw: mw, ec: ec, root: root, storageClass: volInfo.VolStorageClass}, nil
 }
 
 func (c *CFSStorage) Close() {
@@ -97,6 +100,8 @@ type dirWork struct {
 }
 
 // List streams Objects from the CubeFS volume using concurrent BFS + BatchInodeGet.
+// Objects are buffered, globally sorted, then emitted to maintain lexicographic order
+// (required by the merge-diff algorithm in the sync engine).
 func (c *CFSStorage) List(ctx context.Context, prefix string) (<-chan *Object, <-chan error) {
 	objects := make(chan *Object, 512)
 	errc := make(chan error, 1)
@@ -119,6 +124,10 @@ func (c *CFSStorage) List(ctx context.Context, prefix string) (<-chan *Object, <
 		queue := make(chan dirWork, 1024)
 		queue <- dirWork{ino: baseIno, path: ""}
 
+		// Collect all objects into a buffer so we can sort them before emitting.
+		var buf []*Object
+		var bufMu sync.Mutex
+
 		var wg sync.WaitGroup
 		var mu sync.Mutex
 		var listErr error
@@ -137,16 +146,22 @@ func (c *CFSStorage) List(ctx context.Context, prefix string) (<-chan *Object, <
 						if !ok {
 							return
 						}
-						newDirs, err := c.listDirInto(ctx, work, objects)
-						pending.Done()
+						newObjs, newDirs, err := c.listDir(ctx, work)
 						if err != nil {
 							mu.Lock()
 							if listErr == nil {
 								listErr = err
 							}
 							mu.Unlock()
+							pending.Done()
 						} else {
+							if len(newObjs) > 0 {
+								bufMu.Lock()
+								buf = append(buf, newObjs...)
+								bufMu.Unlock()
+							}
 							pending.Add(len(newDirs))
+							pending.Done()
 							for _, d := range newDirs {
 								select {
 								case <-ctx.Done():
@@ -169,17 +184,27 @@ func (c *CFSStorage) List(ctx context.Context, prefix string) (<-chan *Object, <
 		wg.Wait()
 		if listErr != nil {
 			errc <- listErr
+			return
+		}
+
+		sort.Slice(buf, func(i, j int) bool { return buf[i].Key < buf[j].Key })
+		for _, obj := range buf {
+			select {
+			case <-ctx.Done():
+				return
+			case objects <- obj:
+			}
 		}
 	}()
 
 	return objects, errc
 }
 
-// listDirInto reads one directory, sends file Objects to objects chan, and returns subdirectory work items.
-func (c *CFSStorage) listDirInto(ctx context.Context, work dirWork, objects chan<- *Object) ([]dirWork, error) {
+// listDir reads one directory and returns its Objects and subdirectory work items.
+func (c *CFSStorage) listDir(ctx context.Context, work dirWork) ([]*Object, []dirWork, error) {
 	dentries, err := c.mw.ReadDir_ll(work.ino)
 	if err != nil {
-		return nil, fmt.Errorf("readdir ino=%d: %w", work.ino, err)
+		return nil, nil, fmt.Errorf("readdir ino=%d: %w", work.ino, err)
 	}
 
 	inos := make([]uint64, 0, len(dentries))
@@ -195,11 +220,12 @@ func (c *CFSStorage) listDirInto(ctx context.Context, work dirWork, objects chan
 
 	sort.Slice(dentries, func(i, j int) bool { return dentries[i].Name < dentries[j].Name })
 
+	var objs []*Object
 	var subdirs []dirWork
 	for _, d := range dentries {
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return nil, nil, ctx.Err()
 		default:
 		}
 
@@ -217,20 +243,12 @@ func (c *CFSStorage) listDirInto(ctx context.Context, work dirWork, objects chan
 
 		if proto.IsDir(d.Type) {
 			subdirs = append(subdirs, dirWork{ino: d.Inode, path: childPath})
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			case objects <- &Object{Key: childPath + "/", IsDir: true, Mtime: mtime}:
-			}
+			objs = append(objs, &Object{Key: childPath + "/", IsDir: true, Mtime: mtime})
 		} else {
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			case objects <- &Object{Key: childPath, Size: size, Mtime: mtime}:
-			}
+			objs = append(objs, &Object{Key: childPath, Size: size, Mtime: mtime})
 		}
 	}
-	return subdirs, nil
+	return objs, subdirs, nil
 }
 
 func (c *CFSStorage) Get(_ context.Context, key string, off, size int64) (io.ReadCloser, error) {
@@ -253,10 +271,14 @@ func (c *CFSStorage) Get(_ context.Context, key string, off, size int64) (io.Rea
 		size = fileSize - off
 	}
 
-	return &cfsReader{ec: c.ec, ino: ino, off: off, size: size}, nil
+	return &cfsReader{ec: c.ec, ino: ino, off: off, size: size, storageClass: c.storageClass}, nil
 }
 
-func (c *CFSStorage) Put(_ context.Context, key string, r io.Reader, _ int64) error {
+func (c *CFSStorage) Put(ctx context.Context, key string, r io.Reader, size int64) error {
+	return c.PutWithMtime(ctx, key, r, size, time.Time{})
+}
+
+func (c *CFSStorage) PutWithMtime(_ context.Context, key string, r io.Reader, _ int64, mtime time.Time) error {
 	fpath := c.fullKey(key)
 	dir, name := splitPath(fpath)
 
@@ -265,11 +287,20 @@ func (c *CFSStorage) Put(_ context.Context, key string, r io.Reader, _ int64) er
 		return fmt.Errorf("mkdirs %s: %w", dir, err)
 	}
 
-	info, err := c.mw.Create_ll(dirIno, name, 0o644|syscall.S_IFREG, 0, 0, nil, fpath, true)
-	if err != nil {
+	var ino uint64
+	info, err := c.mw.Create_ll(dirIno, name, 0o644, 0, 0, nil, fpath, true)
+	if err == nil {
+		ino = info.Inode
+	} else if err == syscall.EEXIST {
+		// File already exists; look up its inode and overwrite.
+		existIno, _, lerr := c.mw.Lookup_ll(dirIno, name)
+		if lerr != nil {
+			return fmt.Errorf("lookup existing %s: %w", fpath, lerr)
+		}
+		ino = existIno
+	} else {
 		return fmt.Errorf("create %s: %w", fpath, err)
 	}
-	ino := info.Inode
 
 	if err = c.ec.OpenStream(ino, true, false, fpath); err != nil {
 		return fmt.Errorf("open stream %s: %w", fpath, err)
@@ -286,7 +317,7 @@ func (c *CFSStorage) Put(_ context.Context, key string, r io.Reader, _ int64) er
 	for {
 		n, rerr := r.Read(buf)
 		if n > 0 {
-			wn, werr := c.ec.Write(ino, written, buf[:n], 0, nil, 0, false, false)
+			wn, werr := c.ec.Write(ino, written, buf[:n], 0, nil, c.storageClass, false, false)
 			written += wn
 			if werr != nil {
 				_ = c.ec.CloseStream(ino)
@@ -306,7 +337,15 @@ func (c *CFSStorage) Put(_ context.Context, key string, r io.Reader, _ int64) er
 		_ = c.ec.CloseStream(ino)
 		return fmt.Errorf("flush %s: %w", fpath, err)
 	}
-	return c.ec.CloseStream(ino)
+	if err = c.ec.CloseStream(ino); err != nil {
+		return err
+	}
+	if !mtime.IsZero() {
+		if serr := c.mw.Setattr(ino, proto.AttrModifyTime, 0, 0, 0, 0, mtime.Unix()); serr != nil {
+			return fmt.Errorf("setattr mtime %s: %w", fpath, serr)
+		}
+	}
+	return nil
 }
 
 func (c *CFSStorage) Delete(_ context.Context, key string) error {
@@ -345,7 +384,7 @@ func (c *CFSStorage) mkdirsInternal(dirPath string) (uint64, error) {
 		if lerr != syscall.ENOENT {
 			return 0, fmt.Errorf("lookup %s: %w", current, lerr)
 		}
-		info, cerr := c.mw.Create_ll(parentIno, part, 0o755|syscall.S_IFDIR, 0, 0, nil, current, false)
+		info, cerr := c.mw.Create_ll(parentIno, part, 0o755|uint32(os.ModeDir), 0, 0, nil, current, false)
 		if cerr != nil {
 			if cerr == syscall.EEXIST {
 				child, _, _ = c.mw.Lookup_ll(parentIno, part)
@@ -375,11 +414,12 @@ func splitPath(p string) (string, string) {
 
 // cfsReader implements io.ReadCloser for a CubeFS file extent stream.
 type cfsReader struct {
-	ec   *stream.ExtentClient
-	ino  uint64
-	off  int64
-	size int64
-	read int64
+	ec           *stream.ExtentClient
+	ino          uint64
+	off          int64
+	size         int64
+	read         int64
+	storageClass uint32
 }
 
 func (r *cfsReader) Read(p []byte) (int, error) {
@@ -391,7 +431,7 @@ func (r *cfsReader) Read(p []byte) (int, error) {
 		toRead = r.size - r.read
 		p = p[:toRead]
 	}
-	n, err := r.ec.Read(r.ino, p, int(r.off+r.read), len(p), 0, false)
+	n, err := r.ec.Read(r.ino, p, int(r.off+r.read), len(p), r.storageClass, false)
 	r.read += int64(n)
 	if err != nil && err != io.EOF {
 		return n, err

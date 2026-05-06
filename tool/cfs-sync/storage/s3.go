@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
@@ -132,6 +133,11 @@ func (s *S3Storage) Get(ctx context.Context, key string, off, size int64) (io.Re
 }
 
 func (s *S3Storage) Put(ctx context.Context, key string, r io.Reader, size int64) error {
+	return s.PutWithMtime(ctx, key, r, size, time.Time{})
+}
+
+// PutWithMtime uploads to S3; mtime is ignored since S3 does not support custom modification times.
+func (s *S3Storage) PutWithMtime(ctx context.Context, key string, r io.Reader, size int64, _ time.Time) error {
 	// Buffer into memory for PutObject (required for Content-Length).
 	// For large files the caller should use multipart; here we keep it simple.
 	var body io.ReadSeeker

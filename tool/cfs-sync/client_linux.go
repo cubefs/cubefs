@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"path"
 	"strings"
 	"syscall"
@@ -22,9 +23,10 @@ type cfsFile struct {
 }
 
 type cfsClient struct {
-	mw *meta.MetaWrapper
-	ec *stream.ExtentClient
-	rc *remotecache.RemoteCacheClient
+	mw           *meta.MetaWrapper
+	ec           *stream.ExtentClient
+	rc           *remotecache.RemoteCacheClient
+	storageClass uint32
 }
 
 func newCFSClient(masters []string, vol, logDir, logLevel string) (*cfsClient, error) {
@@ -52,6 +54,7 @@ func newCFSClient(masters []string, vol, logDir, logLevel string) (*cfsClient, e
 	if err != nil {
 		return nil, fmt.Errorf("init meta: %w", err)
 	}
+	mw.DefaultStorageClass = volInfo.VolStorageClass
 
 	ec, err := stream.NewExtentClient(&stream.ExtentConfig{
 		Volume:                 vol,
@@ -68,7 +71,7 @@ func newCFSClient(masters []string, vol, logDir, logLevel string) (*cfsClient, e
 		return nil, fmt.Errorf("init extent client: %w", err)
 	}
 
-	return &cfsClient{mw: mw, ec: ec}, nil
+	return &cfsClient{mw: mw, ec: ec, storageClass: volInfo.VolStorageClass}, nil
 }
 
 func newFlashClient(masters []string, logDir, logLevel string) (*cfsClient, error) {
@@ -125,7 +128,7 @@ func (c *cfsClient) mkdirs(dirPath string, mode uint32) error {
 		if !isNotExist(lerr) {
 			return fmt.Errorf("lookup %s: %w", current, lerr)
 		}
-		info, cerr := c.mw.Create_ll(parentIno, part, mode|syscall.S_IFDIR, 0, 0, nil, current, false)
+		info, cerr := c.mw.Create_ll(parentIno, part, mode|uint32(os.ModeDir), 0, 0, nil, current, false)
 		if cerr != nil {
 			if isExist(cerr) {
 				child, _, _ = c.mw.Lookup_ll(parentIno, part)
@@ -153,11 +156,19 @@ func (c *cfsClient) openFile(filePath string, flags int, fileMode uint32) (*cfsF
 	openForWrite := (flags & syscall.O_ACCMODE) != syscall.O_RDONLY
 
 	if flags&syscall.O_CREAT != 0 {
-		info, cerr := c.mw.Create_ll(dirIno, name, fileMode|syscall.S_IFREG, 0, 0, nil, filePath, flags&syscall.O_EXCL == 0)
-		if cerr != nil {
+		info, cerr := c.mw.Create_ll(dirIno, name, fileMode, 0, 0, nil, filePath, flags&syscall.O_EXCL == 0)
+		if cerr == nil {
+			ino = info.Inode
+		} else if cerr == syscall.EEXIST && flags&syscall.O_EXCL == 0 {
+			// File exists and O_EXCL not set: look up the existing inode.
+			child, _, lerr := c.mw.Lookup_ll(dirIno, name)
+			if lerr != nil {
+				return nil, fmt.Errorf("lookup existing %s: %w", filePath, lerr)
+			}
+			ino = child
+		} else {
 			return nil, fmt.Errorf("create %s: %w", filePath, cerr)
 		}
-		ino = info.Inode
 	} else {
 		child, _, lerr := c.mw.Lookup_ll(dirIno, name)
 		if lerr != nil {
@@ -181,11 +192,11 @@ func (c *cfsClient) openFile(filePath string, flags int, fileMode uint32) (*cfsF
 }
 
 func (f *cfsFile) readFile(buf []byte, off int64) (int, error) {
-	return f.c.ec.Read(f.ino, buf, int(off), len(buf), 0, false)
+	return f.c.ec.Read(f.ino, buf, int(off), len(buf), f.c.storageClass, false)
 }
 
 func (f *cfsFile) writeFile(data []byte, off int64) (int, error) {
-	return f.c.ec.Write(f.ino, int(off), data, 0, nil, 0, false, false)
+	return f.c.ec.Write(f.ino, int(off), data, 0, nil, f.c.storageClass, false, false)
 }
 
 func (f *cfsFile) flush() error {

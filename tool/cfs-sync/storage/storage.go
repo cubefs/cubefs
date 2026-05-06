@@ -28,6 +28,10 @@ type Storage interface {
 	// Put writes size bytes from r to key.
 	Put(ctx context.Context, key string, r io.Reader, size int64) error
 
+	// PutWithMtime writes size bytes from r to key and sets the modification time.
+	// mtime is ignored when zero.
+	PutWithMtime(ctx context.Context, key string, r io.Reader, size int64, mtime time.Time) error
+
 	// Delete removes key.
 	Delete(ctx context.Context, key string) error
 
