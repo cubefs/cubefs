@@ -72,4 +72,10 @@ static inline int cubefs_poll_cq(struct ibv_cq *cq, int max, struct ibv_wc *wcs)
     return ibv_poll_cq(cq, max, wcs);
 }
 
+/* Extract the conn param pointer from an event (param is a union; CGO cannot
+ * access union fields directly — it represents them as [N]byte). */
+static inline struct rdma_conn_param *cubefs_event_conn_param(struct rdma_cm_event *event) {
+    return &event->param.conn;
+}
+
 #endif /* CUBEFS_RDMA_H */

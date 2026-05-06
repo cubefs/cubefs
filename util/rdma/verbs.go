@@ -224,9 +224,8 @@ func getRequest(listenID *C.struct_rdma_cm_id) (*C.struct_rdma_cm_id, []byte, er
 	}
 	connID := event.id
 	var privData []byte
-	if event.param.conn.private_data_len > 0 {
-		privData = C.GoBytes(unsafe.Pointer(event.param.conn.private_data),
-			C.int(event.param.conn.private_data_len))
+	if cp := C.cubefs_event_conn_param(event); cp.private_data_len > 0 {
+		privData = C.GoBytes(unsafe.Pointer(cp.private_data), C.int(cp.private_data_len))
 	}
 	C.rdma_ack_cm_event(event)
 	return connID, privData, nil
@@ -277,9 +276,8 @@ func connectTo(id *C.struct_rdma_cm_id, privData []byte) ([]byte, error) {
 		return nil, fmt.Errorf("rdma: expected ESTABLISHED, got %d", event.event)
 	}
 	var serverData []byte
-	if event.param.conn.private_data_len > 0 {
-		serverData = C.GoBytes(unsafe.Pointer(event.param.conn.private_data),
-			C.int(event.param.conn.private_data_len))
+	if cp := C.cubefs_event_conn_param(event); cp.private_data_len > 0 {
+		serverData = C.GoBytes(unsafe.Pointer(cp.private_data), C.int(cp.private_data_len))
 	}
 	return serverData, nil
 }
