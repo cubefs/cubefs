@@ -537,10 +537,10 @@ func TestUpdateMetaPartition_endMismatch_enqueuesUpdateMetaReplicaTask(t *testin
 	c.metaNodes.Store(addr, regMN)
 
 	leader := &MetaReplica{
-		Addr:     addr,
-		IsLeader: true,
-		Status:   proto.ReadWrite,
-		metaNode: reportMN,
+		Addr:       addr,
+		IsLeader:   true,
+		Status:     proto.ReadWrite,
+		metaNode:   reportMN,
 		ReportTime: time.Now().Unix(),
 	}
 
@@ -623,4 +623,52 @@ func TestUpdateMetaPartition_endMatch_skipsUpdateTask(t *testing.T) {
 			t.Fatalf("unexpected OpUpdateMetaPartition when Ends match")
 		}
 	}
+}
+
+// TestUpdateMetaPartition_nonHostReport_skipsUpdateTask ensures the early
+// return branch is honored: when a report comes from a node not in mp.Hosts,
+// updateMetaPartition should skip mismatch handling and must not enqueue
+// OpUpdateMetaPartition tasks.
+func TestUpdateMetaPartition_nonHostReport_skipsUpdateTask(t *testing.T) {
+	t.Parallel()
+
+	const hostAddr = "127.0.0.1:17212"
+	const outsiderAddr = "127.0.0.1:17213"
+
+	reportMN := &MetaNode{Addr: outsiderAddr, IsActive: true}
+	regMN := &MetaNode{
+		Addr:     hostAddr,
+		IsActive: true,
+		Sender:   newTestManager(hostAddr),
+	}
+	c := &Cluster{Name: "test-cluster", cfg: &clusterConfig{}}
+	c.metaNodes.Store(hostAddr, regMN)
+
+	leader := &MetaReplica{
+		Addr:       hostAddr,
+		IsLeader:   true,
+		Status:     proto.ReadWrite,
+		metaNode:   &MetaNode{Addr: hostAddr, IsActive: true},
+		ReportTime: time.Now().Unix(),
+	}
+	mp := &MetaPartition{
+		PartitionID: 503,
+		volName:     "vol-non-host",
+		Start:       0,
+		End:         1234,
+		Hosts:       []string{hostAddr},
+		Replicas:    []*MetaReplica{leader},
+	}
+	mgr := &proto.MetaPartitionReport{
+		PartitionID: 503,
+		VolName:     "vol-non-host",
+		End:         4321, // mismatch should be ignored for non-host reporters
+		Status:      proto.ReadWrite,
+		IsLeader:    false,
+	}
+
+	require.NotPanics(t, func() {
+		mp.updateMetaPartition(mgr, reportMN, c)
+	})
+	require.Empty(t, regMN.Sender.TaskMap, "non-host report must not enqueue update task")
 }

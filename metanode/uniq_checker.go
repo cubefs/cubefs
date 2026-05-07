@@ -179,7 +179,7 @@ func (checker *uniqChecker) legalIn(bid uint64, applyId uint64) bool {
 	if val, ok := checker.op[bid]; ok {
 		checker.RUnlock()
 		log.LogDebugf("uniqChecker legalIn bid %v applyId %v val.applyId %v", bid, applyId, val.applyId)
-		return val.applyId >= applyId
+		return false
 	}
 	checker.RUnlock()
 
