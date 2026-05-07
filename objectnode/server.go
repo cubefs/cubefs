@@ -391,18 +391,18 @@ func handleStart(s common.Server, cfg *config.Config) (err error) {
 	o.updateRegion(ci.Cluster)
 	log.LogInfof("handleStart: get cluster information: region(%v)", o.region)
 	if ci.EbsAddr != "" {
-		err = newEbsClient(ci, cfg)
-		if err != nil {
-			log.LogWarnf("handleStart: new ebsClient err(%v)", err)
-			return err
-		}
-		wt := cfg.GetInt(ebsWriteThreads)
-		if wt != 0 {
-			writeThreads = wt
-		}
-		rt := cfg.GetInt(ebsReadThreads)
-		if rt != 0 {
-			readThreads = rt
+		if err = newEbsClient(ci, cfg); err != nil {
+			log.LogWarnf("handleStart: new ebsClient err(%v), BlobStore/EBS features unavailable", err)
+			err = nil // non-fatal: hot volumes unaffected; EBS path only reached for cold/BlobStore volumes
+		} else {
+			wt := cfg.GetInt(ebsWriteThreads)
+			if wt != 0 {
+				writeThreads = wt
+			}
+			rt := cfg.GetInt(ebsReadThreads)
+			if rt != 0 {
+				readThreads = rt
+			}
 		}
 	}
 	// s3 api qos info
