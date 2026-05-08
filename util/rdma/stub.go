@@ -62,10 +62,20 @@ func (c *RDMAConn) ReturnCredit() error { return nil }
 // CreditStats returns zeros on non-RDMA builds.
 func (c *RDMAConn) CreditStats() (sent, received, processed uint64) { return 0, 0, 0 }
 
+// PollConfig returns the zero config on non-RDMA builds.
+func (c *RDMAConn) PollConfig() PollConfig { return PollConfig{} }
+
+// SleepWaitForRecv is a no-op on non-RDMA builds — the receive path is
+// disabled. Returning errNotSupported would force callers to add build-tag
+// guards around their poll loops; staying silent keeps both flavours
+// compiling cleanly.
+func (c *RDMAConn) SleepWaitForRecv() error { return nil }
+
 type RDMAConnConfig struct {
 	NumSlots      int
 	SlotSize      int
 	CreditAckMode CreditAckMode
+	Poll          PollConfig
 }
 
 type RDMAPoolConfig struct {
@@ -76,6 +86,7 @@ type RDMAPoolConfig struct {
 	MaxConns      int
 	IdleTimeout   time.Duration
 	CreditAckMode CreditAckMode
+	Poll          PollConfig
 }
 
 type RDMAConnPool struct{}

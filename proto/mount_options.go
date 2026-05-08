@@ -105,6 +105,10 @@ const (
 	EnableRDMA
 	RDMANumSlots
 	RDMASlotSize
+	// rdma adaptive poll (P2)
+	RDMABusySpinCount
+	RDMAYieldCount
+	RDMASleepThresholdUs
 	MaxMountOption
 )
 
@@ -217,6 +221,11 @@ func InitMountOptions(opts []MountOption) {
 	opts[EnableRDMA] = MountOption{"rdmaEnable", "Enable RDMA data path", "", false}
 	opts[RDMANumSlots] = MountOption{"rdmaNumSlots", "Number of RDMA slots per connection", "", int64(256)}
 	opts[RDMASlotSize] = MountOption{"rdmaSlotSize", "Size of each RDMA slot in bytes", "", int64(util.BlockSize + util.PageSize)} // 132 KB; mirrors util/rdma.DefaultSlotSize (literal kept here to avoid an import cycle through util/rdma → proto)
+	// P2 adaptive poll knobs. Defaults match rdma.DefaultPollConfig; users
+	// can override per-mount when CPU profile or latency target demands.
+	opts[RDMABusySpinCount] = MountOption{"rdmaBusySpinCount", "Phase-1 max iterations before yielding", "", int64(200)}
+	opts[RDMAYieldCount] = MountOption{"rdmaYieldCount", "Phase-2 max Gosched iterations before sleeping", "", int64(1000)}
+	opts[RDMASleepThresholdUs] = MountOption{"rdmaSleepThresholdUs", "Phase-2 max wall-clock microseconds before sleeping on comp_channel", "", int64(50)}
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
 	}
@@ -411,7 +420,10 @@ type MountOptions struct {
 	MinReadAheadSize      int64
 
 	// rdma
-	EnableRDMA   bool
-	RDMANumSlots int64
-	RDMASlotSize int64
+	EnableRDMA           bool
+	RDMANumSlots         int64
+	RDMASlotSize         int64
+	RDMABusySpinCount    int64
+	RDMAYieldCount       int64
+	RDMASleepThresholdUs int64
 }

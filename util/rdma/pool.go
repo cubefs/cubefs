@@ -17,6 +17,9 @@ type RDMAPoolConfig struct {
 	MaxConns      int
 	IdleTimeout   time.Duration
 	CreditAckMode CreditAckMode
+	// Poll governs busy → yield → sleep behaviour for connections handed
+	// out by this pool. Zero value means "use rdma.DefaultPollConfig".
+	Poll PollConfig
 }
 
 // singlePool manages connections to one remote address.
@@ -125,6 +128,7 @@ func (p *RDMAConnPool) GetConnect(addr string) (*RDMAConn, error) {
 					NumSlots:      p.cfg.NumSlots,
 					SlotSize:      p.cfg.SlotSize,
 					CreditAckMode: p.cfg.CreditAckMode,
+					Poll:          p.cfg.Poll,
 				},
 			}
 			p.pools[addr] = sp

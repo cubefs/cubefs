@@ -18,11 +18,14 @@ var rdmaConnPool *rdma.RDMAConnPool
 
 // InitRDMAConnPool initializes the client-side RDMA connection pool.
 // Must be called before the first write if RDMA is desired.
-func InitRDMAConnPool(numSlots, slotSize int) error {
-	pool, err := rdma.NewRDMAConnPool(rdma.RDMAPoolConfig{
-		NumSlots: numSlots,
-		SlotSize: slotSize,
-	})
+//
+// The full RDMAPoolConfig is accepted so callers can control NumSlots,
+// SlotSize, CreditAckMode, and Poll behaviour without further package-level
+// setters. cfg.NumSlots and cfg.SlotSize must satisfy the validation in
+// rdma.NewRDMAConnPool; otherwise this returns an error and the SDK falls
+// back to TCP transparently.
+func InitRDMAConnPool(cfg rdma.RDMAPoolConfig) error {
+	pool, err := rdma.NewRDMAConnPool(cfg)
 	if err != nil {
 		return fmt.Errorf("rdma client: init pool: %w", err)
 	}
@@ -70,9 +73,14 @@ func sendPacketViaRDMA(addr string, req *Packet) error {
 	return nil
 }
 
+// pollRDMAResponse waits for the server's response for the given slot using
+// the connection's adaptive poll policy: tight spin → Gosched → comp_channel
+// sleep. Bounded by rdmaRoundTripTimeout so a stalled server eventually fails
+// the request rather than parking the goroutine forever.
 func pollRDMAResponse(conn *rdma.RDMAConn, slot int) (*proto.Packet, error) {
 	lastSeq := conn.RecvSeq(slot)
 	deadline := time.Now().Add(rdmaRoundTripTimeout)
+	poller := rdma.NewAdaptivePoller(conn.PollConfig())
 	for {
 		seq, ok := conn.PollRecvDoorbell(slot, lastSeq)
 		if ok {
@@ -82,6 +90,16 @@ func pollRDMAResponse(conn *rdma.RDMAConn, slot int) (*proto.Packet, error) {
 		if time.Now().After(deadline) {
 			return nil, fmt.Errorf("rdma client: response timeout slot=%d", slot)
 		}
-		runtime.Gosched()
+		switch poller.NextAction() {
+		case rdma.ActionContinue:
+			// tight loop
+		case rdma.ActionYield:
+			runtime.Gosched()
+		case rdma.ActionSleep:
+			if err := conn.SleepWaitForRecv(); err != nil {
+				return nil, fmt.Errorf("rdma client: SleepWaitForRecv: %w", err)
+			}
+			poller.Reset()
+		}
 	}
 }

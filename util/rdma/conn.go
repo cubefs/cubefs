@@ -29,7 +29,9 @@ const (
 )
 
 // RDMAConn encapsulates a single RC (Reliable Connected) RDMA connection.
-// All data is transferred via RDMA Write (one-sided); Send/Recv are never used.
+// Data is transferred via RDMA Write (one-sided); the doorbell is sent as
+// RDMA Write-with-Immediate so the receiver gets a CQE for each arrival
+// (P2: enables comp_channel-based sleep without busy-polling memory).
 //
 // Memory layout (per side):
 //
@@ -39,14 +41,16 @@ const (
 //	sendDB        — we stage outgoing doorbell values here before RDMA-Writing to peer's recvDB
 //	localCredit   — peer RDMA-Writes its processed-slot count here (we read for flow control)
 //	creditScratch — we stage our processed-slot count here before RDMA-Writing it to peer's localCredit
+//	recvPool.mr   — pre-posted recv WR buffers; consumed by incoming WITH_IMM doorbells
 //
 // Slot index: determined by caller as ReqID % numSlots.
 // A single slot must not be used concurrently from multiple goroutines.
 type RDMAConn struct {
-	cmID *C.struct_rdma_cm_id
-	pd   *C.struct_ibv_pd
-	cq   *C.struct_ibv_cq
-	evCh *C.struct_rdma_event_channel
+	cmID   *C.struct_rdma_cm_id
+	pd     *C.struct_ibv_pd
+	cq     *C.struct_ibv_cq
+	compCh *C.struct_ibv_comp_channel // bound to cq; used for P2 sleep
+	evCh   *C.struct_rdma_event_channel
 
 	// Memory regions
 	recvRing      *RDMAMem // peer writes data here
@@ -55,6 +59,7 @@ type RDMAConn struct {
 	sendDB        *RDMAMem // we stage outgoing doorbell values here before RDMA Write
 	localCredit   *RDMAMem // peer writes its processed-slot count here (8 bytes)
 	creditScratch *RDMAMem // we stage outgoing credit values here (8 bytes)
+	recvPool      *recvPool
 
 	// Remote peer's memory descriptor (received at connect time)
 	peerRecvRkey   uint32
@@ -78,6 +83,17 @@ type RDMAConn struct {
 	credit        *creditState
 	creditAckMode CreditAckMode
 
+	// P2: adaptive polling parameters. Each polling site (drainOneCQE,
+	// pollLoop, pollRDMAResponse) constructs its own AdaptivePoller from
+	// this config so phase counters don't leak across goroutines.
+	pollCfg PollConfig
+
+	// cqEventsToAck accumulates completion events delivered via comp_channel
+	// so we can ack them in a single batched call before re-arming. The
+	// kernel limits unacked events to ~2^32 minus any ack; we batch on the
+	// order of single digits in practice.
+	cqEventsToAck uint32
+
 	closed int32 // atomic; 1 = closed
 }
 
@@ -86,10 +102,21 @@ type RDMAConnConfig struct {
 	NumSlots int
 	SlotSize int // bytes per data slot (covers SlotHeader + PacketHeader + Arg + Data)
 	// CreditAckMode controls whether the receiver waits for the credit-return
-	// RDMA Write's CQE before processing the next slot. CreditAckSync (zero
-	// value) is the safe default; CreditAckAsync trades CQ pressure for
-	// throughput.
+	// RDMA Write's CQE before processing the next slot.
 	CreditAckMode CreditAckMode
+	// Poll governs the busy → yield → sleep behaviour of every polling site
+	// owned by this connection. Zero value means "use DefaultPollConfig".
+	Poll PollConfig
+}
+
+// effectivePollConfig returns Poll if any field is non-zero, otherwise the
+// spec-defined default. Treating an all-zero struct as "default" lets
+// existing call sites compile without immediately specifying poll knobs.
+func (cfg RDMAConnConfig) effectivePollConfig() PollConfig {
+	if cfg.Poll.BusySpinCount == 0 && cfg.Poll.YieldCount == 0 && cfg.Poll.SleepThresholdUs == 0 {
+		return DefaultPollConfig
+	}
+	return cfg.Poll
 }
 
 // validateConnConfig enforces P0 invariants on the configuration. Returns a
@@ -139,13 +166,21 @@ func Dial(addr string, cfg RDMAConnConfig) (*RDMAConn, error) {
 		destroyEventChannel(ch)
 		return nil, err
 	}
-	cq, err := createCQ(ctx, defaultCQSize)
+	compCh, err := createCompChannel(ctx)
 	if err != nil {
 		destroyCMID(id)
 		destroyEventChannel(ch)
 		return nil, err
 	}
-	if err = createQP(id, pd, cq, sendQueueDepth); err != nil {
+	cq, err := createCQ(ctx, defaultCQSize, compCh)
+	if err != nil {
+		destroyCompChannel(compCh)
+		destroyCMID(id)
+		destroyEventChannel(ch)
+		return nil, err
+	}
+	if err = createQP(id, pd, cq, sendQueueDepth, cfg.NumSlots); err != nil {
+		destroyCompChannel(compCh)
 		destroyCMID(id)
 		destroyEventChannel(ch)
 		return nil, err
@@ -154,6 +189,15 @@ func Dial(addr string, cfg RDMAConnConfig) (*RDMAConn, error) {
 	dbSize := cfg.NumSlots * DoorbellEntrySize
 	mems, err := allocConnMems(pd, cfg.NumSlots, cfg.SlotSize, dbSize)
 	if err != nil {
+		destroyCompChannel(compCh)
+		destroyCMID(id)
+		destroyEventChannel(ch)
+		return nil, err
+	}
+	rp, err := newRecvPool(pd, getQPFromCMID(id), cfg.NumSlots)
+	if err != nil {
+		mems.free()
+		destroyCompChannel(compCh)
 		destroyCMID(id)
 		destroyEventChannel(ch)
 		return nil, err
@@ -171,14 +215,18 @@ func Dial(addr string, cfg RDMAConnConfig) (*RDMAConn, error) {
 	}
 	serverBytes, err := connectTo(id, MarshalConnectInfo(ci))
 	if err != nil {
+		rp.free()
 		mems.free()
+		destroyCompChannel(compCh)
 		destroyCMID(id)
 		destroyEventChannel(ch)
 		return nil, fmt.Errorf("rdma: connect to %s: %w", addr, err)
 	}
 	ai, err := UnmarshalAcceptInfo(serverBytes)
 	if err != nil {
+		rp.free()
 		mems.free()
+		destroyCompChannel(compCh)
 		destroyCMID(id)
 		destroyEventChannel(ch)
 		return nil, fmt.Errorf("rdma: unmarshal AcceptInfo from %s: %w", addr, err)
@@ -188,6 +236,7 @@ func Dial(addr string, cfg RDMAConnConfig) (*RDMAConn, error) {
 		cmID:           id,
 		pd:             pd,
 		cq:             cq,
+		compCh:         compCh,
 		evCh:           ch,
 		recvRing:       mems.recvRing,
 		recvDB:         mems.recvDB,
@@ -195,6 +244,7 @@ func Dial(addr string, cfg RDMAConnConfig) (*RDMAConn, error) {
 		sendDB:         mems.sendDB,
 		localCredit:    mems.localCredit,
 		creditScratch:  mems.creditScratch,
+		recvPool:       rp,
 		peerRecvRkey:   ai.ReqRkey,
 		peerRecvBaseVA: ai.ReqBaseVA,
 		peerDBRkey:     ai.DbRkey,
@@ -205,6 +255,7 @@ func Dial(addr string, cfg RDMAConnConfig) (*RDMAConn, error) {
 		slotSize:       cfg.SlotSize,
 		remoteAddr:     addr,
 		creditAckMode:  cfg.CreditAckMode,
+		pollCfg:        cfg.effectivePollConfig(),
 	}
 	conn.credit = newCreditState(cfg.NumSlots, conn.localCreditPtr())
 	return conn, nil
@@ -233,12 +284,19 @@ func Accept(listenID *C.struct_rdma_cm_id, cfg RDMAConnConfig) (*RDMAConn, Conne
 		destroyCMID(connID)
 		return nil, ConnectInfo{}, err
 	}
-	cq, err := createCQ(ctx, defaultCQSize)
+	compCh, err := createCompChannel(ctx)
 	if err != nil {
 		destroyCMID(connID)
 		return nil, ConnectInfo{}, err
 	}
-	if err = createQP(connID, pd, cq, sendQueueDepth); err != nil {
+	cq, err := createCQ(ctx, defaultCQSize, compCh)
+	if err != nil {
+		destroyCompChannel(compCh)
+		destroyCMID(connID)
+		return nil, ConnectInfo{}, err
+	}
+	if err = createQP(connID, pd, cq, sendQueueDepth, cfg.NumSlots); err != nil {
+		destroyCompChannel(compCh)
 		destroyCMID(connID)
 		return nil, ConnectInfo{}, err
 	}
@@ -246,6 +304,14 @@ func Accept(listenID *C.struct_rdma_cm_id, cfg RDMAConnConfig) (*RDMAConn, Conne
 	dbSize := cfg.NumSlots * DoorbellEntrySize
 	mems, err := allocConnMems(pd, cfg.NumSlots, cfg.SlotSize, dbSize)
 	if err != nil {
+		destroyCompChannel(compCh)
+		destroyCMID(connID)
+		return nil, ConnectInfo{}, err
+	}
+	rp, err := newRecvPool(pd, getQPFromCMID(connID), cfg.NumSlots)
+	if err != nil {
+		mems.free()
+		destroyCompChannel(compCh)
 		destroyCMID(connID)
 		return nil, ConnectInfo{}, err
 	}
@@ -261,7 +327,9 @@ func Accept(listenID *C.struct_rdma_cm_id, cfg RDMAConnConfig) (*RDMAConn, Conne
 		CreditVA:   mems.localCredit.VA,
 	}
 	if err = acceptConn(connID, MarshalAcceptInfo(ai)); err != nil {
+		rp.free()
 		mems.free()
+		destroyCompChannel(compCh)
 		destroyCMID(connID)
 		return nil, ConnectInfo{}, err
 	}
@@ -270,12 +338,14 @@ func Accept(listenID *C.struct_rdma_cm_id, cfg RDMAConnConfig) (*RDMAConn, Conne
 		cmID:           connID,
 		pd:             pd,
 		cq:             cq,
+		compCh:         compCh,
 		recvRing:       mems.recvRing,
 		recvDB:         mems.recvDB,
 		sendScratch:    mems.sendScratch,
 		sendDB:         mems.sendDB,
 		localCredit:    mems.localCredit,
 		creditScratch:  mems.creditScratch,
+		recvPool:       rp,
 		peerRecvRkey:   ci.RespRkey,
 		peerRecvBaseVA: ci.RespBaseVA,
 		peerDBRkey:     ci.RespDbRkey,
@@ -285,6 +355,7 @@ func Accept(listenID *C.struct_rdma_cm_id, cfg RDMAConnConfig) (*RDMAConn, Conne
 		numSlots:       cfg.NumSlots,
 		slotSize:       cfg.SlotSize,
 		creditAckMode:  cfg.CreditAckMode,
+		pollCfg:        cfg.effectivePollConfig(),
 	}
 	conn.credit = newCreditState(cfg.NumSlots, conn.localCreditPtr())
 	return conn, ci, nil
@@ -350,6 +421,9 @@ func (c *RDMAConn) NumSlots() int { return c.numSlots }
 // SlotSize returns bytes per slot.
 func (c *RDMAConn) SlotSize() int { return c.slotSize }
 
+// PollConfig returns the polling configuration applied to this connection.
+func (c *RDMAConn) PollConfig() PollConfig { return c.pollCfg }
+
 // RecvSlotBytes returns the receive ring slice for slot idx.
 // On the server, this is where incoming requests land.
 // On the client, this is where incoming responses land.
@@ -365,7 +439,9 @@ func (c *RDMAConn) SendScratchBytes(idx int) []byte {
 
 // WritePacket serializes p into the local scratch slot at slotIdx, then:
 //  1. RDMA Writes the slot to peer's recvRing (not signaled)
-//  2. Writes a doorbell entry and RDMA Writes it to peer's recvDB (signaled)
+//  2. Writes a doorbell entry and RDMA-Writes-with-Imm it to peer's recvDB
+//     (signaled; imm_data carries slotIdx so the receiver can dispatch
+//     directly from the CQE without scanning the doorbell array).
 //
 // Blocks if no flow-control credits are available. Not goroutine-safe for the
 // same slotIdx.
@@ -432,7 +508,10 @@ func (c *RDMAConn) writeSlotAndDoorbell(slotIdx int, payload []byte, seq uint32)
 		return fmt.Errorf("rdma: slot write: %w", err)
 	}
 
-	// Prepare doorbell entry in local sendDB slot
+	// Prepare doorbell entry in local sendDB slot. The doorbell array is
+	// retained alongside imm_data even though imm alone tells the receiver
+	// which slot fired — the array is the legacy fast-path for busy/yield
+	// polling, while imm provides comp_channel wakeup for sleep phase.
 	dbOff := slotIdx * DoorbellEntrySize
 	dbBuf := c.sendDB.Bytes()[dbOff : dbOff+DoorbellEntrySize]
 	WriteDoorbellEntry(dbBuf, 0, seq, uint32(slotIdx))
@@ -440,34 +519,108 @@ func (c *RDMAConn) writeSlotAndDoorbell(slotIdx int, payload []byte, seq uint32)
 	lDbAddr := c.sendDB.VA + uint64(dbOff)
 	rDbAddr := c.peerDBBaseVA + uint64(dbOff)
 
-	// Write 2: doorbell (signaled — CQE confirms both writes have left the local NIC)
-	if err := postRDMAWrite(qp,
+	// Write 2: doorbell with immediate data = slotIdx. The imm_data tells
+	// the receiver's pollLoop which slot to inspect on wakeup, avoiding a
+	// full doorbell-array scan when sleep-mode is in effect.
+	if err := postRDMAWriteWithImm(qp,
 		lDbAddr, c.sendDB.Lkey, DoorbellEntrySize,
 		rDbAddr, c.peerDBRkey,
-		uint64(slotIdx*2+1), true); err != nil {
+		uint64(slotIdx*2+1), uint32(slotIdx), true); err != nil {
 		return fmt.Errorf("rdma: doorbell write: %w", err)
 	}
 
 	return c.drainOneCQE()
 }
 
-// drainOneCQE spins until at least one successful CQE is collected.
+// drainOneCQE blocks until at least one of OUR send WRs completes successfully.
+// Recv CQEs (incoming WITH_IMM doorbells) that arrive concurrently are absorbed
+// here too: the recv WR is refilled and the loop continues so the receive-side
+// poll machinery is not starved.
+//
+// Adaptive polling applies: tight loop, then yield, then sleep on comp_channel.
 func (c *RDMAConn) drainOneCQE() error {
+	poller := NewAdaptivePoller(c.pollCfg)
+	qp := getQPFromCMID(c.cmID)
 	for {
-		ids, err := pollCQ(c.cq)
+		evs, err := pollCQEvents(c.cq)
 		if err != nil {
 			return err
 		}
-		if len(ids) > 0 {
+		gotSendCompletion := false
+		for _, ev := range evs {
+			if ev.IsRecv {
+				// Refill so the QP can keep accepting WITH_IMM doorbells.
+				if rerr := c.recvPool.refillOne(qp, ev.WRID); rerr != nil {
+					return fmt.Errorf("rdma: drainOneCQE refill: %w", rerr)
+				}
+				continue
+			}
+			gotSendCompletion = true
+		}
+		if gotSendCompletion {
 			return nil
 		}
+		switch poller.NextAction() {
+		case ActionContinue:
+			// tight loop
+		case ActionYield:
+			runtime.Gosched()
+		case ActionSleep:
+			if err := c.sleepOnCQ(); err != nil {
+				return err
+			}
+			poller.Reset()
+		}
+	}
+}
+
+// sleepOnCQ arms the CQ for the next completion and blocks on the comp
+// channel until that completion arrives. Implements the standard verbs
+// double-check pattern to close the lost-wakeup window between poll and arm.
+func (c *RDMAConn) sleepOnCQ() error {
+	if c.compCh == nil {
+		// Fallback for connections built without a comp channel: degrade to
+		// a Gosched. Should not happen in normal P2 builds but keeps the
+		// transport functional if a future caller skips channel setup.
 		runtime.Gosched()
+		return nil
+	}
+	if err := reqNotifyCQ(c.cq, false); err != nil {
+		return err
+	}
+	cq, err := waitCQEvent(c.compCh)
+	if err != nil {
+		return err
+	}
+	atomic.AddUint32(&c.cqEventsToAck, 1)
+	// Batch acks; flush whenever count crosses a threshold to bound the
+	// kernel's tracked event count without per-event overhead.
+	if n := atomic.LoadUint32(&c.cqEventsToAck); n >= 16 {
+		ackCQEvents(cq, uint(n))
+		atomic.AddUint32(&c.cqEventsToAck, ^uint32(n-1))
+	}
+	return nil
+}
+
+// flushCQEventAcks drains any unacked comp-channel events. Called from Close
+// so we do not leak event references across connection lifetimes.
+func (c *RDMAConn) flushCQEventAcks() {
+	if c.cq == nil {
+		return
+	}
+	if n := atomic.SwapUint32(&c.cqEventsToAck, 0); n > 0 {
+		ackCQEvents(c.cq, uint(n))
 	}
 }
 
 // PollRecvDoorbell checks if peer has written a new doorbell entry for slot idx.
 // Returns (newSeq, true) when a new entry is detected.
 // lastSeen must be maintained by the caller per-slot.
+//
+// The receive-side polling site (server pollLoop, client pollRDMAResponse)
+// uses this for the busy / yield phases. For sleep phase, callers should
+// instead block on SleepWaitForRecv, which integrates with the comp channel
+// and is woken by incoming WITH_IMM doorbells.
 func (c *RDMAConn) PollRecvDoorbell(idx int, lastSeen uint32) (uint32, bool) {
 	off := idx * DoorbellEntrySize
 	seq, _ := ReadDoorbellEntry(c.recvDB.Bytes()[off:], 0)
@@ -475,6 +628,49 @@ func (c *RDMAConn) PollRecvDoorbell(idx int, lastSeen uint32) (uint32, bool) {
 		return seq, true
 	}
 	return 0, false
+}
+
+// SleepWaitForRecv arms the CQ and blocks until any completion arrives.
+// Recv CQEs (incoming WITH_IMM doorbells) refill the recv pool; send CQEs
+// are absorbed silently here — the sender's drainOneCQE is responsible for
+// observing those, but if it has already finished the kernel still delivered
+// the event and we must drain it to keep the channel healthy.
+//
+// On wake the caller should re-poll its doorbell array; the imm_data of
+// the wake CQE (if any) is informational and not relied upon for
+// correctness.
+func (c *RDMAConn) SleepWaitForRecv() error {
+	if c.compCh == nil {
+		runtime.Gosched()
+		return nil
+	}
+	if err := reqNotifyCQ(c.cq, false); err != nil {
+		return err
+	}
+	cq, err := waitCQEvent(c.compCh)
+	if err != nil {
+		return err
+	}
+	atomic.AddUint32(&c.cqEventsToAck, 1)
+	if n := atomic.LoadUint32(&c.cqEventsToAck); n >= 16 {
+		ackCQEvents(cq, uint(n))
+		atomic.AddUint32(&c.cqEventsToAck, ^uint32(n-1))
+	}
+	// Drain everything currently queued so future poll iterations see only
+	// new arrivals. Refill any consumed recv WRs.
+	qp := getQPFromCMID(c.cmID)
+	evs, err := pollCQEvents(c.cq)
+	if err != nil {
+		return err
+	}
+	for _, ev := range evs {
+		if ev.IsRecv {
+			if rerr := c.recvPool.refillOne(qp, ev.WRID); rerr != nil {
+				return fmt.Errorf("rdma: SleepWaitForRecv refill: %w", rerr)
+			}
+		}
+	}
+	return nil
 }
 
 // ReturnCredit signals that one received slot has been processed locally and
@@ -529,6 +725,11 @@ func (c *RDMAConn) Close() error {
 	if c.credit != nil {
 		c.credit.closeCredits()
 	}
+	c.flushCQEventAcks()
+	if c.recvPool != nil {
+		c.recvPool.free()
+		c.recvPool = nil
+	}
 	for _, m := range []*RDMAMem{
 		c.recvRing, c.recvDB, c.sendScratch, c.sendDB, c.localCredit, c.creditScratch,
 	} {
@@ -539,6 +740,10 @@ func (c *RDMAConn) Close() error {
 	if c.cmID != nil {
 		destroyCMID(c.cmID)
 		c.cmID = nil
+	}
+	if c.compCh != nil {
+		destroyCompChannel(c.compCh)
+		c.compCh = nil
 	}
 	if c.evCh != nil {
 		destroyEventChannel(c.evCh)

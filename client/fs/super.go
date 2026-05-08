@@ -41,6 +41,7 @@ import (
 	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/rdma"
 	"github.com/cubefs/cubefs/util/stat"
 	"github.com/cubefs/cubefs/util/ump"
 	"github.com/google/uuid"
@@ -282,10 +283,21 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	s.mw.VerReadSeq = s.ec.GetReadVer()
 
 	if opt.EnableRDMA {
-		if rerr := stream.InitRDMAConnPool(int(opt.RDMANumSlots), int(opt.RDMASlotSize)); rerr != nil {
+		poolCfg := rdma.RDMAPoolConfig{
+			NumSlots: int(opt.RDMANumSlots),
+			SlotSize: int(opt.RDMASlotSize),
+			Poll: rdma.PollConfig{
+				BusySpinCount:    int(opt.RDMABusySpinCount),
+				YieldCount:       int(opt.RDMAYieldCount),
+				SleepThresholdUs: time.Duration(opt.RDMASleepThresholdUs) * time.Microsecond,
+			},
+		}
+		if rerr := stream.InitRDMAConnPool(poolCfg); rerr != nil {
 			log.LogWarnf("NewSuper: RDMA init failed, falling back to TCP: %v", rerr)
 		} else {
-			log.LogInfof("NewSuper: RDMA client pool initialized (numSlots=%d slotSize=%d)", opt.RDMANumSlots, opt.RDMASlotSize)
+			log.LogInfof("NewSuper: RDMA client pool initialized (numSlots=%d slotSize=%d busy=%d yield=%d sleep=%dus)",
+				opt.RDMANumSlots, opt.RDMASlotSize,
+				opt.RDMABusySpinCount, opt.RDMAYieldCount, opt.RDMASleepThresholdUs)
 		}
 	}
 

@@ -15,14 +15,14 @@ import (
 	"github.com/cubefs/cubefs/util/rdma"
 )
 
-const defaultSpinThreshold = 10000
-
 // RDMAServerConfig configures the DataNode RDMA listener.
 type RDMAServerConfig struct {
-	Port          int
-	NumSlots      int
-	SlotSize      int
-	SpinThreshold int
+	Port     int
+	NumSlots int
+	SlotSize int
+	// Poll governs busy → yield → sleep behaviour of every per-conn poll
+	// loop. Zero value means "use rdma.DefaultPollConfig".
+	Poll rdma.PollConfig
 }
 
 // connState holds per-connection server-side state.
@@ -50,12 +50,10 @@ func NewDataNodeRDMACtx(cfg RDMAServerConfig, handlePacket func(*repl.Packet, ne
 	if cfg.SlotSize <= 0 {
 		return nil, fmt.Errorf("rdma server: SlotSize must be positive")
 	}
-	if cfg.SpinThreshold <= 0 {
-		cfg.SpinThreshold = defaultSpinThreshold
-	}
 	connCfg := rdma.RDMAConnConfig{
 		NumSlots: cfg.NumSlots,
 		SlotSize: cfg.SlotSize,
+		Poll:     cfg.Poll,
 	}
 	listener, err := rdma.Listen(cfg.Port, connCfg)
 	if err != nil {
@@ -109,10 +107,12 @@ func (ctx *DataNodeRDMACtx) acceptLoop() {
 	}
 }
 
-// pollLoop spins over all slots of one connection.
-// Hybrid strategy: busy-spin for SpinThreshold iterations, then yield.
+// pollLoop spins over all slots of one connection using the adaptive
+// busy → yield → sleep policy from rdma.AdaptivePoller. Sleep blocks on
+// the connection's comp_channel and is woken by any incoming
+// WRITE_WITH_IMM doorbell or send completion.
 func (cs *connState) pollLoop(ctx *DataNodeRDMACtx) {
-	spin := 0
+	poller := rdma.NewAdaptivePoller(cs.conn.PollConfig())
 	for {
 		select {
 		case <-ctx.stopCh:
@@ -135,13 +135,27 @@ func (cs *connState) pollLoop(ctx *DataNodeRDMACtx) {
 		}
 
 		if found {
-			spin = 0
-		} else {
-			spin++
-			if spin >= ctx.cfg.SpinThreshold {
-				spin = 0
+			poller.Reset()
+			continue
+		}
+
+		switch poller.NextAction() {
+		case rdma.ActionContinue:
+			// tight loop
+		case rdma.ActionYield:
+			runtime.Gosched()
+		case rdma.ActionSleep:
+			// Block until any completion arrives. After wake, the next
+			// loop iteration re-polls all doorbells; the imm_data of the
+			// wake CQE is informational and not relied upon here. Slight
+			// overhead vs. dispatching directly on imm, but keeps the
+			// busy/yield fast path uniform with the sleep recovery path.
+			if err := cs.conn.SleepWaitForRecv(); err != nil {
+				log.LogWarnf("rdma pollLoop: SleepWaitForRecv: %v (falling back to busy-poll)", err)
+				// One Gosched to avoid hot-spinning if comp_channel is wedged.
 				runtime.Gosched()
 			}
+			poller.Reset()
 		}
 	}
 }

@@ -16,12 +16,11 @@ const followerRDMATimeout = 30 * time.Second
 var followerRDMAPool *rdma.RDMAConnPool
 
 // EnableFollowerRDMA initializes the RDMA connection pool for DataNode→DataNode
-// replication and activates the RDMA send path.
-func EnableFollowerRDMA(numSlots, slotSize int) error {
-	pool, err := rdma.NewRDMAConnPool(rdma.RDMAPoolConfig{
-		NumSlots: numSlots,
-		SlotSize: slotSize,
-	})
+// replication and activates the RDMA send path. Accepts a full RDMAPoolConfig
+// so leader-side replication respects the same Poll / CreditAckMode knobs as
+// the request path.
+func EnableFollowerRDMA(cfg rdma.RDMAPoolConfig) error {
+	pool, err := rdma.NewRDMAConnPool(cfg)
 	if err != nil {
 		return fmt.Errorf("repl follower rdma: init pool: %w", err)
 	}
@@ -67,9 +66,13 @@ func rdmaSendToFollower(addr string, fp *FollowerPacket) error {
 	return nil
 }
 
+// pollFollowerRDMAResponse uses the connection's adaptive poll policy to
+// minimise CPU during quiet periods between replication writes. Bounded by
+// followerRDMATimeout so a stalled follower eventually fails the call.
 func pollFollowerRDMAResponse(conn *rdma.RDMAConn, slot int) (*proto.Packet, error) {
 	lastSeq := conn.RecvSeq(slot)
 	deadline := time.Now().Add(followerRDMATimeout)
+	poller := rdma.NewAdaptivePoller(conn.PollConfig())
 	for {
 		seq, ok := conn.PollRecvDoorbell(slot, lastSeq)
 		if ok {
@@ -79,6 +82,16 @@ func pollFollowerRDMAResponse(conn *rdma.RDMAConn, slot int) (*proto.Packet, err
 		if time.Now().After(deadline) {
 			return nil, fmt.Errorf("repl follower rdma: response timeout slot=%d", slot)
 		}
-		runtime.Gosched()
+		switch poller.NextAction() {
+		case rdma.ActionContinue:
+			// tight loop
+		case rdma.ActionYield:
+			runtime.Gosched()
+		case rdma.ActionSleep:
+			if err := conn.SleepWaitForRecv(); err != nil {
+				return nil, fmt.Errorf("repl follower rdma: SleepWaitForRecv: %w", err)
+			}
+			poller.Reset()
+		}
 	}
 }

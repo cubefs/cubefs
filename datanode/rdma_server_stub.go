@@ -7,14 +7,16 @@ import (
 	"net"
 
 	"github.com/cubefs/cubefs/datanode/repl"
+	"github.com/cubefs/cubefs/util/rdma"
 )
 
-// RDMAServerConfig is a no-op stub for non-rdma builds.
+// RDMAServerConfig is a no-op stub for non-rdma builds. Mirrors the field
+// set of the rdma-tagged variant so callers can populate it unconditionally.
 type RDMAServerConfig struct {
-	Port          int
-	NumSlots      int
-	SlotSize      int
-	SpinThreshold int
+	Port     int
+	NumSlots int
+	SlotSize int
+	Poll     rdma.PollConfig
 }
 
 // DataNodeRDMACtx is a no-op stub for non-rdma builds.

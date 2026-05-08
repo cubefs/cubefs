@@ -49,19 +49,71 @@ func allocPD(ctx *C.struct_ibv_context) (*C.struct_ibv_pd, error) {
 	return pd, nil
 }
 
-// createCQ creates a Completion Queue with at least size entries.
-func createCQ(ctx *C.struct_ibv_context, size int) (*C.struct_ibv_cq, error) {
-	cq := C.ibv_create_cq(ctx, C.int(size), nil, nil, 0)
+// createCompChannel creates a completion channel bound to ctx. The channel
+// is later associated with the conn's CQ; goroutines block on it via
+// waitCQEvent for the P2 sleep phase.
+func createCompChannel(ctx *C.struct_ibv_context) (*C.struct_ibv_comp_channel, error) {
+	ch := C.cubefs_create_comp_channel(ctx)
+	if ch == nil {
+		return nil, fmt.Errorf("rdma: ibv_create_comp_channel failed")
+	}
+	return ch, nil
+}
+
+// destroyCompChannel tears down a completion channel. Idempotent on nil.
+func destroyCompChannel(ch *C.struct_ibv_comp_channel) {
+	if ch != nil {
+		C.cubefs_destroy_comp_channel(ch)
+	}
+}
+
+// createCQ creates a Completion Queue with at least size entries, bound to
+// the given comp_channel so consumers can sleep on it.
+//
+// Pass channel=nil to retain the legacy "no notifications" behaviour; doing
+// so disables the P2 sleep phase for that CQ.
+func createCQ(ctx *C.struct_ibv_context, size int, channel *C.struct_ibv_comp_channel) (*C.struct_ibv_cq, error) {
+	cq := C.cubefs_create_cq_with_channel(ctx, C.int(size), channel)
 	if cq == nil {
 		return nil, fmt.Errorf("rdma: ibv_create_cq failed")
 	}
 	return cq, nil
 }
 
+// reqNotifyCQ arms cq so the next completion fires an event on its
+// comp_channel. solicitedOnly=false means any completion arms.
+func reqNotifyCQ(cq *C.struct_ibv_cq, solicitedOnly bool) error {
+	flag := C.int(0)
+	if solicitedOnly {
+		flag = 1
+	}
+	if errno := C.cubefs_req_notify_cq(cq, flag); errno != 0 {
+		return fmt.Errorf("rdma: ibv_req_notify_cq failed: errno %d", errno)
+	}
+	return nil
+}
+
+// waitCQEvent blocks until a completion event arrives on ch. Caller is
+// responsible for calling ackCQEvents on the returned CQ before re-arming.
+func waitCQEvent(ch *C.struct_ibv_comp_channel) (*C.struct_ibv_cq, error) {
+	var cq *C.struct_ibv_cq
+	if errno := C.cubefs_get_cq_event(ch, &cq); errno != 0 {
+		return nil, fmt.Errorf("rdma: ibv_get_cq_event failed: errno %d", errno)
+	}
+	return cq, nil
+}
+
+// ackCQEvents acknowledges n previously delivered events on cq. Required
+// to release the kernel's reference; not calling it leaks events and
+// eventually wedges the channel.
+func ackCQEvents(cq *C.struct_ibv_cq, n uint) {
+	C.cubefs_ack_cq_events(cq, C.uint(n))
+}
+
 // createQP creates an RC QP on id using the given pd and cq.
-// maxSendWR is the send queue depth.
-func createQP(id *C.struct_rdma_cm_id, pd *C.struct_ibv_pd, cq *C.struct_ibv_cq, maxSendWR int) error {
-	if ret := C.cubefs_create_qp(id, pd, cq, C.uint32_t(maxSendWR)); ret != 0 {
+// maxSendWR / maxRecvWR are the queue depths.
+func createQP(id *C.struct_rdma_cm_id, pd *C.struct_ibv_pd, cq *C.struct_ibv_cq, maxSendWR, maxRecvWR int) error {
+	if ret := C.cubefs_create_qp(id, pd, cq, C.uint32_t(maxSendWR), C.uint32_t(maxRecvWR)); ret != 0 {
 		return fmt.Errorf("rdma: rdma_create_qp failed: %d", ret)
 	}
 	return nil
@@ -101,9 +153,55 @@ func postRDMAWrite(qp *C.struct_ibv_qp, laddr uint64, lkey uint32, length uint32
 	return nil
 }
 
-// pollCQ polls up to maxPollBatch completions from cq.
-// Returns (completedWRIDs, error). Errors in individual WCs are reported as errors.
-func pollCQ(cq *C.struct_ibv_cq) ([]uint64, error) {
+// postRDMAWriteWithImm posts a single RDMA Write-with-Immediate WR. The
+// immediate data is delivered to the peer's recv-side CQE, allowing the
+// peer's polling goroutine to wake from a comp_channel block (P2 phase 3).
+//
+// The receiver MUST have at least one recv WR queued at the time the WR
+// arrives; otherwise the QP transitions to ERR. Connection-level recv
+// pool maintenance is handled in conn.go.
+func postRDMAWriteWithImm(qp *C.struct_ibv_qp, laddr uint64, lkey uint32, length uint32,
+	raddr uint64, rkey uint32, wrID uint64, immData uint32, signaled bool) error {
+	sig := C.int(0)
+	if signaled {
+		sig = 1
+	}
+	ret := C.cubefs_post_rdma_write_with_imm(qp,
+		C.uint64_t(laddr), C.uint32_t(lkey), C.uint32_t(length),
+		C.uint64_t(raddr), C.uint32_t(rkey),
+		C.uint64_t(wrID), C.uint32_t(immData), sig)
+	if ret != 0 {
+		return fmt.Errorf("rdma: ibv_post_send (with imm) failed: errno %d", ret)
+	}
+	return nil
+}
+
+// postRecv enqueues a recv WR. The dummy buffer (laddr/length) is required
+// by the verbs API but unused for RDMA_WRITE_WITH_IMM completions, where
+// the only useful information is the imm_data carried in the CQE.
+func postRecv(qp *C.struct_ibv_qp, laddr uint64, lkey uint32, length uint32, wrID uint64) error {
+	ret := C.cubefs_post_recv(qp,
+		C.uint64_t(laddr), C.uint32_t(lkey), C.uint32_t(length),
+		C.uint64_t(wrID))
+	if ret != 0 {
+		return fmt.Errorf("rdma: ibv_post_recv failed: errno %d", ret)
+	}
+	return nil
+}
+
+// CompletionEvent describes one drained CQE in a polling-friendly form so
+// callers don't have to import "C" or know the IBV_WC_* enum values.
+type CompletionEvent struct {
+	WRID    uint64
+	IsRecv  bool   // true if opcode is IBV_WC_RECV / IBV_WC_RECV_RDMA_WITH_IMM
+	HasImm  bool   // true when the completion carries a 32-bit imm_data
+	ImmData uint32 // host order, valid only when HasImm
+}
+
+// pollCQEvents polls up to maxPollBatch completions, returning a structured
+// view that callers can dispatch on (send vs recv-with-imm). Replaces the
+// old pollCQ which only returned WR IDs.
+func pollCQEvents(cq *C.struct_ibv_cq) ([]CompletionEvent, error) {
 	var wcs [maxPollBatch]C.struct_ibv_wc
 	n := int(C.cubefs_poll_cq(cq, maxPollBatch, &wcs[0]))
 	if n < 0 {
@@ -112,13 +210,42 @@ func pollCQ(cq *C.struct_ibv_cq) ([]uint64, error) {
 	if n == 0 {
 		return nil, nil
 	}
-	ids := make([]uint64, 0, n)
+	out := make([]CompletionEvent, 0, n)
 	for i := 0; i < n; i++ {
-		wc := wcs[i]
+		wc := &wcs[i]
 		if wc.status != C.IBV_WC_SUCCESS {
-			return ids, fmt.Errorf("rdma: WC error status=%d wr_id=%d", wc.status, wc.wr_id)
+			return out, fmt.Errorf("rdma: WC error status=%d wr_id=%d", wc.status, wc.wr_id)
 		}
-		ids = append(ids, uint64(wc.wr_id))
+		op := int(C.cubefs_wc_opcode(wc))
+		ev := CompletionEvent{WRID: uint64(wc.wr_id)}
+		// IBV_WC_RECV (128) and IBV_WC_RECV_RDMA_WITH_IMM (129) both arrive
+		// on the recv side. The numeric constants are stable in the verbs
+		// ABI; comparing >= 128 (IBV_WC_RECV) is the canonical "is recv" check.
+		if op >= int(C.IBV_WC_RECV) {
+			ev.IsRecv = true
+		}
+		if C.cubefs_wc_has_imm(wc) != 0 {
+			ev.HasImm = true
+			ev.ImmData = uint32(C.cubefs_wc_imm_data(wc))
+		}
+		out = append(out, ev)
+	}
+	return out, nil
+}
+
+// pollCQ is retained for callers that only need the IDs of completed send
+// WRs (e.g. drainOneCQE). Implemented in terms of pollCQEvents.
+func pollCQ(cq *C.struct_ibv_cq) ([]uint64, error) {
+	evs, err := pollCQEvents(cq)
+	if err != nil {
+		return nil, err
+	}
+	if len(evs) == 0 {
+		return nil, nil
+	}
+	ids := make([]uint64, 0, len(evs))
+	for _, e := range evs {
+		ids = append(ids, e.WRID)
 	}
 	return ids, nil
 }
