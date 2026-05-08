@@ -10,12 +10,13 @@ import (
 
 // RDMAPoolConfig configures a per-target-address connection pool.
 type RDMAPoolConfig struct {
-	Device      string
-	Port        int
-	NumSlots    int
-	SlotSize    int
-	MaxConns    int
-	IdleTimeout time.Duration
+	Device        string
+	Port          int
+	NumSlots      int
+	SlotSize      int
+	MaxConns      int
+	IdleTimeout   time.Duration
+	CreditAckMode CreditAckMode
 }
 
 // singlePool manages connections to one remote address.
@@ -87,12 +88,15 @@ type RDMAConnPool struct {
 }
 
 // NewRDMAConnPool creates a connection pool. Call Close when done.
+//
+// SlotSize is validated against MinValidSlotSize so under-sized configurations
+// are rejected up front, letting the caller fall back to TCP cleanly.
 func NewRDMAConnPool(cfg RDMAPoolConfig) (*RDMAConnPool, error) {
 	if cfg.NumSlots <= 0 || cfg.NumSlots > maxSlots {
 		return nil, fmt.Errorf("rdma: NumSlots %d out of range [1,%d]", cfg.NumSlots, maxSlots)
 	}
-	if cfg.SlotSize <= 0 {
-		return nil, fmt.Errorf("rdma: SlotSize must be positive")
+	if err := ValidateSlotSize(cfg.SlotSize); err != nil {
+		return nil, err
 	}
 	if cfg.MaxConns <= 0 {
 		cfg.MaxConns = 4
@@ -118,8 +122,9 @@ func (p *RDMAConnPool) GetConnect(addr string) (*RDMAConn, error) {
 				addr:     addr,
 				maxConns: p.cfg.MaxConns,
 				cfg: RDMAConnConfig{
-					NumSlots: p.cfg.NumSlots,
-					SlotSize: p.cfg.SlotSize,
+					NumSlots:      p.cfg.NumSlots,
+					SlotSize:      p.cfg.SlotSize,
+					CreditAckMode: p.cfg.CreditAckMode,
 				},
 			}
 			p.pools[addr] = sp

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/auth"
 	"github.com/cubefs/cubefs/util/config"
 )
@@ -215,7 +216,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[FuseServeThreads] = MountOption{"fuseServeThreads", "Fuse Serve Threads", "", int64(0)}
 	opts[EnableRDMA] = MountOption{"rdmaEnable", "Enable RDMA data path", "", false}
 	opts[RDMANumSlots] = MountOption{"rdmaNumSlots", "Number of RDMA slots per connection", "", int64(256)}
-	opts[RDMASlotSize] = MountOption{"rdmaSlotSize", "Size of each RDMA slot in bytes", "", int64(131072)} // 128 KB
+	opts[RDMASlotSize] = MountOption{"rdmaSlotSize", "Size of each RDMA slot in bytes", "", int64(util.BlockSize + util.PageSize)} // 132 KB; mirrors util/rdma.DefaultSlotSize (literal kept here to avoid an import cycle through util/rdma → proto)
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
 	}

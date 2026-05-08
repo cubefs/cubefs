@@ -88,6 +88,14 @@ func TestLoopback(t *testing.T) {
 		}
 		receivedPacket <- p
 
+		// Return credit so the client can send subsequent packets even if
+		// the response gets lost or delayed. After P0 this is mandatory:
+		// without it the sender's credit pool drains and WritePacket blocks.
+		if err = conn.ReturnCredit(); err != nil {
+			serverDone <- fmt.Errorf("server ReturnCredit: %w", err)
+			return
+		}
+
 		// Send back a simple response (just a SlotHeader + result code)
 		respData := make([]byte, SlotHeaderSize+1)
 		WriteSlotHeader(respData, 1, uint32(len(respData)))
@@ -155,6 +163,13 @@ func TestLoopback(t *testing.T) {
 		if time.Now().After(deadline) {
 			t.Fatal("timeout waiting for response")
 		}
+	}
+
+	// Return credit for the response slot so the server is unblocked for any
+	// subsequent send. Required by the P0 flow-control contract; missing
+	// returns will eventually stall the connection.
+	if err = conn.ReturnCredit(); err != nil {
+		t.Fatalf("client ReturnCredit: %v", err)
 	}
 
 	// Verify server received correct packet

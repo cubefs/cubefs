@@ -51,6 +51,14 @@ func sendPacketViaRDMA(addr string, req *Packet) error {
 		return err
 	}
 
+	// P0 flow control: the response slot is consumed; let the server reuse
+	// it before we evaluate the response. Failing to do this leaks one
+	// credit per round-trip on the server's send side.
+	if cerr := conn.ReturnCredit(); cerr != nil {
+		forceClose = true
+		return fmt.Errorf("rdma client: ReturnCredit: %w", cerr)
+	}
+
 	if resp.ReqID != req.ReqID {
 		forceClose = true
 		return fmt.Errorf("rdma client: ReqID mismatch: got %d want %d", resp.ReqID, req.ReqID)

@@ -17,50 +17,65 @@ var errNotSupported = errors.New("rdma: not supported in this build (compile wit
 // ConnectInfo and AcceptInfo are exported so callers can reference the types
 // without conditional compilation in non-hot-path code.
 type ConnectInfo struct {
-	RespRkey, RespDbRkey   uint32
-	RespBaseVA, RespDbVA   uint64
-	NumSlots, SlotSize     uint32
+	RespRkey, RespDbRkey uint32
+	RespBaseVA, RespDbVA uint64
+	NumSlots, SlotSize   uint32
+	CreditRkey           uint32
+	CreditVA             uint64
 }
 
 type AcceptInfo struct {
 	ReqRkey, DbRkey    uint32
 	ReqBaseVA, DbVA    uint64
 	NumSlots, SlotSize uint32
+	CreditRkey         uint32
+	CreditVA           uint64
 }
 
 type RDMAMem struct{}
 
-func (m *RDMAMem) Free()                          {}
-func (m *RDMAMem) Bytes() []byte                  { return nil }
-func (m *RDMAMem) SlotBytes(_, _ int) []byte      { return nil }
+func (m *RDMAMem) Free()                     {}
+func (m *RDMAMem) Bytes() []byte             { return nil }
+func (m *RDMAMem) SlotBytes(_, _ int) []byte { return nil }
 
 type RDMAConn struct{}
 
-func (c *RDMAConn) NumSlots() int                      { return 0 }
-func (c *RDMAConn) SlotSize() int                      { return 0 }
-func (c *RDMAConn) RecvSlotBytes(_ int) []byte         { return nil }
-func (c *RDMAConn) SendScratchBytes(_ int) []byte      { return nil }
-func (c *RDMAConn) RemoteAddr() string                 { return "" }
-func (c *RDMAConn) IsClosed() bool                     { return true }
-func (c *RDMAConn) Close() error                       { return nil }
-func (c *RDMAConn) WritePacket(_ int, _ *proto.Packet) error { return errNotSupported }
-func (c *RDMAConn) WriteData(_ int, _ []byte) error    { return errNotSupported }
+func (c *RDMAConn) NumSlots() int                                   { return 0 }
+func (c *RDMAConn) SlotSize() int                                   { return 0 }
+func (c *RDMAConn) RecvSlotBytes(_ int) []byte                      { return nil }
+func (c *RDMAConn) SendScratchBytes(_ int) []byte                   { return nil }
+func (c *RDMAConn) RemoteAddr() string                              { return "" }
+func (c *RDMAConn) IsClosed() bool                                  { return true }
+func (c *RDMAConn) Close() error                                    { return nil }
+func (c *RDMAConn) WritePacket(_ int, _ *proto.Packet) error        { return errNotSupported }
+func (c *RDMAConn) WriteData(_ int, _ []byte) error                 { return errNotSupported }
 func (c *RDMAConn) PollRecvDoorbell(_ int, _ uint32) (uint32, bool) { return 0, false }
-func (c *RDMAConn) RecvSeq(_ int) uint32               { return 0 }
-func (c *RDMAConn) SetRecvSeq(_ int, _ uint32)         {}
+func (c *RDMAConn) RecvSeq(_ int) uint32                            { return 0 }
+func (c *RDMAConn) SetRecvSeq(_ int, _ uint32)                      {}
+
+// ReturnCredit is a no-op on non-RDMA builds. Returning errNotSupported here
+// would force callers to add build-tag guards; instead we stay silent so the
+// same call site works in either build, with the actual flow control logic
+// only active on linux+rdma.
+func (c *RDMAConn) ReturnCredit() error { return nil }
+
+// CreditStats returns zeros on non-RDMA builds.
+func (c *RDMAConn) CreditStats() (sent, received, processed uint64) { return 0, 0, 0 }
 
 type RDMAConnConfig struct {
-	NumSlots int
-	SlotSize int
+	NumSlots      int
+	SlotSize      int
+	CreditAckMode CreditAckMode
 }
 
 type RDMAPoolConfig struct {
-	Device      string
-	Port        int
-	NumSlots    int
-	SlotSize    int
-	MaxConns    int
-	IdleTimeout time.Duration
+	Device        string
+	Port          int
+	NumSlots      int
+	SlotSize      int
+	MaxConns      int
+	IdleTimeout   time.Duration
+	CreditAckMode CreditAckMode
 }
 
 type RDMAConnPool struct{}
@@ -70,10 +85,10 @@ func NewRDMAConnPool(_ RDMAPoolConfig) (*RDMAConnPool, error) {
 }
 func (p *RDMAConnPool) GetConnect(_ string) (*RDMAConn, error) { return nil, errNotSupported }
 func (p *RDMAConnPool) PutConnect(_ *RDMAConn, _ bool)         {}
-func (p *RDMAConnPool) Close()                                  {}
+func (p *RDMAConnPool) Close()                                 {}
 
 type RDMAListener struct{}
 
-func Listen(_ int, _ RDMAConnConfig) (*RDMAListener, error)  { return nil, errNotSupported }
-func (l *RDMAListener) Accept() (*RDMAConn, error)           { return nil, errNotSupported }
-func (l *RDMAListener) Close() error                         { return nil }
+func Listen(_ int, _ RDMAConnConfig) (*RDMAListener, error) { return nil, errNotSupported }
+func (l *RDMAListener) Accept() (*RDMAConn, error)          { return nil, errNotSupported }
+func (l *RDMAListener) Close() error                        { return nil }

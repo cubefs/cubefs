@@ -49,6 +49,14 @@ func rdmaSendToFollower(addr string, fp *FollowerPacket) error {
 		return err
 	}
 
+	// P0 flow control: ack the response slot so the follower's send credits
+	// refill. Without this, repeated leader→follower replication on a
+	// pooled conn would drain follower credits within numSlots round-trips.
+	if cerr := conn.ReturnCredit(); cerr != nil {
+		forceClose = true
+		return fmt.Errorf("repl follower rdma: ReturnCredit: %w", cerr)
+	}
+
 	if resp.ReqID != fp.ReqID {
 		forceClose = true
 		return fmt.Errorf("repl follower rdma: ReqID mismatch: got %d want %d", resp.ReqID, fp.ReqID)

@@ -14,6 +14,8 @@ func TestMarshalConnectInfoRoundtrip(t *testing.T) {
 		RespDbVA:   0x7F00000000002000,
 		NumSlots:   256,
 		SlotSize:   128 * 1024 * 1024,
+		CreditRkey: 0x0BADF00D,
+		CreditVA:   0x7F00000000005000,
 	}
 	b := MarshalConnectInfo(orig)
 	if len(b) > 56 {
@@ -30,12 +32,14 @@ func TestMarshalConnectInfoRoundtrip(t *testing.T) {
 
 func TestMarshalAcceptInfoRoundtrip(t *testing.T) {
 	orig := AcceptInfo{
-		ReqRkey:   0x11223344,
-		ReqBaseVA: 0x7F00000000003000,
-		DbRkey:    0x55667788,
-		DbVA:      0x7F00000000004000,
-		NumSlots:  128,
-		SlotSize:  64 * 1024,
+		ReqRkey:    0x11223344,
+		ReqBaseVA:  0x7F00000000003000,
+		DbRkey:     0x55667788,
+		DbVA:       0x7F00000000004000,
+		NumSlots:   128,
+		SlotSize:   64 * 1024,
+		CreditRkey: 0xFEEDC0DE,
+		CreditVA:   0x7F00000000006000,
 	}
 	b := MarshalAcceptInfo(orig)
 	if len(b) > 56 {
@@ -61,5 +65,17 @@ func TestUnmarshalAcceptInfoTooShort(t *testing.T) {
 	_, err := UnmarshalAcceptInfo(make([]byte, 5))
 	if err == nil {
 		t.Fatal("expected error for short input")
+	}
+}
+
+// TestConnectInfoBytesAtRDMACMLimit ensures we are exactly at the 56-byte
+// rdma_cm private_data limit; any further field additions require splitting
+// the handshake into a post-ESTABLISHED phase.
+func TestConnectInfoBytesAtRDMACMLimit(t *testing.T) {
+	if connectInfoSize != 56 {
+		t.Fatalf("connectInfoSize=%d; rdma_cm private_data limit is 56", connectInfoSize)
+	}
+	if acceptInfoSize != 56 {
+		t.Fatalf("acceptInfoSize=%d; rdma_cm private_data limit is 56", acceptInfoSize)
 	}
 }

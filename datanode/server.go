@@ -43,6 +43,7 @@ import (
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/loadutil"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/rdma"
 	"github.com/cubefs/cubefs/util/strutil"
 
 	"github.com/cubefs/cubefs/depends/xtaci/smux"
@@ -113,10 +114,10 @@ const (
 	ConfigKeySmuxMaxBuffer     = "smuxMaxBuffer"      // int
 	ConfigKeySmuxTotalStream   = "sumxTotalStream"    // int
 
-	ConfigKeyEnableRDMA    = "rdmaEnable"    // bool
-	ConfigKeyRDMAPort      = "rdmaPort"      // int
-	ConfigKeyRDMANumSlots  = "rdmaNumSlots"  // int
-	ConfigKeyRDMASlotSize  = "rdmaSlotSize"  // int
+	ConfigKeyEnableRDMA   = "rdmaEnable"   // bool
+	ConfigKeyRDMAPort     = "rdmaPort"     // int
+	ConfigKeyRDMANumSlots = "rdmaNumSlots" // int
+	ConfigKeyRDMASlotSize = "rdmaSlotSize" // int
 
 	// rate limit control enable
 	ConfigDiskQosEnable      = "diskQosEnable"      // bool
@@ -195,11 +196,11 @@ type DataNode struct {
 	smuxServerConfig   *smux.Config
 	smuxConnPoolConfig *util.SmuxConnPoolConfig
 
-	enableRDMA     bool
-	rdmaPort       int
-	rdmaNumSlots   int
-	rdmaSlotSize   int
-	rdmaCtx        *DataNodeRDMACtx
+	enableRDMA   bool
+	rdmaPort     int
+	rdmaNumSlots int
+	rdmaSlotSize int
+	rdmaCtx      *DataNodeRDMACtx
 
 	getRepairConnFunc func(target string) (net.Conn, error)
 	putRepairConnFunc func(conn net.Conn, forceClose bool)
@@ -323,7 +324,7 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	}
 	s.rdmaSlotSize = cfg.GetInt(ConfigKeyRDMASlotSize)
 	if s.rdmaSlotSize <= 0 {
-		s.rdmaSlotSize = 128 * 1024 // 128 KB default
+		s.rdmaSlotSize = rdma.DefaultSlotSize // 132 KB; covers SlotHeader + max packet header + 128KB BlockSize
 	}
 
 	s.startStat(cfg)

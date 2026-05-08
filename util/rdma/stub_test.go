@@ -45,11 +45,20 @@ func TestStubRDMAConn(t *testing.T) {
 	if got := c.RecvSeq(0); got != 0 {
 		t.Fatalf("RecvSeq after SetRecvSeq: got %d want 0 (stub must ignore set)", got)
 	}
+
+	// ReturnCredit is a no-op on the stub — must not return errNotSupported
+	// so the same call site works in both builds without build-tag guards.
+	if err := c.ReturnCredit(); err != nil {
+		t.Fatalf("ReturnCredit on stub: %v", err)
+	}
+	if sent, recv, proc := c.CreditStats(); sent != 0 || recv != 0 || proc != 0 {
+		t.Fatalf("CreditStats on stub: got (%d,%d,%d) want all 0", sent, recv, proc)
+	}
 }
 
 // TestStubRDMAConnPool verifies NewRDMAConnPool returns an error on non-RDMA builds.
 func TestStubRDMAConnPool(t *testing.T) {
-	_, err := NewRDMAConnPool(RDMAPoolConfig{NumSlots: 1, SlotSize: 4096})
+	_, err := NewRDMAConnPool(RDMAPoolConfig{NumSlots: 1, SlotSize: MinValidSlotSize})
 	if err == nil {
 		t.Fatal("NewRDMAConnPool: expected error on non-RDMA build")
 	}
@@ -57,8 +66,22 @@ func TestStubRDMAConnPool(t *testing.T) {
 
 // TestStubListen verifies Listen returns an error on non-RDMA builds.
 func TestStubListen(t *testing.T) {
-	_, err := Listen(9999, RDMAConnConfig{NumSlots: 1, SlotSize: 4096})
+	_, err := Listen(9999, RDMAConnConfig{NumSlots: 1, SlotSize: MinValidSlotSize})
 	if err == nil {
 		t.Fatal("Listen: expected error on non-RDMA build")
+	}
+}
+
+// TestStubConfigsCarryCreditAckMode verifies the new CreditAckMode field is
+// reachable on both config structs in stub builds, so callers can configure
+// it unconditionally.
+func TestStubConfigsCarryCreditAckMode(t *testing.T) {
+	cc := RDMAConnConfig{CreditAckMode: CreditAckAsync}
+	if cc.CreditAckMode != CreditAckAsync {
+		t.Fatalf("RDMAConnConfig.CreditAckMode lost in stub")
+	}
+	pc := RDMAPoolConfig{CreditAckMode: CreditAckAsync}
+	if pc.CreditAckMode != CreditAckAsync {
+		t.Fatalf("RDMAPoolConfig.CreditAckMode lost in stub")
 	}
 }

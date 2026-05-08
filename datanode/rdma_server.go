@@ -147,11 +147,25 @@ func (cs *connState) pollLoop(ctx *DataNodeRDMACtx) {
 }
 
 // handleSlot deserializes one slot, dispatches to handlePacket, and writes the response.
+//
+// Per the P0 flow-control contract, the receive slot is reusable as soon as
+// DeserializePacket returns (Arg/Data are copied into the proto.Packet). We
+// signal that to the peer with ReturnCredit immediately after a successful
+// deserialize, before running the handler — so a slow handler does not stall
+// the peer's credit pool.
 func (cs *connState) handleSlot(ctx *DataNodeRDMACtx, slotIdx int) {
 	protoPkt, err := rdma.DeserializePacket(cs.conn.RecvSlotBytes(slotIdx))
 	if err != nil {
 		log.LogErrorf("rdma handleSlot slot=%d: DeserializePacket: %v", slotIdx, err)
+		// Even on parse failure the slot itself is no longer needed; return
+		// credit so the peer is not penalised by a malformed packet.
+		if rerr := cs.conn.ReturnCredit(); rerr != nil {
+			log.LogErrorf("rdma handleSlot slot=%d: ReturnCredit after parse error: %v", slotIdx, rerr)
+		}
 		return
+	}
+	if rerr := cs.conn.ReturnCredit(); rerr != nil {
+		log.LogErrorf("rdma handleSlot slot=%d: ReturnCredit: %v", slotIdx, rerr)
 	}
 
 	replPkt := repl.NewPacket()
