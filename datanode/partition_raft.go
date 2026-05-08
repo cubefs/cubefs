@@ -288,6 +288,12 @@ func (dp *DataPartition) compareExtentsBySize(partitionID uint64, leaderExtents 
 	var base *storage.ExtentInfo
 	var found, equal bool
 	for _, extent = range leaderExtents {
+
+		if dp.extentStore.IsDeletedNormalExtent(extent.FileID) {
+			log.LogWarnf("action[compareExtentsBySize] PartitionID(%v) normal extent(%v) is deleted", dp.partitionID, extent.FileID)
+			continue
+		}
+
 		found = false
 		equal = false
 		for _, base = range baseExtents {

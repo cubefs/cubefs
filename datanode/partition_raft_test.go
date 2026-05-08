@@ -147,3 +147,34 @@ func TestCompareExtentsBySizeAfterStoreClosed(t *testing.T) {
 
 	require.False(t, dp.compareExtentsBySize(dp.partitionID, leader))
 }
+
+// When the leader still lists a normal extent but the follower has marked it in the local delete-only
+// cache, GetAllWatermarks drops it from baseExtents; compareExtentsBySize must skip that leader row
+// instead of treating it as missing (see partition_raft.go IsDeletedNormalExtent branch).
+func TestCompareExtentsBySizeSkipsLeaderExtentInLocalDeleteCache(t *testing.T) {
+	dp, cleanup := newTestDataPartitionExtentStore(t, 105)
+	defer cleanup()
+
+	id := createNormalExtentWithData(t, dp.extentStore)
+	ageNormalExtentsPastRepairWindow(t, dp.extentStore, id)
+	leaderRow := extentInfoFromStore(t, dp.extentStore, id)
+	dp.extentStore.PutNormalExtentToDeleteCache(id)
+	require.True(t, dp.extentStore.IsDeletedNormalExtent(id))
+
+	require.True(t, dp.compareExtentsBySize(dp.partitionID, []*storage.ExtentInfo{leaderRow}))
+}
+
+func TestCompareExtentsBySizeSkipsDeleteCachedAndStillChecksOthers(t *testing.T) {
+	dp, cleanup := newTestDataPartitionExtentStore(t, 106)
+	defer cleanup()
+
+	idSkip := createNormalExtentWithData(t, dp.extentStore)
+	idMatch := createNormalExtentWithData(t, dp.extentStore)
+	ageNormalExtentsPastRepairWindow(t, dp.extentStore, idSkip, idMatch)
+
+	skipRow := extentInfoFromStore(t, dp.extentStore, idSkip)
+	matchRow := extentInfoFromStore(t, dp.extentStore, idMatch)
+
+	dp.extentStore.PutNormalExtentToDeleteCache(idSkip)
+	require.True(t, dp.compareExtentsBySize(dp.partitionID, []*storage.ExtentInfo{skipRow, matchRow}))
+}
