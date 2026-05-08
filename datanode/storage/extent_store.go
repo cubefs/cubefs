@@ -1140,9 +1140,16 @@ func (s *ExtentStore) GetAllWatermarks(filter ExtentFilter) (extents []*ExtentIn
 		if filter != nil && !filter(extentInfo) {
 			continue
 		}
+
 		if extentInfo.IsDeleted {
 			continue
 		}
+
+		if filter != nil && s.IsDeletedNormalExtent(extentInfo.FileID) {
+			log.LogWarnf("GetAllWatermarks dp %v extentInfo %v is deleted", s.partitionID, extentInfo.FileID)
+			continue
+		}
+
 		extents = append(extents, extentInfo)
 	}
 	tinyDeleteFileSize, err = s.LoadTinyDeleteFileOffset()

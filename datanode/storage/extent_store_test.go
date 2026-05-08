@@ -303,3 +303,43 @@ func TestExtentStores(t *testing.T) {
 		ExtentStoreTest(t, ty)
 	}
 }
+
+// TestGetAllWatermarksSkipsNormalExtentDeleteCache verifies that normal extents marked only in
+// has-delete cache (without removing extentInfo from the map) are omitted when filter != nil,
+// matching production usage where NormalExtentFilter is non-nil but must not leak recently-deleted IDs.
+func TestGetAllWatermarksSkipsNormalExtentDeleteCache(t *testing.T) {
+	path, clean, err := getTestPathExtentStore()
+	require.NoError(t, err)
+	defer clean()
+	s, err := storage.NewExtentStore(path, 42, 1*util.GB, proto.PartitionTypeNormal, 0, true)
+	require.NoError(t, err)
+	defer s.Close()
+
+	id, err := s.NextExtentID()
+	require.NoError(t, err)
+	require.NoError(t, s.Create(id))
+	extentStoreNormalRwTest(t, s, id)
+
+	require.False(t, s.IsDeletedNormalExtent(id))
+	s.PutNormalExtentToDeleteCache(id)
+	require.True(t, s.IsDeletedNormalExtent(id))
+
+	acceptAll := storage.ExtentFilter(func(ei *storage.ExtentInfo) bool { return ei != nil })
+
+	extentsFiltered, _, err := s.GetAllWatermarks(acceptAll)
+	require.NoError(t, err)
+	for _, ei := range extentsFiltered {
+		require.NotEqual(t, id, ei.FileID)
+	}
+
+	extentsNoFilter, _, err := s.GetAllWatermarks(nil)
+	require.NoError(t, err)
+	found := false
+	for _, ei := range extentsNoFilter {
+		if ei.FileID == id {
+			found = true
+			break
+		}
+	}
+	require.True(t, found, "nil filter must not apply delete-cache filtering")
+}

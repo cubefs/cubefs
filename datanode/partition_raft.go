@@ -277,11 +277,17 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 	}
 }
 
-func compareExtentsBySize(partitionID uint64, toCompareExtents, baseExtents []*storage.ExtentInfo) bool {
+func (dp *DataPartition) compareExtentsBySize(partitionID uint64, leaderExtents []*storage.ExtentInfo) bool {
+	baseExtents, _, err := dp.getLocalExtentInfo(proto.NormalExtentType, nil)
+	if err != nil {
+		log.LogErrorf("action[compareExtentsBySize] PartitionID(%v) get local normal extents err(%v)", dp.partitionID, err)
+		return false
+	}
+
 	var extent *storage.ExtentInfo
 	var base *storage.ExtentInfo
 	var found, equal bool
-	for _, extent = range toCompareExtents {
+	for _, extent = range leaderExtents {
 		found = false
 		equal = false
 		for _, base = range baseExtents {
@@ -318,7 +324,6 @@ func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 		currLeaderPartitionSize            uint64
 		currLeaderRealUsedSize             uint64
 		currLeaderPartitionNormalExtents   []*storage.ExtentInfo
-		localPartitionNormalExtents        []*storage.ExtentInfo
 		err                                error
 	)
 	timer := time.NewTicker(5 * time.Second)
@@ -386,13 +391,8 @@ func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 				log.LogErrorf("action[StartRaftAfterRepair] PartitionID(%v) get leader normal extents err(%v)", dp.partitionID, err)
 				continue
 			}
-			localPartitionNormalExtents, _, err = dp.getLocalExtentInfo(proto.NormalExtentType, nil)
-			if err != nil {
-				log.LogErrorf("action[StartRaftAfterRepair] PartitionID(%v) get local normal extents err(%v)", dp.partitionID, err)
-				continue
-			}
 
-			if !compareExtentsBySize(dp.partitionID, currLeaderPartitionNormalExtents, localPartitionNormalExtents) {
+			if !dp.compareExtentsBySize(dp.partitionID, currLeaderPartitionNormalExtents) {
 				log.LogWarnf("action[StartRaftAfterRepair] PartitionID(%v) leader normal extent incomplete match local normal extent, wait snapshot recover", dp.partitionID)
 				continue
 			}
