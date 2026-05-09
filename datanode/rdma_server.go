@@ -210,13 +210,24 @@ type rdmaNetAddr string
 func (a rdmaNetAddr) Network() string { return "rdma" }
 func (a rdmaNetAddr) String() string  { return string(a) }
 
-// rdmaFakeConn is a minimal net.Conn stub passed to OperatePacket for logging.
+// rdmaFakeConn is a minimal net.Conn stub passed to OperatePacket. The
+// RDMA dispatch path expects handlers to mutate the response packet
+// in-place (handleSlot's trailing WritePacket sends it back); they must
+// NOT invoke any streaming write directly on the conn. We make Write
+// panic so any latent handler that tries to streamWrite a TCP-style
+// response surfaces immediately as a runtime error rather than silently
+// losing bytes (P4a of docs/plan/rdma-optimization-spec.md).
 type rdmaFakeConn struct {
 	addr rdmaNetAddr
 }
 
-func (c *rdmaFakeConn) Read(_ []byte) (int, error)         { return 0, io.ErrClosedPipe }
-func (c *rdmaFakeConn) Write(_ []byte) (int, error)        { return 0, io.ErrClosedPipe }
+func (c *rdmaFakeConn) Read(_ []byte) (int, error) { return 0, io.ErrClosedPipe }
+func (c *rdmaFakeConn) Write(b []byte) (int, error) {
+	panic(fmt.Sprintf("rdma: handler invoked net.Conn.Write on RDMA fakeConn (%d bytes to %s); "+
+		"RDMA dispatch expects handlers to mutate the response packet in-place. "+
+		"This indicates a read-style handler running on the RDMA path — route reads through handleReadSlot instead.",
+		len(b), c.addr))
+}
 func (c *rdmaFakeConn) Close() error                       { return nil }
 func (c *rdmaFakeConn) LocalAddr() net.Addr                { return rdmaNetAddr("") }
 func (c *rdmaFakeConn) RemoteAddr() net.Addr               { return c.addr }
