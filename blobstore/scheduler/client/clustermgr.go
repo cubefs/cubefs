@@ -326,6 +326,16 @@ type DiskInfoSimple struct {
 	UsedChunkCnt int64            `json:"used_chunk_cnt"`
 	MaxChunkCnt  int64            `json:"max_chunk_cnt"`
 	FreeChunkCnt int64            `json:"free_chunk_cnt"`
+	Used         int64            `json:"used"`
+	Free         int64            `json:"free"`
+	Size         int64            `json:"size"`
+}
+
+func (disk *DiskInfoSimple) UsageRatio() float64 {
+	if disk.Size == 0 {
+		return 0
+	}
+	return float64(disk.Used) / float64(disk.Size)
 }
 
 // IsHealth return true if disk is health
@@ -371,6 +381,9 @@ func (disk *DiskInfoSimple) set(info *clustermgr.BlobNodeDiskInfo) {
 	disk.UsedChunkCnt = info.UsedChunkCnt
 	disk.MaxChunkCnt = info.MaxChunkCnt
 	disk.FreeChunkCnt = info.FreeChunkCnt
+	disk.Used = info.Used
+	disk.Free = info.Free
+	disk.Size = info.Size
 }
 
 // ShardNodeDiskInfo diskInfo for shard node
