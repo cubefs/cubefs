@@ -94,19 +94,50 @@ func (ctx *DataNodeRDMACtx) Stop() {
 	ctx.wg.Wait()
 }
 
+// acceptLoop runs as a single goroutine per RDMA listener and accepts
+// incoming RDMA connections. Transient Accept failures (RDMA CM events
+// glitching, network blips) are retried with exponential backoff rather
+// than terminating the loop — otherwise one transient error would
+// permanently disable RDMA acceptance on the node with no recovery
+// short of restarting the daemon.
 func (ctx *DataNodeRDMACtx) acceptLoop() {
 	defer ctx.wg.Done()
+
+	const (
+		initialBackoff = 5 * time.Millisecond
+		maxBackoff     = 5 * time.Second
+	)
+	backoff := initialBackoff
+
 	for {
 		conn, err := ctx.listener.Accept()
 		if err != nil {
+			// Stop request always wins.
 			select {
 			case <-ctx.stopCh:
 				return
 			default:
-				log.LogErrorf("rdma acceptLoop: %v", err)
-				return
 			}
+			log.LogWarnf("rdma acceptLoop: %v, retrying in %v", err, backoff)
+			// Honour stopCh while sleeping so Stop() doesn't have to
+			// wait for the full backoff before the goroutine exits.
+			select {
+			case <-ctx.stopCh:
+				return
+			case <-time.After(backoff):
+			}
+			if backoff < maxBackoff {
+				backoff *= 2
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
+			}
+			continue
 		}
+		// Reset backoff on a successful Accept so the next transient
+		// failure starts from the short window again.
+		backoff = initialBackoff
+
 		cs := &connState{
 			conn:    conn,
 			lastSeq: make([]uint32, conn.NumSlots()),
@@ -209,6 +240,18 @@ func (cs *connState) handleSlot(ctx *DataNodeRDMACtx, slotIdx int) {
 		log.LogErrorf("rdma handleSlot slot=%d: DeserializePacket: %v", slotIdx, err)
 		if rerr := cs.conn.ReturnCredit(slotIdx); rerr != nil {
 			log.LogErrorf("rdma handleSlot slot=%d: ReturnCredit after parse error: %v", slotIdx, rerr)
+		}
+		// Send a minimal error reply so the client doesn't sit in
+		// pollRDMAResponse for the full rdmaRoundTripTimeout (30s)
+		// after a malformed slot. ReqID=0 deliberately mismatches any
+		// real client request, triggering the SDK's reqid_mismatch
+		// fallback path → fast TCP fallback rather than a stalled read.
+		errPkt := &proto.Packet{
+			Magic:      proto.ProtoMagic,
+			ResultCode: proto.OpErr,
+		}
+		if werr := cs.conn.WritePacket(slotIdx, errPkt); werr != nil {
+			log.LogErrorf("rdma handleSlot slot=%d: WritePacket error reply: %v", slotIdx, werr)
 		}
 		return
 	}
