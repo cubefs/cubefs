@@ -1,6 +1,7 @@
 package rdma
 
 import (
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -260,6 +261,119 @@ func TestSlotPool_CloseUnblocksWaiters(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("Close did not unblock blocked acquire")
+	}
+}
+
+// TestSlotPool_RespectsMaxConnsUnderConcurrentDial reproduces the TOCTOU
+// race that existed before slot_pool.go tracked an in-flight dialing
+// counter: many acquirers see len(conns) < maxConns concurrently, all
+// release the lock to dial, all succeed, and all append — overshooting
+// the cap. With the dialing counter, only maxConns dials may be in
+// flight at any moment regardless of concurrency.
+func TestSlotPool_RespectsMaxConnsUnderConcurrentDial(t *testing.T) {
+	const (
+		numSlots = 1
+		maxConns = 2
+		workers  = 16
+	)
+	var dialCount int64
+	slowDial := func(addr string, cfg RDMAConnConfig) (*RDMAConn, error) {
+		atomic.AddInt64(&dialCount, 1)
+		// Hold the dial in flight long enough that all workers race
+		// past the maxConns check before any of them returns. Without
+		// the dialing counter all 16 would dial concurrently.
+		time.Sleep(20 * time.Millisecond)
+		return &RDMAConn{numSlots: numSlots}, nil
+	}
+
+	pool, err := newPool(RDMAPoolConfig{
+		NumSlots: numSlots,
+		SlotSize: MinValidSlotSize,
+		MaxConns: maxConns,
+	}, slowDial)
+	if err != nil {
+		t.Fatalf("newPool: %v", err)
+	}
+	t.Cleanup(pool.Close)
+
+	// Each worker acquires, holds briefly, releases. With maxConns=2 and
+	// numSlots=1 the pool offers 2 total slots; workers serialise through
+	// them but every dial that ends up registered must respect the cap.
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	errCh := make(chan error, workers)
+	for i := 0; i < workers; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			h, err := pool.AcquireSlot("addr-A")
+			if err != nil {
+				errCh <- err
+				return
+			}
+			// Brief hold so other workers can race the dial path.
+			time.Sleep(time.Millisecond)
+			pool.ReleaseSlot(h, false)
+		}(i)
+	}
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		t.Errorf("worker error: %v", err)
+	}
+
+	got := atomic.LoadInt64(&dialCount)
+	if got > maxConns {
+		t.Fatalf("dialCount = %d, exceeded maxConns = %d (TOCTOU regression)", got, maxConns)
+	}
+	if got < 1 {
+		t.Fatalf("dialCount = %d, expected at least 1", got)
+	}
+}
+
+// TestSlotPool_DialFailureWakesWaiters ensures that when a Dial returns
+// an error, other goroutines parked on the cond are woken — they may
+// want to retry the dial themselves now that the dialing slot has been
+// freed.
+func TestSlotPool_DialFailureWakesWaiters(t *testing.T) {
+	const (
+		numSlots = 1
+		maxConns = 1
+	)
+	var dialAttempts int64
+	failingDial := func(addr string, cfg RDMAConnConfig) (*RDMAConn, error) {
+		n := atomic.AddInt64(&dialAttempts, 1)
+		if n == 1 {
+			// First dial fails; a subsequent retry should succeed and
+			// produce a usable handle.
+			return nil, errors.New("simulated dial failure")
+		}
+		return &RDMAConn{numSlots: numSlots}, nil
+	}
+
+	pool, err := newPool(RDMAPoolConfig{
+		NumSlots: numSlots,
+		SlotSize: MinValidSlotSize,
+		MaxConns: maxConns,
+	}, failingDial)
+	if err != nil {
+		t.Fatalf("newPool: %v", err)
+	}
+	t.Cleanup(pool.Close)
+
+	// First acquire: dial fails, returns error.
+	if _, err := pool.AcquireSlot("addr-A"); err == nil {
+		t.Fatal("first acquire: expected dial failure, got nil")
+	}
+	// Second acquire: should succeed (dialing counter was decremented
+	// after the failure, so we are below maxConns again).
+	h, err := pool.AcquireSlot("addr-A")
+	if err != nil {
+		t.Fatalf("second acquire: %v", err)
+	}
+	pool.ReleaseSlot(h, false)
+
+	if got := atomic.LoadInt64(&dialAttempts); got != 2 {
+		t.Errorf("dialAttempts = %d, want 2", got)
 	}
 }
 

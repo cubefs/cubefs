@@ -60,8 +60,13 @@ func newConnSlots(conn *RDMAConn, numSlots int) *connSlots {
 }
 
 // tryAcquire returns the next free slot index or -1 if none. Caller must
-// hold the pool mutex.
+// hold the pool mutex. Returns -1 also when the underlying connection has
+// been marked closed (drainer-detected fault, externally closed) so the
+// pool stops handing out slots on a broken QP.
 func (cs *connSlots) tryAcquire() int {
+	if cs.conn != nil && cs.conn.IsClosed() {
+		return -1
+	}
 	n := len(cs.inUse)
 	for i := 0; i < n; i++ {
 		idx := (cs.nextRR + i) % n
@@ -74,13 +79,23 @@ func (cs *connSlots) tryAcquire() int {
 	return -1
 }
 
-// allDeadAndIdle reports whether every slot is dirty AND no slot is
-// currently in use. A connSlots in this state is safe to close: no future
-// AcquireSlot can ever return one of its slots, and no goroutine still
-// owns an in-flight request on it.
+// allDeadAndIdle reports whether the connSlots is safe to remove:
+// either every slot is dirty AND no slot is currently in use, OR the
+// underlying conn has been marked closed (e.g. drainer-detected fault)
+// and no slot is currently in use. In both cases no future AcquireSlot
+// can ever return one of its slots, and no goroutine still owns an
+// in-flight request on it.
 func (cs *connSlots) allDeadAndIdle() bool {
+	for i := range cs.inUse {
+		if cs.inUse[i] {
+			return false
+		}
+	}
+	if cs.conn != nil && cs.conn.IsClosed() {
+		return true
+	}
 	for i := range cs.dirty {
-		if cs.inUse[i] || !cs.dirty[i] {
+		if !cs.dirty[i] {
 			return false
 		}
 	}
@@ -101,7 +116,15 @@ type singleSlotPool struct {
 	mu     sync.Mutex
 	cond   *sync.Cond
 	conns  []*connSlots
-	closed bool
+	// dialing tracks Dial calls currently in flight. We must count them
+	// against maxConns so concurrent acquirers don't all see
+	// len(conns) < maxConns simultaneously, all release the lock to dial,
+	// and then all append — exceeding the cap. The lock-around-Dial
+	// pattern is intentional (Dial may take seconds and shouldn't block
+	// other allocators), so the counter is the cheapest way to keep the
+	// invariant len(conns)+dialing <= maxConns at all times.
+	dialing int
+	closed  bool
 }
 
 func newSingleSlotPool(addr string, cfg RDMAConnConfig, maxConns int, dial dialFunc) *singleSlotPool {
@@ -145,8 +168,11 @@ func (p *singleSlotPool) acquire() (*SlotHandle, error) {
 
 		// No free slot. If we still have headroom under maxConns, dial a
 		// new connection (outside the lock so a slow Dial doesn't stall
-		// other waiters).
-		if len(p.conns) < p.maxConns {
+		// other waiters). Track in-flight dials with `dialing` so
+		// concurrent acquirers cooperate on the maxConns cap rather
+		// than racing past the len(conns)<maxConns check.
+		if len(p.conns)+p.dialing < p.maxConns {
+			p.dialing++
 			cfg := p.cfg
 			addr := p.addr
 			dial := p.dial
@@ -155,17 +181,27 @@ func (p *singleSlotPool) acquire() (*SlotHandle, error) {
 			conn, err := dial(addr, cfg)
 
 			p.mu.Lock()
+			p.dialing--
 			if err != nil {
+				// Wake other waiters parked on cond — they may now want
+				// to attempt the dial themselves (the dialing counter
+				// has dropped, freeing a maxConns slot).
+				p.cond.Broadcast()
 				p.mu.Unlock()
 				return nil, fmt.Errorf("rdma: dial %s: %w", addr, err)
 			}
 			if p.closed {
 				// Pool closed while we were dialing.
+				p.cond.Broadcast()
 				p.mu.Unlock()
 				conn.Close()
 				return nil, ErrSlotPoolClosed
 			}
 			p.conns = append(p.conns, newConnSlots(conn, p.cfg.NumSlots))
+			// New conn brings numSlots free slots; wake other waiters
+			// so they can claim slots from the new conn rather than
+			// staying parked until the next ReleaseSlot.
+			p.cond.Broadcast()
 			continue // retry the allocation loop with the new conn
 		}
 

@@ -17,6 +17,7 @@ import (
 	"unsafe"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -96,15 +97,18 @@ type RDMAConn struct {
 	peerCreditVA   uint64
 
 	// Per-slot monotonic sequence for sends (stamped into SlotHeader.Seq).
-	nextSendSeq [maxSlots]uint32
+	// Length == numSlots, indexed by slot. Sized dynamically rather than
+	// using a fixed [maxSlots] array so a conn with numSlots=8 doesn't
+	// pay 1024 × 8 byte cold-cache footprint for unused slots.
+	nextSendSeq []uint32
 	// Per-slot last received seq (for PollRecvDoorbell).
-	lastRecvSeq [maxSlots]uint32
+	lastRecvSeq []uint32
 
 	// recvDoneSeq[slotIdx] increments each time the drainer observes a
 	// recv-side CQE whose imm_data points at slotIdx. Senders waiting on
 	// a response use it to detect arrivals when memory polling has
 	// already advanced into the sleep phase.
-	recvDoneSeq [maxSlots]uint64
+	recvDoneSeq []uint64
 	// recvSignalSeq is a global counter incremented on every recv CQE,
 	// for callers that wait on "any recv" rather than a specific slot
 	// (server pollLoop in idle mode).
@@ -388,6 +392,9 @@ func newRDMAConn(
 		peerDBBaseVA:   peerDBBaseVA,
 		peerCreditRkey: peerCreditRkey,
 		peerCreditVA:   peerCreditVA,
+		nextSendSeq:    make([]uint32, cfg.NumSlots),
+		lastRecvSeq:    make([]uint32, cfg.NumSlots),
+		recvDoneSeq:    make([]uint64, cfg.NumSlots),
 		numSlots:       cfg.NumSlots,
 		slotSize:       cfg.SlotSize,
 		remoteAddr:     remoteAddr,
@@ -398,7 +405,7 @@ func newRDMAConn(
 		drainerDone:    make(chan struct{}),
 	}
 	c.recvCond = sync.NewCond(&c.recvMu)
-	c.credit = newCreditState(cfg.NumSlots, c.localCreditPtr())
+	c.credit = newCreditState(cfg.NumSlots, c.localCreditPtr(), c.pollCfg)
 	return c
 }
 
@@ -537,11 +544,19 @@ func (c *RDMAConn) WriteData(slotIdx int, data []byte) error {
 // WriteSlotZeroCopy with the precomputed totalLen — eliminating one
 // memcpy of the response data per round trip.
 //
+// totalLen is validated against (SlotHeader + minimum PacketHeader)
+// rather than just SlotHeader: a totalLen smaller than that is
+// definitely malformed (the receiver's DeserializePacket would fail
+// with a confusing "payload too short" error). Catching it here turns
+// a silent corruption into a fail-fast.
+//
 // Blocks if no flow-control credit is available. Not goroutine-safe for
 // the same slotIdx.
 func (c *RDMAConn) WriteSlotZeroCopy(slotIdx, totalLen int) error {
-	if totalLen < SlotHeaderSize {
-		return fmt.Errorf("rdma: WriteSlotZeroCopy: totalLen %d < SlotHeaderSize %d", totalLen, SlotHeaderSize)
+	const minTotalLen = SlotHeaderSize + util.PacketHeaderSize
+	if totalLen < minTotalLen {
+		return fmt.Errorf("rdma: WriteSlotZeroCopy: totalLen %d < minimum %d (SlotHeader %d + PacketHeader %d) — caller did not stage a valid packet",
+			totalLen, minTotalLen, SlotHeaderSize, util.PacketHeaderSize)
 	}
 	if totalLen > c.slotSize {
 		return fmt.Errorf("rdma: WriteSlotZeroCopy: totalLen %d > slotSize %d", totalLen, c.slotSize)
@@ -742,20 +757,57 @@ func (c *RDMAConn) runDrainer() {
 	}
 }
 
+// markFault flips the connection into the closed state without freeing
+// resources or stopping the drainer. Used by the drainer when it
+// observes an unrecoverable send-side completion error so callers
+// (SlotPool, in-flight WritePacket) stop using the conn promptly.
+//
+// Resource cleanup still happens via the regular Close path; markFault
+// just makes IsClosed() return true earlier so the pool's tryAcquire
+// guard skips this conn and existing goroutines parked on credit /
+// recvCond return ErrCreditClosed instead of waiting forever.
+func (c *RDMAConn) markFault() {
+	if !atomic.CompareAndSwapInt32(&c.closed, 0, 1) {
+		return
+	}
+	if c.credit != nil {
+		c.credit.closeCredits()
+	}
+	if c.recvCond != nil {
+		c.recvMu.Lock()
+		c.recvCond.Broadcast()
+		c.recvMu.Unlock()
+	}
+}
+
 // dispatchCompletion routes one CQE to its waiter. Errors are logged and
 // the WR is otherwise skipped; flush-on-teardown errors are common during
 // graceful close and must not abort the drainer.
 func (c *RDMAConn) dispatchCompletion(qp *C.struct_ibv_qp, ev CompletionEvent) {
 	op, slot := decodeWRID(ev.WRID)
 	if !ev.Success() {
-		// During Close, QP transitions to ERR and WRs flush as
-		// IBV_WC_WR_FLUSH_ERR. Suppress logs in that case to avoid noise.
-		if !c.IsClosed() {
-			log.LogWarnf("rdma drainer (%s): WR error op=%v slot=%d status=%d",
+		// IBV_WC_WR_FLUSH_ERR (status 5) is what every in-flight WR
+		// reports when the QP transitions to ERR during teardown. We
+		// expect those during Close and don't log or treat them as a
+		// fault. Any other status on a NOT-yet-closed conn means the
+		// HCA is reporting a real transport error (RNR_RETRY_EXC,
+		// REM_INV_REQ, LOC_LEN_ERR, etc.) and the QP is unusable.
+		const ibvWcWrFlushErr = 5
+		isFlush := ev.Status == ibvWcWrFlushErr
+		if !c.IsClosed() && !isFlush {
+			log.LogWarnf("rdma drainer (%s): WR error op=%v slot=%d status=%d — marking conn faulted",
 				c.remoteAddr, op, slot, ev.Status)
+			// A failed send-side WR (doorbell / credit / shutdown) means
+			// the QP is broken — mark the conn closed so the slot pool
+			// stops handing out new slots and existing waiters bail out.
+			// Recv-side WC errors are usually a consequence of the same
+			// underlying fault; mark them too unless we're already closed.
+			c.markFault()
 		}
 		// Recv WR errors leave the pool short. Refill best-effort so we
-		// can keep accepting traffic after a transient error.
+		// can keep accepting traffic after a transient error (no-op if
+		// QP is now ERR — refill will fail silently and the conn will
+		// be torn down via Close).
 		if op == opRecv {
 			_ = c.recvPool.refillOne(qp, ev.WRID)
 		}
@@ -902,9 +954,15 @@ func (c *RDMAConn) Close() error {
 	}
 
 	// Wake any callers parked in WaitRecvDoneSeq / WaitRecvSignal.
-	c.recvMu.Lock()
-	c.recvCond.Broadcast()
-	c.recvMu.Unlock()
+	// recvCond is normally initialised by newRDMAConn; SlotPool unit
+	// tests bypass that path and construct partial-init RDMAConn shells
+	// via fakeDial — guard against the nil case so test cleanup paths
+	// don't panic.
+	if c.recvCond != nil {
+		c.recvMu.Lock()
+		c.recvCond.Broadcast()
+		c.recvMu.Unlock()
+	}
 
 	// Wake the drainer if it's blocked on comp_channel: post a
 	// self-signaled ping that delivers a CQE.

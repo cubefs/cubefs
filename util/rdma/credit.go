@@ -25,11 +25,21 @@ import (
 	"errors"
 	"runtime"
 	"sync/atomic"
+	"time"
 )
 
 // ErrCreditClosed is returned by acquireCredit when the connection is shut
 // down while a goroutine is waiting for credits.
 var ErrCreditClosed = errors.New("rdma: credit state closed")
+
+// creditSleepBackoff caps the duration the credit wait sleeps in any one
+// iteration. The peer's credit-return is an RDMA Write into our local
+// credit cell that produces NO CQE on our side, so we cannot block on
+// the comp_channel for it — we must time-slice. 1 ms is short enough
+// not to add visible latency to a stalled sender once credit refills,
+// long enough to let the goroutine descheduler drop us off the run
+// queue and stop burning CPU.
+const creditSleepBackoff = time.Millisecond
 
 // creditState is the per-connection flow-control bookkeeping. The same
 // struct represents both sender and receiver roles because an RDMAConn is
@@ -52,12 +62,17 @@ type creditState struct {
 	// closed flips to 1 when the connection is shutting down. acquireCredit
 	// returns ErrCreditClosed instead of spinning forever.
 	closed int32
+
+	// pollCfg drives the busy → yield → sleep state machine in
+	// acquireCredit when no credit is available. Defaults to
+	// DefaultPollConfig when zero.
+	pollCfg PollConfig
 }
 
 // newCreditState constructs a creditState with the given slot count. The
 // credit-return cell is allocated by the caller (real conn allocates a pinned
 // MR; tests allocate &uint64{}).
-func newCreditState(numSlots int, received *uint64) *creditState {
+func newCreditState(numSlots int, received *uint64, pollCfg PollConfig) *creditState {
 	if numSlots <= 0 {
 		// Defensive: a zero-credit state would block all sends forever.
 		// Validation upstream prevents this; treat as 1 to fail-safe.
@@ -66,9 +81,13 @@ func newCreditState(numSlots int, received *uint64) *creditState {
 	if received == nil {
 		received = new(uint64)
 	}
+	if pollCfg.BusySpinCount == 0 && pollCfg.YieldCount == 0 && pollCfg.SleepThresholdUs == 0 {
+		pollCfg = DefaultPollConfig
+	}
 	return &creditState{
 		numSlots: uint64(numSlots),
 		received: received,
+		pollCfg:  pollCfg,
 	}
 }
 
@@ -86,7 +105,16 @@ func (s *creditState) available() int64 {
 // acquireCredit blocks until a credit is available, then claims it. Returns
 // ErrCreditClosed if closeCredits has been called or ctx.Err() if ctx is
 // cancelled while waiting. Safe for concurrent callers.
+//
+// Backoff strategy mirrors the AdaptivePoller used elsewhere in the
+// transport: tight spin → runtime.Gosched → time.Sleep. Sleep is bounded
+// (creditSleepBackoff) rather than blocking on a comp_channel because
+// the peer's credit-return is a one-way RDMA Write into our local cell
+// that produces no CQE — there is no kernel-level wakeup we can wait
+// on. Time-sliced sleep keeps a stalled sender's goroutine off the run
+// queue while still waking promptly when credit refills.
 func (s *creditState) acquireCredit(ctx context.Context) error {
+	var poller *AdaptivePoller
 	for {
 		if atomic.LoadInt32(&s.closed) == 1 {
 			return ErrCreditClosed
@@ -100,9 +128,13 @@ func (s *creditState) acquireCredit(ctx context.Context) error {
 			// Lost the race; retry without yielding, the contention is brief.
 			continue
 		}
-		// No credit available — wait. Spin-yield is acceptable here because
-		// credit exhaustion is rare in steady state (numSlots >= concurrency).
-		// P2 will replace this with adaptive sleep.
+
+		// No credit available — wait. Construct the poller lazily so the
+		// fast path (credit available on first read) doesn't pay any
+		// allocation cost.
+		if poller == nil {
+			poller = NewAdaptivePoller(s.pollCfg)
+		}
 		if ctx != nil {
 			select {
 			case <-ctx.Done():
@@ -110,7 +142,16 @@ func (s *creditState) acquireCredit(ctx context.Context) error {
 			default:
 			}
 		}
-		runtime.Gosched()
+		switch poller.NextAction() {
+		case ActionContinue:
+			// tight loop
+		case ActionYield:
+			runtime.Gosched()
+		case ActionSleep:
+			// See creditSleepBackoff comment for why this is not a
+			// comp_channel wait.
+			time.Sleep(creditSleepBackoff)
+		}
 	}
 }
 

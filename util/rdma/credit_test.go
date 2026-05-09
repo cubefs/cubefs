@@ -10,10 +10,12 @@ import (
 )
 
 // newCreditStateForTest is a convenience that allocates a fresh received
-// cell and wires it into a new creditState.
+// cell and wires it into a new creditState. PollConfig is left as zero
+// (newCreditState fills in DefaultPollConfig) so tests exercise the same
+// adaptive-backoff path production uses.
 func newCreditStateForTest(numSlots int) (*creditState, *uint64) {
 	r := new(uint64)
-	return newCreditState(numSlots, r), r
+	return newCreditState(numSlots, r, PollConfig{}), r
 }
 
 func TestCreditState_BasicAcquireAndAvailable(t *testing.T) {
