@@ -651,7 +651,6 @@ func (b *BlobNodeManager) GetModuleName() string {
 	return "DiskMgr" // never change this
 }
 
-
 // DisksSnapshot returns a point-in-time snapshot of every disk in the cluster.
 func (b *BlobNodeManager) DisksSnapshot() (all []clustermgr.BlobNodeDiskInfo, expired []clustermgr.BlobNodeDiskInfo) {
 	now := time.Now()

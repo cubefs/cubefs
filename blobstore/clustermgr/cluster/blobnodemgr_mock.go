@@ -140,6 +140,21 @@ func (mr *MockBlobNodeManagerAPIMockRecorder) CheckNodeInfoDuplicated(arg0, arg1
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckNodeInfoDuplicated", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).CheckNodeInfoDuplicated), arg0, arg1)
 }
 
+// DisksSnapshot mocks base method.
+func (m *MockBlobNodeManagerAPI) DisksSnapshot() ([]clustermgr.BlobNodeDiskInfo, []clustermgr.BlobNodeDiskInfo) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DisksSnapshot")
+	ret0, _ := ret[0].([]clustermgr.BlobNodeDiskInfo)
+	ret1, _ := ret[1].([]clustermgr.BlobNodeDiskInfo)
+	return ret0, ret1
+}
+
+// DisksSnapshot indicates an expected call of DisksSnapshot.
+func (mr *MockBlobNodeManagerAPIMockRecorder) DisksSnapshot() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DisksSnapshot", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).DisksSnapshot))
+}
+
 // GetDiskInfo mocks base method.
 func (m *MockBlobNodeManagerAPI) GetDiskInfo(arg0 context.Context, arg1 proto.DiskID) (*clustermgr.BlobNodeDiskInfo, error) {
 	m.ctrl.T.Helper()
@@ -196,18 +211,6 @@ func (m *MockBlobNodeManagerAPI) HasEnoughSpace(arg0 context.Context, arg1 codem
 func (mr *MockBlobNodeManagerAPIMockRecorder) HasEnoughSpace(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasEnoughSpace", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).HasEnoughSpace), arg0, arg1)
-}
-
-// RegisterDiskUsageCallback mocks base method.
-func (m *MockBlobNodeManagerAPI) RegisterDiskUsageCallback(fn func(proto.DiskID, float64)) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "RegisterDiskUsageCallback", fn)
-}
-
-// RegisterDiskUsageCallback indicates an expected call of RegisterDiskUsageCallback.
-func (mr *MockBlobNodeManagerAPIMockRecorder) RegisterDiskUsageCallback(fn interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterDiskUsageCallback", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).RegisterDiskUsageCallback), fn)
 }
 
 // IsDiskWritable mocks base method.
@@ -295,6 +298,18 @@ func (m *MockBlobNodeManagerAPI) RefreshExpireTime() {
 func (mr *MockBlobNodeManagerAPIMockRecorder) RefreshExpireTime() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RefreshExpireTime", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).RefreshExpireTime))
+}
+
+// RegisterDiskUsageCallback mocks base method.
+func (m *MockBlobNodeManagerAPI) RegisterDiskUsageCallback(arg0 func(proto.DiskID, float64)) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "RegisterDiskUsageCallback", arg0)
+}
+
+// RegisterDiskUsageCallback indicates an expected call of RegisterDiskUsageCallback.
+func (mr *MockBlobNodeManagerAPIMockRecorder) RegisterDiskUsageCallback(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterDiskUsageCallback", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).RegisterDiskUsageCallback), arg0)
 }
 
 // SetStatus mocks base method.
@@ -493,19 +508,4 @@ func (m *MockBlobNodeManagerAPI) updateNodeNoLocked(arg0 *nodeItem) error {
 func (mr *MockBlobNodeManagerAPIMockRecorder) updateNodeNoLocked(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "updateNodeNoLocked", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).updateNodeNoLocked), arg0)
-}
-
-// DisksSnapshot mocks base method.
-func (m *MockBlobNodeManagerAPI) DisksSnapshot() ([]clustermgr.BlobNodeDiskInfo, []clustermgr.BlobNodeDiskInfo) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DisksSnapshot")
-	ret0, _ := ret[0].([]clustermgr.BlobNodeDiskInfo)
-	ret1, _ := ret[1].([]clustermgr.BlobNodeDiskInfo)
-	return ret0, ret1
-}
-
-// DisksSnapshot indicates an expected call of DisksSnapshot.
-func (mr *MockBlobNodeManagerAPIMockRecorder) DisksSnapshot() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DisksSnapshot", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).DisksSnapshot))
 }

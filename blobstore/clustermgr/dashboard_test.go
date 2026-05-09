@@ -275,7 +275,7 @@ func genDisk(nodeID proto.NodeID, path string, diskID proto.DiskID,
 }
 
 func TestBuildDisk_Empty(t *testing.T) {
-	stat := buildDisk(nil)
+	stat := buildDisk(nil, nil)
 	require.Empty(t, stat.ByStatusIDC)
 	require.Equal(t, clustermgr.DashboardScoreOK, stat.Score)
 }
@@ -286,7 +286,7 @@ func TestBuildDisk_NormalDisk(t *testing.T) {
 		genDisk(1, "/data0", 10, proto.DiskStatusNormal, "idc1",
 			clustermgr.DiskHeartBeatInfo{Size: 1000, Used: 200, Free: 800, MaxChunkCnt: 10, FreeChunkCnt: 8, UsedChunkCnt: 2}),
 	}
-	stat := buildDisk(snaps)
+	stat := buildDisk(snaps, nil)
 
 	require.Equal(t, 1, stat.ByStatusIDC["normal"]["idc1"].Count)
 	require.Equal(t, int64(1000), stat.ByStatusIDC["normal"]["idc1"].TotalBytes)
@@ -301,7 +301,7 @@ func TestBuildDisk_DroppedExcludedFromTotal(t *testing.T) {
 		genDisk(1, "/data0", 10, proto.DiskStatusNormal, "idc1", clustermgr.DiskHeartBeatInfo{Size: 100}),
 		genDisk(2, "/data0", 20, proto.DiskStatusDropped, "idc1", clustermgr.DiskHeartBeatInfo{Size: 100}),
 	}
-	stat := buildDisk(snaps)
+	stat := buildDisk(snaps, nil)
 
 	require.Equal(t, 1, stat.ByStatusIDC["normal"]["idc1"].Count)
 	require.Equal(t, 1, stat.ByStatusIDC["dropped"]["idc1"].Count)
@@ -315,7 +315,7 @@ func TestBuildDisk_RepairedBecomesReplace(t *testing.T) {
 	snaps := []clustermgr.BlobNodeDiskInfo{
 		genDisk(1, "/data0", 10, proto.DiskStatusRepaired, "idc1", clustermgr.DiskHeartBeatInfo{Size: 500}),
 	}
-	stat := buildDisk(snaps)
+	stat := buildDisk(snaps, nil)
 
 	require.Equal(t, 1, stat.ByStatusIDC["__replace__"]["idc1"].Count)
 	require.Equal(t, 1, stat.ByStatusIDC["__total__"]["idc1"].Count)
@@ -329,7 +329,7 @@ func TestBuildDisk_SlotDedup_KeepsHighestDiskID(t *testing.T) {
 		genDisk(1, "/data0", 5, proto.DiskStatusBroken, "idc1", clustermgr.DiskHeartBeatInfo{Size: 100}),
 		genDisk(1, "/data0", 10, proto.DiskStatusNormal, "idc1", clustermgr.DiskHeartBeatInfo{Size: 200}),
 	}
-	stat := buildDisk(snaps)
+	stat := buildDisk(snaps, nil)
 
 	require.Equal(t, 1, stat.ByStatusIDC["normal"]["idc1"].Count)
 	require.Equal(t, int64(200), stat.ByStatusIDC["normal"]["idc1"].TotalBytes)
@@ -344,7 +344,7 @@ func TestBuildDisk_SlotDedup_OldNormalNewRepaired(t *testing.T) {
 		genDisk(1, "/data0", 10, proto.DiskStatusNormal, "idc1", clustermgr.DiskHeartBeatInfo{Size: 100}),
 		genDisk(1, "/data0", 20, proto.DiskStatusRepaired, "idc1", clustermgr.DiskHeartBeatInfo{Size: 200}),
 	}
-	stat := buildDisk(snaps)
+	stat := buildDisk(snaps, nil)
 
 	require.Equal(t, 1, stat.ByStatusIDC["__replace__"]["idc1"].Count)
 	require.Equal(t, int64(200), stat.ByStatusIDC["__replace__"]["idc1"].TotalBytes)
@@ -360,7 +360,7 @@ func TestBuildDisk_MultiStatusMultiIDC(t *testing.T) {
 		genDisk(3, "/d0", 3, proto.DiskStatusNormal, "idc2", clustermgr.DiskHeartBeatInfo{Size: 100}),
 		genDisk(4, "/d0", 4, proto.DiskStatusDropped, "idc2", clustermgr.DiskHeartBeatInfo{Size: 100}),
 	}
-	stat := buildDisk(snaps)
+	stat := buildDisk(snaps, nil)
 
 	require.Equal(t, 1, stat.ByStatusIDC["normal"]["idc1"].Count)
 	require.Equal(t, 1, stat.ByStatusIDC["broken"]["idc1"].Count)
@@ -379,7 +379,7 @@ func TestBuildDisk_ByteAggregation(t *testing.T) {
 		genDisk(2, "/d0", 2, proto.DiskStatusNormal, "idc1",
 			clustermgr.DiskHeartBeatInfo{Size: 2000, Used: 500, Free: 1500, MaxChunkCnt: 20, FreeChunkCnt: 15, UsedChunkCnt: 5, OversoldFreeChunkCnt: 2}),
 	}
-	stat := buildDisk(snaps)
+	stat := buildDisk(snaps, nil)
 
 	e := stat.ByStatusIDC["normal"]["idc1"]
 	require.Equal(t, 2, e.Count)
@@ -401,7 +401,7 @@ func TestBuildDisk_TotalEqualsNormalPlusBrokenPlusRepairingPlusReplace(t *testin
 		genDisk(4, "/d3", 4, proto.DiskStatusRepaired, "idc1", clustermgr.DiskHeartBeatInfo{}),
 		genDisk(5, "/d4", 5, proto.DiskStatusDropped, "idc1", clustermgr.DiskHeartBeatInfo{}),
 	}
-	stat := buildDisk(snaps)
+	stat := buildDisk(snaps, nil)
 
 	total := stat.ByStatusIDC["__total__"]["idc1"].Count
 	normal := stat.ByStatusIDC["normal"]["idc1"].Count
@@ -411,6 +411,23 @@ func TestBuildDisk_TotalEqualsNormalPlusBrokenPlusRepairingPlusReplace(t *testin
 
 	require.Equal(t, normal+broken+repairing+replace, total)
 	require.Equal(t, 4, total)
+}
+
+func TestBuildDisk_NodeDroppedOverridesDiskStatus(t *testing.T) {
+	// node 1 is Dropped; its disks should all be counted as "dropped"
+	// regardless of their own status.
+	droppedNodes := map[proto.NodeID]struct{}{proto.NodeID(1): {}}
+	snaps := []clustermgr.BlobNodeDiskInfo{
+		genDisk(1, "/d0", 1, proto.DiskStatusNormal, "idc1", clustermgr.DiskHeartBeatInfo{}), // node dropped → dropped
+		genDisk(1, "/d1", 2, proto.DiskStatusBroken, "idc1", clustermgr.DiskHeartBeatInfo{}), // node dropped → dropped
+		genDisk(2, "/d2", 3, proto.DiskStatusNormal, "idc1", clustermgr.DiskHeartBeatInfo{}), // normal node → normal
+	}
+	stat := buildDisk(snaps, droppedNodes)
+
+	require.Equal(t, 2, stat.ByStatusIDC["dropped"]["idc1"].Count)
+	require.Equal(t, 1, stat.ByStatusIDC["normal"]["idc1"].Count)
+	// dropped disks are not added to __total__
+	require.Equal(t, 1, stat.ByStatusIDC["__total__"]["idc1"].Count)
 }
 
 func TestDashboardDisk_EmptyOnFreshService(t *testing.T) {
@@ -617,9 +634,9 @@ func TestBuildVolume_ScoreDiskLoad(t *testing.T) {
 func TestBuildVolume_Allocatable(t *testing.T) {
 	const threshold = uint64(1 << 30)
 	vols := []clustermgr.VolumeBasic{
-		{CodeMode: codemode.EC6P6, Score: 0, Free: threshold + 1, Status: proto.VolumeStatusIdle},  // ✓ allocatable
-		{CodeMode: codemode.EC6P6, Score: -1, Free: threshold + 1, Status: proto.VolumeStatusIdle}, // ✗ score < retainThreshold(0)
-		{CodeMode: codemode.EC6P6, Score: 0, Free: threshold - 1, Status: proto.VolumeStatusIdle},  // ✗ free too small
+		{CodeMode: codemode.EC6P6, Score: 0, Free: threshold + 1, Status: proto.VolumeStatusIdle},   // ✓ allocatable
+		{CodeMode: codemode.EC6P6, Score: -1, Free: threshold + 1, Status: proto.VolumeStatusIdle},  // ✗ score < retainThreshold(0)
+		{CodeMode: codemode.EC6P6, Score: 0, Free: threshold - 1, Status: proto.VolumeStatusIdle},   // ✗ free too small
 		{CodeMode: codemode.EC6P6, Score: 0, Free: threshold + 1, Status: proto.VolumeStatusActive}, // ✗ not idle
 	}
 	v := buildVolume(volMap(vols), threshold, 0, 0)

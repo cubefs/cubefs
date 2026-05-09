@@ -151,13 +151,18 @@ func (d *dashboardMgr) fresh() {
 	scope := buildScope(d.service.ScopeMgr.Stat())
 	svcInfo, _ := d.service.ServiceMgr.ListServiceInfo()
 	allDisks, expiredDisks := d.service.BlobNodeMgr.DisksSnapshot()
-	disk := buildDisk(allDisks)
-	service := buildService(svcInfo.Nodes, expiredDisks, func(nodeID proto.NodeID) string {
-		info, err := d.service.BlobNodeMgr.GetNodeInfo(context.Background(), nodeID)
-		if err != nil || info == nil {
-			return ""
+	allNodes := d.service.BlobNodeMgr.ListNodes(context.Background(), 0)
+	droppedNodes := make(map[proto.NodeID]struct{})
+	nodeHost := make(map[proto.NodeID]string, len(allNodes))
+	for _, n := range allNodes {
+		nodeHost[n.NodeID] = n.Host
+		if n.Status == proto.NodeStatusDropped {
+			droppedNodes[n.NodeID] = struct{}{}
 		}
-		return info.Host
+	}
+	disk := buildDisk(allDisks, droppedNodes)
+	service := buildService(svcInfo.Nodes, expiredDisks, func(nodeID proto.NodeID) string {
+		return nodeHost[nodeID]
 	})
 	d.service.VolumeMgr.RangeUpdateVolume(context.Background(), d.volumes)
 	volume := buildVolume(d.volumes,
@@ -216,11 +221,15 @@ func buildScope(rawScopes map[string]uint64) clustermgr.ScopeStat {
 // For each physical slot (NodeID, Path), only the disk with the highest DiskID
 // is considered "current". Older disks on the same slot are ignored.
 //
+// droppedNodes is the set of NodeIDs whose status is NodeStatusDropped.
+// Any disk whose NodeID appears in droppedNodes is categorised as "dropped"
+// regardless of the disk's own status.
+//
 // ByStatusIDC keys produced:
 //   - proto.DiskStatus.String() — "normal" | "broken" | "repairing" | "dropped"
 //   - "__replace__" — current disk is Repaired; physical drive not yet swapped
 //   - "__total__"   — all active slots: normal + broken + repairing + __replace__
-func buildDisk(snaps []clustermgr.BlobNodeDiskInfo) clustermgr.DiskStat {
+func buildDisk(snaps []clustermgr.BlobNodeDiskInfo, droppedNodes map[proto.NodeID]struct{}) clustermgr.DiskStat {
 	raw := make(map[string]map[string]clustermgr.DiskEntry)
 
 	addEntry := func(key, idc string, hb *clustermgr.DiskHeartBeatInfo) {
@@ -258,8 +267,9 @@ func buildDisk(snaps []clustermgr.BlobNodeDiskInfo) clustermgr.DiskStat {
 
 	for _, e := range slotMax {
 		s := e.snap
-		if s.Status == proto.DiskStatusDropped {
-			addEntry(s.Status.String(), s.Idc, &s.DiskHeartBeatInfo)
+		// Node is Dropped → treat all its disks as dropped regardless of disk status.
+		if _, nodeDropped := droppedNodes[s.NodeID]; nodeDropped || s.Status == proto.DiskStatusDropped {
+			addEntry(proto.DiskStatusDropped.String(), s.Idc, &s.DiskHeartBeatInfo)
 			continue
 		}
 		if s.Status == proto.DiskStatusRepaired {
