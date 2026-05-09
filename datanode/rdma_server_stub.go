@@ -4,9 +4,7 @@ package datanode
 
 import (
 	"errors"
-	"net"
 
-	"github.com/cubefs/cubefs/datanode/repl"
 	"github.com/cubefs/cubefs/util/rdma"
 )
 
@@ -23,7 +21,10 @@ type RDMAServerConfig struct {
 // DataNodeRDMACtx is a no-op stub for non-rdma builds.
 type DataNodeRDMACtx struct{}
 
-func NewDataNodeRDMACtx(_ RDMAServerConfig, _ func(*repl.Packet, net.Conn) error) (*DataNodeRDMACtx, error) {
+// NewDataNodeRDMACtx returns an error on non-RDMA builds. Signature
+// mirrors the rdma-tagged version: takes the DataNode reference so the
+// dispatch logic can directly call s.Prepare / s.OperatePacket.
+func NewDataNodeRDMACtx(_ RDMAServerConfig, _ *DataNode) (*DataNodeRDMACtx, error) {
 	return nil, errors.New("rdma: not supported in this build")
 }
 

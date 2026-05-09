@@ -1233,12 +1233,7 @@ func (s *DataNode) initConnPool() {
 			Poll:     s.rdmaPollCfg,
 			Role:     rdma.RoleServer,
 		}
-		ctx, err := NewDataNodeRDMACtx(rdmaCfg, func(p *repl.Packet, c net.Conn) error {
-			if err := s.Prepare(p); err != nil {
-				return err
-			}
-			return s.OperatePacket(p, c)
-		})
+		ctx, err := NewDataNodeRDMACtx(rdmaCfg, s)
 		if err != nil {
 			log.LogWarnf("initConnPool: RDMA init failed, degraded to TCP-only: %v", err)
 		} else {

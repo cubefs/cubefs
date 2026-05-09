@@ -67,6 +67,21 @@ func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) 
 
 	log.LogDebugf("ExtentReader Read enter: size(%v) req(%v) reqPacket(%v)", size, req, reqPacket)
 
+	// P4b: try RDMA per-chunk before falling back to the TCP streaming
+	// path. RDMA only fires the leader (or the configured follower) for
+	// this attempt; on any failure we fall through to the TCP path
+	// below, which has its own host-iteration retry.
+	if rdmaConnPool != nil && reader.dp != nil && len(reader.dp.Hosts) > 0 {
+		rdmaAddr := reader.dp.Hosts[0]
+		if n, rerr := reader.readViaRDMA(rdmaAddr, reqPacket, req, offset, size); rerr == nil {
+			readBytes = n
+			return
+		} else {
+			log.LogWarnf("ExtentReader Read: RDMA failed addr(%v) req(%v) err(%v), falling back to TCP",
+				rdmaAddr, reqPacket, rerr)
+		}
+	}
+
 	err = sc.Send(&reader.retryRead, reqPacket, func(conn *net.TCPConn) (error, bool) {
 		bgTime := stat.BeginStat()
 		defer func() {
@@ -126,6 +141,37 @@ func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) 
 
 	log.LogDebugf("ExtentReader Read exit: req(%v) reqPacket(%v) readBytes(%v) err(%v)", req, reqPacket, readBytes, err)
 	return
+}
+
+// readViaRDMA tries to satisfy req entirely over RDMA, chunked at
+// util.ReadBlockSize. Returns the number of bytes filled into req.Data
+// (== size on success) and an error if any chunk failed; the caller
+// falls back to the TCP path, which restarts the read from the
+// beginning. We do NOT support partial RDMA + TCP completion because
+// the TCP path's getReply expects a single ReqID per StreamConn session
+// and re-issuing only the failed tail under a new ReqID would race with
+// the server's replication semantics.
+func (reader *ExtentReader) readViaRDMA(addr string, reqPacket *Packet, req *ExtentRequest, offset, size int) (int, error) {
+	readBytes := 0
+	for readBytes < size {
+		bufSize := util.Min(util.ReadBlockSize, size-readBytes)
+		chunkReq := NewReadPacket(reader.key, offset+readBytes, bufSize,
+			reader.inode, req.FileOffset+readBytes, reader.followerRead)
+		// Inherit ReqID from the outer reqPacket so server-side audit
+		// logs correlate; chunk index is implicit in offset.
+		chunkReq.ReqID = reqPacket.ReqID
+
+		resp, rerr := recvPacketViaRDMA(addr, chunkReq)
+		if rerr != nil {
+			return readBytes, rerr
+		}
+		if int(resp.Size) != bufSize {
+			return readBytes, fmt.Errorf("rdma read: chunk size %d != requested %d", resp.Size, bufSize)
+		}
+		copy(req.Data[readBytes:readBytes+bufSize], resp.Data[:resp.Size])
+		readBytes += bufSize
+	}
+	return readBytes, nil
 }
 
 func (reader *ExtentReader) checkStreamReply(request *Packet, reply *Packet) (err error) {

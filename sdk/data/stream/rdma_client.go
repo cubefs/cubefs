@@ -5,6 +5,7 @@ package stream
 import (
 	"context"
 	"fmt"
+	"hash/crc32"
 	"runtime"
 	"time"
 
@@ -28,64 +29,113 @@ func InitRDMAConnPool(cfg rdma.RDMAPoolConfig) error {
 	return nil
 }
 
-// sendPacketViaRDMA borrows one slot to addr, writes the request fire-and-
-// forget, awaits the response on the same slot, and returns the slot.
-//
-// Records P3 metrics on every code path:
-//   - cubefs_rdma_requests_total + cubefs_rdma_latency_seconds on success
-//   - cubefs_rdma_fallback_total with a reason label on every error path
-//     (the higher layer's fallback to TCP is covered by these increments)
-func sendPacketViaRDMA(addr string, req *Packet) error {
-	start := time.Now()
+// rdmaRoundTrip is the inner one-slot send + wait + return-credit cycle
+// shared by both write and read RDMA paths. On success it returns the
+// deserialised response packet; the caller is responsible for
+// interpreting ResultCode and (for reads) verifying CRC.
+func rdmaRoundTrip(addr string, req *Packet) (*proto.Packet, error) {
 	handle, err := rdmaConnPool.AcquireSlot(addr)
 	if err != nil {
 		rdma.MetricsObserveFallback(rdma.RoleClient, addr, "acquire_slot")
-		return fmt.Errorf("rdma client: acquire slot to %s: %w", addr, err)
+		return nil, fmt.Errorf("rdma client: acquire slot to %s: %w", addr, err)
 	}
 	conn := handle.Conn
 	slot := handle.SlotIdx
 	forceClose := false
 	defer func() { rdmaConnPool.ReleaseSlot(handle, forceClose) }()
 
-	// Snapshot the recv signal before posting so a response that arrives
-	// concurrently with our send isn't missed by the sleep-phase wait.
 	lastDoneSeq := conn.RecvDoneSeq(slot)
 
 	if err = conn.WritePacket(slot, &req.Packet); err != nil {
 		forceClose = true
 		rdma.MetricsObserveFallback(rdma.RoleClient, addr, "write_packet")
-		return fmt.Errorf("rdma client: WritePacket: %w", err)
+		return nil, fmt.Errorf("rdma client: WritePacket: %w", err)
 	}
 
 	resp, err := pollRDMAResponse(conn, slot, lastDoneSeq)
 	if err != nil {
 		forceClose = true
 		rdma.MetricsObserveFallback(rdma.RoleClient, addr, "poll_response")
-		return err
+		return nil, err
 	}
 
-	// P0 flow control: the response slot is consumed; let the server
-	// reuse it before we evaluate the response.
 	if cerr := conn.ReturnCredit(slot); cerr != nil {
 		forceClose = true
 		rdma.MetricsObserveFallback(rdma.RoleClient, addr, "return_credit")
-		return fmt.Errorf("rdma client: ReturnCredit: %w", cerr)
+		return nil, fmt.Errorf("rdma client: ReturnCredit: %w", cerr)
 	}
 
 	if resp.ReqID != req.ReqID {
 		forceClose = true
 		rdma.MetricsObserveFallback(rdma.RoleClient, addr, "reqid_mismatch")
-		return fmt.Errorf("rdma client: ReqID mismatch: got %d want %d", resp.ReqID, req.ReqID)
+		return nil, fmt.Errorf("rdma client: ReqID mismatch: got %d want %d", resp.ReqID, req.ReqID)
+	}
+
+	return resp, nil
+}
+
+// sendPacketViaRDMA issues a write-side request over RDMA and updates req
+// with the server's ResultCode. Reserved for non-read opcodes; the read
+// path uses recvPacketViaRDMA which extracts Data + verifies CRC.
+func sendPacketViaRDMA(addr string, req *Packet) error {
+	if req.IsReadOperation() {
+		// Defensive: reads must go through recvPacketViaRDMA. If we
+		// reached this path with a read opcode, the SDK call site is
+		// wired wrong — fail noisily so the bug is caught in tests.
+		return fmt.Errorf("rdma client: sendPacketViaRDMA invoked with read opcode 0x%x", req.Opcode)
+	}
+
+	start := time.Now()
+	resp, err := rdmaRoundTrip(addr, req)
+	if err != nil {
+		return err
 	}
 	req.ResultCode = resp.ResultCode
+	rdma.MetricsObserveRequest(rdma.RoleClient, addr, time.Since(start))
 	if resp.ResultCode != proto.OpOk {
-		// Server returned an error code — not a transport failure but
-		// counted as a non-fallback "request" that completed.
-		rdma.MetricsObserveRequest(rdma.RoleClient, addr, time.Since(start))
 		return fmt.Errorf("rdma client: server ResultCode=%d", resp.ResultCode)
 	}
-	rdma.MetricsObserveRequest(rdma.RoleClient, addr, time.Since(start))
 	return nil
+}
+
+// recvPacketViaRDMA issues a read-side request over RDMA and returns the
+// full response packet (including the response Data). Verifies CRC of the
+// response data; on mismatch returns an error and increments the
+// fallback counter so the caller falls back to TCP.
+//
+// On OpAgain the server is asking the SDK to retry differently
+// (typically because the response would not fit in one slot); the caller
+// treats this as a transport failure and falls back to TCP for that chunk.
+func recvPacketViaRDMA(addr string, req *Packet) (*proto.Packet, error) {
+	if !req.IsReadOperation() {
+		return nil, fmt.Errorf("rdma client: recvPacketViaRDMA invoked with non-read opcode 0x%x", req.Opcode)
+	}
+	start := time.Now()
+	resp, err := rdmaRoundTrip(addr, req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.ResultCode == proto.OpAgain {
+		rdma.MetricsObserveFallback(rdma.RoleClient, addr, "op_again")
+		return nil, fmt.Errorf("rdma client: server returned OpAgain (slot capacity exceeded)")
+	}
+	if resp.ResultCode != proto.OpOk {
+		// Server-side error (e.g. extent missing). Not a transport
+		// failure; record the request and let the caller decide.
+		rdma.MetricsObserveRequest(rdma.RoleClient, addr, time.Since(start))
+		return resp, fmt.Errorf("rdma client: server ResultCode=%d", resp.ResultCode)
+	}
+	if int(resp.Size) > len(resp.Data) {
+		rdma.MetricsObserveFallback(rdma.RoleClient, addr, "size_mismatch")
+		return nil, fmt.Errorf("rdma client: resp.Size %d exceeds resp.Data len %d", resp.Size, len(resp.Data))
+	}
+	expectedCRC := crc32.ChecksumIEEE(resp.Data[:resp.Size])
+	if resp.CRC != expectedCRC {
+		rdma.MetricsObserveFallback(rdma.RoleClient, addr, "crc_mismatch")
+		return nil, fmt.Errorf("rdma client: CRC mismatch: got %x want %x", resp.CRC, expectedCRC)
+	}
+	rdma.MetricsObserveRequest(rdma.RoleClient, addr, time.Since(start))
+	return resp, nil
 }
 
 // pollRDMAResponse waits for the server's response on the given slot using
