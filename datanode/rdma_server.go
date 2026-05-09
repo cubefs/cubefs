@@ -3,6 +3,7 @@
 package datanode
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -32,7 +33,6 @@ type connState struct {
 }
 
 // DataNodeRDMACtx manages the DataNode RDMA receive loop.
-// Created by NewDataNodeRDMACtx; started by Start; stopped by Stop.
 type DataNodeRDMACtx struct {
 	cfg          RDMAServerConfig
 	listener     *rdma.RDMAListener
@@ -42,7 +42,6 @@ type DataNodeRDMACtx struct {
 }
 
 // NewDataNodeRDMACtx creates a context and binds the RDMA listener on cfg.Port.
-// handlePacket is called for each received packet (runs in the polling goroutine).
 func NewDataNodeRDMACtx(cfg RDMAServerConfig, handlePacket func(*repl.Packet, net.Conn) error) (*DataNodeRDMACtx, error) {
 	if cfg.NumSlots <= 0 {
 		cfg.NumSlots = 256
@@ -107,10 +106,14 @@ func (ctx *DataNodeRDMACtx) acceptLoop() {
 	}
 }
 
-// pollLoop spins over all slots of one connection using the adaptive
-// busy → yield → sleep policy from rdma.AdaptivePoller. Sleep blocks on
-// the connection's comp_channel and is woken by any incoming
-// WRITE_WITH_IMM doorbell or send completion.
+// pollLoop scans every slot's doorbell entry and dispatches handleSlot
+// goroutines for new arrivals. Adaptive busy/yield/sleep — sleep blocks on
+// the connection's recv-signal cond, woken by the drainer goroutine when
+// any incoming WRITE_WITH_IMM doorbell arrives.
+//
+// handleSlot is dispatched in its own goroutine so a slow handler does not
+// block other concurrent slots; this is what enables P1's pipeline
+// throughput on the server side.
 func (cs *connState) pollLoop(ctx *DataNodeRDMACtx) {
 	poller := rdma.NewAdaptivePoller(cs.conn.PollConfig())
 	for {
@@ -123,6 +126,8 @@ func (cs *connState) pollLoop(ctx *DataNodeRDMACtx) {
 			return
 		}
 
+		signalBefore := cs.conn.RecvSignalSeq()
+
 		found := false
 		for slotIdx := 0; slotIdx < cs.conn.NumSlots(); slotIdx++ {
 			seq, ok := cs.conn.PollRecvDoorbell(slotIdx, cs.lastSeq[slotIdx])
@@ -130,7 +135,8 @@ func (cs *connState) pollLoop(ctx *DataNodeRDMACtx) {
 				continue
 			}
 			cs.lastSeq[slotIdx] = seq
-			cs.handleSlot(ctx, slotIdx)
+			slot := slotIdx // capture for goroutine
+			go cs.handleSlot(ctx, slot)
 			found = true
 		}
 
@@ -145,14 +151,11 @@ func (cs *connState) pollLoop(ctx *DataNodeRDMACtx) {
 		case rdma.ActionYield:
 			runtime.Gosched()
 		case rdma.ActionSleep:
-			// Block until any completion arrives. After wake, the next
-			// loop iteration re-polls all doorbells; the imm_data of the
-			// wake CQE is informational and not relied upon here. Slight
-			// overhead vs. dispatching directly on imm, but keeps the
-			// busy/yield fast path uniform with the sleep recovery path.
-			if err := cs.conn.SleepWaitForRecv(); err != nil {
-				log.LogWarnf("rdma pollLoop: SleepWaitForRecv: %v (falling back to busy-poll)", err)
-				// One Gosched to avoid hot-spinning if comp_channel is wedged.
+			waitCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			err := cs.conn.WaitRecvSignal(waitCtx, signalBefore)
+			cancel()
+			if err != nil && err != context.DeadlineExceeded && !cs.conn.IsClosed() {
+				log.LogWarnf("rdma pollLoop: WaitRecvSignal: %v", err)
 				runtime.Gosched()
 			}
 			poller.Reset()
@@ -160,25 +163,24 @@ func (cs *connState) pollLoop(ctx *DataNodeRDMACtx) {
 	}
 }
 
-// handleSlot deserializes one slot, dispatches to handlePacket, and writes the response.
+// handleSlot deserializes one slot, returns its credit, runs the handler,
+// and writes the response fire-and-forget. Runs in its own goroutine
+// dispatched by pollLoop so multiple slots can be processed concurrently.
 //
-// Per the P0 flow-control contract, the receive slot is reusable as soon as
-// DeserializePacket returns (Arg/Data are copied into the proto.Packet). We
-// signal that to the peer with ReturnCredit immediately after a successful
-// deserialize, before running the handler — so a slow handler does not stall
-// the peer's credit pool.
+// Per the P0 flow-control contract, the receive slot is reusable as soon
+// as DeserializePacket returns (Arg/Data are copied into the
+// proto.Packet); we ReturnCredit immediately so a slow handler does not
+// stall the peer's credit pool.
 func (cs *connState) handleSlot(ctx *DataNodeRDMACtx, slotIdx int) {
 	protoPkt, err := rdma.DeserializePacket(cs.conn.RecvSlotBytes(slotIdx))
 	if err != nil {
 		log.LogErrorf("rdma handleSlot slot=%d: DeserializePacket: %v", slotIdx, err)
-		// Even on parse failure the slot itself is no longer needed; return
-		// credit so the peer is not penalised by a malformed packet.
-		if rerr := cs.conn.ReturnCredit(); rerr != nil {
+		if rerr := cs.conn.ReturnCredit(slotIdx); rerr != nil {
 			log.LogErrorf("rdma handleSlot slot=%d: ReturnCredit after parse error: %v", slotIdx, rerr)
 		}
 		return
 	}
-	if rerr := cs.conn.ReturnCredit(); rerr != nil {
+	if rerr := cs.conn.ReturnCredit(slotIdx); rerr != nil {
 		log.LogErrorf("rdma handleSlot slot=%d: ReturnCredit: %v", slotIdx, rerr)
 	}
 
@@ -203,7 +205,6 @@ func (a rdmaNetAddr) Network() string { return "rdma" }
 func (a rdmaNetAddr) String() string  { return string(a) }
 
 // rdmaFakeConn is a minimal net.Conn stub passed to OperatePacket for logging.
-// Write and Read always fail — write-type handlers don't use the connection.
 type rdmaFakeConn struct {
 	addr rdmaNetAddr
 }

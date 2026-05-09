@@ -3,6 +3,7 @@
 package stream
 
 import (
+	"context"
 	"fmt"
 	"runtime"
 	"time"
@@ -16,14 +17,8 @@ const rdmaRoundTripTimeout = 30 * time.Second
 // rdmaConnPool is nil by default; non-nil only when RDMA is enabled at startup.
 var rdmaConnPool *rdma.RDMAConnPool
 
-// InitRDMAConnPool initializes the client-side RDMA connection pool.
+// InitRDMAConnPool initializes the client-side RDMA slot pool.
 // Must be called before the first write if RDMA is desired.
-//
-// The full RDMAPoolConfig is accepted so callers can control NumSlots,
-// SlotSize, CreditAckMode, and Poll behaviour without further package-level
-// setters. cfg.NumSlots and cfg.SlotSize must satisfy the validation in
-// rdma.NewRDMAConnPool; otherwise this returns an error and the SDK falls
-// back to TCP transparently.
 func InitRDMAConnPool(cfg rdma.RDMAPoolConfig) error {
 	pool, err := rdma.NewRDMAConnPool(cfg)
 	if err != nil {
@@ -33,31 +28,41 @@ func InitRDMAConnPool(cfg rdma.RDMAPoolConfig) error {
 	return nil
 }
 
-// sendPacketViaRDMA sends req to addr via RDMA and updates req with the server
-// response. slot 0 is used exclusively per connection (pool gives exclusive access).
+// sendPacketViaRDMA borrows one slot to addr, writes the request fire-and-
+// forget, awaits the response on the same slot, and returns the slot.
+//
+// Concurrent calls to sendPacketViaRDMA against the same addr now use
+// distinct slots (P1) — the slot pool round-robins across pre-dialed conns
+// and only blocks when every conn-slot pair is in use AND maxConns is
+// reached.
 func sendPacketViaRDMA(addr string, req *Packet) error {
-	conn, err := rdmaConnPool.GetConnect(addr)
+	handle, err := rdmaConnPool.AcquireSlot(addr)
 	if err != nil {
-		return fmt.Errorf("rdma client: get conn to %s: %w", addr, err)
+		return fmt.Errorf("rdma client: acquire slot to %s: %w", addr, err)
 	}
+	conn := handle.Conn
+	slot := handle.SlotIdx
 	forceClose := false
-	defer func() { rdmaConnPool.PutConnect(conn, forceClose) }()
+	defer func() { rdmaConnPool.ReleaseSlot(handle, forceClose) }()
 
-	if err = conn.WritePacket(0, &req.Packet); err != nil {
+	// Snapshot the recv signal before posting so a response that arrives
+	// concurrently with our send isn't missed by the sleep-phase wait.
+	lastDoneSeq := conn.RecvDoneSeq(slot)
+
+	if err = conn.WritePacket(slot, &req.Packet); err != nil {
 		forceClose = true
 		return fmt.Errorf("rdma client: WritePacket: %w", err)
 	}
 
-	resp, err := pollRDMAResponse(conn, 0)
+	resp, err := pollRDMAResponse(conn, slot, lastDoneSeq)
 	if err != nil {
 		forceClose = true
 		return err
 	}
 
-	// P0 flow control: the response slot is consumed; let the server reuse
-	// it before we evaluate the response. Failing to do this leaks one
-	// credit per round-trip on the server's send side.
-	if cerr := conn.ReturnCredit(); cerr != nil {
+	// P0 flow control: the response slot is consumed; let the server
+	// reuse it before we evaluate the response.
+	if cerr := conn.ReturnCredit(slot); cerr != nil {
 		forceClose = true
 		return fmt.Errorf("rdma client: ReturnCredit: %w", cerr)
 	}
@@ -73,11 +78,11 @@ func sendPacketViaRDMA(addr string, req *Packet) error {
 	return nil
 }
 
-// pollRDMAResponse waits for the server's response for the given slot using
-// the connection's adaptive poll policy: tight spin → Gosched → comp_channel
-// sleep. Bounded by rdmaRoundTripTimeout so a stalled server eventually fails
-// the request rather than parking the goroutine forever.
-func pollRDMAResponse(conn *rdma.RDMAConn, slot int) (*proto.Packet, error) {
+// pollRDMAResponse waits for the server's response on the given slot using
+// adaptive polling: tight spin → Gosched → cond-block on the connection's
+// per-slot recvDoneSeq counter. Bounded by rdmaRoundTripTimeout so a
+// stalled server eventually fails the request.
+func pollRDMAResponse(conn *rdma.RDMAConn, slot int, lastDoneSeq uint64) (*proto.Packet, error) {
 	lastSeq := conn.RecvSeq(slot)
 	deadline := time.Now().Add(rdmaRoundTripTimeout)
 	poller := rdma.NewAdaptivePoller(conn.PollConfig())
@@ -96,8 +101,11 @@ func pollRDMAResponse(conn *rdma.RDMAConn, slot int) (*proto.Packet, error) {
 		case rdma.ActionYield:
 			runtime.Gosched()
 		case rdma.ActionSleep:
-			if err := conn.SleepWaitForRecv(); err != nil {
-				return nil, fmt.Errorf("rdma client: SleepWaitForRecv: %w", err)
+			ctx, cancel := context.WithDeadline(context.Background(), deadline)
+			err := conn.WaitRecvDoneSeq(ctx, slot, lastDoneSeq)
+			cancel()
+			if err != nil && err != context.DeadlineExceeded {
+				return nil, fmt.Errorf("rdma client: WaitRecvDoneSeq: %w", err)
 			}
 			poller.Reset()
 		}

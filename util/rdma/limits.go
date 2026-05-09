@@ -34,6 +34,11 @@ const MinValidSlotSize = slotHeaderBytes + maxPacketHeaderBytes + util.BlockSize
 // connection scales linearly with NumSlots without large overhead.
 const DefaultSlotSize = util.BlockSize + util.PageSize // 132 KB
 
+// maxSlots caps the per-connection slot count. The cap matches the size of
+// the per-slot bookkeeping arrays in RDMAConn (nextSendSeq, lastRecvSeq,
+// recvDoneSeq); raising it requires growing those arrays in lockstep.
+const maxSlots = 1024
+
 // ValidateSlotSize reports whether the given size meets the minimum required
 // to carry full-sized CubeFS packets. The error message is intentionally
 // detailed so operators can adjust their config without reading source.

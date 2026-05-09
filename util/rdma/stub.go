@@ -38,38 +38,35 @@ func (m *RDMAMem) Free()                     {}
 func (m *RDMAMem) Bytes() []byte             { return nil }
 func (m *RDMAMem) SlotBytes(_, _ int) []byte { return nil }
 
-type RDMAConn struct{}
+// RDMAConn is a minimal stub. Methods are no-ops so the same call sites
+// compile in both builds; the SlotPool tests in non-rdma builds exercise
+// allocation logic without ever invoking these methods on real hardware.
+type RDMAConn struct {
+	numSlots int
+	closed   bool
+}
 
-func (c *RDMAConn) NumSlots() int                                   { return 0 }
+func (c *RDMAConn) NumSlots() int                                   { return c.numSlots }
 func (c *RDMAConn) SlotSize() int                                   { return 0 }
 func (c *RDMAConn) RecvSlotBytes(_ int) []byte                      { return nil }
 func (c *RDMAConn) SendScratchBytes(_ int) []byte                   { return nil }
 func (c *RDMAConn) RemoteAddr() string                              { return "" }
-func (c *RDMAConn) IsClosed() bool                                  { return true }
-func (c *RDMAConn) Close() error                                    { return nil }
+func (c *RDMAConn) IsClosed() bool                                  { return c.closed }
+func (c *RDMAConn) Close() error                                    { c.closed = true; return nil }
 func (c *RDMAConn) WritePacket(_ int, _ *proto.Packet) error        { return errNotSupported }
 func (c *RDMAConn) WriteData(_ int, _ []byte) error                 { return errNotSupported }
 func (c *RDMAConn) PollRecvDoorbell(_ int, _ uint32) (uint32, bool) { return 0, false }
 func (c *RDMAConn) RecvSeq(_ int) uint32                            { return 0 }
 func (c *RDMAConn) SetRecvSeq(_ int, _ uint32)                      {}
-
-// ReturnCredit is a no-op on non-RDMA builds. Returning errNotSupported here
-// would force callers to add build-tag guards; instead we stay silent so the
-// same call site works in either build, with the actual flow control logic
-// only active on linux+rdma.
-func (c *RDMAConn) ReturnCredit() error { return nil }
+func (c *RDMAConn) ReturnCredit(_ int) error                        { return nil }
+func (c *RDMAConn) RecvDoneSeq(_ int) uint64                        { return 0 }
+func (c *RDMAConn) RecvSignalSeq() uint64                           { return 0 }
 
 // CreditStats returns zeros on non-RDMA builds.
 func (c *RDMAConn) CreditStats() (sent, received, processed uint64) { return 0, 0, 0 }
 
 // PollConfig returns the zero config on non-RDMA builds.
 func (c *RDMAConn) PollConfig() PollConfig { return PollConfig{} }
-
-// SleepWaitForRecv is a no-op on non-RDMA builds — the receive path is
-// disabled. Returning errNotSupported would force callers to add build-tag
-// guards around their poll loops; staying silent keeps both flavours
-// compiling cleanly.
-func (c *RDMAConn) SleepWaitForRecv() error { return nil }
 
 type RDMAConnConfig struct {
 	NumSlots      int
@@ -89,14 +86,13 @@ type RDMAPoolConfig struct {
 	Poll          PollConfig
 }
 
-type RDMAConnPool struct{}
-
+// NewRDMAConnPool returns errNotSupported on non-RDMA builds. The
+// underlying RDMAConnPool type lives in slot_pool.go and is built
+// regardless of tag, so type references work even when the constructor
+// can't actually open a connection.
 func NewRDMAConnPool(_ RDMAPoolConfig) (*RDMAConnPool, error) {
 	return nil, errNotSupported
 }
-func (p *RDMAConnPool) GetConnect(_ string) (*RDMAConn, error) { return nil, errNotSupported }
-func (p *RDMAConnPool) PutConnect(_ *RDMAConn, _ bool)         {}
-func (p *RDMAConnPool) Close()                                 {}
 
 type RDMAListener struct{}
 

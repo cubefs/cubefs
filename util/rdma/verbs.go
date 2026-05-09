@@ -193,14 +193,22 @@ func postRecv(qp *C.struct_ibv_qp, laddr uint64, lkey uint32, length uint32, wrI
 // callers don't have to import "C" or know the IBV_WC_* enum values.
 type CompletionEvent struct {
 	WRID    uint64
+	Status  int    // raw IBV_WC_* status; 0 = IBV_WC_SUCCESS
 	IsRecv  bool   // true if opcode is IBV_WC_RECV / IBV_WC_RECV_RDMA_WITH_IMM
 	HasImm  bool   // true when the completion carries a 32-bit imm_data
 	ImmData uint32 // host order, valid only when HasImm
 }
 
-// pollCQEvents polls up to maxPollBatch completions, returning a structured
-// view that callers can dispatch on (send vs recv-with-imm). Replaces the
-// old pollCQ which only returned WR IDs.
+// Success reports whether the completion's NIC status is IBV_WC_SUCCESS.
+// Non-success completions arrive on QP teardown ("flush" errors) and on
+// genuine transport faults; callers should distinguish based on connection
+// state rather than treating them as fatal here.
+func (e CompletionEvent) Success() bool { return e.Status == 0 }
+
+// pollCQEvents polls up to maxPollBatch completions. Unlike the legacy
+// pollCQ helper it returns the full CompletionEvent slice including any
+// non-success entries, leaving error policy to the caller (the drainer
+// goroutine logs flush errors during teardown without aborting).
 func pollCQEvents(cq *C.struct_ibv_cq) ([]CompletionEvent, error) {
 	var wcs [maxPollBatch]C.struct_ibv_wc
 	n := int(C.cubefs_poll_cq(cq, maxPollBatch, &wcs[0]))
@@ -213,11 +221,11 @@ func pollCQEvents(cq *C.struct_ibv_cq) ([]CompletionEvent, error) {
 	out := make([]CompletionEvent, 0, n)
 	for i := 0; i < n; i++ {
 		wc := &wcs[i]
-		if wc.status != C.IBV_WC_SUCCESS {
-			return out, fmt.Errorf("rdma: WC error status=%d wr_id=%d", wc.status, wc.wr_id)
-		}
 		op := int(C.cubefs_wc_opcode(wc))
-		ev := CompletionEvent{WRID: uint64(wc.wr_id)}
+		ev := CompletionEvent{
+			WRID:   uint64(wc.wr_id),
+			Status: int(wc.status),
+		}
 		// IBV_WC_RECV (128) and IBV_WC_RECV_RDMA_WITH_IMM (129) both arrive
 		// on the recv side. The numeric constants are stable in the verbs
 		// ABI; comparing >= 128 (IBV_WC_RECV) is the canonical "is recv" check.
@@ -234,7 +242,8 @@ func pollCQEvents(cq *C.struct_ibv_cq) ([]CompletionEvent, error) {
 }
 
 // pollCQ is retained for callers that only need the IDs of completed send
-// WRs (e.g. drainOneCQE). Implemented in terms of pollCQEvents.
+// WRs (legacy P0/P2 paths). Skips non-success completions for backward
+// behavioural compatibility.
 func pollCQ(cq *C.struct_ibv_cq) ([]uint64, error) {
 	evs, err := pollCQEvents(cq)
 	if err != nil {
@@ -245,6 +254,9 @@ func pollCQ(cq *C.struct_ibv_cq) ([]uint64, error) {
 	}
 	ids := make([]uint64, 0, len(evs))
 	for _, e := range evs {
+		if !e.Success() {
+			return ids, fmt.Errorf("rdma: WC error status=%d wr_id=0x%x", e.Status, e.WRID)
+		}
 		ids = append(ids, e.WRID)
 	}
 	return ids, nil

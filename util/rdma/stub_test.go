@@ -24,11 +24,17 @@ func TestStubRDMAConn(t *testing.T) {
 	if c.RemoteAddr() != "" {
 		t.Fatalf("RemoteAddr: want empty string")
 	}
-	if !c.IsClosed() {
-		t.Fatalf("IsClosed: stub should always return true")
+	// Fresh stub conn is open by design — the SlotPool unit tests in non-RDMA
+	// builds rely on this so they can exercise allocation logic without
+	// needing real RDMA hardware. After Close the stub flips to true.
+	if c.IsClosed() {
+		t.Fatalf("IsClosed: fresh stub should report open")
 	}
 	if err := c.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
+	}
+	if !c.IsClosed() {
+		t.Fatalf("IsClosed: closed stub should report closed")
 	}
 
 	seq, ok := c.PollRecvDoorbell(0, 0)
@@ -48,7 +54,7 @@ func TestStubRDMAConn(t *testing.T) {
 
 	// ReturnCredit is a no-op on the stub — must not return errNotSupported
 	// so the same call site works in both builds without build-tag guards.
-	if err := c.ReturnCredit(); err != nil {
+	if err := c.ReturnCredit(0); err != nil {
 		t.Fatalf("ReturnCredit on stub: %v", err)
 	}
 	if sent, recv, proc := c.CreditStats(); sent != 0 || recv != 0 || proc != 0 {

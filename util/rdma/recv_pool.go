@@ -19,11 +19,6 @@ import (
 // recv path that does deliver payload (we never use that path here).
 const recvDummyEntryBytes = 16
 
-// recvWRIDTag is OR'd into recv WR IDs so completion handlers can tell
-// recv from send by inspecting the high bit of the WR ID alone — a useful
-// cross-check on top of the CompletionEvent.IsRecv flag from verbs.
-const recvWRIDTag uint64 = 0x8000_0000_0000_0000
-
 // recvPool maintains a fixed-size queue of pre-posted recv WRs. Each WR
 // references one slot of recvDummyMR; on completion we re-post the same
 // slot so the queue stays full. A connection cannot accept incoming
@@ -58,12 +53,14 @@ func newRecvPool(pd *C.struct_ibv_pd, qp *C.struct_ibv_qp, numSlots int) (*recvP
 }
 
 // postOne enqueues one recv WR pointing at the dummy buffer for slot idx.
+// The WR ID is the OpRecv-tagged encoding of idx so completion routing in
+// the drainer can dispatch it via decodeWRID.
 func (p *recvPool) postOne(qp *C.struct_ibv_qp, idx int) error {
 	if idx < 0 || idx >= p.size {
 		return fmt.Errorf("rdma: recvPool: slot %d out of range [0,%d)", idx, p.size)
 	}
 	addr := p.mr.VA + uint64(idx*recvDummyEntryBytes)
-	wrID := recvWRIDTag | uint64(idx)
+	wrID := encodeWRID(opRecv, idx)
 	if err := postRecv(qp, addr, p.mr.Lkey, recvDummyEntryBytes, wrID); err != nil {
 		return err
 	}
@@ -77,10 +74,10 @@ func (p *recvPool) postOne(qp *C.struct_ibv_qp, idx int) error {
 // Returns an error if the WR ID does not look like a recv WR ID, which
 // would indicate completion-handler routing bugs upstream.
 func (p *recvPool) refillOne(qp *C.struct_ibv_qp, wrID uint64) error {
-	if wrID&recvWRIDTag == 0 {
+	op, idx := decodeWRID(wrID)
+	if op != opRecv {
 		return fmt.Errorf("rdma: recvPool refill: WR ID 0x%x is not a recv WR", wrID)
 	}
-	idx := int(wrID &^ recvWRIDTag)
 	atomic.AddInt64(&p.dispatched, -1)
 	return p.postOne(qp, idx)
 }

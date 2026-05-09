@@ -91,7 +91,7 @@ func TestLoopback(t *testing.T) {
 		// Return credit so the client can send subsequent packets even if
 		// the response gets lost or delayed. After P0 this is mandatory:
 		// without it the sender's credit pool drains and WritePacket blocks.
-		if err = conn.ReturnCredit(); err != nil {
+		if err = conn.ReturnCredit(0); err != nil {
 			serverDone <- fmt.Errorf("server ReturnCredit: %w", err)
 			return
 		}
@@ -130,11 +130,12 @@ func TestLoopback(t *testing.T) {
 	localIP := getLoopbackIP(t)
 	addr := fmt.Sprintf("%s:%d", localIP, port)
 
-	conn, err := pool.GetConnect(addr)
+	handle, err := pool.AcquireSlot(addr)
 	if err != nil {
-		t.Fatalf("client GetConnect: %v", err)
+		t.Fatalf("client AcquireSlot: %v", err)
 	}
-	defer pool.PutConnect(conn, true)
+	conn := handle.Conn
+	defer pool.ReleaseSlot(handle, true)
 
 	// Build test packet
 	p := proto.NewPacket()
@@ -147,16 +148,16 @@ func TestLoopback(t *testing.T) {
 	p.Size = 5
 	p.Data = []byte("hello")
 
-	// Send via RDMA
-	if err = conn.WritePacket(0, p); err != nil {
+	// Send via RDMA on our borrowed slot.
+	if err = conn.WritePacket(handle.SlotIdx, p); err != nil {
 		t.Fatalf("client WritePacket: %v", err)
 	}
 
-	// Wait for response doorbell (client's recvDB seq changes from 0)
+	// Wait for response doorbell on the SAME slot.
 	var respLastSeq uint32
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		if seq, ok := conn.PollRecvDoorbell(0, respLastSeq); ok {
+		if seq, ok := conn.PollRecvDoorbell(handle.SlotIdx, respLastSeq); ok {
 			respLastSeq = seq
 			break
 		}
@@ -168,7 +169,7 @@ func TestLoopback(t *testing.T) {
 	// Return credit for the response slot so the server is unblocked for any
 	// subsequent send. Required by the P0 flow-control contract; missing
 	// returns will eventually stall the connection.
-	if err = conn.ReturnCredit(); err != nil {
+	if err = conn.ReturnCredit(handle.SlotIdx); err != nil {
 		t.Fatalf("client ReturnCredit: %v", err)
 	}
 

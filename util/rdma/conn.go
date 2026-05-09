@@ -11,27 +11,51 @@ import (
 	"context"
 	"fmt"
 	"runtime"
+	"sync"
 	"sync/atomic"
 	"unsafe"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
-	maxSlots       = 1024
-	defaultCQSize  = 512
 	resolveTimeout = 2000 // ms
-	sendQueueDepth = 256
 
 	// creditCellBytes is the size of the per-connection credit-return cell.
 	// We store a single uint64 (current peer-side processed-slot count).
 	creditCellBytes = 8
 )
 
+// sendQueueDepthFor returns the SQ depth for a connection with numSlots
+// concurrent slots. Each WritePacket posts 2 WRs (slot + doorbell) and each
+// ReturnCredit posts 1 — so peak in-flight WRs per slot is ~3, and we add a
+// safety margin so the QP never blocks ibv_post_send under sustained load.
+func sendQueueDepthFor(numSlots int) int {
+	d := numSlots * 4
+	if d < 256 {
+		d = 256
+	}
+	return d
+}
+
+// cqSizeFor returns the CQ size matching the SQ depth plus the recv pool.
+// The CQ must be at least as large as the sum of outstanding signaled WRs
+// across both queues; oversizing slightly avoids overflow under bursts.
+func cqSizeFor(numSlots int) int {
+	return sendQueueDepthFor(numSlots) + numSlots + 64
+}
+
 // RDMAConn encapsulates a single RC (Reliable Connected) RDMA connection.
-// Data is transferred via RDMA Write (one-sided); the doorbell is sent as
-// RDMA Write-with-Immediate so the receiver gets a CQE for each arrival
-// (P2: enables comp_channel-based sleep without busy-polling memory).
+//
+// Send-side: WritePacket / WriteData / ReturnCredit are fire-and-forget.
+// They post WRs to the SQ and return immediately; completions are reaped
+// asynchronously by the per-conn drainer goroutine. Senders that need to
+// know when the peer has responded poll recvDoneSeq[slotIdx] (memory) or
+// block on recvCond (sleep).
+//
+// Recv-side: incoming WRITE_WITH_IMM doorbells consume one recv WR each;
+// the drainer refills the pool on every CQE so the QP stays serviceable.
 //
 // Memory layout (per side):
 //
@@ -43,13 +67,14 @@ const (
 //	creditScratch — we stage our processed-slot count here before RDMA-Writing it to peer's localCredit
 //	recvPool.mr   — pre-posted recv WR buffers; consumed by incoming WITH_IMM doorbells
 //
-// Slot index: determined by caller as ReqID % numSlots.
-// A single slot must not be used concurrently from multiple goroutines.
+// A single slot must be used by at most one goroutine at a time; SlotPool
+// (slot_pool.go) enforces this for callers that don't manage slots
+// directly.
 type RDMAConn struct {
 	cmID   *C.struct_rdma_cm_id
 	pd     *C.struct_ibv_pd
 	cq     *C.struct_ibv_cq
-	compCh *C.struct_ibv_comp_channel // bound to cq; used for P2 sleep
+	compCh *C.struct_ibv_comp_channel // bound to cq; used by drainer for sleep
 	evCh   *C.struct_rdma_event_channel
 
 	// Memory regions
@@ -69,29 +94,48 @@ type RDMAConn struct {
 	peerCreditRkey uint32
 	peerCreditVA   uint64
 
-	// Per-slot monotonic sequence for sends
+	// Per-slot monotonic sequence for sends (stamped into SlotHeader.Seq).
 	nextSendSeq [maxSlots]uint32
-	// Per-slot last received seq (for PollRecvDoorbell)
+	// Per-slot last received seq (for PollRecvDoorbell).
 	lastRecvSeq [maxSlots]uint32
+
+	// recvDoneSeq[slotIdx] increments each time the drainer observes a
+	// recv-side CQE whose imm_data points at slotIdx. Senders waiting on
+	// a response use it to detect arrivals when memory polling has
+	// already advanced into the sleep phase.
+	recvDoneSeq [maxSlots]uint64
+	// recvSignalSeq is a global counter incremented on every recv CQE,
+	// for callers that wait on "any recv" rather than a specific slot
+	// (server pollLoop in idle mode).
+	recvSignalSeq uint64
+
+	// recvCond is broadcast by the drainer after every recv CQE so that
+	// callers parked in sleep mode can re-check their per-slot or
+	// per-conn signal counter.
+	recvMu   sync.Mutex
+	recvCond *sync.Cond
 
 	numSlots   int
 	slotSize   int
 	remoteAddr string
 
-	// P0: connection-scoped flow control. credit guards against ring overrun
-	// regardless of slot-allocation strategy.
+	// P0: connection-scoped flow control. credit guards against ring
+	// overrun regardless of slot-allocation strategy.
 	credit        *creditState
 	creditAckMode CreditAckMode
 
-	// P2: adaptive polling parameters. Each polling site (drainOneCQE,
-	// pollLoop, pollRDMAResponse) constructs its own AdaptivePoller from
-	// this config so phase counters don't leak across goroutines.
+	// P2: adaptive polling parameters.
 	pollCfg PollConfig
 
-	// cqEventsToAck accumulates completion events delivered via comp_channel
-	// so we can ack them in a single batched call before re-arming. The
-	// kernel limits unacked events to ~2^32 minus any ack; we batch on the
-	// order of single digits in practice.
+	// Drainer goroutine lifecycle. drainerStop is closed by Close to
+	// signal the goroutine to exit; drainerDone is closed by the
+	// goroutine on the way out so Close can wait for it deterministically.
+	drainerStop chan struct{}
+	drainerDone chan struct{}
+
+	// cqEventsToAck accumulates events delivered via comp_channel so we
+	// batch-ack to bound kernel-side bookkeeping. Touched only by the
+	// drainer goroutine; Close flushes after the drainer exits.
 	cqEventsToAck uint32
 
 	closed int32 // atomic; 1 = closed
@@ -104,14 +148,13 @@ type RDMAConnConfig struct {
 	// CreditAckMode controls whether the receiver waits for the credit-return
 	// RDMA Write's CQE before processing the next slot.
 	CreditAckMode CreditAckMode
-	// Poll governs the busy → yield → sleep behaviour of every polling site
-	// owned by this connection. Zero value means "use DefaultPollConfig".
+	// Poll governs the busy → yield → sleep behaviour of every polling
+	// site owned by this connection. Zero value means "use DefaultPollConfig".
 	Poll PollConfig
 }
 
 // effectivePollConfig returns Poll if any field is non-zero, otherwise the
-// spec-defined default. Treating an all-zero struct as "default" lets
-// existing call sites compile without immediately specifying poll knobs.
+// spec-defined default.
 func (cfg RDMAConnConfig) effectivePollConfig() PollConfig {
 	if cfg.Poll.BusySpinCount == 0 && cfg.Poll.YieldCount == 0 && cfg.Poll.SleepThresholdUs == 0 {
 		return DefaultPollConfig
@@ -119,9 +162,10 @@ func (cfg RDMAConnConfig) effectivePollConfig() PollConfig {
 	return cfg.Poll
 }
 
-// validateConnConfig enforces P0 invariants on the configuration. Returns a
-// detailed error on violation; callers (Dial/Listen/Accept) must propagate
-// this so RDMA init fails cleanly and the caller can fall back to TCP.
+// validateConnConfig enforces P0 invariants on the configuration. Returns
+// a detailed error on violation; callers (Dial / Listen / Accept) must
+// propagate this so RDMA init fails cleanly and the caller can fall back
+// to TCP.
 func validateConnConfig(cfg RDMAConnConfig) error {
 	if cfg.NumSlots <= 0 || cfg.NumSlots > maxSlots {
 		return fmt.Errorf("rdma: NumSlots %d out of range [1,%d]", cfg.NumSlots, maxSlots)
@@ -133,7 +177,8 @@ func validateConnConfig(cfg RDMAConnConfig) error {
 }
 
 // Dial establishes a client-side RDMA RC connection to addr ("host:port").
-// The caller's recvRing and recvDB are communicated to the server as ConnectInfo.
+// The caller's recvRing and recvDB are communicated to the server as
+// ConnectInfo; the drainer goroutine is started before this call returns.
 func Dial(addr string, cfg RDMAConnConfig) (*RDMAConn, error) {
 	if err := validateConnConfig(cfg); err != nil {
 		return nil, err
@@ -172,14 +217,14 @@ func Dial(addr string, cfg RDMAConnConfig) (*RDMAConn, error) {
 		destroyEventChannel(ch)
 		return nil, err
 	}
-	cq, err := createCQ(ctx, defaultCQSize, compCh)
+	cq, err := createCQ(ctx, cqSizeFor(cfg.NumSlots), compCh)
 	if err != nil {
 		destroyCompChannel(compCh)
 		destroyCMID(id)
 		destroyEventChannel(ch)
 		return nil, err
 	}
-	if err = createQP(id, pd, cq, sendQueueDepth, cfg.NumSlots); err != nil {
+	if err = createQP(id, pd, cq, sendQueueDepthFor(cfg.NumSlots), cfg.NumSlots); err != nil {
 		destroyCompChannel(compCh)
 		destroyCMID(id)
 		destroyEventChannel(ch)
@@ -232,37 +277,14 @@ func Dial(addr string, cfg RDMAConnConfig) (*RDMAConn, error) {
 		return nil, fmt.Errorf("rdma: unmarshal AcceptInfo from %s: %w", addr, err)
 	}
 
-	conn := &RDMAConn{
-		cmID:           id,
-		pd:             pd,
-		cq:             cq,
-		compCh:         compCh,
-		evCh:           ch,
-		recvRing:       mems.recvRing,
-		recvDB:         mems.recvDB,
-		sendScratch:    mems.sendScratch,
-		sendDB:         mems.sendDB,
-		localCredit:    mems.localCredit,
-		creditScratch:  mems.creditScratch,
-		recvPool:       rp,
-		peerRecvRkey:   ai.ReqRkey,
-		peerRecvBaseVA: ai.ReqBaseVA,
-		peerDBRkey:     ai.DbRkey,
-		peerDBBaseVA:   ai.DbVA,
-		peerCreditRkey: ai.CreditRkey,
-		peerCreditVA:   ai.CreditVA,
-		numSlots:       cfg.NumSlots,
-		slotSize:       cfg.SlotSize,
-		remoteAddr:     addr,
-		creditAckMode:  cfg.CreditAckMode,
-		pollCfg:        cfg.effectivePollConfig(),
-	}
-	conn.credit = newCreditState(cfg.NumSlots, conn.localCreditPtr())
+	conn := newRDMAConn(id, pd, cq, compCh, ch, mems, rp, ai.ReqRkey, ai.ReqBaseVA,
+		ai.DbRkey, ai.DbVA, ai.CreditRkey, ai.CreditVA, addr, cfg)
+	conn.startDrainer()
 	return conn, nil
 }
 
-// Accept waits for one incoming connection on listenID and returns the new conn.
-// ci is the client's ConnectInfo (tells server where to write responses and doorbells).
+// Accept waits for one incoming connection on listenID and returns the
+// new conn (with its drainer goroutine already running).
 func Accept(listenID *C.struct_rdma_cm_id, cfg RDMAConnConfig) (*RDMAConn, ConnectInfo, error) {
 	if err := validateConnConfig(cfg); err != nil {
 		return nil, ConnectInfo{}, err
@@ -289,13 +311,13 @@ func Accept(listenID *C.struct_rdma_cm_id, cfg RDMAConnConfig) (*RDMAConn, Conne
 		destroyCMID(connID)
 		return nil, ConnectInfo{}, err
 	}
-	cq, err := createCQ(ctx, defaultCQSize, compCh)
+	cq, err := createCQ(ctx, cqSizeFor(cfg.NumSlots), compCh)
 	if err != nil {
 		destroyCompChannel(compCh)
 		destroyCMID(connID)
 		return nil, ConnectInfo{}, err
 	}
-	if err = createQP(connID, pd, cq, sendQueueDepth, cfg.NumSlots); err != nil {
+	if err = createQP(connID, pd, cq, sendQueueDepthFor(cfg.NumSlots), cfg.NumSlots); err != nil {
 		destroyCompChannel(compCh)
 		destroyCMID(connID)
 		return nil, ConnectInfo{}, err
@@ -334,11 +356,32 @@ func Accept(listenID *C.struct_rdma_cm_id, cfg RDMAConnConfig) (*RDMAConn, Conne
 		return nil, ConnectInfo{}, err
 	}
 
-	conn := &RDMAConn{
-		cmID:           connID,
+	conn := newRDMAConn(connID, pd, cq, compCh, nil, mems, rp,
+		ci.RespRkey, ci.RespBaseVA, ci.RespDbRkey, ci.RespDbVA,
+		ci.CreditRkey, ci.CreditVA, "", cfg)
+	conn.startDrainer()
+	return conn, ci, nil
+}
+
+// newRDMAConn constructs the RDMAConn struct and wires up cond / credit /
+// poll state. It does NOT start the drainer goroutine — callers must call
+// startDrainer after the QP is in RTS state.
+func newRDMAConn(
+	cmID *C.struct_rdma_cm_id, pd *C.struct_ibv_pd, cq *C.struct_ibv_cq,
+	compCh *C.struct_ibv_comp_channel, evCh *C.struct_rdma_event_channel,
+	mems *connMems, rp *recvPool,
+	peerRecvRkey uint32, peerRecvBaseVA uint64,
+	peerDBRkey uint32, peerDBBaseVA uint64,
+	peerCreditRkey uint32, peerCreditVA uint64,
+	remoteAddr string,
+	cfg RDMAConnConfig,
+) *RDMAConn {
+	c := &RDMAConn{
+		cmID:           cmID,
 		pd:             pd,
 		cq:             cq,
 		compCh:         compCh,
+		evCh:           evCh,
 		recvRing:       mems.recvRing,
 		recvDB:         mems.recvDB,
 		sendScratch:    mems.sendScratch,
@@ -346,23 +389,27 @@ func Accept(listenID *C.struct_rdma_cm_id, cfg RDMAConnConfig) (*RDMAConn, Conne
 		localCredit:    mems.localCredit,
 		creditScratch:  mems.creditScratch,
 		recvPool:       rp,
-		peerRecvRkey:   ci.RespRkey,
-		peerRecvBaseVA: ci.RespBaseVA,
-		peerDBRkey:     ci.RespDbRkey,
-		peerDBBaseVA:   ci.RespDbVA,
-		peerCreditRkey: ci.CreditRkey,
-		peerCreditVA:   ci.CreditVA,
+		peerRecvRkey:   peerRecvRkey,
+		peerRecvBaseVA: peerRecvBaseVA,
+		peerDBRkey:     peerDBRkey,
+		peerDBBaseVA:   peerDBBaseVA,
+		peerCreditRkey: peerCreditRkey,
+		peerCreditVA:   peerCreditVA,
 		numSlots:       cfg.NumSlots,
 		slotSize:       cfg.SlotSize,
+		remoteAddr:     remoteAddr,
 		creditAckMode:  cfg.CreditAckMode,
 		pollCfg:        cfg.effectivePollConfig(),
+		drainerStop:    make(chan struct{}),
+		drainerDone:    make(chan struct{}),
 	}
-	conn.credit = newCreditState(cfg.NumSlots, conn.localCreditPtr())
-	return conn, ci, nil
+	c.recvCond = sync.NewCond(&c.recvMu)
+	c.credit = newCreditState(cfg.NumSlots, c.localCreditPtr())
+	return c
 }
 
-// connMems bundles the six pinned memory regions a connection needs so we can
-// allocate them transactionally and roll back on failure.
+// connMems bundles the six pinned memory regions a connection needs so we
+// can allocate them transactionally and roll back on failure.
 type connMems struct {
 	recvRing      *RDMAMem
 	recvDB        *RDMAMem
@@ -425,26 +472,26 @@ func (c *RDMAConn) SlotSize() int { return c.slotSize }
 func (c *RDMAConn) PollConfig() PollConfig { return c.pollCfg }
 
 // RecvSlotBytes returns the receive ring slice for slot idx.
-// On the server, this is where incoming requests land.
-// On the client, this is where incoming responses land.
 func (c *RDMAConn) RecvSlotBytes(idx int) []byte {
 	return c.recvRing.SlotBytes(idx, c.slotSize)
 }
 
 // SendScratchBytes returns the local send scratch for slot idx.
-// Caller fills this, then calls WritePacket / WriteData.
 func (c *RDMAConn) SendScratchBytes(idx int) []byte {
 	return c.sendScratch.SlotBytes(idx, c.slotSize)
 }
 
-// WritePacket serializes p into the local scratch slot at slotIdx, then:
-//  1. RDMA Writes the slot to peer's recvRing (not signaled)
-//  2. Writes a doorbell entry and RDMA-Writes-with-Imm it to peer's recvDB
-//     (signaled; imm_data carries slotIdx so the receiver can dispatch
-//     directly from the CQE without scanning the doorbell array).
+// WritePacket serializes p into the local scratch slot at slotIdx, then
+// posts the slot payload (not signaled) followed by the doorbell write
+// with imm_data = slotIdx (signaled).
 //
-// Blocks if no flow-control credits are available. Not goroutine-safe for the
-// same slotIdx.
+// Fire-and-forget: returns as soon as both WRs are enqueued. The drainer
+// goroutine consumes the resulting CQEs asynchronously. Senders wait for
+// the peer's response by polling recvDoneSeq (memory) or blocking on
+// recvCond (sleep) — usually via WaitRecvDoneSeq.
+//
+// Blocks if no flow-control credits are available. Not goroutine-safe for
+// the same slotIdx.
 func (c *RDMAConn) WritePacket(slotIdx int, p *proto.Packet) error {
 	if err := c.acquireSendCredit(); err != nil {
 		return err
@@ -457,15 +504,14 @@ func (c *RDMAConn) WritePacket(slotIdx int, p *proto.Packet) error {
 	if err != nil {
 		return err
 	}
-	WriteSlotHeader(scratch, seq, uint32(totalLen)) // stamp seq into SlotHeader
+	WriteSlotHeader(scratch, seq, uint32(totalLen))
 
-	return c.writeSlotAndDoorbell(slotIdx, scratch[:totalLen], seq)
+	return c.postSlotAndDoorbell(slotIdx, scratch[:totalLen], seq)
 }
 
-// WriteData RDMA-Writes raw data (already serialized) to peer's recvRing at slotIdx,
-// then fires the doorbell. Used by server to write responses back to client.
-//
-// Blocks if no flow-control credits are available.
+// WriteData RDMA-Writes raw data (already serialized) to peer's recvRing
+// at slotIdx, then fires the doorbell. Fire-and-forget, same semantics as
+// WritePacket. Used by server to write responses back to client.
 func (c *RDMAConn) WriteData(slotIdx int, data []byte) error {
 	if len(data) > c.slotSize {
 		return fmt.Errorf("rdma: WriteData: data %d > slotSize %d", len(data), c.slotSize)
@@ -479,11 +525,10 @@ func (c *RDMAConn) WriteData(slotIdx int, data []byte) error {
 	seq := c.nextSendSeq[slotIdx] + 1
 	c.nextSendSeq[slotIdx] = seq
 
-	return c.writeSlotAndDoorbell(slotIdx, scratch[:len(data)], seq)
+	return c.postSlotAndDoorbell(slotIdx, scratch[:len(data)], seq)
 }
 
-// acquireSendCredit blocks until a flow-control credit is available. Honors
-// connection close so callers do not deadlock during shutdown.
+// acquireSendCredit blocks until a flow-control credit is available.
 func (c *RDMAConn) acquireSendCredit() error {
 	if c.credit == nil {
 		return nil
@@ -494,24 +539,23 @@ func (c *RDMAConn) acquireSendCredit() error {
 	return c.credit.acquireCredit(context.Background())
 }
 
-func (c *RDMAConn) writeSlotAndDoorbell(slotIdx int, payload []byte, seq uint32) error {
+// postSlotAndDoorbell posts the data + doorbell WR pair without waiting.
+func (c *RDMAConn) postSlotAndDoorbell(slotIdx int, payload []byte, seq uint32) error {
 	qp := getQPFromCMID(c.cmID)
 
 	lSlotAddr := c.sendScratch.VA + uint64(slotIdx*c.slotSize)
 	rSlotAddr := c.peerRecvBaseVA + uint64(slotIdx*c.slotSize)
 
-	// Write 1: slot payload (not signaled — doorbell Write carries the signal)
+	// Slot payload: not signaled (no CQE). The doorbell that follows is
+	// signaled; ordered RC delivery means data lands in peer memory before
+	// the doorbell CQE is delivered to the peer.
 	if err := postRDMAWrite(qp,
 		lSlotAddr, c.sendScratch.Lkey, uint32(len(payload)),
 		rSlotAddr, c.peerRecvRkey,
-		uint64(slotIdx*2), false); err != nil {
+		encodeWRID(opSlot, slotIdx), false); err != nil {
 		return fmt.Errorf("rdma: slot write: %w", err)
 	}
 
-	// Prepare doorbell entry in local sendDB slot. The doorbell array is
-	// retained alongside imm_data even though imm alone tells the receiver
-	// which slot fired — the array is the legacy fast-path for busy/yield
-	// polling, while imm provides comp_channel wakeup for sleep phase.
 	dbOff := slotIdx * DoorbellEntrySize
 	dbBuf := c.sendDB.Bytes()[dbOff : dbOff+DoorbellEntrySize]
 	WriteDoorbellEntry(dbBuf, 0, seq, uint32(slotIdx))
@@ -519,108 +563,21 @@ func (c *RDMAConn) writeSlotAndDoorbell(slotIdx int, payload []byte, seq uint32)
 	lDbAddr := c.sendDB.VA + uint64(dbOff)
 	rDbAddr := c.peerDBBaseVA + uint64(dbOff)
 
-	// Write 2: doorbell with immediate data = slotIdx. The imm_data tells
-	// the receiver's pollLoop which slot to inspect on wakeup, avoiding a
-	// full doorbell-array scan when sleep-mode is in effect.
+	// Doorbell with imm_data = slotIdx. Signaled so the drainer can
+	// account it; imm_data also tells the peer's recv side which slot
+	// fired without scanning the doorbell array (P2 wakeup hint).
 	if err := postRDMAWriteWithImm(qp,
 		lDbAddr, c.sendDB.Lkey, DoorbellEntrySize,
 		rDbAddr, c.peerDBRkey,
-		uint64(slotIdx*2+1), uint32(slotIdx), true); err != nil {
+		encodeWRID(opDoorbell, slotIdx), uint32(slotIdx), true); err != nil {
 		return fmt.Errorf("rdma: doorbell write: %w", err)
-	}
-
-	return c.drainOneCQE()
-}
-
-// drainOneCQE blocks until at least one of OUR send WRs completes successfully.
-// Recv CQEs (incoming WITH_IMM doorbells) that arrive concurrently are absorbed
-// here too: the recv WR is refilled and the loop continues so the receive-side
-// poll machinery is not starved.
-//
-// Adaptive polling applies: tight loop, then yield, then sleep on comp_channel.
-func (c *RDMAConn) drainOneCQE() error {
-	poller := NewAdaptivePoller(c.pollCfg)
-	qp := getQPFromCMID(c.cmID)
-	for {
-		evs, err := pollCQEvents(c.cq)
-		if err != nil {
-			return err
-		}
-		gotSendCompletion := false
-		for _, ev := range evs {
-			if ev.IsRecv {
-				// Refill so the QP can keep accepting WITH_IMM doorbells.
-				if rerr := c.recvPool.refillOne(qp, ev.WRID); rerr != nil {
-					return fmt.Errorf("rdma: drainOneCQE refill: %w", rerr)
-				}
-				continue
-			}
-			gotSendCompletion = true
-		}
-		if gotSendCompletion {
-			return nil
-		}
-		switch poller.NextAction() {
-		case ActionContinue:
-			// tight loop
-		case ActionYield:
-			runtime.Gosched()
-		case ActionSleep:
-			if err := c.sleepOnCQ(); err != nil {
-				return err
-			}
-			poller.Reset()
-		}
-	}
-}
-
-// sleepOnCQ arms the CQ for the next completion and blocks on the comp
-// channel until that completion arrives. Implements the standard verbs
-// double-check pattern to close the lost-wakeup window between poll and arm.
-func (c *RDMAConn) sleepOnCQ() error {
-	if c.compCh == nil {
-		// Fallback for connections built without a comp channel: degrade to
-		// a Gosched. Should not happen in normal P2 builds but keeps the
-		// transport functional if a future caller skips channel setup.
-		runtime.Gosched()
-		return nil
-	}
-	if err := reqNotifyCQ(c.cq, false); err != nil {
-		return err
-	}
-	cq, err := waitCQEvent(c.compCh)
-	if err != nil {
-		return err
-	}
-	atomic.AddUint32(&c.cqEventsToAck, 1)
-	// Batch acks; flush whenever count crosses a threshold to bound the
-	// kernel's tracked event count without per-event overhead.
-	if n := atomic.LoadUint32(&c.cqEventsToAck); n >= 16 {
-		ackCQEvents(cq, uint(n))
-		atomic.AddUint32(&c.cqEventsToAck, ^uint32(n-1))
 	}
 	return nil
 }
 
-// flushCQEventAcks drains any unacked comp-channel events. Called from Close
-// so we do not leak event references across connection lifetimes.
-func (c *RDMAConn) flushCQEventAcks() {
-	if c.cq == nil {
-		return
-	}
-	if n := atomic.SwapUint32(&c.cqEventsToAck, 0); n > 0 {
-		ackCQEvents(c.cq, uint(n))
-	}
-}
-
-// PollRecvDoorbell checks if peer has written a new doorbell entry for slot idx.
-// Returns (newSeq, true) when a new entry is detected.
-// lastSeen must be maintained by the caller per-slot.
-//
-// The receive-side polling site (server pollLoop, client pollRDMAResponse)
-// uses this for the busy / yield phases. For sleep phase, callers should
-// instead block on SleepWaitForRecv, which integrates with the comp channel
-// and is woken by incoming WITH_IMM doorbells.
+// PollRecvDoorbell checks if peer has written a new doorbell entry for
+// slot idx. Used by busy/yield phases of the response wait; sleep phase
+// callers should use WaitRecvDoneSeq or WaitRecvSignal instead.
 func (c *RDMAConn) PollRecvDoorbell(idx int, lastSeen uint32) (uint32, bool) {
 	off := idx * DoorbellEntrySize
 	seq, _ := ReadDoorbellEntry(c.recvDB.Bytes()[off:], 0)
@@ -630,59 +587,238 @@ func (c *RDMAConn) PollRecvDoorbell(idx int, lastSeen uint32) (uint32, bool) {
 	return 0, false
 }
 
-// SleepWaitForRecv arms the CQ and blocks until any completion arrives.
-// Recv CQEs (incoming WITH_IMM doorbells) refill the recv pool; send CQEs
-// are absorbed silently here — the sender's drainOneCQE is responsible for
-// observing those, but if it has already finished the kernel still delivered
-// the event and we must drain it to keep the channel healthy.
-//
-// On wake the caller should re-poll its doorbell array; the imm_data of
-// the wake CQE (if any) is informational and not relied upon for
-// correctness.
-func (c *RDMAConn) SleepWaitForRecv() error {
-	if c.compCh == nil {
-		runtime.Gosched()
+// RecvDoneSeq returns the per-slot drainer-incremented counter. Senders
+// should snapshot this BEFORE posting WritePacket; subsequent reads detect
+// the response arrival even when memory polling has already advanced.
+func (c *RDMAConn) RecvDoneSeq(slotIdx int) uint64 {
+	return atomic.LoadUint64(&c.recvDoneSeq[slotIdx])
+}
+
+// RecvSignalSeq returns the global drainer-incremented counter. Used by
+// callers that wait on "any recv arrived" rather than a specific slot.
+func (c *RDMAConn) RecvSignalSeq() uint64 {
+	return atomic.LoadUint64(&c.recvSignalSeq)
+}
+
+// WaitRecvDoneSeq blocks until recvDoneSeq[slotIdx] strictly exceeds
+// lastSeen, the connection is closed, or ctx is cancelled. Cheap when the
+// drainer has already advanced the counter (single atomic load + lock).
+func (c *RDMAConn) WaitRecvDoneSeq(ctx context.Context, slotIdx int, lastSeen uint64) error {
+	if atomic.LoadUint64(&c.recvDoneSeq[slotIdx]) > lastSeen {
 		return nil
 	}
-	if err := reqNotifyCQ(c.cq, false); err != nil {
-		return err
-	}
-	cq, err := waitCQEvent(c.compCh)
-	if err != nil {
-		return err
-	}
-	atomic.AddUint32(&c.cqEventsToAck, 1)
-	if n := atomic.LoadUint32(&c.cqEventsToAck); n >= 16 {
-		ackCQEvents(cq, uint(n))
-		atomic.AddUint32(&c.cqEventsToAck, ^uint32(n-1))
-	}
-	// Drain everything currently queued so future poll iterations see only
-	// new arrivals. Refill any consumed recv WRs.
-	qp := getQPFromCMID(c.cmID)
-	evs, err := pollCQEvents(c.cq)
-	if err != nil {
-		return err
-	}
-	for _, ev := range evs {
-		if ev.IsRecv {
-			if rerr := c.recvPool.refillOne(qp, ev.WRID); rerr != nil {
-				return fmt.Errorf("rdma: SleepWaitForRecv refill: %w", rerr)
+	c.recvMu.Lock()
+	defer c.recvMu.Unlock()
+	for atomic.LoadUint64(&c.recvDoneSeq[slotIdx]) <= lastSeen {
+		if c.IsClosed() {
+			return ErrCreditClosed
+		}
+		if ctx != nil {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
 			}
 		}
+		c.recvCond.Wait()
 	}
 	return nil
 }
 
-// ReturnCredit signals that one received slot has been processed locally and
-// the peer is now free to reuse it. Returns the new processed-slot count.
+// WaitRecvSignal blocks until recvSignalSeq strictly exceeds lastSeen,
+// the connection is closed, or ctx is cancelled. Used by server pollLoop's
+// sleep phase: any incoming doorbell wakes us, and the caller re-scans
+// memory to find the new slot.
+func (c *RDMAConn) WaitRecvSignal(ctx context.Context, lastSeen uint64) error {
+	if atomic.LoadUint64(&c.recvSignalSeq) > lastSeen {
+		return nil
+	}
+	c.recvMu.Lock()
+	defer c.recvMu.Unlock()
+	for atomic.LoadUint64(&c.recvSignalSeq) <= lastSeen {
+		if c.IsClosed() {
+			return ErrCreditClosed
+		}
+		if ctx != nil {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+		}
+		c.recvCond.Wait()
+	}
+	return nil
+}
+
+// startDrainer spawns the per-conn completion drainer goroutine. Must be
+// called exactly once after Dial / Accept; closed by Close.
+func (c *RDMAConn) startDrainer() {
+	go c.runDrainer()
+}
+
+// runDrainer is the per-conn completion-pump loop. It owns the CQ and the
+// comp_channel for sleep blocking. Exits cleanly when drainerStop closes.
+func (c *RDMAConn) runDrainer() {
+	defer close(c.drainerDone)
+	qp := getQPFromCMID(c.cmID)
+	poller := NewAdaptivePoller(c.pollCfg)
+	for {
+		select {
+		case <-c.drainerStop:
+			return
+		default:
+		}
+
+		evs, err := pollCQEvents(c.cq)
+		if err != nil {
+			if c.IsClosed() {
+				return
+			}
+			log.LogWarnf("rdma drainer (%s): pollCQEvents: %v", c.remoteAddr, err)
+			runtime.Gosched()
+			continue
+		}
+
+		for _, ev := range evs {
+			c.dispatchCompletion(qp, ev)
+		}
+
+		if len(evs) > 0 {
+			poller.Reset()
+			continue
+		}
+
+		switch poller.NextAction() {
+		case ActionContinue:
+		case ActionYield:
+			runtime.Gosched()
+		case ActionSleep:
+			if !c.drainerSleep() {
+				return
+			}
+			poller.Reset()
+		}
+	}
+}
+
+// dispatchCompletion routes one CQE to its waiter. Errors are logged and
+// the WR is otherwise skipped; flush-on-teardown errors are common during
+// graceful close and must not abort the drainer.
+func (c *RDMAConn) dispatchCompletion(qp *C.struct_ibv_qp, ev CompletionEvent) {
+	op, slot := decodeWRID(ev.WRID)
+	if !ev.Success() {
+		// During Close, QP transitions to ERR and WRs flush as
+		// IBV_WC_WR_FLUSH_ERR. Suppress logs in that case to avoid noise.
+		if !c.IsClosed() {
+			log.LogWarnf("rdma drainer (%s): WR error op=%v slot=%d status=%d",
+				c.remoteAddr, op, slot, ev.Status)
+		}
+		// Recv WR errors leave the pool short. Refill best-effort so we
+		// can keep accepting traffic after a transient error.
+		if op == opRecv {
+			_ = c.recvPool.refillOne(qp, ev.WRID)
+		}
+		return
+	}
+
+	switch {
+	case op == opRecv:
+		// Imm_data carries the slot index of the firing doorbell.
+		slotFromImm := slot
+		if ev.HasImm {
+			slotFromImm = int(ev.ImmData)
+		}
+		if slotFromImm >= 0 && slotFromImm < c.numSlots {
+			atomic.AddUint64(&c.recvDoneSeq[slotFromImm], 1)
+		}
+		atomic.AddUint64(&c.recvSignalSeq, 1)
+		if rerr := c.recvPool.refillOne(qp, ev.WRID); rerr != nil {
+			log.LogWarnf("rdma drainer (%s): refill recv: %v", c.remoteAddr, rerr)
+		}
+		c.recvMu.Lock()
+		c.recvCond.Broadcast()
+		c.recvMu.Unlock()
+	case op == opShutdownPing:
+		// Wake-up signal posted by Close; drainerStop will be closed and
+		// the next loop iteration exits.
+	case op == opDoorbell || op == opCredit || op == opSlot:
+		// Send-side completion: nothing to wait on in fire-and-forget mode.
+		// Diagnostic counters (CreditStats) live in creditState.
+	default:
+		log.LogWarnf("rdma drainer (%s): unknown WR op=%v wr_id=0x%x", c.remoteAddr, op, ev.WRID)
+	}
+}
+
+// drainerSleep arms the CQ and blocks on the comp_channel for the next
+// completion event. Returns false if the drainer should exit (close in
+// progress and event delivery failed).
+func (c *RDMAConn) drainerSleep() bool {
+	if c.compCh == nil {
+		runtime.Gosched()
+		return true
+	}
+	if err := reqNotifyCQ(c.cq, false); err != nil {
+		if c.IsClosed() {
+			return false
+		}
+		log.LogWarnf("rdma drainer (%s): reqNotifyCQ: %v", c.remoteAddr, err)
+		return true
+	}
+	cq, err := waitCQEvent(c.compCh)
+	if err != nil {
+		if c.IsClosed() {
+			return false
+		}
+		log.LogWarnf("rdma drainer (%s): waitCQEvent: %v", c.remoteAddr, err)
+		return true
+	}
+	c.cqEventsToAck++
+	if c.cqEventsToAck >= 16 {
+		ackCQEvents(cq, uint(c.cqEventsToAck))
+		c.cqEventsToAck = 0
+	}
+	return true
+}
+
+// flushCQEventAcks drains any outstanding event acks. Called from Close
+// after the drainer has exited so we do not race with the drainer's
+// own ack accounting.
+func (c *RDMAConn) flushCQEventAcks() {
+	if c.cqEventsToAck > 0 {
+		ackCQEvents(c.cq, uint(c.cqEventsToAck))
+		c.cqEventsToAck = 0
+	}
+}
+
+// postShutdownPing posts a self-targeted RDMA Write of length 1 to the
+// connection's own credit-scratch buffer. Generates a CQE that wakes the
+// drainer if it is blocked on the comp_channel, allowing Close to proceed
+// without racing with ibv_get_cq_event.
+func (c *RDMAConn) postShutdownPing() {
+	qp := getQPFromCMID(c.cmID)
+	// We use creditScratch's local key only; remote rkey/raddr point at
+	// localCredit (also ours), since the WR is purely a CQE generator.
+	if err := postRDMAWrite(qp,
+		c.creditScratch.VA, c.creditScratch.Lkey, 1,
+		c.localCredit.VA, c.localCredit.Rkey,
+		encodeWRID(opShutdownPing, 0), true); err != nil {
+		// Best-effort: if even this fails, the drainer will eventually
+		// pick up the QP-flush CQEs from rdma_destroy_id below.
+		log.LogWarnf("rdma close (%s): postShutdownPing: %v", c.remoteAddr, err)
+	}
+}
+
+// ReturnCredit signals that one received slot has been processed locally
+// and the peer is now free to reuse it. Fire-and-forget: posts the
+// credit-write WR and returns immediately. CreditAckMode is honoured by
+// requesting (or not) a signaled WR; either way the drainer accounts
+// the resulting CQE asynchronously.
 //
-// In CreditAckSync mode (default) this blocks until the credit-return RDMA
-// Write completes; in CreditAckAsync it posts the WR and returns immediately.
-//
-// Receivers (server-side handleSlot, client-side response handler) must call
-// this after consuming each slot. Failing to call it will eventually cause
-// the peer's sender to block forever.
-func (c *RDMAConn) ReturnCredit() error {
+// slotIdx identifies the slot whose data was just consumed; the peer's
+// credit cell stores a global processed-count, but the WR ID encodes the
+// slot for completion-routing diagnostics.
+func (c *RDMAConn) ReturnCredit(slotIdx int) error {
 	if c.credit == nil {
 		return nil
 	}
@@ -691,7 +827,8 @@ func (c *RDMAConn) ReturnCredit() error {
 	}
 	processed := c.credit.onProcessSlot()
 
-	// Stage processed count into local credit-scratch buffer (8 bytes LE).
+	// Encode processed count into the local credit-scratch buffer
+	// (8 bytes LE).
 	scratch := c.creditScratch.Bytes()
 	scratch[0] = byte(processed)
 	scratch[1] = byte(processed >> 8)
@@ -707,25 +844,38 @@ func (c *RDMAConn) ReturnCredit() error {
 	if err := postRDMAWrite(qp,
 		c.creditScratch.VA, c.creditScratch.Lkey, creditCellBytes,
 		c.peerCreditVA, c.peerCreditRkey,
-		uint64(0xC0EDC0DE), signaled); err != nil {
+		encodeWRID(opCredit, slotIdx), signaled); err != nil {
 		return fmt.Errorf("rdma: credit-return write: %w", err)
-	}
-	if signaled {
-		return c.drainOneCQE()
 	}
 	return nil
 }
 
-// Close tears down the RDMA connection and frees all resources. Idempotent.
+// Close tears down the RDMA connection and frees all resources.
+// Idempotent. Safe to call concurrently with WritePacket / pollLoop;
+// any in-flight callers will exit via ErrCreditClosed.
 func (c *RDMAConn) Close() error {
 	if !atomic.CompareAndSwapInt32(&c.closed, 0, 1) {
 		return nil
 	}
-	// Wake any goroutines parked in acquireSendCredit so they can exit cleanly.
 	if c.credit != nil {
 		c.credit.closeCredits()
 	}
+
+	// Wake any callers parked in WaitRecvDoneSeq / WaitRecvSignal.
+	c.recvMu.Lock()
+	c.recvCond.Broadcast()
+	c.recvMu.Unlock()
+
+	// Wake the drainer if it's blocked on comp_channel: post a
+	// self-signaled ping that delivers a CQE.
+	if c.drainerDone != nil {
+		c.postShutdownPing()
+		close(c.drainerStop)
+		<-c.drainerDone
+	}
+
 	c.flushCQEventAcks()
+
 	if c.recvPool != nil {
 		c.recvPool.free()
 		c.recvPool = nil
@@ -758,15 +908,16 @@ func (c *RDMAConn) RemoteAddr() string { return c.remoteAddr }
 // IsClosed reports whether the connection has been closed.
 func (c *RDMAConn) IsClosed() bool { return atomic.LoadInt32(&c.closed) == 1 }
 
-// RecvSeq returns the last received doorbell seq for slot, used by callers to
-// persist state across pooled round-trips on the same connection.
+// RecvSeq returns the last received doorbell seq for slot, used by callers
+// to persist state across pooled round-trips on the same connection.
 func (c *RDMAConn) RecvSeq(slot int) uint32 { return c.lastRecvSeq[slot] }
 
 // SetRecvSeq updates the persisted receive seq for slot.
 func (c *RDMAConn) SetRecvSeq(slot int, seq uint32) { c.lastRecvSeq[slot] = seq }
 
 // CreditStats returns a snapshot of credit accounting state for diagnostics.
-// All three counters are monotonic; sent should never exceed received+numSlots.
+// All three counters are monotonic; sent should never exceed
+// received + numSlots.
 func (c *RDMAConn) CreditStats() (sent, received, processed uint64) {
 	if c.credit == nil {
 		return 0, 0, 0
@@ -799,7 +950,8 @@ func Listen(port int, cfg RDMAConnConfig) (*RDMAListener, error) {
 	return &RDMAListener{evCh: ch, id: id, cfg: cfg}, nil
 }
 
-// Accept blocks until an incoming RDMA connection is established and returns it.
+// Accept blocks until an incoming RDMA connection is established and
+// returns it (drainer goroutine already running).
 func (l *RDMAListener) Accept() (*RDMAConn, error) {
 	if atomic.LoadInt32(&l.closed) != 0 {
 		return nil, fmt.Errorf("rdma: listener closed")

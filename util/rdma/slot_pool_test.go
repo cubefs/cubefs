@@ -1,0 +1,287 @@
+package rdma
+
+import (
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+)
+
+// fakeDial constructs an in-memory RDMAConn shell that satisfies the
+// pool's bookkeeping without touching real RDMA hardware. The pool only
+// reads NumSlots / IsClosed / RemoteAddr / Close on the conn — none of
+// which require the CGO-tagged code paths.
+func fakeDial(numSlots int, dialCount *int64) dialFunc {
+	return func(addr string, cfg RDMAConnConfig) (*RDMAConn, error) {
+		if dialCount != nil {
+			atomic.AddInt64(dialCount, 1)
+		}
+		return &RDMAConn{numSlots: numSlots}, nil
+	}
+}
+
+func newTestPool(t *testing.T, numSlots, maxConns int, dialCount *int64) *RDMAConnPool {
+	t.Helper()
+	cfg := RDMAPoolConfig{
+		NumSlots: numSlots,
+		SlotSize: MinValidSlotSize,
+		MaxConns: maxConns,
+	}
+	pool, err := newPool(cfg, fakeDial(numSlots, dialCount))
+	if err != nil {
+		t.Fatalf("newPool: %v", err)
+	}
+	t.Cleanup(pool.Close)
+	return pool
+}
+
+// TestSlotPool_RoundRobinSameConn verifies AcquireSlot rotates through
+// distinct slots within a single connection before opening a second one.
+func TestSlotPool_RoundRobinSameConn(t *testing.T) {
+	const numSlots = 4
+	var dialCount int64
+	pool := newTestPool(t, numSlots, 2, &dialCount)
+
+	seen := map[int]bool{}
+	for i := 0; i < numSlots; i++ {
+		h, err := pool.AcquireSlot("addr-A")
+		if err != nil {
+			t.Fatalf("acquire %d: %v", i, err)
+		}
+		if seen[h.SlotIdx] {
+			t.Errorf("slot %d returned twice", h.SlotIdx)
+		}
+		seen[h.SlotIdx] = true
+	}
+	if got := atomic.LoadInt64(&dialCount); got != 1 {
+		t.Errorf("dialCount=%d, expected 1 (round-robin within first conn)", got)
+	}
+}
+
+// TestSlotPool_DialsSecondConnWhenFirstFull verifies a new connection is
+// dialed once every slot of the first conn is already in use.
+func TestSlotPool_DialsSecondConnWhenFirstFull(t *testing.T) {
+	const numSlots = 2
+	var dialCount int64
+	pool := newTestPool(t, numSlots, 2, &dialCount)
+
+	// Saturate first conn.
+	h1, _ := pool.AcquireSlot("addr-A")
+	h2, _ := pool.AcquireSlot("addr-A")
+	// Third acquire must dial a new conn rather than block.
+	h3, err := pool.AcquireSlot("addr-A")
+	if err != nil {
+		t.Fatalf("third acquire: %v", err)
+	}
+	defer pool.ReleaseSlot(h1, false)
+	defer pool.ReleaseSlot(h2, false)
+	defer pool.ReleaseSlot(h3, false)
+
+	if got := atomic.LoadInt64(&dialCount); got != 2 {
+		t.Errorf("dialCount=%d, expected 2 (second conn dialed)", got)
+	}
+	if h3.Conn == h1.Conn || h3.Conn == h2.Conn {
+		t.Error("third handle should be on a different conn than the first two")
+	}
+}
+
+// TestSlotPool_BlocksWhenAllConnsAndSlotsExhausted verifies the spec
+// requirement: AcquireSlot blocks until a slot is released.
+func TestSlotPool_BlocksWhenAllConnsAndSlotsExhausted(t *testing.T) {
+	const numSlots = 1
+	pool := newTestPool(t, numSlots, 1, nil) // 1 conn, 1 slot total
+
+	h1, err := pool.AcquireSlot("addr-A")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	type result struct {
+		h   *SlotHandle
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		h, err := pool.AcquireSlot("addr-A")
+		done <- result{h, err}
+	}()
+
+	select {
+	case r := <-done:
+		t.Fatalf("expected blocking acquire, got handle=%v err=%v", r.h, r.err)
+	case <-time.After(50 * time.Millisecond):
+		// expected
+	}
+
+	pool.ReleaseSlot(h1, false)
+
+	select {
+	case r := <-done:
+		if r.err != nil {
+			t.Fatalf("blocked acquire returned error: %v", r.err)
+		}
+		pool.ReleaseSlot(r.h, false)
+	case <-time.After(time.Second):
+		t.Fatal("blocked acquire did not unblock after release")
+	}
+}
+
+// TestSlotPool_DirtySlotExcludedFromRotation verifies that a forceClose'd
+// slot is not handed out again, while other slots on the same conn remain
+// available — matching the spec's "同连接其他 slot 不受影响" requirement.
+func TestSlotPool_DirtySlotExcludedFromRotation(t *testing.T) {
+	const numSlots = 4
+	pool := newTestPool(t, numSlots, 1, nil)
+
+	// Borrow then forceClose slot N.
+	h1, _ := pool.AcquireSlot("addr-A")
+	dirtySlot := h1.SlotIdx
+	pool.ReleaseSlot(h1, true)
+
+	// Now drain the remaining slots — none should be the dirty one.
+	for i := 0; i < numSlots-1; i++ {
+		h, err := pool.AcquireSlot("addr-A")
+		if err != nil {
+			t.Fatalf("acquire %d after dirty: %v", i, err)
+		}
+		if h.SlotIdx == dirtySlot {
+			t.Errorf("dirty slot %d was reused at iteration %d", dirtySlot, i)
+		}
+		defer pool.ReleaseSlot(h, false)
+	}
+}
+
+// TestSlotPool_AllDirtyConnRemovedAndReplaced verifies that once every
+// slot of a conn is dirty, the conn is closed and a fresh conn is dialed
+// on the next acquire.
+func TestSlotPool_AllDirtyConnRemovedAndReplaced(t *testing.T) {
+	const numSlots = 2
+	var dialCount int64
+	pool := newTestPool(t, numSlots, 2, &dialCount)
+
+	// Acquire and forceClose every slot of the first conn.
+	h1, _ := pool.AcquireSlot("addr-A")
+	h2, _ := pool.AcquireSlot("addr-A")
+	firstConn := h1.Conn
+	if h2.Conn != firstConn {
+		t.Fatalf("expected both handles on the same conn")
+	}
+	pool.ReleaseSlot(h1, true) // dirty slot 0; conn still has slot 1 in use
+	pool.ReleaseSlot(h2, true) // dirty slot 1; conn now all-dead-and-idle, removed
+
+	// Next acquire should dial a fresh conn.
+	h3, err := pool.AcquireSlot("addr-A")
+	if err != nil {
+		t.Fatalf("acquire after teardown: %v", err)
+	}
+	defer pool.ReleaseSlot(h3, false)
+
+	if h3.Conn == firstConn {
+		t.Error("removed conn was reused; expected fresh dial")
+	}
+	if got := atomic.LoadInt64(&dialCount); got != 2 {
+		t.Errorf("dialCount=%d, expected 2 (initial + replacement)", got)
+	}
+}
+
+// TestSlotPool_ConcurrentAcquireDistinctHandles drives many goroutines
+// against a saturating pool and asserts every concurrent acquire produces
+// a unique (Conn, SlotIdx) tuple. Without per-slot inUse tracking this
+// would trivially fail.
+func TestSlotPool_ConcurrentAcquireDistinctHandles(t *testing.T) {
+	const (
+		numSlots = 8
+		maxConns = 4
+		workers  = 16
+		ops      = 50
+	)
+	pool := newTestPool(t, numSlots, maxConns, nil)
+
+	type key struct {
+		conn *RDMAConn
+		slot int
+	}
+	var seenMu sync.Mutex
+	seen := map[key]int{}
+
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for i := 0; i < workers; i++ {
+		go func() {
+			defer wg.Done()
+			for j := 0; j < ops; j++ {
+				h, err := pool.AcquireSlot("addr-A")
+				if err != nil {
+					t.Errorf("acquire: %v", err)
+					return
+				}
+				seenMu.Lock()
+				k := key{h.Conn, h.SlotIdx}
+				if seen[k] > 0 {
+					t.Errorf("duplicate (conn, slot) %v while still held", k)
+				}
+				seen[k] = 1
+				seenMu.Unlock()
+
+				// Hold briefly then release.
+				time.Sleep(50 * time.Microsecond)
+
+				seenMu.Lock()
+				seen[k] = 0
+				seenMu.Unlock()
+				pool.ReleaseSlot(h, false)
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+// TestSlotPool_CloseUnblocksWaiters verifies pool.Close wakes any
+// goroutines currently parked in AcquireSlot with ErrSlotPoolClosed.
+func TestSlotPool_CloseUnblocksWaiters(t *testing.T) {
+	pool := newTestPool(t, 1, 1, nil)
+
+	h, _ := pool.AcquireSlot("addr-A")
+	defer pool.ReleaseSlot(h, false)
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := pool.AcquireSlot("addr-A")
+		done <- err
+	}()
+
+	time.Sleep(20 * time.Millisecond)
+	pool.Close()
+
+	select {
+	case err := <-done:
+		if err != ErrSlotPoolClosed {
+			t.Fatalf("got %v, want ErrSlotPoolClosed", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Close did not unblock blocked acquire")
+	}
+}
+
+// TestSlotPool_ActiveSlotsCount verifies the diagnostic counter tracks
+// borrowed slots across releases (used by P3 metrics).
+func TestSlotPool_ActiveSlotsCount(t *testing.T) {
+	pool := newTestPool(t, 4, 2, nil)
+
+	if got := pool.ActiveSlots(); got != 0 {
+		t.Errorf("initial: got %d, want 0", got)
+	}
+	h1, _ := pool.AcquireSlot("addr-A")
+	h2, _ := pool.AcquireSlot("addr-A")
+	if got := pool.ActiveSlots(); got != 2 {
+		t.Errorf("after 2 acquires: got %d, want 2", got)
+	}
+	pool.ReleaseSlot(h1, false)
+	if got := pool.ActiveSlots(); got != 1 {
+		t.Errorf("after 1 release: got %d, want 1", got)
+	}
+	pool.ReleaseSlot(h2, false)
+	if got := pool.ActiveSlots(); got != 0 {
+		t.Errorf("after all releases: got %d, want 0", got)
+	}
+}
