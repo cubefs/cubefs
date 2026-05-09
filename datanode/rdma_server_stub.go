@@ -17,6 +17,7 @@ type RDMAServerConfig struct {
 	NumSlots int
 	SlotSize int
 	Poll     rdma.PollConfig
+	Role     string
 }
 
 // DataNodeRDMACtx is a no-op stub for non-rdma builds.

@@ -1231,6 +1231,7 @@ func (s *DataNode) initConnPool() {
 			NumSlots: s.rdmaNumSlots,
 			SlotSize: s.rdmaSlotSize,
 			Poll:     s.rdmaPollCfg,
+			Role:     rdma.RoleServer,
 		}
 		ctx, err := NewDataNodeRDMACtx(rdmaCfg, func(p *repl.Packet, c net.Conn) error {
 			if err := s.Prepare(p); err != nil {
@@ -1249,6 +1250,7 @@ func (s *DataNode) initConnPool() {
 					NumSlots: s.rdmaNumSlots,
 					SlotSize: s.rdmaSlotSize,
 					Poll:     s.rdmaPollCfg,
+					Role:     rdma.RoleFollower,
 				}
 				if ferr := repl.EnableFollowerRDMA(followerCfg); ferr != nil {
 					log.LogWarnf("initConnPool: follower RDMA init failed, replication uses TCP: %v", ferr)

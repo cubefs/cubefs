@@ -24,6 +24,9 @@ type RDMAServerConfig struct {
 	// Poll governs busy → yield → sleep behaviour of every per-conn poll
 	// loop. Zero value means "use rdma.DefaultPollConfig".
 	Poll rdma.PollConfig
+	// Role labels accepted conns for Prometheus metrics; defaults to
+	// rdma.RoleServer when set explicitly by the caller.
+	Role string
 }
 
 // connState holds per-connection server-side state.
@@ -53,6 +56,7 @@ func NewDataNodeRDMACtx(cfg RDMAServerConfig, handlePacket func(*repl.Packet, ne
 		NumSlots: cfg.NumSlots,
 		SlotSize: cfg.SlotSize,
 		Poll:     cfg.Poll,
+		Role:     cfg.Role,
 	}
 	listener, err := rdma.Listen(cfg.Port, connCfg)
 	if err != nil {
@@ -147,10 +151,12 @@ func (cs *connState) pollLoop(ctx *DataNodeRDMACtx) {
 
 		switch poller.NextAction() {
 		case rdma.ActionContinue:
-			// tight loop
+			rdma.MetricsIncPollSpin(rdma.RoleServer, cs.conn.RemoteAddr(), "busy")
 		case rdma.ActionYield:
+			rdma.MetricsIncPollSpin(rdma.RoleServer, cs.conn.RemoteAddr(), "yield")
 			runtime.Gosched()
 		case rdma.ActionSleep:
+			rdma.MetricsIncPollSpin(rdma.RoleServer, cs.conn.RemoteAddr(), "sleep")
 			waitCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			err := cs.conn.WaitRecvSignal(waitCtx, signalBefore)
 			cancel()

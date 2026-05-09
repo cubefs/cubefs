@@ -7,7 +7,6 @@ package rdma
 
 import (
 	"errors"
-	"time"
 
 	"github.com/cubefs/cubefs/proto"
 )
@@ -68,23 +67,9 @@ func (c *RDMAConn) CreditStats() (sent, received, processed uint64) { return 0, 
 // PollConfig returns the zero config on non-RDMA builds.
 func (c *RDMAConn) PollConfig() PollConfig { return PollConfig{} }
 
-type RDMAConnConfig struct {
-	NumSlots      int
-	SlotSize      int
-	CreditAckMode CreditAckMode
-	Poll          PollConfig
-}
-
-type RDMAPoolConfig struct {
-	Device        string
-	Port          int
-	NumSlots      int
-	SlotSize      int
-	MaxConns      int
-	IdleTimeout   time.Duration
-	CreditAckMode CreditAckMode
-	Poll          PollConfig
-}
+// Role returns the empty string in non-RDMA builds — disables metric
+// emission since metrics_stub.go's helpers no-op when role == "".
+func (c *RDMAConn) Role() string { return "" }
 
 // NewRDMAConnPool returns errNotSupported on non-RDMA builds. The
 // underlying RDMAConnPool type lives in slot_pool.go and is built

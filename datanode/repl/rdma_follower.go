@@ -29,8 +29,10 @@ func EnableFollowerRDMA(cfg rdma.RDMAPoolConfig) error {
 }
 
 func rdmaSendToFollower(addr string, fp *FollowerPacket) error {
+	start := time.Now()
 	handle, err := followerRDMAPool.AcquireSlot(addr)
 	if err != nil {
+		rdma.MetricsObserveFallback(rdma.RoleFollower, addr, "acquire_slot")
 		return fmt.Errorf("repl follower rdma: acquire slot to %s: %w", addr, err)
 	}
 	conn := handle.Conn
@@ -42,27 +44,33 @@ func rdmaSendToFollower(addr string, fp *FollowerPacket) error {
 
 	if err = conn.WritePacket(slot, &fp.Packet); err != nil {
 		forceClose = true
+		rdma.MetricsObserveFallback(rdma.RoleFollower, addr, "write_packet")
 		return fmt.Errorf("repl follower rdma: WritePacket: %w", err)
 	}
 
 	resp, err := pollFollowerRDMAResponse(conn, slot, lastDoneSeq)
 	if err != nil {
 		forceClose = true
+		rdma.MetricsObserveFallback(rdma.RoleFollower, addr, "poll_response")
 		return err
 	}
 
 	if cerr := conn.ReturnCredit(slot); cerr != nil {
 		forceClose = true
+		rdma.MetricsObserveFallback(rdma.RoleFollower, addr, "return_credit")
 		return fmt.Errorf("repl follower rdma: ReturnCredit: %w", cerr)
 	}
 
 	if resp.ReqID != fp.ReqID {
 		forceClose = true
+		rdma.MetricsObserveFallback(rdma.RoleFollower, addr, "reqid_mismatch")
 		return fmt.Errorf("repl follower rdma: ReqID mismatch: got %d want %d", resp.ReqID, fp.ReqID)
 	}
 	if resp.ResultCode != proto.OpOk {
+		rdma.MetricsObserveRequest(rdma.RoleFollower, addr, time.Since(start))
 		return fmt.Errorf("repl follower rdma: follower ResultCode=%d", resp.ResultCode)
 	}
+	rdma.MetricsObserveRequest(rdma.RoleFollower, addr, time.Since(start))
 	return nil
 }
 

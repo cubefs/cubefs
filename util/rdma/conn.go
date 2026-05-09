@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"sync"
 	"sync/atomic"
+	"time"
 	"unsafe"
 
 	"github.com/cubefs/cubefs/proto"
@@ -118,6 +119,7 @@ type RDMAConn struct {
 	numSlots   int
 	slotSize   int
 	remoteAddr string
+	role       string
 
 	// P0: connection-scoped flow control. credit guards against ring
 	// overrun regardless of slot-allocation strategy.
@@ -141,21 +143,12 @@ type RDMAConn struct {
 	closed int32 // atomic; 1 = closed
 }
 
-// RDMAConnConfig holds per-connection sizing parameters.
-type RDMAConnConfig struct {
-	NumSlots int
-	SlotSize int // bytes per data slot (covers SlotHeader + PacketHeader + Arg + Data)
-	// CreditAckMode controls whether the receiver waits for the credit-return
-	// RDMA Write's CQE before processing the next slot.
-	CreditAckMode CreditAckMode
-	// Poll governs the busy → yield → sleep behaviour of every polling
-	// site owned by this connection. Zero value means "use DefaultPollConfig".
-	Poll PollConfig
-}
+// RDMAConnConfig is defined in config.go (no build tag) so the same type
+// is shared across rdma and stub builds.
 
-// effectivePollConfig returns Poll if any field is non-zero, otherwise the
-// spec-defined default.
-func (cfg RDMAConnConfig) effectivePollConfig() PollConfig {
+// effectivePollConfig returns Poll if any field is non-zero, otherwise
+// the spec-defined default.
+func effectivePollConfig(cfg RDMAConnConfig) PollConfig {
 	if cfg.Poll.BusySpinCount == 0 && cfg.Poll.YieldCount == 0 && cfg.Poll.SleepThresholdUs == 0 {
 		return DefaultPollConfig
 	}
@@ -399,7 +392,8 @@ func newRDMAConn(
 		slotSize:       cfg.SlotSize,
 		remoteAddr:     remoteAddr,
 		creditAckMode:  cfg.CreditAckMode,
-		pollCfg:        cfg.effectivePollConfig(),
+		pollCfg:        effectivePollConfig(cfg),
+		role:           cfg.Role,
 		drainerStop:    make(chan struct{}),
 		drainerDone:    make(chan struct{}),
 	}
@@ -471,6 +465,10 @@ func (c *RDMAConn) SlotSize() int { return c.slotSize }
 // PollConfig returns the polling configuration applied to this connection.
 func (c *RDMAConn) PollConfig() PollConfig { return c.pollCfg }
 
+// Role returns the metric role label associated with this connection.
+// Empty means metrics are disabled for this conn.
+func (c *RDMAConn) Role() string { return c.role }
+
 // RecvSlotBytes returns the receive ring slice for slot idx.
 func (c *RDMAConn) RecvSlotBytes(idx int) []byte {
 	return c.recvRing.SlotBytes(idx, c.slotSize)
@@ -529,6 +527,9 @@ func (c *RDMAConn) WriteData(slotIdx int, data []byte) error {
 }
 
 // acquireSendCredit blocks until a flow-control credit is available.
+// Records cubefs_rdma_credit_stall_total when the call had to wait
+// non-trivially (>10µs), so a few cycles of pure-spin success don't
+// flood the counter.
 func (c *RDMAConn) acquireSendCredit() error {
 	if c.credit == nil {
 		return nil
@@ -536,7 +537,14 @@ func (c *RDMAConn) acquireSendCredit() error {
 	if c.IsClosed() {
 		return ErrCreditClosed
 	}
-	return c.credit.acquireCredit(context.Background())
+	start := time.Now()
+	if err := c.credit.acquireCredit(context.Background()); err != nil {
+		return err
+	}
+	if time.Since(start) > 10*time.Microsecond {
+		metricsIncCreditStall(c.role, c.remoteAddr)
+	}
+	return nil
 }
 
 // postSlotAndDoorbell posts the data + doorbell WR pair without waiting.

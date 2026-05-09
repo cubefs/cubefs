@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 )
 
 // ErrSlotPoolClosed is returned by AcquireSlot after Close has been called.
@@ -115,7 +116,12 @@ func newSingleSlotPool(addr string, cfg RDMAConnConfig, maxConns int, dial dialF
 }
 
 // acquire blocks until a slot is available, then returns a handle.
+// Records slot_wait_seconds when it had to block (skipped on the fast
+// path so the histogram isn't scrubbed with zero observations).
 func (p *singleSlotPool) acquire() (*SlotHandle, error) {
+	start := time.Now()
+	blocked := false
+
 	p.mu.Lock()
 	for {
 		if p.closed {
@@ -127,7 +133,12 @@ func (p *singleSlotPool) acquire() (*SlotHandle, error) {
 		for _, cs := range p.conns {
 			if idx := cs.tryAcquire(); idx >= 0 {
 				h := &SlotHandle{Conn: cs.conn, SlotIdx: idx, pool: p}
+				active := p.activeSlotsLocked()
 				p.mu.Unlock()
+				if blocked {
+					metricsObserveSlotWait(p.cfg.Role, p.addr, time.Since(start))
+				}
+				metricsSetActiveSlots(p.cfg.Role, p.addr, active)
 				return h, nil
 			}
 		}
@@ -160,6 +171,7 @@ func (p *singleSlotPool) acquire() (*SlotHandle, error) {
 
 		// All conns full and maxConns reached. Block until a slot is
 		// released (or the pool closes).
+		blocked = true
 		p.cond.Wait()
 	}
 }
@@ -187,8 +199,10 @@ func (p *singleSlotPool) release(h *SlotHandle, forceClose bool) {
 		}
 		break
 	}
+	active := p.activeSlotsLocked()
 	p.cond.Broadcast()
 	p.mu.Unlock()
+	metricsSetActiveSlots(p.cfg.Role, p.addr, active)
 	if toClose != nil {
 		// Close outside the lock; conn.Close waits on its drainer.
 		toClose.Close()
@@ -215,6 +229,13 @@ func (p *singleSlotPool) closeAll() {
 func (p *singleSlotPool) activeSlots() int {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	return p.activeSlotsLocked()
+}
+
+// activeSlotsLocked is the lock-held variant used inside acquire/release
+// so the caller can update metrics with the latest count without dropping
+// the mutex twice.
+func (p *singleSlotPool) activeSlotsLocked() int {
 	n := 0
 	for _, cs := range p.conns {
 		for _, u := range cs.inUse {
@@ -273,6 +294,7 @@ func (p *RDMAConnPool) AcquireSlot(addr string) (*SlotHandle, error) {
 				SlotSize:      p.cfg.SlotSize,
 				CreditAckMode: p.cfg.CreditAckMode,
 				Poll:          p.cfg.Poll,
+				Role:          p.cfg.Role,
 			}
 			sp = newSingleSlotPool(addr, connCfg, p.cfg.MaxConns, p.dial)
 			p.pools[addr] = sp

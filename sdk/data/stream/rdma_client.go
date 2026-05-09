@@ -31,13 +31,15 @@ func InitRDMAConnPool(cfg rdma.RDMAPoolConfig) error {
 // sendPacketViaRDMA borrows one slot to addr, writes the request fire-and-
 // forget, awaits the response on the same slot, and returns the slot.
 //
-// Concurrent calls to sendPacketViaRDMA against the same addr now use
-// distinct slots (P1) — the slot pool round-robins across pre-dialed conns
-// and only blocks when every conn-slot pair is in use AND maxConns is
-// reached.
+// Records P3 metrics on every code path:
+//   - cubefs_rdma_requests_total + cubefs_rdma_latency_seconds on success
+//   - cubefs_rdma_fallback_total with a reason label on every error path
+//     (the higher layer's fallback to TCP is covered by these increments)
 func sendPacketViaRDMA(addr string, req *Packet) error {
+	start := time.Now()
 	handle, err := rdmaConnPool.AcquireSlot(addr)
 	if err != nil {
+		rdma.MetricsObserveFallback(rdma.RoleClient, addr, "acquire_slot")
 		return fmt.Errorf("rdma client: acquire slot to %s: %w", addr, err)
 	}
 	conn := handle.Conn
@@ -51,12 +53,14 @@ func sendPacketViaRDMA(addr string, req *Packet) error {
 
 	if err = conn.WritePacket(slot, &req.Packet); err != nil {
 		forceClose = true
+		rdma.MetricsObserveFallback(rdma.RoleClient, addr, "write_packet")
 		return fmt.Errorf("rdma client: WritePacket: %w", err)
 	}
 
 	resp, err := pollRDMAResponse(conn, slot, lastDoneSeq)
 	if err != nil {
 		forceClose = true
+		rdma.MetricsObserveFallback(rdma.RoleClient, addr, "poll_response")
 		return err
 	}
 
@@ -64,17 +68,23 @@ func sendPacketViaRDMA(addr string, req *Packet) error {
 	// reuse it before we evaluate the response.
 	if cerr := conn.ReturnCredit(slot); cerr != nil {
 		forceClose = true
+		rdma.MetricsObserveFallback(rdma.RoleClient, addr, "return_credit")
 		return fmt.Errorf("rdma client: ReturnCredit: %w", cerr)
 	}
 
 	if resp.ReqID != req.ReqID {
 		forceClose = true
+		rdma.MetricsObserveFallback(rdma.RoleClient, addr, "reqid_mismatch")
 		return fmt.Errorf("rdma client: ReqID mismatch: got %d want %d", resp.ReqID, req.ReqID)
 	}
 	req.ResultCode = resp.ResultCode
 	if resp.ResultCode != proto.OpOk {
+		// Server returned an error code — not a transport failure but
+		// counted as a non-fallback "request" that completed.
+		rdma.MetricsObserveRequest(rdma.RoleClient, addr, time.Since(start))
 		return fmt.Errorf("rdma client: server ResultCode=%d", resp.ResultCode)
 	}
+	rdma.MetricsObserveRequest(rdma.RoleClient, addr, time.Since(start))
 	return nil
 }
 
