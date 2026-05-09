@@ -16,13 +16,16 @@ package clustermgr
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -67,6 +70,10 @@ type dashboardMgr struct {
 	service  *Service
 	snapshot atomic.Value // stores *dashboardSnapshot
 
+	// volumes is a persistent cache of VolumeBasic keyed by Vid.
+	// RangeUpdateVolume updates entries in-place on each fresh()
+	volumes map[proto.Vid]*clustermgr.VolumeBasic
+
 	freshCh chan struct{} // buffered(1); loop listens for force-fresh signals
 
 	processLock   sync.Mutex
@@ -77,6 +84,7 @@ type dashboardMgr struct {
 func newDashboardMgr(service *Service) *dashboardMgr {
 	d := &dashboardMgr{
 		service: service,
+		volumes: make(map[proto.Vid]*clustermgr.VolumeBasic),
 		freshCh: make(chan struct{}, 1),
 	}
 	d.snapshot.Store(&dashboardSnapshot{})
@@ -151,14 +159,20 @@ func (d *dashboardMgr) fresh() {
 		}
 		return info.Host
 	})
+	d.service.VolumeMgr.RangeUpdateVolume(context.Background(), d.volumes)
+	volume := buildVolume(d.volumes,
+		d.service.VolumeMgr.AllocatableSize,
+		d.service.VolumeMgr.RetainThreshold,
+		d.service.VolumeMgr.AllocatableDiskLoadThreshold)
 
-	score := scope.Score.Max(disk.Score, service.Score)
+	score := scope.Score.Max(disk.Score, service.Score, volume.Score)
 	d.snapshot.Store(&dashboardSnapshot{
 		dashboard: clustermgr.ClusterDashboard{
 			Score:       score,
 			Scope:       scope,
 			Disk:        disk,
 			Service:     service,
+			VolumeStat:  volume,
 			GeneratedAt: now.UnixNano(),
 		},
 	})
@@ -302,4 +316,187 @@ func buildService(services []clustermgr.ServiceNode,
 	}
 	stat.CalcScore()
 	return stat
+}
+
+const topDiskLoadN = 50
+
+// buildVolume aggregates volumes into VolumeStat.
+//   - allocatableSize:     minimum free bytes for a volume to be allocatable
+//   - retainThreshold:     minimum HealthScore for a volume to be allocatable
+//   - diskLoadThreshold:   AllocatableDiskLoadThreshold from VolumeMgrConfig
+func buildVolume(volumes map[proto.Vid]*clustermgr.VolumeBasic,
+	allocatableSize uint64, retainThreshold int, diskLoadThreshold int,
+) clustermgr.VolumeStat {
+	byScore := make(clustermgr.VolumeScoreStat)
+	byFree := make(clustermgr.VolumeFreeStat)
+	allocatableByScore := make(clustermgr.VolumeScoreStat)
+	allocatableByFree := make(clustermgr.VolumeFreeStat)
+
+	type diskKey struct {
+		code   codemode.CodeMode
+		diskID proto.DiskID
+	}
+	perModeDiskLoad := make(map[diskKey]int)
+	globalDiskLoad := make(map[proto.DiskID]int)
+	perModeActiveTotal := make(map[codemode.CodeMode]int)
+
+	activeTotal, activeHealthy, activeUnhealthy := 0, 0, 0
+	idleTotal, otherTotal, activeGlobalTotal := 0, 0, 0
+
+	for _, vp := range volumes {
+		v := *vp
+		codeName := v.CodeMode.String()
+		if codeName == "" {
+			codeName = fmt.Sprintf("unknown(%d)", int(v.CodeMode))
+		}
+
+		// ByScore: CodeMode → health_score → entry
+		if byScore[codeName] == nil {
+			byScore[codeName] = make(map[int]clustermgr.VolumeStatEntry)
+		}
+		se := byScore[codeName][v.Score]
+		se.Count++
+		se.FreeBytes += int64(v.Free)
+		se.UsedBytes += int64(v.Used)
+		se.TotalBytes += int64(v.Total)
+		byScore[codeName][v.Score] = se
+
+		// ByFree: CodeMode → free-ratio bucket → entry
+		label := volumeFreeRatioLabel(v.Free, v.Used)
+		if byFree[codeName] == nil {
+			byFree[codeName] = make(map[string]clustermgr.VolumeStatEntry)
+		}
+		fe := byFree[codeName][label]
+		fe.Count++
+		fe.FreeBytes += int64(v.Free)
+		fe.UsedBytes += int64(v.Used)
+		fe.TotalBytes += int64(v.Total)
+		byFree[codeName][label] = fe
+
+		switch v.Status {
+		case proto.VolumeStatusActive:
+			activeTotal++
+			if v.Score >= 0 {
+				activeHealthy++
+			} else {
+				activeUnhealthy++
+			}
+			// top-disk-load: only active volumes
+			perModeActiveTotal[v.CodeMode]++
+			activeGlobalTotal++
+			for _, diskID := range v.DiskIDs {
+				perModeDiskLoad[diskKey{v.CodeMode, diskID}]++
+				globalDiskLoad[diskID]++
+			}
+
+		case proto.VolumeStatusIdle:
+			idleTotal++
+			// allocatable: Idle + free > threshold + score >= retainThreshold
+			if v.Free > allocatableSize && v.Score >= retainThreshold {
+				// AllocatableByScore
+				if allocatableByScore[codeName] == nil {
+					allocatableByScore[codeName] = make(map[int]clustermgr.VolumeStatEntry)
+				}
+				ase := allocatableByScore[codeName][v.Score]
+				ase.Count++
+				ase.FreeBytes += int64(v.Free)
+				ase.UsedBytes += int64(v.Used)
+				ase.TotalBytes += int64(v.Total)
+				allocatableByScore[codeName][v.Score] = ase
+
+				// AllocatableByFree
+				if allocatableByFree[codeName] == nil {
+					allocatableByFree[codeName] = make(map[string]clustermgr.VolumeStatEntry)
+				}
+				afl := volumeFreeRatioLabel(v.Free, v.Used)
+				afe := allocatableByFree[codeName][afl]
+				afe.Count++
+				afe.FreeBytes += int64(v.Free)
+				afe.UsedBytes += int64(v.Used)
+				afe.TotalBytes += int64(v.Total)
+				allocatableByFree[codeName][afl] = afe
+			}
+
+		default:
+			otherTotal++
+		}
+	}
+
+	status := clustermgr.VolumeStatusStat{
+		ActiveTotal:     activeTotal,
+		ActiveHealthy:   activeHealthy,
+		ActiveUnhealthy: activeUnhealthy,
+		IdleTotal:       idleTotal,
+		OtherTotal:      otherTotal,
+	}
+
+	// Build per-codemode top-disk-load lists then append the global summary.
+	codeModeDiskLoad := make(map[codemode.CodeMode]map[proto.DiskID]int)
+	for k, load := range perModeDiskLoad {
+		if codeModeDiskLoad[k.code] == nil {
+			codeModeDiskLoad[k.code] = make(map[proto.DiskID]int)
+		}
+		codeModeDiskLoad[k.code][k.diskID] = load
+	}
+	topLoads := make([]clustermgr.TopDiskLoad, 0, len(codeModeDiskLoad)+1)
+	for mode, loads := range codeModeDiskLoad {
+		topLoads = append(topLoads, clustermgr.TopDiskLoad{
+			CodeMode: mode.String(),
+			Total:    perModeActiveTotal[mode],
+			TopN:     topKDiskLoad(loads, topDiskLoadN),
+		})
+	}
+	sort.Slice(topLoads, func(i, j int) bool {
+		return topLoads[i].CodeMode < topLoads[j].CodeMode
+	})
+	if len(globalDiskLoad) > 0 {
+		topLoads = append(topLoads, clustermgr.TopDiskLoad{
+			CodeMode: "",
+			Total:    activeGlobalTotal,
+			TopN:     topKDiskLoad(globalDiskLoad, topDiskLoadN),
+		})
+	}
+
+	stat := clustermgr.VolumeStat{
+		Status:             status,
+		ByScore:            byScore,
+		ByFree:             byFree,
+		AllocatableByScore: allocatableByScore,
+		AllocatableByFree:  allocatableByFree,
+		TopDiskLoad:        topLoads,
+	}
+	stat.CalcScore(diskLoadThreshold)
+	return stat
+}
+
+// volumeFreeRatioLabel maps (free, used) to a bucket label string.
+//
+//	ratio = free / (free + used)
+//	idx   = int(ratio × 10)  [integer division: free*10/(free+used)]
+//	label = "99" if idx ≥ 9, else strconv.Itoa((idx+1)×10) → "10"…"90"
+func volumeFreeRatioLabel(free, used uint64) string {
+	total := free + used
+	if total == 0 {
+		return "99"
+	}
+	idx := free * 10 / total
+	if idx >= 9 {
+		return "99"
+	}
+	return strconv.Itoa(int((idx + 1) * 10))
+}
+
+// topKDiskLoad returns at most k DiskLoadEntry items sorted by Load descending.
+func topKDiskLoad(loads map[proto.DiskID]int, k int) []clustermgr.DiskLoadEntry {
+	entries := make([]clustermgr.DiskLoadEntry, 0, len(loads))
+	for diskID, load := range loads {
+		entries = append(entries, clustermgr.DiskLoadEntry{DiskID: diskID, Load: load})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Load > entries[j].Load
+	})
+	if len(entries) > k {
+		entries = entries[:k]
+	}
+	return entries
 }

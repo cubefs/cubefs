@@ -120,6 +120,8 @@ type VolumeMgrAPI interface {
 
 	// Stat return volume statistic info
 	Stat(ctx context.Context) (stat cm.VolumeStatInfo)
+	// RangeUpdateVolume thread unsafe to update basic volume cache
+	RangeUpdateVolume(ctx context.Context, volumeCache map[proto.Vid]*cm.VolumeBasic)
 }
 
 // volumeMgr implements VolumeMgr interface.
@@ -557,6 +559,36 @@ func (v *VolumeMgr) Stat(ctx context.Context) (stat cm.VolumeStatInfo) {
 	stat.WritableSpace = v.stat.getWriteSpace()
 
 	return
+}
+
+func (v *VolumeMgr) RangeUpdateVolume(ctx context.Context, volumeCache map[proto.Vid]*cm.VolumeBasic) {
+	if volumeCache == nil {
+		span := trace.SpanFromContextSafe(ctx)
+		span.Warn("update volume basic cache is nil")
+		return
+	}
+
+	v.all.rangeVol(func(vol *volume) error {
+		vol.lock.RLock()
+		basicVol, cached := volumeCache[vol.vid]
+		if !cached {
+			basicVol = &cm.VolumeBasic{
+				CodeMode: vol.volInfoBase.CodeMode,
+				DiskIDs:  make([]proto.DiskID, vol.volInfoBase.CodeMode.GetShardNum()),
+			}
+			volumeCache[vol.vid] = basicVol
+		}
+		basicVol.Score = vol.volInfoBase.HealthScore
+		basicVol.Free = vol.volInfoBase.Free
+		basicVol.Used = vol.volInfoBase.Used
+		basicVol.Total = vol.volInfoBase.Total
+		basicVol.Status = vol.volInfoBase.Status
+		for idx, vu := range vol.vUnits {
+			basicVol.DiskIDs[idx] = vu.vuInfo.DiskID
+		}
+		vol.lock.RUnlock()
+		return nil
+	})
 }
 
 func (v *VolumeMgr) Report(ctx context.Context, region string, clusterID proto.ClusterID) {

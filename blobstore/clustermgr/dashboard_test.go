@@ -23,6 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
@@ -533,4 +534,136 @@ func TestBuildService_NoExpiredDisks(t *testing.T) {
 	s := buildService(nil, nil, noHost)
 	require.Equal(t, 0, s.ExpiredDisks)
 	require.Nil(t, s.ExpiredByNode)
+}
+
+// buildVolume
+
+// volMap converts a VolumeBasic slice into the map expected by buildVolume.
+func volMap(vols []clustermgr.VolumeBasic) map[proto.Vid]*clustermgr.VolumeBasic {
+	m := make(map[proto.Vid]*clustermgr.VolumeBasic, len(vols))
+	for i := range vols {
+		m[proto.Vid(i+1)] = &vols[i]
+	}
+	return m
+}
+
+func TestBuildVolume_Empty(t *testing.T) {
+	v := buildVolume(volMap(nil), 1<<30, 0, 0)
+	require.Equal(t, clustermgr.DashboardScoreOK, v.Score)
+	require.Equal(t, 0, v.Status.ActiveTotal)
+	require.Equal(t, 0, v.Status.IdleTotal)
+	require.Empty(t, v.ByScore)
+	require.Empty(t, v.ByFree)
+	require.Empty(t, v.AllocatableByScore)
+	require.Empty(t, v.AllocatableByFree)
+	require.Empty(t, v.TopDiskLoad)
+}
+
+func TestBuildVolume_ByScore(t *testing.T) {
+	vols := []clustermgr.VolumeBasic{
+		{CodeMode: codemode.EC6P6, Score: 0, Free: 100, Used: 200, Total: 300, Status: proto.VolumeStatusActive},
+		{CodeMode: codemode.EC6P6, Score: -1, Free: 50, Used: 250, Total: 300, Status: proto.VolumeStatusActive},
+		{CodeMode: codemode.EC6P6, Score: 0, Free: 80, Used: 120, Total: 200, Status: proto.VolumeStatusIdle},
+	}
+	v := buildVolume(volMap(vols), 1<<30, 0, 0)
+	require.Equal(t, 2, v.Status.ActiveTotal)
+	require.Equal(t, 1, v.Status.ActiveHealthy)
+	require.Equal(t, 1, v.Status.ActiveUnhealthy)
+	require.Equal(t, 1, v.Status.IdleTotal)
+	// score is now disk-load based; threshold=0 → always OK
+	require.Equal(t, clustermgr.DashboardScoreOK, v.Score)
+
+	ec6p6Name := codemode.EC6P6.String()
+	require.Equal(t, 2, v.ByScore[ec6p6Name][0].Count)  // active score=0 + idle score=0
+	require.Equal(t, 1, v.ByScore[ec6p6Name][-1].Count) // active score=-1
+}
+
+func TestBuildVolume_ScoreOKWhenThresholdZero(t *testing.T) {
+	d1 := proto.DiskID(1)
+	vols := []clustermgr.VolumeBasic{
+		{CodeMode: codemode.EC6P6, Score: 0, Status: proto.VolumeStatusActive, DiskIDs: []proto.DiskID{d1}},
+		{CodeMode: codemode.EC6P6, Score: 0, Status: proto.VolumeStatusActive, DiskIDs: []proto.DiskID{d1}},
+	}
+	// threshold=0 → CalcScore always returns OK regardless of load
+	v := buildVolume(volMap(vols), 1<<30, 0, 0)
+	require.Equal(t, clustermgr.DashboardScoreOK, v.Score)
+}
+
+func TestBuildVolume_ScoreDiskLoad(t *testing.T) {
+	d1 := proto.DiskID(1)
+	// disk1 hosts 5 active volume units (load=5)
+	vols := make([]clustermgr.VolumeBasic, 5)
+	for i := range vols {
+		vols[i] = clustermgr.VolumeBasic{
+			CodeMode: codemode.EC6P6,
+			Score:    0,
+			Status:   proto.VolumeStatusActive,
+			DiskIDs:  []proto.DiskID{d1},
+		}
+	}
+	// threshold=10: load(5) ≤ 10 → OK
+	v := buildVolume(volMap(vols), 1<<30, 0, 10)
+	require.Equal(t, clustermgr.DashboardScoreOK, v.Score)
+
+	// threshold=4: load(5) > 4 → Warning
+	v = buildVolume(volMap(vols), 1<<30, 0, 4)
+	require.Equal(t, clustermgr.DashboardScoreWarning, v.Score)
+
+	// threshold=2: load(5) > 2×2=4 → Major
+	v = buildVolume(volMap(vols), 1<<30, 0, 2)
+	require.Equal(t, clustermgr.DashboardScoreMajor, v.Score)
+}
+
+func TestBuildVolume_Allocatable(t *testing.T) {
+	const threshold = uint64(1 << 30)
+	vols := []clustermgr.VolumeBasic{
+		{CodeMode: codemode.EC6P6, Score: 0, Free: threshold + 1, Status: proto.VolumeStatusIdle},  // ✓ allocatable
+		{CodeMode: codemode.EC6P6, Score: -1, Free: threshold + 1, Status: proto.VolumeStatusIdle}, // ✗ score < retainThreshold(0)
+		{CodeMode: codemode.EC6P6, Score: 0, Free: threshold - 1, Status: proto.VolumeStatusIdle},  // ✗ free too small
+		{CodeMode: codemode.EC6P6, Score: 0, Free: threshold + 1, Status: proto.VolumeStatusActive}, // ✗ not idle
+	}
+	v := buildVolume(volMap(vols), threshold, 0, 0)
+	ec6p6Name := codemode.EC6P6.String()
+	require.Equal(t, 1, v.AllocatableByScore[ec6p6Name][0].Count)
+}
+
+func TestBuildVolume_FreeRatioLabel(t *testing.T) {
+	cases := []struct {
+		free, used uint64
+		want       string
+	}{
+		{0, 0, "99"},   // empty volume → last bucket
+		{0, 100, "10"}, // 0% free → idx=0 → "10"
+		{100, 0, "99"}, // 100% free → idx=9 → "99"
+		{50, 50, "60"}, // 50% → idx=5 → "60"
+		{89, 11, "90"}, // 89% → idx=8 → "90"
+		{90, 10, "99"}, // 90% → idx=9 → "99"
+	}
+	for _, c := range cases {
+		got := volumeFreeRatioLabel(c.free, c.used)
+		require.Equal(t, c.want, got, "free=%d used=%d", c.free, c.used)
+	}
+}
+
+func TestBuildVolume_TopDiskLoad(t *testing.T) {
+	d1, d2, d3 := proto.DiskID(1), proto.DiskID(2), proto.DiskID(3)
+	vols := []clustermgr.VolumeBasic{
+		// 3 active EC6P6 volumes; disk1 appears in all 3, disk2 and disk3 once each
+		{CodeMode: codemode.EC6P6, Score: 0, Status: proto.VolumeStatusActive, DiskIDs: []proto.DiskID{d1, d2}},
+		{CodeMode: codemode.EC6P6, Score: 0, Status: proto.VolumeStatusActive, DiskIDs: []proto.DiskID{d1, d3}},
+		{CodeMode: codemode.EC6P6, Score: 0, Status: proto.VolumeStatusActive, DiskIDs: []proto.DiskID{d1}},
+		{CodeMode: codemode.EC6P6, Score: 0, Status: proto.VolumeStatusIdle, DiskIDs: []proto.DiskID{d1}}, // idle: not counted
+	}
+	v := buildVolume(volMap(vols), 1<<30, 0, 0)
+	require.Len(t, v.TopDiskLoad, 2) // one per-codemode + global summary
+
+	perMode := v.TopDiskLoad[0]
+	require.Equal(t, codemode.EC6P6.String(), perMode.CodeMode)
+	require.Equal(t, 3, perMode.Total)
+	require.Equal(t, d1, perMode.TopN[0].DiskID) // disk1 has load 3
+	require.Equal(t, 3, perMode.TopN[0].Load)
+
+	global := v.TopDiskLoad[len(v.TopDiskLoad)-1]
+	require.Equal(t, "", global.CodeMode)
+	require.Equal(t, 3, global.Total)
 }
