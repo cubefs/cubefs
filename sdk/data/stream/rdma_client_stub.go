@@ -21,3 +21,7 @@ func sendPacketViaRDMA(_ string, _ *Packet) error { return nil }
 // Signature mirrors the rdma-tagged version so the read path in
 // extent_reader.go compiles unconditionally.
 func recvPacketViaRDMA(_ string, _ *Packet) (*proto.Packet, error) { return nil, nil }
+
+// rdmaTryForSize always returns false on non-RDMA builds: the path is
+// not compiled in, so callers must use TCP.
+func rdmaTryForSize(_ string, _ int) bool { return false }

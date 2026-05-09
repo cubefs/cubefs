@@ -284,9 +284,10 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 
 	if opt.EnableRDMA {
 		poolCfg := rdma.RDMAPoolConfig{
-			NumSlots: int(opt.RDMANumSlots),
-			SlotSize: int(opt.RDMASlotSize),
-			Role:     rdma.RoleClient,
+			NumSlots:        int(opt.RDMANumSlots),
+			SlotSize:        int(opt.RDMASlotSize),
+			Role:            rdma.RoleClient,
+			MinPayloadBytes: int(opt.RDMAMinPayloadBytes),
 			Poll: rdma.PollConfig{
 				BusySpinCount:    int(opt.RDMABusySpinCount),
 				YieldCount:       int(opt.RDMAYieldCount),

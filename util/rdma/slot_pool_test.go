@@ -285,3 +285,63 @@ func TestSlotPool_ActiveSlotsCount(t *testing.T) {
 		t.Errorf("after all releases: got %d, want 0", got)
 	}
 }
+
+// TestRDMAConnPool_MinPayloadBytesAccessor verifies the MinPayloadBytes
+// accessor passes through the configured threshold and handles nil.
+func TestRDMAConnPool_MinPayloadBytesAccessor(t *testing.T) {
+	cases := []struct {
+		name       string
+		threshold  int
+		wantResult int
+	}{
+		{name: "zero (no threshold)", threshold: 0, wantResult: 0},
+		{name: "4 KB default", threshold: 4096, wantResult: 4096},
+		{name: "64 KB", threshold: 64 * 1024, wantResult: 64 * 1024},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := RDMAPoolConfig{
+				NumSlots:        4,
+				SlotSize:        MinValidSlotSize,
+				MaxConns:        2,
+				MinPayloadBytes: tc.threshold,
+			}
+			pool, err := newPool(cfg, fakeDial(4, nil))
+			if err != nil {
+				t.Fatalf("newPool: %v", err)
+			}
+			defer pool.Close()
+			if got := pool.MinPayloadBytes(); got != tc.wantResult {
+				t.Errorf("MinPayloadBytes() = %d, want %d", got, tc.wantResult)
+			}
+		})
+	}
+
+	// Nil receiver returns 0 — defensive contract used by SDK call sites.
+	var nilPool *RDMAConnPool
+	if got := nilPool.MinPayloadBytes(); got != 0 {
+		t.Errorf("(*RDMAConnPool)(nil).MinPayloadBytes() = %d, want 0", got)
+	}
+	if got := nilPool.Role(); got != "" {
+		t.Errorf("(*RDMAConnPool)(nil).Role() = %q, want \"\"", got)
+	}
+}
+
+// TestRDMAConnPool_RolePropagation ensures the Role label set on the
+// pool is reachable via Role(); SDK fallback metrics rely on it.
+func TestRDMAConnPool_RolePropagation(t *testing.T) {
+	cfg := RDMAPoolConfig{
+		NumSlots: 4,
+		SlotSize: MinValidSlotSize,
+		MaxConns: 1,
+		Role:     RoleClient,
+	}
+	pool, err := newPool(cfg, fakeDial(4, nil))
+	if err != nil {
+		t.Fatalf("newPool: %v", err)
+	}
+	defer pool.Close()
+	if got := pool.Role(); got != RoleClient {
+		t.Errorf("Role() = %q, want %q", got, RoleClient)
+	}
+}

@@ -109,6 +109,8 @@ const (
 	RDMABusySpinCount
 	RDMAYieldCount
 	RDMASleepThresholdUs
+	// rdma path selection (P6)
+	RDMAMinPayloadBytes
 	MaxMountOption
 )
 
@@ -226,6 +228,10 @@ func InitMountOptions(opts []MountOption) {
 	opts[RDMABusySpinCount] = MountOption{"rdmaBusySpinCount", "Phase-1 max iterations before yielding", "", int64(200)}
 	opts[RDMAYieldCount] = MountOption{"rdmaYieldCount", "Phase-2 max Gosched iterations before sleeping", "", int64(1000)}
 	opts[RDMASleepThresholdUs] = MountOption{"rdmaSleepThresholdUs", "Phase-2 max wall-clock microseconds before sleeping on comp_channel", "", int64(50)}
+	// P6: writes / reads smaller than this threshold skip RDMA and use
+	// TCP. Default 4 KB matches the spec — below this size the two-WR
+	// RDMA round trip costs more than the TCP path's syscall overhead.
+	opts[RDMAMinPayloadBytes] = MountOption{"rdmaMinPayloadBytes", "Skip RDMA path when payload size is below this threshold", "", int64(4096)}
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
 	}
@@ -426,4 +432,5 @@ type MountOptions struct {
 	RDMABusySpinCount    int64
 	RDMAYieldCount       int64
 	RDMASleepThresholdUs int64
+	RDMAMinPayloadBytes  int64
 }

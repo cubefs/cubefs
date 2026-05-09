@@ -327,6 +327,26 @@ func (p *RDMAConnPool) Close() {
 	}
 }
 
+// MinPayloadBytes returns the configured small-packet RDMA-skip threshold.
+// Callers (SDK send paths) consult this before invoking AcquireSlot for
+// payloads that may be too small to benefit from RDMA (P6).
+func (p *RDMAConnPool) MinPayloadBytes() int {
+	if p == nil {
+		return 0
+	}
+	return p.cfg.MinPayloadBytes
+}
+
+// Role returns the metric role label associated with the pool. Useful
+// for callers that want to record fallback metrics with the same label
+// the pool would have used.
+func (p *RDMAConnPool) Role() string {
+	if p == nil {
+		return ""
+	}
+	return p.cfg.Role
+}
+
 // ActiveSlots returns the total number of borrowed slots across every
 // remote address. Used by metrics.
 func (p *RDMAConnPool) ActiveSlots() int {

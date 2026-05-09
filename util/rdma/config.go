@@ -41,4 +41,10 @@ type RDMAPoolConfig struct {
 	// Role propagates to every conn the pool dials; see
 	// RDMAConnConfig.Role.
 	Role string
+	// MinPayloadBytes is the threshold below which the SDK should skip
+	// the RDMA path and use TCP. Below ~4 KB the two-WR overhead of an
+	// RDMA round trip outweighs the latency benefit; small control
+	// packets and meta updates traverse TCP unconditionally. Zero means
+	// "no threshold" — every payload tries RDMA. (P6)
+	MinPayloadBytes int
 }

@@ -122,6 +122,10 @@ const (
 	ConfigKeyRDMABusySpinCount    = "rdmaBusySpinCount"    // int (phase-1 max iterations)
 	ConfigKeyRDMAYieldCount       = "rdmaYieldCount"       // int (phase-2 max iterations)
 	ConfigKeyRDMASleepThresholdUs = "rdmaSleepThresholdUs" // int (microseconds)
+	// P6 path selection: writes smaller than this threshold skip RDMA and
+	// use TCP. Default 4 KB; zero disables the threshold (every payload
+	// tries RDMA).
+	ConfigKeyRDMAMinPayloadBytes = "rdmaMinPayloadBytes" // int
 
 	// rate limit control enable
 	ConfigDiskQosEnable      = "diskQosEnable"      // bool
@@ -200,12 +204,13 @@ type DataNode struct {
 	smuxServerConfig   *smux.Config
 	smuxConnPoolConfig *util.SmuxConnPoolConfig
 
-	enableRDMA   bool
-	rdmaPort     int
-	rdmaNumSlots int
-	rdmaSlotSize int
-	rdmaPollCfg  rdma.PollConfig
-	rdmaCtx      *DataNodeRDMACtx
+	enableRDMA          bool
+	rdmaPort            int
+	rdmaNumSlots        int
+	rdmaSlotSize        int
+	rdmaPollCfg         rdma.PollConfig
+	rdmaMinPayloadBytes int
+	rdmaCtx             *DataNodeRDMACtx
 
 	getRepairConnFunc func(target string) (net.Conn, error)
 	putRepairConnFunc func(conn net.Conn, forceClose bool)
@@ -337,6 +342,13 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 		BusySpinCount:    cfg.GetInt(ConfigKeyRDMABusySpinCount),
 		YieldCount:       cfg.GetInt(ConfigKeyRDMAYieldCount),
 		SleepThresholdUs: time.Duration(cfg.GetInt(ConfigKeyRDMASleepThresholdUs)) * time.Microsecond,
+	}
+	// P6 small-payload threshold. Negative or zero disables the gate
+	// (every replication packet tries RDMA); positive values skip RDMA
+	// for writes below the threshold and use TCP.
+	s.rdmaMinPayloadBytes = cfg.GetInt(ConfigKeyRDMAMinPayloadBytes)
+	if s.rdmaMinPayloadBytes < 0 {
+		s.rdmaMinPayloadBytes = 0
 	}
 
 	s.startStat(cfg)
@@ -1242,10 +1254,11 @@ func (s *DataNode) initConnPool() {
 			} else {
 				s.rdmaCtx = ctx
 				followerCfg := rdma.RDMAPoolConfig{
-					NumSlots: s.rdmaNumSlots,
-					SlotSize: s.rdmaSlotSize,
-					Poll:     s.rdmaPollCfg,
-					Role:     rdma.RoleFollower,
+					NumSlots:        s.rdmaNumSlots,
+					SlotSize:        s.rdmaSlotSize,
+					Poll:            s.rdmaPollCfg,
+					Role:            rdma.RoleFollower,
+					MinPayloadBytes: s.rdmaMinPayloadBytes,
 				}
 				if ferr := repl.EnableFollowerRDMA(followerCfg); ferr != nil {
 					log.LogWarnf("initConnPool: follower RDMA init failed, replication uses TCP: %v", ferr)

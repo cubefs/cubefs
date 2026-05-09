@@ -70,8 +70,10 @@ func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) 
 	// P4b: try RDMA per-chunk before falling back to the TCP streaming
 	// path. RDMA only fires the leader (or the configured follower) for
 	// this attempt; on any failure we fall through to the TCP path
-	// below, which has its own host-iteration retry.
-	if rdmaConnPool != nil && reader.dp != nil && len(reader.dp.Hosts) > 0 {
+	// below, which has its own host-iteration retry. Skipped if the
+	// total read is below the P6 small-payload threshold so the SDK
+	// doesn't pay round-trip overhead on tiny reads.
+	if reader.dp != nil && len(reader.dp.Hosts) > 0 && rdmaTryForSize(reader.dp.Hosts[0], size) {
 		rdmaAddr := reader.dp.Hosts[0]
 		if n, rerr := reader.readViaRDMA(rdmaAddr, reqPacket, req, offset, size); rerr == nil {
 			readBytes = n
