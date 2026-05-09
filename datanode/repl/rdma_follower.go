@@ -30,6 +30,17 @@ func EnableFollowerRDMA(cfg rdma.RDMAPoolConfig) error {
 	followerRDMAPool = pool
 	followerRDMAPortShift = cfg.RDMAPortShift
 	followerRDMASend = rdmaSendToFollower
+	max := pool.MaxPayloadBytes()
+	followerRDMACanCarry = func(fp *FollowerPacket) bool {
+		// Reject when data + ArgLen would not fit in a slot — caller
+		// then falls back to TCP. max==0 means "size unset" → trust
+		// the caller and let the slot serializer fail loudly instead
+		// of silently routing everything to TCP.
+		if max <= 0 {
+			return true
+		}
+		return int(fp.Size)+int(fp.ArgLen) <= max
+	}
 	return nil
 }
 

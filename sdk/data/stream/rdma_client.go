@@ -150,11 +150,12 @@ func recvPacketViaRDMA(addr string, req *Packet) (*proto.Packet, error) {
 }
 
 // rdmaTryForSize is the SDK-side gate for the RDMA write path: returns
-// false when the pool is uninitialised, or when req.Size is below the
-// configured rdma_min_payload_bytes threshold (P6 small-packet skip).
-// On the size-skip path it records cubefs_rdma_fallback_total with
-// reason="small_payload" so operators can confirm the threshold is
-// taking effect.
+// false when the pool is uninitialised, when req.Size is below the
+// configured rdma_min_payload_bytes threshold (P6 small-packet skip),
+// or when req.Size exceeds the largest payload that fits in one slot
+// (oversized fall-back to TCP). On every fall-back it records
+// cubefs_rdma_fallback_total with a reason label so operators can see
+// which gate fired.
 func rdmaTryForSize(addr string, size int) bool {
 	if rdmaConnPool == nil {
 		return false
@@ -162,6 +163,11 @@ func rdmaTryForSize(addr string, size int) bool {
 	minPayload := rdmaConnPool.MinPayloadBytes()
 	if minPayload > 0 && size < minPayload {
 		rdma.MetricsObserveFallback(rdma.RoleClient, addr, "small_payload")
+		return false
+	}
+	maxPayload := rdmaConnPool.MaxPayloadBytes()
+	if maxPayload > 0 && size > maxPayload {
+		rdma.MetricsObserveFallback(rdma.RoleClient, addr, "large_payload")
 		return false
 	}
 	return true

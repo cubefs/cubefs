@@ -35,6 +35,13 @@ var gConnPool = util.NewConnectPool()
 // When set, follower replication uses RDMA Write instead of TCP for data transfer.
 var followerRDMASend func(addr string, fp *FollowerPacket) error
 
+// followerRDMACanCarry, when set, returns true if the given packet fits
+// into one RDMA slot (data + arg + headers ≤ slot size). The dispatcher
+// uses it as a precondition before choosing the RDMA path; oversized
+// packets fall through to TCP instead of failing inside librdmacm. Nil
+// means "no size gating" (rare — only for tests).
+var followerRDMACanCarry func(p *FollowerPacket) bool
+
 // ReplProtocol defines the struct of the replication protocol.
 // 1. ServerConn reads a packet from the client socket, and analyzes the addresses of the followers.
 // 2. After the preparation, the packet is send to toBeProcessedCh. If failure happens, send it to the response channel.
@@ -319,7 +326,7 @@ func (rp *ReplProtocol) sendRequestToAllFollowers(request *Packet) (index int, e
 		followerRequest.RemainingFollowers = 0
 		request.followerPackets[index] = followerRequest
 
-		if followerRDMASend != nil {
+		if followerRDMASend != nil && (followerRDMACanCarry == nil || followerRDMACanCarry(followerRequest)) {
 			addr := request.followersAddrs[index]
 			go func(fp *FollowerPacket) { fp.respCh <- followerRDMASend(addr, fp) }(followerRequest)
 			continue

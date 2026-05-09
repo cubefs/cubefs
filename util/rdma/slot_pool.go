@@ -26,6 +26,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/cubefs/cubefs/util"
 )
 
 // ErrSlotPoolClosed is returned by AcquireSlot after Close has been called.
@@ -113,9 +115,9 @@ type singleSlotPool struct {
 	maxConns int
 	dial     dialFunc
 
-	mu     sync.Mutex
-	cond   *sync.Cond
-	conns  []*connSlots
+	mu    sync.Mutex
+	cond  *sync.Cond
+	conns []*connSlots
 	// dialing tracks Dial calls currently in flight. We must count them
 	// against maxConns so concurrent acquirers don't all see
 	// len(conns) < maxConns simultaneously, all release the lock to dial,
@@ -371,6 +373,28 @@ func (p *RDMAConnPool) MinPayloadBytes() int {
 		return 0
 	}
 	return p.cfg.MinPayloadBytes
+}
+
+// MaxPayloadBytes returns the largest data size that is guaranteed to
+// fit in one slot, accounting for slot-header and worst-case packet
+// header overhead. Callers should compare their data length (Size) plus
+// ArgLen against this value; if it exceeds, the RDMA path must be
+// skipped and the request routed over TCP. Returns 0 if the pool is nil
+// or slotSize is unset.
+func (p *RDMAConnPool) MaxPayloadBytes() int {
+	if p == nil || p.cfg.SlotSize <= 0 {
+		return 0
+	}
+	// Match SerializePacket's worst-case overhead: slot-header (16) +
+	// packet-header (PacketHeaderSize) + optional version-trailer
+	// (VerSeq + ProtoVer). Constants live in util to stay build-tag-free.
+	const slotHeaderSize = 16
+	overhead := slotHeaderSize + util.PacketHeaderSize +
+		util.PacketVerSeqFiledLen + util.PacketProtoVerFiledLen
+	if p.cfg.SlotSize <= overhead {
+		return 0
+	}
+	return p.cfg.SlotSize - overhead
 }
 
 // Role returns the metric role label associated with the pool. Useful
