@@ -534,15 +534,25 @@ func (client *ExtentClient) OpenStream(inode uint64, openForWrite, isCache bool,
 	if !ok {
 		s = NewStreamer(client, inode, openForWrite, isCache, fullPath)
 		client.streamers[inode] = s
-		log.LogDebugf("action[OpenStream] create new streamer for ino(%v) %p", inode, s)
+		log.LogDebugf("action[OpenStream] create new streamer for ino(%v) %p, openForWrite %v", inode, s, openForWrite)
 	} else {
 		// If you open a file in write mode first and then open the same file
 		// in read mode without modifying any attributes, maintaining the file's immutability status.
-		if !s.openForWrite {
+		if !s.openForWrite && openForWrite {
+
+			if log.EnableDebug() {
+				log.LogDebugf("action[OpenStream] inode(%v) openForWrite %v, isCache %v", inode, openForWrite, isCache)
+			}
+
 			s.openForWrite = openForWrite
+			err := s.client.forbiddenMigration(s.inode)
+			if err != nil {
+				log.LogWarnf("ino(%v) forbiddenMigration failed err %v", s.inode, err.Error())
+				s.setError()
+			}
 		}
-		// TODO: update isCache?
-		log.LogDebugf("action[OpenStream] reuse  streamer for ino(%v)%p", inode, s)
+
+		log.LogDebugf("action[OpenStream] reuse  streamer for ino(%v)%p, openForWrite %v", inode, s, openForWrite)
 		// update rightOffset to make window for aheadRead move forward
 		if s.aheadReadWindow != nil {
 			s.aheadReadWindow.rightOffset = 0

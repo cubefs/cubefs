@@ -108,3 +108,78 @@ func TestLcScanner(t *testing.T) {
 	res = expired(inode, now, &days, nil)
 	require.False(t, res)
 }
+
+func TestLcScannerInodeExpiredSetsGeneration(t *testing.T) {
+	scanner := &LcScanner{
+		now: time.Now(),
+	}
+
+	info := &proto.InodeInfo{
+		Inode:           1001,
+		Size:            4096,
+		StorageClass:    proto.StorageClass_Replica_SSD,
+		LeaseExpireTime: 200,
+		Generation:      321,
+	}
+	dentry := &proto.ScanDentry{}
+
+	op := scanner.inodeExpired(info, nil, nil, dentry)
+	require.Equal(t, "", op)
+	require.Equal(t, info.Generation, dentry.Generation)
+	require.Equal(t, info.LeaseExpireTime, dentry.LeaseExpire)
+	require.Equal(t, info.StorageClass, dentry.StorageClass)
+	require.Equal(t, info.Size, dentry.Size)
+}
+
+func TestLcScannerHandleFilePassesGenerationToMetaWrapper(t *testing.T) {
+	lcScanRoutineNumPerTask = 1
+	maxDirChanNum = 0
+	scanCheckInterval = 1
+	days := 1
+	mockMw := NewMockMetaWrapper()
+	scanner := &LcScanner{
+		ID:     "test_id_generation",
+		Volume: "test_vol",
+		mw:     mockMw,
+		lcnode: &LcNode{},
+		transitionMgr: &TransitionMgr{
+			volume:    "test_vol",
+			ec:        NewMockExtentClient(),
+			ecForW:    NewMockExtentClient(),
+			ebsClient: NewMockEbsClient(),
+		},
+		adminTask: &proto.AdminTask{
+			Response: &proto.LcNodeRuleTaskResponse{},
+		},
+		rule: &proto.Rule{
+			Transitions: []*proto.Transition{
+				{
+					StorageClass: proto.OpTypeStorageClassHDD,
+					Days:         &days,
+					FromPoolId:   proto.DefaultSSDPoolId,
+					ToPoolId:     proto.DefaultHDDPoolId,
+				},
+			},
+		},
+		dirChan:     unboundedchan.NewUnboundedChan(10),
+		fileChan:    make(chan interface{}),
+		dirRPool:    routinepool.NewRoutinePool(lcScanRoutineNumPerTask),
+		fileRPool:   routinepool.NewRoutinePool(lcScanRoutineNumPerTask),
+		currentStat: &proto.LcNodeRuleTaskStatistics{},
+		limiter:     rate.NewLimiter(defaultLcScanLimitPerSecond, defaultLcScanLimitBurst),
+		now:         time.Now(),
+		stopC:       make(chan bool),
+	}
+
+	scanner.handleFile(&proto.ScanDentry{
+		ParentId: 1,
+		Name:     "f1",
+		Path:     "/f1",
+		Inode:    1,
+		Type:     0,
+	})
+
+	lastGeneration, ok := mockMw.LastUpdateGeneration()
+	require.True(t, ok, "expected UpdateExtentKeyAfterMigration to be called")
+	require.Equal(t, uint64(101), lastGeneration)
+}

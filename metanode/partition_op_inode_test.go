@@ -375,3 +375,51 @@ func TestOpUnlinkFile_Rocksdb(t *testing.T) {
 	testOpUnlinkFile(t, mp)
 	os.RemoveAll(mp.config.RocksDBDir)
 }
+
+func TestOpUpdateExtentKeyAfterMigrationRejectsGenerationMismatch(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mp := mockPartitionRaftForFsmInodeTest(t, ctrl, proto.StoreModeMem)
+
+	resp := prepareInodeForInodeTest(t, mp, FileModeType)
+	req := &proto.UpdateExtentKeyAfterMigrationRequest{
+		PartitionID:      mp.GetBaseConfig().PartitionId,
+		Inode:            resp.Info.Inode,
+		LeaseExpire:      0,
+		Generation:       resp.Info.Generation + 1,
+		StorageClass:     proto.StorageClass_Replica_HDD,
+		PoolId:           proto.DefaultHDDPoolId,
+		NewObjExtentKeys: nil,
+	}
+	p := &Packet{}
+
+	err := mp.UpdateExtentKeyAfterMigration(req, p, "127.0.0.1")
+	require.NoError(t, err)
+	require.EqualValues(t, proto.OpLeaseGenerationNotMatch, p.ResultCode)
+}
+
+func TestOpAppendExtentWithAuditLogForMigration(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mp := mockPartitionRaftForFsmInodeTest(t, ctrl, proto.StoreModeMem)
+	mp.SetEnableAuditLog(true)
+
+	resp := prepareInodeForInodeTest(t, mp, FileModeType)
+	req := &proto.AppendExtentKeyWithCheckRequest{
+		VolName:     mp.GetBaseConfig().VolName,
+		PartitionID: mp.GetBaseConfig().PartitionId,
+		Inode:       resp.Info.Inode,
+		IsMigration: true,
+		PoolId:      proto.DefaultSSDPoolId,
+		Extent: proto.ExtentKey{
+			PartitionId: 1,
+			ExtentId:    1,
+			FileOffset:  0,
+			Size:        util.MB,
+		},
+	}
+	p := &Packet{}
+	err := mp.ExtentAppendWithCheck(req, p, "127.0.0.1")
+	require.NoError(t, err)
+	require.EqualValues(t, proto.OpOk, p.ResultCode)
+}

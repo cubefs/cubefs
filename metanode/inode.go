@@ -2610,6 +2610,7 @@ func (i *Inode) UpdateHybridCloudParams(paramIno *Inode) {
 	i.StorageClass = paramIno.StorageClass
 	i.HybridCloudExtents.sortedEks = paramIno.HybridCloudExtents.sortedEks
 	i.LeaseExpireTime = paramIno.LeaseExpireTime
+	i.Generation = paramIno.Generation
 	i.ClientID = paramIno.ClientID
 	i.HybridCloudExtentsMigration.storageClass = paramIno.HybridCloudExtentsMigration.storageClass
 	i.HybridCloudExtentsMigration.poolId = paramIno.HybridCloudExtentsMigration.poolId

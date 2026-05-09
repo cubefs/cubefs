@@ -1177,7 +1177,7 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 	start := time.Now()
 	if mp.IsEnableAuditLog() {
 		defer func() {
-			auditlog.LogMigrationOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.GetFullPath(), err, time.Since(start).Milliseconds(), req.Inode, inoParm.StorageClass, req.StorageClass)
+			auditlog.LogMigrationOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.GetFullPath(), err, time.Since(start).Milliseconds(), req.Inode, uint32(inoParm.PoolId), uint32(req.StorageClass))
 		}()
 	}
 
@@ -1197,9 +1197,9 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 	}
 
 	leaseExpire := inoParm.LeaseExpireTime
-	if leaseExpire != req.LeaseExpire {
-		errMsg := fmt.Sprintf("mp(%v) inode(%v) write generation not match, curent(%v) request(%v)",
-			mp.config.PartitionId, inoParm.Inode, leaseExpire, req.LeaseExpire)
+	if leaseExpire != req.LeaseExpire || inoParm.Generation != req.Generation {
+		errMsg := fmt.Sprintf("mp(%v) inode(%v) write generation not match, curent(%v) request(%v), current(%v) request(%v)",
+			mp.config.PartitionId, inoParm.Inode, leaseExpire, req.LeaseExpire, inoParm.Generation, req.Generation)
 		log.LogWarnf("action[UpdateExtentKeyAfterMigration] %v", errMsg)
 		p.PacketErrorWithBody(proto.OpLeaseGenerationNotMatch, []byte(errMsg))
 		return

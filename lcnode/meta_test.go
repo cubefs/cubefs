@@ -16,12 +16,17 @@ package lcnode
 
 import (
 	"os"
+	"sync"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
 )
 
-type MockMetaWrapper struct{}
+type MockMetaWrapper struct {
+	mu                     sync.Mutex
+	updateGenerationCalls  []uint64
+	updateLeaseExpireCalls []uint64
+}
 
 func NewMockMetaWrapper() *MockMetaWrapper {
 	return &MockMetaWrapper{}
@@ -47,6 +52,7 @@ func (*MockMetaWrapper) InodeGet_ll(inode uint64, isAsync bool) (*proto.InodeInf
 			AccessTime: time.Now().AddDate(0, 0, -2),
 			Size:       100,
 			PoolId:     proto.DefaultSSDPoolId,
+			Generation: 101,
 		}, nil
 	case 2:
 		return &proto.InodeInfo{
@@ -54,12 +60,14 @@ func (*MockMetaWrapper) InodeGet_ll(inode uint64, isAsync bool) (*proto.InodeInf
 			AccessTime: time.Now().AddDate(0, 0, -3),
 			Size:       200,
 			PoolId:     proto.DefaultSSDPoolId,
+			Generation: 102,
 		}, nil
 	case 3:
 		return &proto.InodeInfo{
 			Inode:      3,
 			AccessTime: time.Now().AddDate(0, 0, -4),
 			PoolId:     proto.DefaultSSDPoolId,
+			Generation: 103,
 		}, nil
 	case 6:
 		return &proto.InodeInfo{
@@ -67,6 +75,7 @@ func (*MockMetaWrapper) InodeGet_ll(inode uint64, isAsync bool) (*proto.InodeInf
 			AccessTime:  time.Now().AddDate(0, 0, -4),
 			ForbiddenLc: true,
 			PoolId:      proto.DefaultSSDPoolId,
+			Generation:  106,
 		}, nil
 	}
 	return nil, nil
@@ -80,8 +89,21 @@ func (*MockMetaWrapper) Evict(inode uint64, fullPath string, isAsync bool) error
 	return nil
 }
 
-func (*MockMetaWrapper) UpdateExtentKeyAfterMigration(inode uint64, storageType uint32, extentKeys []proto.ObjExtentKey, poolId uint8, leaseExpireTime uint64, delayDelMinute uint64, fullPath string) error {
+func (m *MockMetaWrapper) UpdateExtentKeyAfterMigration(inode uint64, storageType uint32, extentKeys []proto.ObjExtentKey, poolId uint8, leaseExpireTime uint64, delayDelMinute uint64, fullPath string, generation uint64) error {
+	m.mu.Lock()
+	m.updateGenerationCalls = append(m.updateGenerationCalls, generation)
+	m.updateLeaseExpireCalls = append(m.updateLeaseExpireCalls, leaseExpireTime)
+	m.mu.Unlock()
 	return nil
+}
+
+func (m *MockMetaWrapper) LastUpdateGeneration() (uint64, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.updateGenerationCalls) == 0 {
+		return 0, false
+	}
+	return m.updateGenerationCalls[len(m.updateGenerationCalls)-1], true
 }
 
 func (*MockMetaWrapper) DeleteMigrationExtentKey(inode uint64, fullPath string) error {

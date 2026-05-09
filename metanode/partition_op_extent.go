@@ -159,7 +159,7 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 	}
 
 	start := time.Now()
-	if mp.IsEnableAuditLog() && !req.IsMigration {
+	if mp.IsEnableAuditLog() {
 		appendMsg := req.EkString()
 		defer func() {
 			opErr := err

@@ -187,6 +187,25 @@ func TestInodeAlign(t *testing.T) {
 	t.Logf("inode dentry size %d", unsafe.Sizeof(Inode{}))
 }
 
+func TestUpdateHybridCloudParamsCopiesGeneration(t *testing.T) {
+	target := NewInode(100, 0)
+	target.Generation = 1
+	target.LeaseExpireTime = 10
+
+	param := NewInode(100, 0)
+	param.Generation = 99
+	param.LeaseExpireTime = 200
+	param.StorageClass = proto.StorageClass_Replica_HDD
+	param.PoolId = proto.DefaultHDDPoolId
+
+	target.UpdateHybridCloudParams(param)
+
+	assert.Equal(t, uint64(99), target.Generation)
+	assert.Equal(t, uint64(200), target.LeaseExpireTime)
+	assert.Equal(t, param.StorageClass, target.StorageClass)
+	assert.Equal(t, param.PoolId, target.PoolId)
+}
+
 func TestInodeMarshal(t *testing.T) {
 	checkInodeMarshal := func(a *Inode, t *testing.T) {
 		data, err := a.Marshal()

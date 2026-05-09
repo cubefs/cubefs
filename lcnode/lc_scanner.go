@@ -628,7 +628,7 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 		if delayDel == 0 {
 			delayDel = delayDelMinute // Use system default from config
 		}
-		err = s.mw.UpdateExtentKeyAfterMigration(dentry.Inode, proto.OpTypeToStorageType(op), nil, dentry.DstPoolId, dentry.LeaseExpire, delayDel, dentry.Path)
+		err = s.mw.UpdateExtentKeyAfterMigration(dentry.Inode, proto.OpTypeToStorageType(op), nil, dentry.DstPoolId, dentry.LeaseExpire, delayDel, dentry.Path, dentry.Generation)
 		if err != nil {
 			if isSkipErr(err) {
 				err = fmt.Errorf("skip (%v)", err)
@@ -673,7 +673,7 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 		if delayDel == 0 {
 			delayDel = delayDelMinute // Use system default from config
 		}
-		err = s.mw.UpdateExtentKeyAfterMigration(dentry.Inode, proto.OpTypeToStorageType(op), oek, dentry.DstPoolId, dentry.LeaseExpire, delayDel, dentry.Path)
+		err = s.mw.UpdateExtentKeyAfterMigration(dentry.Inode, proto.OpTypeToStorageType(op), oek, dentry.DstPoolId, dentry.LeaseExpire, delayDel, dentry.Path, dentry.Generation)
 		if err != nil {
 			if isSkipErr(err) {
 				err = fmt.Errorf("skip (%v)", err)
@@ -726,6 +726,7 @@ func (s *LcScanner) inodeExpired(info *proto.InodeInfo, condE *proto.Expiration,
 	dentry.Size = info.Size
 	dentry.StorageClass = info.StorageClass
 	dentry.LeaseExpire = info.LeaseExpireTime
+	dentry.Generation = info.Generation
 	dentry.HasMek = info.HasMigrationEk
 
 	if info.ForbiddenLc {

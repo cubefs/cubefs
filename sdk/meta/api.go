@@ -3278,7 +3278,7 @@ func (mw *MetaWrapper) RenewalForbiddenMigration(inode uint64) error {
 }
 
 func (mw *MetaWrapper) UpdateExtentKeyAfterMigration(inode uint64, storageType uint32, objExtentKeys []proto.ObjExtentKey,
-	poolId uint8, leaseExpire uint64, delayDelMinute uint64, fullPath string,
+	poolId uint8, leaseExpire uint64, delayDelMinute uint64, fullPath string, generation uint64,
 ) error {
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
@@ -3287,7 +3287,7 @@ func (mw *MetaWrapper) UpdateExtentKeyAfterMigration(inode uint64, storageType u
 			inode, storageType, objExtentKeys, leaseExpire, err.Error())
 		return err
 	}
-	status, err := mw.updateExtentKeyAfterMigration(mp, inode, storageType, poolId, objExtentKeys, leaseExpire, delayDelMinute, fullPath)
+	status, err := mw.updateExtentKeyAfterMigration(mp, inode, storageType, poolId, objExtentKeys, leaseExpire, delayDelMinute, fullPath, generation)
 	if err != nil || status != statusOK {
 		msg := fmt.Sprintf("UpdateExtentKeyAfterMigration: inode(%v) storageType(%v) extentKeys(%v) leaseExpire(%v) status(%v) err: %v",
 			inode, storageType, objExtentKeys, leaseExpire, status, err)
