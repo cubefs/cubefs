@@ -380,6 +380,7 @@ func TestOpUpdateExtentKeyAfterMigrationRejectsGenerationMismatch(t *testing.T) 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	mp := mockPartitionRaftForFsmInodeTest(t, ctrl, proto.StoreModeMem)
+	mp.SetEnableAuditLog(true)
 
 	resp := prepareInodeForInodeTest(t, mp, FileModeType)
 	req := &proto.UpdateExtentKeyAfterMigrationRequest{

@@ -9,22 +9,61 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestCheckPacketAndPrepareRejectsTinyWriteDuringRepair(t *testing.T) {
+func TestCheckPartitionReturnsErrNoSpaceWhenDPFullForWrite(t *testing.T) {
+	dn := &DataNode{}
+	sm := NewSpaceManager(dn)
+	disk := &Disk{
+		Status:          proto.ReadWrite,
+		RejectWrite:     false,
+		Total:           1 << 30,
+		Used:            0,
+		ReservedSpace:   0,
+		DiskRdonlySpace: 0,
+		dataNode:        dn,
+	}
 	dp := &DataPartition{
-		config:      &dataPartitionCfg{},
-		isRepairing: true,
+		partitionID:   555,
+		partitionSize: 1024,
+		used:          1024,
+		disk:          disk,
 	}
-	packet := &repl.Packet{
-		Packet: proto.Packet{
-			PartitionID:        1,
-			ExtentType:         proto.TinyExtentType,
-			Opcode:             proto.OpWrite,
-			RemainingFollowers: 1,
-		},
-		Object: dp,
+	sm.AttachPartition(dp)
+	dn.space = sm
+
+	p := repl.NewPacket()
+	p.PartitionID = 555
+	p.Opcode = proto.OpWrite
+
+	err := dn.checkPartition(p)
+	require.ErrorIs(t, err, storage.ErrNoSpace)
+	require.NotNil(t, p.Object)
+}
+
+func TestCheckPartitionAllowsReadWhenDPFull(t *testing.T) {
+	dn := &DataNode{}
+	sm := NewSpaceManager(dn)
+	disk := &Disk{
+		Status:          proto.ReadWrite,
+		RejectWrite:     false,
+		Total:           1 << 30,
+		Used:            0,
+		ReservedSpace:   0,
+		DiskRdonlySpace: 0,
+		dataNode:        dn,
 	}
+	dp := &DataPartition{
+		partitionID:   556,
+		partitionSize: 1024,
+		used:          1024,
+		disk:          disk,
+	}
+	sm.AttachPartition(dp)
+	dn.space = sm
 
-	err := (&DataNode{}).checkPacketAndPrepare(packet)
+	p := repl.NewPacket()
+	p.PartitionID = 556
+	p.Opcode = proto.OpRead
 
-	require.ErrorIs(t, err, storage.ErrDpDecommissionRepair)
+	err := dn.checkPartition(p)
+	require.NoError(t, err)
 }
