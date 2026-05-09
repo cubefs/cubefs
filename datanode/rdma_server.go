@@ -221,7 +221,11 @@ func (cs *connState) handleSlot(ctx *DataNodeRDMACtx, slotIdx int) {
 	replPkt.NeedReply = true
 
 	if isReadOp(replPkt.Opcode) {
-		cs.handleReadSlot(ctx, replPkt)
+		if cs.handleReadSlot(ctx, replPkt, slotIdx) {
+			// handleReadSlot already posted the response via the
+			// zero-copy path; skip the trailing WritePacket below.
+			return
+		}
 	} else {
 		// Write / control path: existing OperatePacket dispatch with
 		// fakeConn (Write panics if a handler tries to stream).
@@ -251,9 +255,16 @@ func (ctx *DataNodeRDMACtx) maxRDMAReadDataPerSlot() int {
 	return ctx.cfg.SlotSize - rdma.SlotHeaderSize - rdma.MaxPacketHeaderSize
 }
 
-// handleReadSlot performs a single-shot disk read and stamps the result
-// onto p in place. handleSlot's trailing WritePacket then ships the
-// response back to the SDK over RDMA.
+// handleReadSlot performs a single-shot disk read and ships the result
+// over RDMA. On the success path it stages the response packet
+// (PacketHeader + data) directly into sendScratch and posts via
+// WriteSlotZeroCopy — saving one memcpy of the response data per
+// round trip (P5).
+//
+// Returns true if the response has already been written; the caller
+// should NOT then invoke its trailing WritePacket. Returns false on
+// error paths so the caller can ship the error reply via the standard
+// SerializePacket-based WritePacket flow.
 //
 // Failure modes that should make the SDK fall back to TCP:
 //   - p.Size > maxRDMAReadDataPerSlot: response too big for one slot;
@@ -262,37 +273,46 @@ func (ctx *DataNodeRDMACtx) maxRDMAReadDataPerSlot() int {
 //   - extent not found / disk error: reply with the original packet's
 //     PackErrorBody and a non-OpOk ResultCode; the SDK distinguishes
 //     transport failures from read errors via ResultCode.
-func (cs *connState) handleReadSlot(ctx *DataNodeRDMACtx, p *repl.Packet) {
+func (cs *connState) handleReadSlot(ctx *DataNodeRDMACtx, p *repl.Packet, slotIdx int) (handled bool) {
 	if int(p.Size) > ctx.maxRDMAReadDataPerSlot() {
 		log.LogWarnf("rdma handleReadSlot: requested size %d exceeds slot capacity %d, asking SDK to fall back",
 			p.Size, ctx.maxRDMAReadDataPerSlot())
 		p.ResultCode = proto.OpAgain
-		return
+		return false
 	}
 
 	if err := ctx.node.Prepare(p); err != nil {
 		log.LogErrorf("rdma handleReadSlot: Prepare: %v", err)
 		p.PackErrorBody(repl.ActionPreparePkt, err.Error())
-		return
+		return false
 	}
 
 	partition, ok := p.Object.(*DataPartition)
 	if !ok || partition == nil {
 		p.PackErrorBody("rdma_read_slot", "partition object missing")
-		return
+		return false
 	}
 
-	// Allocate a buffer for the data. Currently this is heap-allocated and
-	// then copied into sendScratch by SerializePacket; P5 will replace
-	// this with direct read into a registered MR (zero-copy).
-	data := make([]byte, p.Size)
+	// Compute the data offset inside sendScratch and read directly there.
+	// SerializePacket lays out: SlotHeader (16) + PacketHeader (57 or 69)
+	// + Arg + Data. For read responses ArgLen is 0; layout is the same
+	// shape as SerializePacket's output so the SDK's DeserializePacket
+	// reads it back correctly.
+	scratch := cs.conn.SendScratchBytes(slotIdx)
+	hdrSize := p.CalcPacketHeaderSize()
+	dataOff := rdma.SlotHeaderSize + hdrSize + int(p.ArgLen)
+	totalLen := dataOff + int(p.Size)
+	if totalLen > cs.conn.SlotSize() {
+		// Defensive: should have been caught by the size check above.
+		p.ResultCode = proto.OpAgain
+		return false
+	}
 
+	dataSlice := scratch[dataOff : dataOff+int(p.Size)]
 	store := partition.ExtentStore()
 	isBackup := p.Opcode == proto.OpBackupRead
-	crc, err := store.Read(p.ExtentID, p.ExtentOffset, int64(p.Size), data, false /* isRepairRead */, isBackup)
+	crc, err := store.Read(p.ExtentID, p.ExtentOffset, int64(p.Size), dataSlice, false /* isRepairRead */, isBackup)
 	if err != nil {
-		// Map common storage errors to ResultCodes the SDK knows how to
-		// retry; any other error becomes a generic IO failure.
 		log.LogWarnf("rdma handleReadSlot: store.Read dp=%d ext=%d off=%d size=%d: %v",
 			p.PartitionID, p.ExtentID, p.ExtentOffset, p.Size, err)
 		switch {
@@ -301,12 +321,25 @@ func (cs *connState) handleReadSlot(ctx *DataNodeRDMACtx, p *repl.Packet) {
 		default:
 			p.PackErrorBody("rdma_read_slot", err.Error())
 		}
-		return
+		return false
 	}
 
-	p.Data = data
+	// Disk data is already in sendScratch[dataOff..]. Stamp the packet
+	// header in place at sendScratch[SlotHeaderSize..], then post.
 	p.CRC = crc
 	p.ResultCode = proto.OpOk
+	p.MarshalHeader(scratch[rdma.SlotHeaderSize : rdma.SlotHeaderSize+hdrSize])
+	// Arg (if any) would go between PacketHeader and Data; for reads
+	// ArgLen is 0 so nothing to stamp here.
+
+	if err := cs.conn.WriteSlotZeroCopy(slotIdx, totalLen); err != nil {
+		log.LogErrorf("rdma handleReadSlot: WriteSlotZeroCopy: %v", err)
+		// The conn is likely broken; let caller fall through to WritePacket
+		// which will probably fail too — at least the error is logged twice
+		// from different layers, surfacing the failure mode clearly.
+		return false
+	}
+	return true
 }
 
 // rdmaNetAddr implements net.Addr for RDMA remote addresses.

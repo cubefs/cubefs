@@ -526,6 +526,38 @@ func (c *RDMAConn) WriteData(slotIdx int, data []byte) error {
 	return c.postSlotAndDoorbell(slotIdx, scratch[:len(data)], seq)
 }
 
+// WriteSlotZeroCopy posts the first totalLen bytes of sendScratch[slot]
+// to the peer's recvRing[slot] + the doorbell, WITHOUT a memcpy through
+// the WriteData path. The caller is responsible for staging the full
+// packet (PacketHeader + Arg + Data) at offset SlotHeaderSize within
+// sendScratch[slot]; this method stamps the SlotHeader and posts.
+//
+// Used by P5 zero-copy paths: e.g. handleReadSlot reads disk data
+// directly into a slice of sendScratch via store.Read, then calls
+// WriteSlotZeroCopy with the precomputed totalLen — eliminating one
+// memcpy of the response data per round trip.
+//
+// Blocks if no flow-control credit is available. Not goroutine-safe for
+// the same slotIdx.
+func (c *RDMAConn) WriteSlotZeroCopy(slotIdx, totalLen int) error {
+	if totalLen < SlotHeaderSize {
+		return fmt.Errorf("rdma: WriteSlotZeroCopy: totalLen %d < SlotHeaderSize %d", totalLen, SlotHeaderSize)
+	}
+	if totalLen > c.slotSize {
+		return fmt.Errorf("rdma: WriteSlotZeroCopy: totalLen %d > slotSize %d", totalLen, c.slotSize)
+	}
+	if err := c.acquireSendCredit(); err != nil {
+		return err
+	}
+	seq := c.nextSendSeq[slotIdx] + 1
+	c.nextSendSeq[slotIdx] = seq
+
+	scratch := c.SendScratchBytes(slotIdx)
+	WriteSlotHeader(scratch, seq, uint32(totalLen))
+
+	return c.postSlotAndDoorbell(slotIdx, scratch[:totalLen], seq)
+}
+
 // acquireSendCredit blocks until a flow-control credit is available.
 // Records cubefs_rdma_credit_stall_total when the call had to wait
 // non-trivially (>10µs), so a few cycles of pure-spin success don't

@@ -54,6 +54,7 @@ func (c *RDMAConn) IsClosed() bool                                  { return c.c
 func (c *RDMAConn) Close() error                                    { c.closed = true; return nil }
 func (c *RDMAConn) WritePacket(_ int, _ *proto.Packet) error        { return errNotSupported }
 func (c *RDMAConn) WriteData(_ int, _ []byte) error                 { return errNotSupported }
+func (c *RDMAConn) WriteSlotZeroCopy(_, _ int) error                { return errNotSupported }
 func (c *RDMAConn) PollRecvDoorbell(_ int, _ uint32) (uint32, bool) { return 0, false }
 func (c *RDMAConn) RecvSeq(_ int) uint32                            { return 0 }
 func (c *RDMAConn) SetRecvSeq(_ int, _ uint32)                      {}
