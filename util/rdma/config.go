@@ -47,4 +47,12 @@ type RDMAPoolConfig struct {
 	// packets and meta updates traverse TCP unconditionally. Zero means
 	// "no threshold" — every payload tries RDMA. (P6)
 	MinPayloadBytes int
+	// RDMAPortShift translates the caller-supplied (typically TCP) port
+	// to the peer's RDMA listen port. Callers pass the peer's data
+	// address (e.g. host:17310) and the pool/SDK shifts the port before
+	// dialing (e.g. host:17350). Zero means "no shift". Must be uniform
+	// across the cluster — if peers run with different shifts, the
+	// caller is responsible for passing pre-shifted addresses and
+	// leaving this at 0.
+	RDMAPortShift int
 }

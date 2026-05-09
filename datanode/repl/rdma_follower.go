@@ -9,12 +9,16 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/rdma"
 )
 
 const followerRDMATimeout = 30 * time.Second
 
-var followerRDMAPool *rdma.RDMAConnPool
+var (
+	followerRDMAPool      *rdma.RDMAConnPool
+	followerRDMAPortShift int
+)
 
 // EnableFollowerRDMA initializes the RDMA slot pool for DataNode→DataNode
 // replication and activates the RDMA send path.
@@ -24,16 +28,24 @@ func EnableFollowerRDMA(cfg rdma.RDMAPoolConfig) error {
 		return fmt.Errorf("repl follower rdma: init pool: %w", err)
 	}
 	followerRDMAPool = pool
+	followerRDMAPortShift = cfg.RDMAPortShift
 	followerRDMASend = rdmaSendToFollower
 	return nil
 }
 
 func rdmaSendToFollower(addr string, fp *FollowerPacket) error {
 	start := time.Now()
-	handle, err := followerRDMAPool.AcquireSlot(addr)
+	// Caller passes the follower's data (TCP) address; shift to the
+	// follower's RDMA listen port before dialing. With shift=0 this is
+	// a no-op and addr is used verbatim.
+	rdmaAddr := addr
+	if followerRDMAPortShift != 0 {
+		rdmaAddr = util.ShiftAddrPort(addr, followerRDMAPortShift)
+	}
+	handle, err := followerRDMAPool.AcquireSlot(rdmaAddr)
 	if err != nil {
 		rdma.MetricsObserveFallback(rdma.RoleFollower, addr, "acquire_slot")
-		return fmt.Errorf("repl follower rdma: acquire slot to %s: %w", addr, err)
+		return fmt.Errorf("repl follower rdma: acquire slot to %s: %w", rdmaAddr, err)
 	}
 	conn := handle.Conn
 	slot := handle.SlotIdx

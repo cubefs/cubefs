@@ -10,13 +10,17 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/rdma"
 )
 
 const rdmaRoundTripTimeout = 30 * time.Second
 
 // rdmaConnPool is nil by default; non-nil only when RDMA is enabled at startup.
-var rdmaConnPool *rdma.RDMAConnPool
+var (
+	rdmaConnPool      *rdma.RDMAConnPool
+	rdmaConnPortShift int
+)
 
 // InitRDMAConnPool initializes the client-side RDMA slot pool.
 // Must be called before the first write if RDMA is desired.
@@ -26,6 +30,7 @@ func InitRDMAConnPool(cfg rdma.RDMAPoolConfig) error {
 		return fmt.Errorf("rdma client: init pool: %w", err)
 	}
 	rdmaConnPool = pool
+	rdmaConnPortShift = cfg.RDMAPortShift
 	return nil
 }
 
@@ -34,10 +39,16 @@ func InitRDMAConnPool(cfg rdma.RDMAPoolConfig) error {
 // deserialised response packet; the caller is responsible for
 // interpreting ResultCode and (for reads) verifying CRC.
 func rdmaRoundTrip(addr string, req *Packet) (*proto.Packet, error) {
-	handle, err := rdmaConnPool.AcquireSlot(addr)
+	// Caller passes the datanode's data (TCP) address; shift to its
+	// RDMA listen port. Pool key remains the post-shift address.
+	rdmaAddr := addr
+	if rdmaConnPortShift != 0 {
+		rdmaAddr = util.ShiftAddrPort(addr, rdmaConnPortShift)
+	}
+	handle, err := rdmaConnPool.AcquireSlot(rdmaAddr)
 	if err != nil {
 		rdma.MetricsObserveFallback(rdma.RoleClient, addr, "acquire_slot")
-		return nil, fmt.Errorf("rdma client: acquire slot to %s: %w", addr, err)
+		return nil, fmt.Errorf("rdma client: acquire slot to %s: %w", rdmaAddr, err)
 	}
 	conn := handle.Conn
 	slot := handle.SlotIdx

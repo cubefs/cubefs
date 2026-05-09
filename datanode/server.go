@@ -1253,17 +1253,24 @@ func (s *DataNode) initConnPool() {
 				log.LogWarnf("initConnPool: RDMA Start failed, degraded to TCP-only: %v", err)
 			} else {
 				s.rdmaCtx = ctx
+				tcpPort, _ := strconv.Atoi(s.port)
 				followerCfg := rdma.RDMAPoolConfig{
 					NumSlots:        s.rdmaNumSlots,
 					SlotSize:        s.rdmaSlotSize,
 					Poll:            s.rdmaPollCfg,
 					Role:            rdma.RoleFollower,
 					MinPayloadBytes: s.rdmaMinPayloadBytes,
+					// Peers register their data (TCP) address with master;
+					// the leader needs to dial the peer's RDMA port. Cluster
+					// is uniform on rdmaPort/listenPort, so a fixed shift
+					// works.
+					RDMAPortShift: s.rdmaPort - tcpPort,
 				}
 				if ferr := repl.EnableFollowerRDMA(followerCfg); ferr != nil {
 					log.LogWarnf("initConnPool: follower RDMA init failed, replication uses TCP: %v", ferr)
 				} else {
-					log.LogInfof("initConnPool: follower RDMA enabled (numSlots=%d slotSize=%d)", s.rdmaNumSlots, s.rdmaSlotSize)
+					log.LogInfof("initConnPool: follower RDMA enabled (numSlots=%d slotSize=%d portShift=%d)",
+						s.rdmaNumSlots, s.rdmaSlotSize, followerCfg.RDMAPortShift)
 				}
 			}
 		}
