@@ -988,6 +988,7 @@ type DataPartitionReport struct {
 	ReadOnlyReasons            uint32
 	IsMissingTinyExtent        bool
 	IsRepairing                bool
+	AppliedID                  uint64 // current applied raft index on this replica
 	ApplyMemberChangeID        uint64 // last applied ConfChange index on this replica (0 if legacy DN)
 }
 

@@ -356,6 +356,7 @@ func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
 		}
 		dp.afterCreation(rv.Addr, rv.DiskPath, c)
 		if rep, err := dp.getReplica(rv.Addr); err == nil {
+			rep.AppliedID = rv.AppliedID
 			rep.ApplyMemberChangeID = rv.ApplyMemberChangeID
 		}
 	}
@@ -369,6 +370,7 @@ func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
 type replicaValue struct {
 	Addr                string
 	DiskPath            string
+	AppliedID           uint64 `json:"appliedID,omitempty"`
 	ApplyMemberChangeID uint64 `json:"applyMemberChangeID,omitempty"`
 }
 
@@ -417,7 +419,7 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 		PoolId:                          dp.PoolId,
 	}
 	for _, replica := range dp.Replicas {
-		rv := &replicaValue{Addr: replica.Addr, DiskPath: replica.DiskPath, ApplyMemberChangeID: replica.ApplyMemberChangeID}
+		rv := &replicaValue{Addr: replica.Addr, DiskPath: replica.DiskPath, AppliedID: replica.AppliedID, ApplyMemberChangeID: replica.ApplyMemberChangeID}
 		dpv.Replicas = append(dpv.Replicas, rv)
 	}
 	return

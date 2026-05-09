@@ -876,14 +876,27 @@ func (partition *DataPartition) updateMetric(vr *proto.DataPartitionReport, data
 	replica.DecommissionRepairProgress = vr.DecommissionRepairProgress
 	replica.LocalPeers = vr.LocalPeers
 	replica.TriggerDiskError = vr.TriggerDiskError
+	oldApplyMC := replica.ApplyMemberChangeID
+	oldAppliedID := replica.AppliedID
+	needPersistReplica := false
 	// Legacy datanodes send ApplyMemberChangeID=0; do not overwrite a known non-zero value.
 	if vr.ApplyMemberChangeID != 0 && vr.ApplyMemberChangeID != replica.ApplyMemberChangeID {
-		oldApplyMC := replica.ApplyMemberChangeID
 		replica.ApplyMemberChangeID = vr.ApplyMemberChangeID
+		needPersistReplica = true
+	}
+	if vr.AppliedID != 0 && vr.AppliedID != replica.AppliedID {
+		replica.AppliedID = vr.AppliedID
+		needPersistReplica = true
+	}
+	if needPersistReplica {
 		if err = c.syncUpdateDataPartition(partition); err != nil {
 			replica.ApplyMemberChangeID = oldApplyMC
-			log.LogErrorf("action[updateMetric] dp(%v) replica(%v) syncUpdateDataPartition applyMemberChangeID err(%v)",
-				partition.PartitionID, dataNode.Addr, err)
+			replica.AppliedID = oldAppliedID
+			log.LogErrorf("action[updateMetric] dp(%v) replica(%v) syncUpdateDataPartition applyMemberChangeID(%v) appliedID(%v) err(%v)",
+				partition.PartitionID, dataNode.Addr, vr.ApplyMemberChangeID, vr.AppliedID, err)
+		} else {
+			log.LogDebugf("action[updateMetric] dp(%v) replica(%v) syncUpdateDataPartition applyMemberChangeID(%v) appliedID(%v)",
+				partition.PartitionID, dataNode.Addr, replica.ApplyMemberChangeID, replica.AppliedID)
 		}
 	}
 	if replica.DiskPath != vr.DiskPath && vr.DiskPath != "" {
@@ -3559,7 +3572,7 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 	// find redundant peers from replica meta
 	force := false
 	replicasToDelete := make([]proto.Peer, 0)
-	leaderApplyMCID, hasLeaderReplica := partition.getLeaderApplyMemberChangeID()
+	maxApplyMemberChangeID := partition.maxApplyMemberChangeID()
 	dpTimeoutSec := c.getDataPartitionTimeoutSec()
 	for _, replica := range partition.Replicas {
 		// new created replica, no heart beat report, skip
@@ -3573,7 +3586,7 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 		if !replica.isLive(partition.PartitionID, dpTimeoutSec) {
 			continue
 		}
-		if hasLeaderReplica && !replica.IsLeader && replica.ApplyMemberChangeID < leaderApplyMCID {
+		if replica.isBehindApplyMemberChange(maxApplyMemberChangeID) {
 			continue
 		}
 		redundantPeers := findPeersToDeleteByConfig(replica.LocalPeers, partition.Peers)
@@ -3627,7 +3640,7 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 		if !replica.isLive(partition.PartitionID, dpTimeoutSec) {
 			continue
 		}
-		if hasLeaderReplica && !replica.IsLeader && replica.ApplyMemberChangeID < leaderApplyMCID {
+		if replica.isBehindApplyMemberChange(maxApplyMemberChangeID) {
 			continue
 		}
 		redundantPeers := findPeersToDeleteByConfig(partition.Peers, replica.LocalPeers)
@@ -3901,27 +3914,34 @@ func (partition *DataPartition) getLeaderApplyMemberChangeID() (applyID uint64, 
 	return 0, false
 }
 
-// hasFollowerApplyMemberChangeAheadOfLeader reports whether some non-leader replica has a higher
-// ApplyMemberChangeID than the leader (stale leader heartbeat / divergent view); in that case replica
-// meta restore should not run.
-func (partition *DataPartition) hasFollowerApplyMemberChangeAheadOfLeader() bool {
-	var leader *DataReplica
-	for _, r := range partition.Replicas {
-		if r.IsLeader {
-			leader = r
-			break
+func (partition *DataPartition) maxApplyMemberChangeID() (applyID uint64) {
+	for _, replica := range partition.Replicas {
+		if replica.ApplyMemberChangeID > applyID {
+			applyID = replica.ApplyMemberChangeID
 		}
 	}
-	if leader == nil {
+	return
+}
+
+func (replica *DataReplica) isBehindApplyMemberChange(maxApplyMemberChangeID uint64) bool {
+	if replica.IsLeader {
 		return false
 	}
+	if replica.ApplyMemberChangeID == 0 && replica.AppliedID >= maxApplyMemberChangeID {
+		return false
+	}
+	return replica.ApplyMemberChangeID < maxApplyMemberChangeID
+}
+
+// hasFollowerApplyMemberChangeAheadOfLeader reports whether any follower has not caught up with
+// the latest member-change log observed from replicas; in that case replica meta restore should not run.
+func (partition *DataPartition) hasFollowerApplyMemberChangeAheadOfLeader() bool {
+	maxApplyMemberChangeID := partition.maxApplyMemberChangeID()
+
 	for _, r := range partition.Replicas {
-		if r.IsLeader {
-			continue
-		}
-		if r.ApplyMemberChangeID > leader.ApplyMemberChangeID {
-			log.LogDebugf("action[replicaMeta]dp(%v) follower %v applyMemberChangeID(%v) > leader %v(%v), skip restore",
-				partition.PartitionID, r.Addr, r.ApplyMemberChangeID, leader.Addr, leader.ApplyMemberChangeID)
+		if r.isBehindApplyMemberChange(maxApplyMemberChangeID) {
+			log.LogDebugf("action[replicaMeta]dp(%v) replica %v applyMemberChangeID(%v) appliedID(%v) < maxApplyMemberChangeID(%v), skip restore",
+				partition.PartitionID, r.Addr, r.ApplyMemberChangeID, r.AppliedID, maxApplyMemberChangeID)
 			return true
 		}
 	}
@@ -3935,7 +3955,7 @@ func (partition *DataPartition) needReplicaMetaRestore(c *Cluster) bool {
 		return false
 	}
 
-	leaderApplyMCID, hasLeaderReplica := partition.getLeaderApplyMemberChangeID()
+	maxApplyMemberChangeID := partition.maxApplyMemberChangeID()
 	timeOutSec := c.getDataPartitionTimeoutSec()
 
 	if len(partition.Replicas) == len(partition.Hosts) && len(partition.Hosts) == len(partition.Peers) &&
@@ -3955,7 +3975,7 @@ func (partition *DataPartition) needReplicaMetaRestore(c *Cluster) bool {
 		if !replica.isLive(partition.PartitionID, timeOutSec) {
 			continue
 		}
-		if hasLeaderReplica && !replica.IsLeader && replica.ApplyMemberChangeID < leaderApplyMCID {
+		if replica.isBehindApplyMemberChange(maxApplyMemberChangeID) {
 			continue
 		}
 
@@ -3972,7 +3992,7 @@ func (partition *DataPartition) needReplicaMetaRestore(c *Cluster) bool {
 		if !replica.isLive(partition.PartitionID, timeOutSec) {
 			continue
 		}
-		if hasLeaderReplica && !replica.IsLeader && replica.ApplyMemberChangeID < leaderApplyMCID {
+		if replica.isBehindApplyMemberChange(maxApplyMemberChangeID) {
 			continue
 		}
 		redundantPeers := findPeersToDeleteByConfig(partition.Peers, replica.LocalPeers)

@@ -15,6 +15,14 @@ import (
 	"github.com/cubefs/cubefs/util"
 )
 
+type failingSubmitPartition struct {
+	mockPartition
+}
+
+func (m *failingSubmitPartition) Submit([]byte) (interface{}, error) {
+	return nil, fmt.Errorf("submit failed")
+}
+
 func TestDataPartition(t *testing.T) {
 	server.cluster.checkDataNodeHeartbeat()
 	server.cluster.checkMetaNodeHeartbeat()
@@ -542,6 +550,7 @@ func testLiveDataReplica(addr string, applyMemberChangeID uint64, isLeader bool,
 			Status:              proto.ReadWrite,
 			ReportTime:          time.Now().Unix(),
 			IsLeader:            isLeader,
+			AppliedID:           applyMemberChangeID,
 			ApplyMemberChangeID: applyMemberChangeID,
 			LocalPeers:          localPeers,
 		},
@@ -574,6 +583,7 @@ func TestDataPartition_hasFollowerApplyMemberChangeAheadOfLeader(t *testing.T) {
 	peers := []proto.Peer{
 		{Addr: "h1", Type: raftProto.PeerNormal},
 		{Addr: "h2", Type: raftProto.PeerNormal},
+		{Addr: "h3", Type: raftProto.PeerNormal},
 	}
 	p := &DataPartition{
 		Replicas: []*DataReplica{
@@ -583,19 +593,38 @@ func TestDataPartition_hasFollowerApplyMemberChangeAheadOfLeader(t *testing.T) {
 	}
 	require.False(t, p.hasFollowerApplyMemberChangeAheadOfLeader())
 
+	p.Replicas = append(p.Replicas, testLiveDataReplica("h3", 101, false, peers))
+	require.True(t, p.hasFollowerApplyMemberChangeAheadOfLeader(), "non-leader replica behind max should skip restore")
+
 	p.Replicas[1].ApplyMemberChangeID = 101
-	require.True(t, p.hasFollowerApplyMemberChangeAheadOfLeader())
+	require.False(t, p.hasFollowerApplyMemberChangeAheadOfLeader())
+
+	p.Replicas[1].ApplyMemberChangeID = 0
+	p.Replicas[1].AppliedID = 101
+	require.False(t, p.hasFollowerApplyMemberChangeAheadOfLeader(), "zero applyMemberChangeID with appliedID caught up should be skipped")
+
+	p.Replicas[1].AppliedID = 100
+	require.True(t, p.hasFollowerApplyMemberChangeAheadOfLeader(), "zero applyMemberChangeID without appliedID caught up should skip restore")
+
+	pLeaderBehind := &DataPartition{
+		Replicas: []*DataReplica{
+			testLiveDataReplica("h1", 100, true, peers),
+			testLiveDataReplica("h2", 101, false, peers),
+		},
+	}
+	require.False(t, pLeaderBehind.hasFollowerApplyMemberChangeAheadOfLeader(), "leader applyMemberChangeID is skipped")
 
 	pNoLeader := &DataPartition{
 		Replicas: []*DataReplica{
 			testLiveDataReplica("h1", 200, false, peers),
+			testLiveDataReplica("h2", 100, false, peers),
 		},
 	}
-	require.False(t, pNoLeader.hasFollowerApplyMemberChangeAheadOfLeader())
+	require.True(t, pNoLeader.hasFollowerApplyMemberChangeAheadOfLeader())
 }
 
 // TestDataPartition_needReplicaMetaRestore_applyMemberChangeID covers e8f69a29: lagging followers must not
-// drive replica-meta restore; if a follower reports higher ApplyMemberChangeID than leader, restore is skipped.
+// drive replica-meta restore.
 func TestDataPartition_needReplicaMetaRestore_applyMemberChangeID(t *testing.T) {
 	c := &Cluster{cfg: newClusterConfig()}
 	peers := []proto.Peer{
@@ -631,7 +660,7 @@ func TestDataPartition_needReplicaMetaRestore_applyMemberChangeID(t *testing.T) 
 	}
 	require.True(t, dpCaughtUp.needReplicaMetaRestore(c), "caught-up follower with redundant peers should need restore")
 
-	// Follower ahead of leader (stale leader view): never restore.
+	// Leader is skipped by the catch-up guard; the follower with redundant peers can drive restore.
 	dpDivergent := &DataPartition{
 		PartitionID: 9903,
 		ReplicaNum:  2,
@@ -642,7 +671,27 @@ func TestDataPartition_needReplicaMetaRestore_applyMemberChangeID(t *testing.T) 
 			testLiveDataReplica("h2", 100, false, peersWithOrphan),
 		},
 	}
-	require.False(t, dpDivergent.needReplicaMetaRestore(c), "follower ahead of leader must skip restore")
+	require.True(t, dpDivergent.needReplicaMetaRestore(c), "leader applyMemberChangeID is skipped by catch-up guard")
+}
+
+func TestDataPartition_checkReplicaMetaSkipsLaggingApplyMemberChange(t *testing.T) {
+	c := &Cluster{cfg: newClusterConfig()}
+	peers := []proto.Peer{
+		{Addr: "h1", Type: raftProto.PeerNormal},
+		{Addr: "h2", Type: raftProto.PeerNormal},
+	}
+	dp := &DataPartition{
+		PartitionID: 9904,
+		ReplicaNum:  2,
+		Peers:       peers,
+		Hosts:       []string{"h1", "h2"},
+		Replicas: []*DataReplica{
+			testLiveDataReplica("h1", 200, true, peers),
+			testLiveDataReplica("h2", 100, false, peers),
+		},
+	}
+
+	require.NoError(t, dp.checkReplicaMeta(c))
 }
 
 // TestDataPartitionValue_replicaApplyMemberChangeIDJSON ensures raft-persisted DP replica value carries ApplyMemberChangeID (e8f69a29).
@@ -654,19 +703,133 @@ func TestDataPartitionValue_replicaApplyMemberChangeIDJSON(t *testing.T) {
 		VolID:       1,
 		Hosts:       []string{"10.0.0.1:17310"},
 		Replicas: []*DataReplica{
-			{DataReplica: proto.DataReplica{Addr: "10.0.0.1:17310", DiskPath: "/data1", ApplyMemberChangeID: 888}},
+			{DataReplica: proto.DataReplica{Addr: "10.0.0.1:17310", DiskPath: "/data1", AppliedID: 999, ApplyMemberChangeID: 888}},
 		},
 	}
 	dpv := newDataPartitionValue(dp)
 	require.Len(t, dpv.Replicas, 1)
+	require.EqualValues(t, 999, dpv.Replicas[0].AppliedID)
 	require.EqualValues(t, 888, dpv.Replicas[0].ApplyMemberChangeID)
 
 	raw, err := json.Marshal(dpv)
 	require.NoError(t, err)
+	require.Contains(t, string(raw), "appliedID")
 	require.Contains(t, string(raw), "applyMemberChangeID")
 
 	var decoded dataPartitionValue
 	require.NoError(t, json.Unmarshal(raw, &decoded))
 	require.Len(t, decoded.Replicas, 1)
+	require.EqualValues(t, 999, decoded.Replicas[0].AppliedID)
 	require.EqualValues(t, 888, decoded.Replicas[0].ApplyMemberChangeID)
+
+	c := &Cluster{cfg: newClusterConfig()}
+	c.dataNodes.Store("10.0.0.1:17310", &DataNode{Addr: "10.0.0.1:17310"})
+	restored := decoded.Restore(c)
+	require.Len(t, restored.Replicas, 1)
+	require.EqualValues(t, 999, restored.Replicas[0].AppliedID)
+	require.EqualValues(t, 888, restored.Replicas[0].ApplyMemberChangeID)
+}
+
+func TestDataPartition_updateMetricPersistsReplicaApplyProgress(t *testing.T) {
+	const (
+		volName     = "vol_apply_progress"
+		partitionID = uint64(88002)
+		addr        = "10.0.0.2:17310"
+	)
+	peers := []proto.Peer{{Addr: addr, Type: raftProto.PeerNormal}}
+	replica := testLiveDataReplica(addr, 7, false, peers)
+	replica.AppliedID = 5
+	dp := &DataPartition{
+		PartitionID: partitionID,
+		ReplicaNum:  1,
+		VolName:     volName,
+		VolID:       1,
+		Hosts:       []string{addr},
+		Peers:       peers,
+		Replicas:    []*DataReplica{replica},
+	}
+	vol := &Vol{Name: volName, dataPartitions: newDataPartitionMap(volName)}
+	vol.dataPartitions.put(dp)
+	c := &Cluster{
+		cfg:       newClusterConfig(),
+		partition: &mockPartition{isLeader: true},
+		ClusterVolSubItem: ClusterVolSubItem{
+			vols: map[string]*Vol{volName: vol},
+		},
+	}
+	dataNode := &DataNode{Addr: addr, ReplicaPort: "17320", HeartbeatPort: "17330"}
+
+	dp.updateMetric(&proto.DataPartitionReport{
+		PartitionID:         partitionID,
+		PartitionStatus:     proto.ReadWrite,
+		Total:               100,
+		Used:                10,
+		IsLeader:            false,
+		LocalPeers:          peers,
+		AppliedID:           11,
+		ApplyMemberChangeID: 9,
+	}, dataNode, c)
+
+	require.EqualValues(t, 11, replica.AppliedID)
+	require.EqualValues(t, 9, replica.ApplyMemberChangeID)
+	dpv := newDataPartitionValue(dp)
+	require.Len(t, dpv.Replicas, 1)
+	require.EqualValues(t, 11, dpv.Replicas[0].AppliedID)
+	require.EqualValues(t, 9, dpv.Replicas[0].ApplyMemberChangeID)
+
+	dp.updateMetric(&proto.DataPartitionReport{
+		PartitionID:         partitionID,
+		PartitionStatus:     proto.ReadWrite,
+		Total:               100,
+		Used:                10,
+		IsLeader:            false,
+		LocalPeers:          peers,
+		AppliedID:           0,
+		ApplyMemberChangeID: 0,
+	}, dataNode, c)
+
+	require.EqualValues(t, 11, replica.AppliedID)
+	require.EqualValues(t, 9, replica.ApplyMemberChangeID)
+}
+
+func TestDataPartition_updateMetricRollbackApplyProgressOnSyncFailure(t *testing.T) {
+	const (
+		volName     = "vol_apply_progress_rollback"
+		partitionID = uint64(88003)
+		addr        = "10.0.0.3:17310"
+	)
+	peers := []proto.Peer{{Addr: addr, Type: raftProto.PeerNormal}}
+	replica := testLiveDataReplica(addr, 7, false, peers)
+	replica.AppliedID = 5
+	dp := &DataPartition{
+		PartitionID: partitionID,
+		ReplicaNum:  1,
+		VolName:     volName,
+		VolID:       1,
+		Hosts:       []string{addr},
+		Peers:       peers,
+		Replicas:    []*DataReplica{replica},
+	}
+	vol := &Vol{Name: volName, dataPartitions: newDataPartitionMap(volName)}
+	vol.dataPartitions.put(dp)
+	c := &Cluster{
+		cfg:       newClusterConfig(),
+		partition: &failingSubmitPartition{mockPartition: mockPartition{isLeader: true}},
+		ClusterVolSubItem: ClusterVolSubItem{
+			vols: map[string]*Vol{volName: vol},
+		},
+	}
+
+	dp.updateMetric(&proto.DataPartitionReport{
+		PartitionID:         partitionID,
+		PartitionStatus:     proto.ReadWrite,
+		Total:               100,
+		Used:                10,
+		LocalPeers:          peers,
+		AppliedID:           11,
+		ApplyMemberChangeID: 9,
+	}, &DataNode{Addr: addr}, c)
+
+	require.EqualValues(t, 5, replica.AppliedID)
+	require.EqualValues(t, 7, replica.ApplyMemberChangeID)
 }

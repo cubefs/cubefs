@@ -117,3 +117,35 @@ func TestDataPartition_uploadApplyMemberChangeID(t *testing.T) {
 	dp.uploadApplyMemberChangeID(1001)
 	require.Equal(t, uint64(1001), atomic.LoadUint64(&dp.applyMemberChangeID))
 }
+
+func TestDataNode_buildHeartBeatResponseReportsAppliedID(t *testing.T) {
+	const partitionID = uint64(43)
+	disk := &Disk{Path: "/disk1", Status: proto.ReadWrite, partitionMap: make(map[uint64]*DataPartition)}
+	space := &SpaceManager{
+		disks:      map[string]*Disk{disk.Path: disk},
+		partitions: make(map[uint64]*DataPartition),
+		stats:      NewStats(""),
+	}
+	disk.space = space
+	dn := &DataNode{space: space}
+	dp := &DataPartition{
+		partitionID:     partitionID,
+		partitionStatus: proto.ReadWrite,
+		partitionSize:   1024,
+		used:            128,
+		disk:            disk,
+		config:          &dataPartitionCfg{Peers: []proto.Peer{{Addr: "127.0.0.1:17310"}}},
+		extentStore:     &storage.ExtentStore{},
+		dataNode:        dn,
+	}
+	atomic.StoreUint64(&dp.appliedID, 2001)
+	atomic.StoreUint64(&dp.applyMemberChangeID, 1001)
+	space.partitions[partitionID] = dp
+
+	response := &proto.DataNodeHeartbeatResponse{}
+	dn.buildHeartBeatResponse(response, nil, nil, "test")
+
+	require.Len(t, response.PartitionReports, 1)
+	require.EqualValues(t, 2001, response.PartitionReports[0].AppliedID)
+	require.EqualValues(t, 1001, response.PartitionReports[0].ApplyMemberChangeID)
+}

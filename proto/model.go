@@ -523,6 +523,7 @@ type DataReplica struct {
 	ReadOnlyReasons            uint32
 	IsMissingTinyExtent        bool
 	IsRepairing                bool
+	AppliedID                  uint64 `json:",omitempty"` // current applied raft index on this replica
 	ApplyMemberChangeID        uint64 `json:",omitempty"` // last applied member-change raft index on this replica
 }
 
