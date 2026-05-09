@@ -122,9 +122,18 @@ type RDMAConn struct {
 	// (server pollLoop in idle mode).
 	recvSignalSeq uint64
 
-	// recvCond is broadcast by the drainer after every recv CQE so that
-	// callers parked in sleep mode can re-check their per-slot or
-	// per-conn signal counter.
+	// Per-slot cond: WaitRecvDoneSeq parks on the cond whose index
+	// matches its slot, so an incoming doorbell only wakes the one
+	// goroutine actually waiting on that slot rather than fanning out
+	// to all numSlots waiters (most of whom would re-sleep). At
+	// numSlots=256 this is the difference between 256 spurious wakes
+	// per CQE and 1.
+	recvSlotMus   []sync.Mutex
+	recvSlotConds []*sync.Cond
+
+	// recvCond is a global cond broadcast on every recv CQE for callers
+	// that wait on "any recv arrival" (server pollLoop's sleep phase).
+	// Slot-specific waiters use recvSlotConds instead.
 	recvMu   sync.Mutex
 	recvCond *sync.Cond
 
@@ -425,6 +434,11 @@ func newRDMAConn(
 		drainerDone:    make(chan struct{}),
 	}
 	c.recvCond = sync.NewCond(&c.recvMu)
+	c.recvSlotMus = make([]sync.Mutex, cfg.NumSlots)
+	c.recvSlotConds = make([]*sync.Cond, cfg.NumSlots)
+	for i := range c.recvSlotConds {
+		c.recvSlotConds[i] = sync.NewCond(&c.recvSlotMus[i])
+	}
 	c.credit = newCreditState(cfg.NumSlots, c.localCreditPtr(), c.pollCfg)
 	return c
 }
@@ -678,36 +692,86 @@ func (c *RDMAConn) RecvSignalSeq() uint64 {
 // WaitRecvDoneSeq blocks until recvDoneSeq[slotIdx] strictly exceeds
 // lastSeen, the connection is closed, or ctx is cancelled. Cheap when the
 // drainer has already advanced the counter (single atomic load + lock).
+//
+// Listens on a per-slot cond (m1) so an unrelated slot's CQE doesn't
+// wake us. ctx cancellation is honoured promptly via a watcher
+// goroutine (m3) that broadcasts the cond on Done — without this, a
+// peer that stops responding entirely would never trigger any
+// broadcast and the sender would park past its ctx deadline.
 func (c *RDMAConn) WaitRecvDoneSeq(ctx context.Context, slotIdx int, lastSeen uint64) error {
 	if atomic.LoadUint64(&c.recvDoneSeq[slotIdx]) > lastSeen {
 		return nil
 	}
-	c.recvMu.Lock()
-	defer c.recvMu.Unlock()
+	if slotIdx < 0 || slotIdx >= len(c.recvSlotConds) {
+		return fmt.Errorf("rdma: WaitRecvDoneSeq: slot %d out of range [0,%d)", slotIdx, len(c.recvSlotConds))
+	}
+
+	cond := c.recvSlotConds[slotIdx]
+	mu := &c.recvSlotMus[slotIdx]
+
+	// ctx watcher: forwards ctx.Done into a Broadcast on the slot's
+	// cond so callers parked in cond.Wait observe cancellation
+	// immediately rather than waiting for the next recv CQE. The
+	// watcher exits cleanly via watcherDone when the wait completes
+	// for any reason.
+	var watcherDone chan struct{}
+	if ctx != nil && ctx.Done() != nil {
+		watcherDone = make(chan struct{})
+		defer close(watcherDone)
+		go func() {
+			select {
+			case <-ctx.Done():
+				mu.Lock()
+				cond.Broadcast()
+				mu.Unlock()
+			case <-watcherDone:
+			}
+		}()
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
 	for atomic.LoadUint64(&c.recvDoneSeq[slotIdx]) <= lastSeen {
 		if c.IsClosed() {
 			return ErrCreditClosed
 		}
 		if ctx != nil {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			default:
+			if err := ctx.Err(); err != nil {
+				return err
 			}
 		}
-		c.recvCond.Wait()
+		cond.Wait()
 	}
 	return nil
 }
 
 // WaitRecvSignal blocks until recvSignalSeq strictly exceeds lastSeen,
-// the connection is closed, or ctx is cancelled. Used by server pollLoop's
-// sleep phase: any incoming doorbell wakes us, and the caller re-scans
-// memory to find the new slot.
+// the connection is closed, or ctx is cancelled. Used by server
+// pollLoop's sleep phase: any incoming doorbell wakes us, and the
+// caller re-scans memory to find the new slot.
+//
+// ctx cancellation is honoured promptly via a watcher goroutine
+// matching the WaitRecvDoneSeq pattern.
 func (c *RDMAConn) WaitRecvSignal(ctx context.Context, lastSeen uint64) error {
 	if atomic.LoadUint64(&c.recvSignalSeq) > lastSeen {
 		return nil
 	}
+
+	var watcherDone chan struct{}
+	if ctx != nil && ctx.Done() != nil {
+		watcherDone = make(chan struct{})
+		defer close(watcherDone)
+		go func() {
+			select {
+			case <-ctx.Done():
+				c.recvMu.Lock()
+				c.recvCond.Broadcast()
+				c.recvMu.Unlock()
+			case <-watcherDone:
+			}
+		}()
+	}
+
 	c.recvMu.Lock()
 	defer c.recvMu.Unlock()
 	for atomic.LoadUint64(&c.recvSignalSeq) <= lastSeen {
@@ -715,10 +779,8 @@ func (c *RDMAConn) WaitRecvSignal(ctx context.Context, lastSeen uint64) error {
 			return ErrCreditClosed
 		}
 		if ctx != nil {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			default:
+			if err := ctx.Err(); err != nil {
+				return err
 			}
 		}
 		c.recvCond.Wait()
@@ -799,6 +861,17 @@ func (c *RDMAConn) markFault() {
 		c.recvCond.Broadcast()
 		c.recvMu.Unlock()
 	}
+	// Wake every per-slot waiter so they observe IsClosed and return
+	// promptly rather than waiting for an unrelated recv CQE that
+	// may never arrive on a faulted conn.
+	for i := range c.recvSlotConds {
+		if c.recvSlotConds[i] == nil {
+			continue
+		}
+		c.recvSlotMus[i].Lock()
+		c.recvSlotConds[i].Broadcast()
+		c.recvSlotMus[i].Unlock()
+	}
 }
 
 // dispatchCompletion routes one CQE to its waiter. Errors are logged and
@@ -842,12 +915,21 @@ func (c *RDMAConn) dispatchCompletion(qp *C.struct_ibv_qp, ev CompletionEvent) {
 		if ev.HasImm {
 			slotFromImm = int(ev.ImmData)
 		}
-		if slotFromImm >= 0 && slotFromImm < c.numSlots {
+		validSlot := slotFromImm >= 0 && slotFromImm < c.numSlots
+		if validSlot {
 			atomic.AddUint64(&c.recvDoneSeq[slotFromImm], 1)
 		}
 		atomic.AddUint64(&c.recvSignalSeq, 1)
 		if rerr := c.recvPool.refillOne(qp, ev.WRID); rerr != nil {
 			log.LogWarnf("rdma drainer (%s): refill recv: %v", c.remoteAddr, rerr)
+		}
+		// Targeted wake: only the per-slot waiter (m1 — avoids fanning
+		// out to all 256 slot-waiters when only one slot's response
+		// arrived). recvCond stays for "any-recv" pollLoop callers.
+		if validSlot && c.recvSlotConds != nil {
+			c.recvSlotMus[slotFromImm].Lock()
+			c.recvSlotConds[slotFromImm].Broadcast()
+			c.recvSlotMus[slotFromImm].Unlock()
 		}
 		c.recvMu.Lock()
 		c.recvCond.Broadcast()
@@ -1034,6 +1116,17 @@ func (c *RDMAConn) Close() error {
 		c.recvMu.Lock()
 		c.recvCond.Broadcast()
 		c.recvMu.Unlock()
+	}
+	// Per-slot conds (m1) — wake every slot's WaitRecvDoneSeq waiter
+	// individually so they each re-check IsClosed and return
+	// ErrCreditClosed instead of parking forever after a teardown.
+	for i := range c.recvSlotConds {
+		if c.recvSlotConds[i] == nil {
+			continue
+		}
+		c.recvSlotMus[i].Lock()
+		c.recvSlotConds[i].Broadcast()
+		c.recvSlotMus[i].Unlock()
 	}
 
 	// Wake the drainer if it's blocked on comp_channel. ORDER MATTERS:
