@@ -27,6 +27,14 @@ const (
 	// creditCellBytes is the size of the per-connection credit-return cell.
 	// We store a single uint64 (current peer-side processed-slot count).
 	creditCellBytes = 8
+
+	// cqEventAckBatch is how many comp_channel events the drainer
+	// accumulates before flushing a single ibv_ack_cq_events. Larger
+	// batches reduce ack syscall pressure; the kernel tolerates an
+	// unacked-event count up to ~UINT_MAX, so the limit is purely
+	// drainer-side bookkeeping. 16 is empirically a good balance for
+	// the cubefs hot-path slot rate.
+	cqEventAckBatch = 16
 )
 
 // sendQueueDepthFor returns the SQ depth for a connection with numSlots
@@ -857,12 +865,35 @@ func (c *RDMAConn) dispatchCompletion(qp *C.struct_ibv_qp, ev CompletionEvent) {
 
 // drainerSleep arms the CQ and blocks on the comp_channel for the next
 // completion event. Returns false if the drainer should exit (close in
-// progress and event delivery failed).
+// progress and event delivery failed, or fault already observed).
+//
+// Two pre-flight checks bracket the reqNotifyCQ call to close the
+// "QP-already-dead" race window: if markFault has flipped the conn into
+// the faulted state OR Close has closed drainerStop, we MUST NOT enter
+// waitCQEvent. The QP being in ERR state means postShutdownPing's
+// ibv_post_send fails with no CQE, and the kernel never delivers a
+// completion event to wake us — leaving the drainer parked forever.
+//
+// The post-arm check (after reqNotifyCQ) is what guarantees no wake
+// signal can be missed: anyone calling Close from this point onward
+// must close drainerStop BEFORE attempting to wake us, so a
+// drainerStop-closed value is observable here.
 func (c *RDMAConn) drainerSleep() bool {
 	if c.compCh == nil {
 		runtime.Gosched()
 		return true
 	}
+
+	// Pre-arm: bail if we already know we shouldn't sleep.
+	if c.IsClosed() {
+		return false
+	}
+	select {
+	case <-c.drainerStop:
+		return false
+	default:
+	}
+
 	if err := reqNotifyCQ(c.cq, false); err != nil {
 		if c.IsClosed() {
 			return false
@@ -870,6 +901,21 @@ func (c *RDMAConn) drainerSleep() bool {
 		log.LogWarnf("rdma drainer (%s): reqNotifyCQ: %v", c.remoteAddr, err)
 		return true
 	}
+
+	// Post-arm: this re-check closes the race where Close happened
+	// between the pre-arm check and reqNotifyCQ. After this point the
+	// CQ is armed; a future signaled WR (or destroy of the channel)
+	// would deliver a wake event. But if Close has ALREADY raised
+	// drainerStop / closed, no wake will arrive on a faulted QP.
+	if c.IsClosed() {
+		return false
+	}
+	select {
+	case <-c.drainerStop:
+		return false
+	default:
+	}
+
 	cq, err := waitCQEvent(c.compCh)
 	if err != nil {
 		if c.IsClosed() {
@@ -879,7 +925,7 @@ func (c *RDMAConn) drainerSleep() bool {
 		return true
 	}
 	c.cqEventsToAck++
-	if c.cqEventsToAck >= 16 {
+	if c.cqEventsToAck >= cqEventAckBatch {
 		ackCQEvents(cq, uint(c.cqEventsToAck))
 		c.cqEventsToAck = 0
 	}
@@ -990,11 +1036,17 @@ func (c *RDMAConn) Close() error {
 		c.recvMu.Unlock()
 	}
 
-	// Wake the drainer if it's blocked on comp_channel: post a
-	// self-signaled ping that delivers a CQE.
+	// Wake the drainer if it's blocked on comp_channel. ORDER MATTERS:
+	// close(drainerStop) MUST happen BEFORE postShutdownPing so that a
+	// drainer that wakes (or is already idle) sees the closed channel
+	// in its post-arm select and exits cleanly even if the ping is
+	// rejected by the QP (e.g. QP transitioned to ERR via markFault).
+	// If we ping first then close, the drainer could enter waitCQEvent
+	// in the gap, the ping would fail to generate a CQE, and the
+	// drainer would park forever.
 	if c.drainerDone != nil {
-		c.postShutdownPing()
 		close(c.drainerStop)
+		c.postShutdownPing()
 		<-c.drainerDone
 	}
 
