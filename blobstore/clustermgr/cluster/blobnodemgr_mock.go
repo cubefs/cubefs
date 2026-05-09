@@ -494,3 +494,18 @@ func (mr *MockBlobNodeManagerAPIMockRecorder) updateNodeNoLocked(arg0 interface{
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "updateNodeNoLocked", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).updateNodeNoLocked), arg0)
 }
+
+// DisksSnapshot mocks base method.
+func (m *MockBlobNodeManagerAPI) DisksSnapshot() ([]clustermgr.BlobNodeDiskInfo, []clustermgr.BlobNodeDiskInfo) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DisksSnapshot")
+	ret0, _ := ret[0].([]clustermgr.BlobNodeDiskInfo)
+	ret1, _ := ret[1].([]clustermgr.BlobNodeDiskInfo)
+	return ret0, ret1
+}
+
+// DisksSnapshot indicates an expected call of DisksSnapshot.
+func (mr *MockBlobNodeManagerAPIMockRecorder) DisksSnapshot() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DisksSnapshot", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).DisksSnapshot))
+}

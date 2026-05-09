@@ -17,6 +17,7 @@ package clustermgr
 import (
 	"context"
 
+	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/util"
 )
@@ -44,6 +45,17 @@ func (a DashboardScore) Max(others ...DashboardScore) DashboardScore {
 	return m
 }
 
+// VolumeBasic is a lightweight in-memory copy.
+type VolumeBasic struct {
+	CodeMode codemode.CodeMode
+	Score    int
+	Free     uint64
+	Used     uint64
+	Total    uint64
+	Status   proto.VolumeStatus
+	DiskIDs  []proto.DiskID // one DiskID per volume unit, for top-disk-load
+}
+
 type ClusterDashboard struct {
 	Score       DashboardScore `json:"score"`
 	GeneratedAt int64          `json:"generated_at"` // Unix nanoseconds
@@ -51,6 +63,91 @@ type ClusterDashboard struct {
 	Scope   ScopeStat   `json:"scope"`
 	Disk    DiskStat    `json:"disk"`
 	Service ServiceStat `json:"service"`
+
+	VolumeStat VolumeStat `json:"volume_stat"`
+}
+
+// VolumeStatEntry holds aggregated capacity metrics for one bucket.
+type VolumeStatEntry struct {
+	Count      int   `json:"count"`
+	FreeBytes  int64 `json:"free_bytes"`
+	UsedBytes  int64 `json:"used_bytes"`
+	TotalBytes int64 `json:"total_bytes"`
+}
+
+// VolumeScoreStat aggregates volumes by CodeMode → HealthScore → entry.
+// key1: CodeMode name (e.g. "EC6P10L2"); key2: health_score integer value.
+type VolumeScoreStat map[string]map[int]VolumeStatEntry
+
+// VolumeFreeStat aggregates volumes by CodeMode → free-ratio bucket label → entry.
+// key1: CodeMode name; key2: one of "10","20","30","40","50","60","70","80","90","99"
+// where the label is the upper-bound percentage of free/(free+used).
+type VolumeFreeStat map[string]map[string]VolumeStatEntry
+
+// VolumeStatusStat is a fast status count across all volumes.
+type VolumeStatusStat struct {
+	ActiveTotal     int `json:"active_total"`
+	ActiveHealthy   int `json:"active_healthy"`
+	ActiveUnhealthy int `json:"active_unhealthy"`
+	IdleTotal       int `json:"idle_total"`
+	OtherTotal      int `json:"other_total"`
+}
+
+// DiskLoadEntry holds one disk's load (active volume unit count).
+type DiskLoadEntry struct {
+	DiskID proto.DiskID `json:"disk_id"`
+	Load   int          `json:"load"`
+}
+
+// TopDiskLoad ranks disks by active-volume-unit count for one CodeMode.
+// CodeMode == "" represents the global (all codemodes) summary.
+type TopDiskLoad struct {
+	CodeMode string          `json:"code_mode"`
+	Total    int             `json:"total"`
+	TopN     []DiskLoadEntry `json:"top_n"`
+}
+
+// VolumeStat is the volume health snapshot included in ClusterDashboard.
+type VolumeStat struct {
+	Score              DashboardScore   `json:"score"`
+	Status             VolumeStatusStat `json:"status"`
+	ByScore            VolumeScoreStat  `json:"by_score"`
+	ByFree             VolumeFreeStat   `json:"by_free"`
+	AllocatableByScore VolumeScoreStat  `json:"allocatable_by_score"`
+	AllocatableByFree  VolumeFreeStat   `json:"allocatable_by_free"`
+	TopDiskLoad        []TopDiskLoad    `json:"top_disk_load"`
+}
+
+// CalcScore derives VolumeStat.Score from the maximum disk load observed in
+// TopDiskLoad relative to diskLoadThreshold (AllocatableDiskLoadThreshold).
+//
+//	OK:      threshold ≤ 0, or no disks recorded, or maxLoad ≤ threshold
+//	Warning: maxLoad > threshold
+//	Major:   maxLoad > 2 × threshold
+func (v *VolumeStat) CalcScore(diskLoadThreshold int) {
+	if v.Status.ActiveTotal == 0 || v.Status.IdleTotal == 0 {
+		v.Score = DashboardScoreCritical
+		return
+	}
+
+	if diskLoadThreshold <= 0 || len(v.TopDiskLoad) == 0 {
+		v.Score = DashboardScoreOK
+		return
+	}
+	maxLoad := 0
+	for _, tl := range v.TopDiskLoad {
+		if len(tl.TopN) > 0 && tl.TopN[0].Load > maxLoad {
+			maxLoad = tl.TopN[0].Load
+		}
+	}
+	switch {
+	case maxLoad > diskLoadThreshold*2:
+		v.Score = DashboardScoreMajor
+	case maxLoad > diskLoadThreshold:
+		v.Score = DashboardScoreWarning
+	default:
+		v.Score = DashboardScoreOK
+	}
 }
 
 // DiskStat holds disk metrics grouped by status key × IDC.
