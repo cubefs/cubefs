@@ -44,8 +44,9 @@ var (
 
 // BalanceMgrConfig balance task manager config
 type BalanceMgrConfig struct {
-	MaxDiskFreeChunkCnt int64 `json:"max_disk_free_chunk_cnt"`
-	MinDiskFreeChunkCnt int64 `json:"min_disk_free_chunk_cnt"`
+	MaxDiskFreeChunkCnt int64   `json:"max_disk_free_chunk_cnt"`
+	MinDiskFreeChunkCnt int64   `json:"min_disk_free_chunk_cnt"`
+	DiskUsageThreshold  float64 `json:"disk_usage_threshold"` // 0 means disabled, e.g. 0.9
 	MigrateConfig
 }
 
@@ -123,22 +124,18 @@ func (mgr *BalanceMgr) collectionTask() (err error) {
 
 	balanceDiskCnt := 0
 	for _, disk := range disks {
-		err = mgr.genOneBalanceTask(ctx, disk)
-		if err != nil {
+		if err = mgr.genOneBalanceTask(ctx, disk); err != nil {
 			continue
 		}
-
 		balanceDiskCnt++
 		if balanceDiskCnt >= needBalanceDiskCnt {
 			break
 		}
 	}
-	// if balanceDiskCnt==0, means there is no balance volume unit on disk and need to do collect task later
 	if balanceDiskCnt == 0 {
 		span.Infof("select disks has no balance volume unit on disk: len[%d]", len(disks))
 		return ErrNoBalanceVunit
 	}
-
 	return nil
 }
 
@@ -154,14 +151,13 @@ func (mgr *BalanceMgr) selectDisks(maxFreeChunkCnt, minFreeChunkCnt int64) []*cl
 
 	var selected []*client.DiskInfoSimple
 	for _, disk := range allDisks {
-		if !disk.IsHealth() {
+		if !disk.IsHealth() || mgr.IMigrator.IsMigratingDisk(disk.DiskID) {
 			continue
 		}
-		if ok := mgr.IMigrator.IsMigratingDisk(disk.DiskID); ok {
-			continue
-		}
-		if disk.FreeChunkCnt < minFreeChunkCnt {
+		if disk.FreeChunkCnt < minFreeChunkCnt ||
+			(mgr.cfg.DiskUsageThreshold > 0 && disk.UsageRatio() >= mgr.cfg.DiskUsageThreshold) {
 			selected = append(selected, disk)
+			continue
 		}
 	}
 	return selected
@@ -170,7 +166,7 @@ func (mgr *BalanceMgr) selectDisks(maxFreeChunkCnt, minFreeChunkCnt int64) []*cl
 func (mgr *BalanceMgr) genOneBalanceTask(ctx context.Context, diskInfo *client.DiskInfoSimple) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
-	vuid, err := mgr.selectBalanceVunit(ctx, diskInfo.DiskID)
+	vuid, err := mgr.selectBalanceVunit(ctx, diskInfo)
 	if err != nil {
 		span.Errorf("generate task source failed: disk_id[%d], err[%+v]", diskInfo.DiskID, err)
 		return
@@ -189,15 +185,19 @@ func (mgr *BalanceMgr) genOneBalanceTask(ctx context.Context, diskInfo *client.D
 	return
 }
 
-func (mgr *BalanceMgr) selectBalanceVunit(ctx context.Context, diskID proto.DiskID) (vuid proto.Vuid, err error) {
+func (mgr *BalanceMgr) selectBalanceVunit(ctx context.Context, diskInfo *client.DiskInfoSimple) (vuid proto.Vuid, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
-	vunits, err := mgr.clusterMgrCli.ListDiskVolumeUnits(ctx, diskID)
+	vunits, err := mgr.clusterMgrCli.ListDiskVolumeUnits(ctx, diskInfo.DiskID)
 	if err != nil {
 		return
 	}
 
+	highUsage := mgr.cfg.DiskUsageThreshold > 0 && diskInfo.UsageRatio() >= mgr.cfg.DiskUsageThreshold
 	sort.Slice(vunits, func(i, j int) bool {
+		if highUsage {
+			return vunits[i].Used > vunits[j].Used
+		}
 		return vunits[i].Used < vunits[j].Used
 	})
 
