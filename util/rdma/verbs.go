@@ -377,7 +377,13 @@ func getRequest(listenID *C.struct_rdma_cm_id) (*C.struct_rdma_cm_id, []byte, er
 func acceptConn(connID *C.struct_rdma_cm_id, privData []byte) error {
 	var param C.struct_rdma_conn_param
 	if len(privData) > 0 {
-		param.private_data = unsafe.Pointer(&privData[0])
+		// Copy to C heap: rdma_accept embeds private_data in the CM REJ/REP
+		// message before returning, so we may free immediately after the call.
+		// Passing &privData[0] directly violates cgo's "Go pointer with
+		// unpinned Go pointer" rule when &param is also a Go pointer.
+		cPriv := C.CBytes(privData)
+		defer C.free(cPriv)
+		param.private_data = cPriv
 		param.private_data_len = C.uint8_t(len(privData))
 	}
 	param.responder_resources = 1
@@ -396,7 +402,11 @@ func acceptConn(connID *C.struct_rdma_cm_id, privData []byte) error {
 func connectTo(id *C.struct_rdma_cm_id, privData []byte) ([]byte, error) {
 	var param C.struct_rdma_conn_param
 	if len(privData) > 0 {
-		param.private_data = unsafe.Pointer(&privData[0])
+		// Same rationale as acceptConn: copy to C heap to avoid a Go pointer
+		// embedded in &param (cgo "unpinned Go pointer" panic).
+		cPriv := C.CBytes(privData)
+		defer C.free(cPriv)
+		param.private_data = cPriv
 		param.private_data_len = C.uint8_t(len(privData))
 	}
 	param.responder_resources = 1
