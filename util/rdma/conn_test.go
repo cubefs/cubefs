@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
 	"testing"
 	"time"
 
@@ -202,9 +203,19 @@ func BenchmarkWritePacket4MB(b *testing.B) {
 	b.Skip("benchmark requires hardware RoCEv2 or rxe; run manually on Linux")
 }
 
-// getLoopbackIP returns the rxe-capable loopback address (usually "127.0.0.1").
+// getLoopbackIP returns the IP that the test's listen / dial pair should
+// use. It honours the CUBEFS_RDMA_TEST_IP environment variable so the
+// caller can target a non-loopback interface — necessary on cloud VMs
+// where rxe refuses to bind to lo and binds instead to a dummy /
+// non-loopback netdev whose IP differs from 127.0.0.1.
+//
+// Default: first IPv4 address on lo (typically 127.0.0.1). Override:
+//   export CUBEFS_RDMA_TEST_IP=10.99.99.1   # the rxe-bound netdev's IP
 func getLoopbackIP(t *testing.T) string {
 	t.Helper()
+	if override := os.Getenv("CUBEFS_RDMA_TEST_IP"); override != "" {
+		return override
+	}
 	addrs, err := net.InterfaceByName("lo")
 	if err != nil {
 		t.Skip("no lo interface found, skipping RDMA loopback test")
