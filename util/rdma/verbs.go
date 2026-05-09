@@ -265,9 +265,11 @@ func pollCQ(cq *C.struct_ibv_cq) ([]uint64, error) {
 // ---- rdma_cm helpers ----
 
 func createEventChannel() (*C.struct_rdma_event_channel, error) {
-	ch := C.rdma_create_event_channel()
+	ch, err := C.rdma_create_event_channel()
 	if ch == nil {
-		return nil, fmt.Errorf("rdma: rdma_create_event_channel failed")
+		// errno hints: ENOENT/ENODEV → rdma_ucm not loaded or /dev/infiniband/rdma_cm missing;
+		// EACCES → device exists but permission denied (container device passthrough?).
+		return nil, fmt.Errorf("rdma: rdma_create_event_channel failed: %w (check /dev/infiniband/rdma_cm and rdma_ucm module)", err)
 	}
 	return ch, nil
 }
