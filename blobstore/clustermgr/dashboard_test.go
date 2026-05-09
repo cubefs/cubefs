@@ -15,6 +15,7 @@
 package clustermgr
 
 import (
+	"context"
 	"math"
 	"sync"
 	"testing"
@@ -447,9 +448,9 @@ func TestDashboardDisk_EmptyOnFreshService(t *testing.T) {
 	require.Equal(t, clustermgr.DashboardScoreOK, snap.dashboard.Disk.Score)
 	// No service nodes registered → PROXY/WORKER/BLOBNODE all absent → Service.Score is Major.
 	require.Equal(t, clustermgr.DashboardScoreMajor, snap.dashboard.Service.Score)
-	// No volumes at all → ActiveTotal==0 && IdleTotal==0 → VolumeStat.Score is Critical.
-	require.Equal(t, clustermgr.DashboardScoreCritical, snap.dashboard.VolumeStat.Score)
-	// Overall score is dominated by VolumeStat (Critical > Major).
+	// No volumes at all → ActiveTotal==0 && IdleTotal==0 → Volume.Score is Critical.
+	require.Equal(t, clustermgr.DashboardScoreCritical, snap.dashboard.Volume.Score)
+	// Overall score is dominated by Volume (Critical > Major).
 	require.Equal(t, clustermgr.DashboardScoreCritical, snap.dashboard.Score)
 }
 
@@ -836,4 +837,149 @@ func TestBuildDataSafety_CapAt(t *testing.T) {
 	stat := buildVolumeSafety(volMap(vols), unsafe)
 	require.Equal(t, n, stat.AtRiskVolumes)
 	require.Len(t, stat.UnsafeDetails, maxUnsafeDetails)
+}
+
+// stubBlobnode implements dashboardBlobnode with fixed test data.
+type stubBlobnode struct {
+	nodes       []clustermgr.BlobNodeInfo
+	allDisks    []clustermgr.BlobNodeDiskInfo
+	expiredDisk []clustermgr.BlobNodeDiskInfo
+}
+
+func (s *stubBlobnode) ListNodes(_ context.Context, _ proto.NodeStatus) []clustermgr.BlobNodeInfo {
+	return s.nodes
+}
+
+func (s *stubBlobnode) DisksSnapshot() ([]clustermgr.BlobNodeDiskInfo, []clustermgr.BlobNodeDiskInfo) {
+	return s.allDisks, s.expiredDisk
+}
+
+// newSimulateDashboard builds a dashboardMgr backed by a real service
+// (for ServiceMgr / VolumeMgr access) but with a fixed blobnode stub,
+// a pre-stored snapshot and the given pre-populated volumes.
+func newSimulateDashboard(
+	t *testing.T,
+	snapshotScore clustermgr.DashboardScore,
+	bn *stubBlobnode,
+	vols []clustermgr.VolumeBasic,
+) (*dashboardMgr, func()) {
+	svc, cleanup := initTestService(t)
+	d := svc.dashboardMgr
+	d.blobnode = bn
+	d.volumes = volMap(vols)
+	d.snapshot.Store(&dashboardSnapshot{
+		dashboard: clustermgr.ClusterDashboard{Score: snapshotScore},
+	})
+	return d, cleanup
+}
+
+// simulateBlobnode returns a stubBlobnode with one node at the given host and
+// one Normal disk per diskID, all on that node.
+func simulateBlobnode(nodeID proto.NodeID, host string, diskIDs ...proto.DiskID) *stubBlobnode {
+	disks := make([]clustermgr.BlobNodeDiskInfo, len(diskIDs))
+	for i, id := range diskIDs {
+		disks[i] = clustermgr.BlobNodeDiskInfo{
+			DiskInfo:          clustermgr.DiskInfo{NodeID: nodeID, Status: proto.DiskStatusNormal},
+			DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{DiskID: id},
+		}
+	}
+	return &stubBlobnode{
+		nodes: []clustermgr.BlobNodeInfo{
+			{NodeInfo: clustermgr.NodeInfo{NodeID: nodeID, Host: host}},
+		},
+		allDisks: disks,
+	}
+}
+
+// TestSimulate_NoMatch: IP not present in allNodes or services →
+// original snapshot score is returned unchanged.
+func TestSimulate_NoMatch(t *testing.T) {
+	bn := simulateBlobnode(1, "http://10.0.0.1:9998", 101)
+	d, cleanup := newSimulateDashboard(t, clustermgr.DashboardScoreWarning, bn, nil)
+	defer cleanup()
+
+	result := d.Simulate([]string{"10.0.0.99"})
+	require.Equal(t, clustermgr.DashboardScoreWarning, result.Score)
+}
+
+// TestSimulate_BlobNodeMatch_Degraded: shutdown node's Normal disk becomes
+// unsafe; one volume unit is degraded (0 < unsafe ≤ M/2 → Notice).
+func TestSimulate_BlobNodeMatch_Degraded(t *testing.T) {
+	const (
+		nodeID = proto.NodeID(1)
+		diskID = proto.DiskID(101)
+	)
+	bn := simulateBlobnode(nodeID, "http://10.0.0.1:9998", diskID)
+
+	// EC6P6 M=6: diskID is 1 of 12 units → unsafeCount=1 ≤ 3 → degraded.
+	vols := []clustermgr.VolumeBasic{
+		{
+			CodeMode: codemode.EC6P6, Status: proto.VolumeStatusActive,
+			DiskIDs: []proto.DiskID{diskID, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210},
+		},
+		{
+			CodeMode: codemode.EC6P6, Status: proto.VolumeStatusIdle,
+			DiskIDs: []proto.DiskID{300, 301, 302, 303, 304, 305, 306, 307, 308, 309, 310, 311},
+		},
+	}
+	d, cleanup := newSimulateDashboard(t, clustermgr.DashboardScoreOK, bn, vols)
+	defer cleanup()
+
+	result := d.Simulate([]string{"10.0.0.1"})
+
+	require.Equal(t, 1, result.VolumeSafety.DegradedVolumes)
+	require.Equal(t, 0, result.VolumeSafety.AtRiskVolumes)
+	require.Equal(t, 0, result.VolumeSafety.DataLossVolumes)
+	require.GreaterOrEqual(t, int(result.VolumeSafety.Score), int(clustermgr.DashboardScoreNotice))
+	require.GreaterOrEqual(t, int(result.Score), int(clustermgr.DashboardScoreNotice))
+}
+
+// TestSimulate_BlobNodeMatch_AtRisk: M-1 disks on the shutdown node →
+// volume becomes at_risk (Major).
+func TestSimulate_BlobNodeMatch_AtRisk(t *testing.T) {
+	const nodeID = proto.NodeID(2)
+	// EC6P6 M=6, M-1=5: 5 disks on the shutdown node.
+	unsafeIDs := []proto.DiskID{1, 2, 3, 4, 5}
+	safeIDs := []proto.DiskID{10, 11, 12, 13, 14, 15, 16, 17, 18, 19}
+
+	bn := simulateBlobnode(nodeID, "http://10.0.0.2:9998", unsafeIDs...)
+
+	volDiskIDs := append(append([]proto.DiskID{}, unsafeIDs...), safeIDs[:7]...)
+	vols := []clustermgr.VolumeBasic{
+		{CodeMode: codemode.EC6P6, Status: proto.VolumeStatusActive, DiskIDs: volDiskIDs},
+		{CodeMode: codemode.EC6P6, Status: proto.VolumeStatusIdle, DiskIDs: safeIDs},
+	}
+	d, cleanup := newSimulateDashboard(t, clustermgr.DashboardScoreOK, bn, vols)
+	defer cleanup()
+
+	result := d.Simulate([]string{"10.0.0.2"})
+
+	require.Equal(t, 1, result.VolumeSafety.AtRiskVolumes)
+	require.Equal(t, clustermgr.DashboardScoreMajor, result.VolumeSafety.Score)
+	require.Len(t, result.VolumeSafety.UnsafeDetails, 1)
+	require.Equal(t, "at_risk", result.VolumeSafety.UnsafeDetails[0].Level)
+	require.Equal(t, 5, result.VolumeSafety.UnsafeDetails[0].UnsafeUnits)
+}
+
+// TestSimulate_NoNodeMatch_SnapshotUnchanged: service IP matching requires
+// ServiceMgr to have registered nodes. Since ServiceMgr is a concrete type
+// backed by an empty DB in tests, ListServiceInfo returns nothing and the
+// snapshot is returned as-is when no blob node matches either.
+func TestSimulate_NoNodeMatch_SnapshotUnchanged(t *testing.T) {
+	bn := &stubBlobnode{} // no blob nodes
+	d, cleanup := newSimulateDashboard(t, clustermgr.DashboardScoreOK, bn, nil)
+	defer cleanup()
+
+	// Pre-store a recognisable snapshot.
+	preService := buildService([]clustermgr.ServiceNode{
+		svcNode(proto.ServiceNameProxy, "idc1", "http://10.0.1.10:9100", time.Now().Add(time.Minute).Unix()),
+		svcNode(proto.ServiceNameProxy, "idc1", "http://10.0.1.20:9100", time.Now().Add(time.Minute).Unix()),
+	}, nil, noHost)
+	d.snapshot.Store(&dashboardSnapshot{
+		dashboard: clustermgr.ClusterDashboard{Score: preService.Score, Service: preService},
+	})
+
+	// 10.0.1.20 is in the snapshot but NOT in ServiceMgr → no change.
+	result := d.Simulate([]string{"10.0.1.20"})
+	require.Equal(t, preService.Score, result.Service.Score)
 }

@@ -208,6 +208,7 @@ func NewHandler(service *Service) *rpc.Router {
 
 	rpc.POST("/cluster/set", service.ClusterSetReadonly, rpc.OptArgsQuery())
 	rpc.GET("/cluster/dashboard", service.Dashboard, rpc.OptArgsQuery())
+	rpc.POST("/cluster/simulate", service.Simulate, rpc.OptArgsBody())
 
 	//==================kv==========================
 	rpc.RegisterArgsParser(&clustermgr.ListKvOpts{}, "json")

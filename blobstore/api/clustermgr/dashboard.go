@@ -27,6 +27,10 @@ type DashboardArgs struct {
 	Force bool `json:"force,omitempty"`
 }
 
+type SimulateAgrs struct {
+	Nodes []string `json:"nodes"`
+}
+
 type DashboardScore int
 
 const (
@@ -64,7 +68,7 @@ type ClusterDashboard struct {
 	Disk    DiskStat    `json:"disk"`
 	Service ServiceStat `json:"service"`
 
-	VolumeStat   VolumeStat       `json:"volume"`
+	Volume       VolumeStat       `json:"volume"`
 	VolumeSafety VolumeSafetyStat `json:"volume_safety"`
 }
 
@@ -107,6 +111,7 @@ type VolumeFreeStat map[string]map[string]VolumeStatEntry
 
 // VolumeStatusStat is a fast status count across all volumes.
 type VolumeStatusStat struct {
+	Total           int `json:"total"`
 	ActiveTotal     int `json:"active_total"`
 	ActiveHealthy   int `json:"active_healthy"`
 	ActiveUnhealthy int `json:"active_unhealthy"`
