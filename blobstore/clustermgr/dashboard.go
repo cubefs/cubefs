@@ -18,6 +18,8 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"net"
+	"net/url"
 	"sort"
 	"strconv"
 	"sync"
@@ -26,6 +28,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
+	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -62,17 +65,46 @@ func (s *Service) Dashboard(c *rpc.Context) {
 	c.RespondJSON(snap.dashboard)
 }
 
+func (s *Service) Simulate(c *rpc.Context) {
+	ctx := c.Request.Context()
+	span := trace.SpanFromContextSafe(ctx)
+
+	args := new(clustermgr.SimulateAgrs)
+	if err := c.ParseArgs(args); err != nil {
+		c.RespondError(err)
+		return
+	}
+
+	span.Infof("accept simulate request, nodes=%v", args.Nodes)
+	for _, node := range args.Nodes {
+		if net.ParseIP(node) == nil {
+			c.RespondError(errcode.ErrIllegalArguments)
+			return
+		}
+	}
+
+	dashboard := s.dashboardMgr.Simulate(args.Nodes)
+	c.RespondJSON(dashboard)
+}
+
 type dashboardSnapshot struct {
 	dashboard clustermgr.ClusterDashboard
 }
 
+type dashboardBlobnode interface {
+	ListNodes(ctx context.Context, status proto.NodeStatus) []clustermgr.BlobNodeInfo
+	DisksSnapshot() ([]clustermgr.BlobNodeDiskInfo, []clustermgr.BlobNodeDiskInfo)
+}
+
 type dashboardMgr struct {
 	service  *Service
+	blobnode dashboardBlobnode
 	snapshot atomic.Value // stores *dashboardSnapshot
 
 	// volumes is a persistent cache of VolumeBasic keyed by Vid.
 	// RangeUpdateVolume updates entries in-place on each fresh()
 	volumes map[proto.Vid]*clustermgr.VolumeBasic
+	volMu   sync.RWMutex
 
 	freshCh chan struct{} // buffered(1); loop listens for force-fresh signals
 
@@ -83,9 +115,10 @@ type dashboardMgr struct {
 
 func newDashboardMgr(service *Service) *dashboardMgr {
 	d := &dashboardMgr{
-		service: service,
-		volumes: make(map[proto.Vid]*clustermgr.VolumeBasic),
-		freshCh: make(chan struct{}, 1),
+		service:  service,
+		blobnode: service.BlobNodeMgr,
+		volumes:  make(map[proto.Vid]*clustermgr.VolumeBasic),
+		freshCh:  make(chan struct{}, 1),
 	}
 	d.snapshot.Store(&dashboardSnapshot{})
 	return d
@@ -119,6 +152,79 @@ func (d *dashboardMgr) GetSnapshot() *dashboardSnapshot {
 	return d.snapshot.Load().(*dashboardSnapshot)
 }
 
+func (d *dashboardMgr) Simulate(nodes []string) clustermgr.ClusterDashboard {
+	dashboard := d.GetSnapshot().dashboard
+	dashboard.GeneratedAt = time.Now().UnixNano()
+
+	shutdownIPs := make(map[string]struct{}, len(nodes))
+	for _, n := range nodes {
+		shutdownIPs[n] = struct{}{}
+	}
+
+	allNodes := d.blobnode.ListNodes(context.Background(), proto.NodeStatusInvalid)
+	nodeHost := make(map[proto.NodeID]string, len(allNodes))
+	shutdownNodeIDs := make(map[proto.NodeID]struct{})
+	for _, n := range allNodes {
+		nodeHost[n.NodeID] = n.Host
+		if _, hit := shutdownIPs[hostIP(n.Host)]; hit {
+			shutdownNodeIDs[n.NodeID] = struct{}{}
+		}
+	}
+
+	allDisks, expiredDisks := d.blobnode.DisksSnapshot()
+	for _, di := range allDisks {
+		if _, hit := shutdownNodeIDs[di.NodeID]; hit {
+			expiredDisks = append(expiredDisks, di)
+		}
+	}
+
+	services, _ := d.service.ServiceMgr.ListServiceInfo()
+	serviceChanged := false
+	for idx, node := range services.Nodes {
+		if _, hit := shutdownIPs[hostIP(node.Host)]; hit {
+			serviceChanged = true
+			node.ExpireAt = 0
+			services.Nodes[idx] = node
+		}
+	}
+
+	if !serviceChanged && len(shutdownNodeIDs) == 0 {
+		return dashboard
+	}
+
+	service := buildService(services.Nodes, expiredDisks, func(nodeID proto.NodeID) string {
+		return nodeHost[nodeID]
+	})
+	dashboard.Service = service
+	dashboard.Score = dashboard.Score.Max(service.Score)
+	if len(shutdownNodeIDs) == 0 {
+		return dashboard
+	}
+
+	unsafeDiskSet := make(map[proto.DiskID]struct{}, len(allDisks))
+	for _, di := range allDisks {
+		if di.Status != proto.DiskStatusNormal {
+			unsafeDiskSet[di.DiskID] = struct{}{}
+		}
+	}
+	for _, di := range expiredDisks {
+		unsafeDiskSet[di.DiskID] = struct{}{}
+	}
+
+	d.volMu.RLock()
+	volume := buildVolume(d.volumes,
+		d.service.VolumeMgr.AllocatableSize,
+		d.service.VolumeMgr.RetainThreshold,
+		d.service.VolumeMgr.AllocatableDiskLoadThreshold)
+	safety := buildVolumeSafety(d.volumes, unsafeDiskSet)
+	d.volMu.RUnlock()
+
+	dashboard.Volume = volume
+	dashboard.VolumeSafety = safety
+	dashboard.Score = dashboard.Score.Max(volume.Score, safety.Score)
+	return dashboard
+}
+
 func (d *dashboardMgr) loopFresh() {
 	defaulter.LessOrEqual(&d.service.DashboardFreshIntervalS, 60)
 
@@ -149,9 +255,9 @@ func (d *dashboardMgr) fresh() {
 	now := time.Now()
 
 	scope := buildScope(d.service.ScopeMgr.Stat())
-	svcInfo, _ := d.service.ServiceMgr.ListServiceInfo()
-	allDisks, expiredDisks := d.service.BlobNodeMgr.DisksSnapshot()
-	allNodes := d.service.BlobNodeMgr.ListNodes(context.Background(), 0)
+	services, _ := d.service.ServiceMgr.ListServiceInfo()
+	allDisks, expiredDisks := d.blobnode.DisksSnapshot()
+	allNodes := d.blobnode.ListNodes(context.Background(), proto.NodeStatusInvalid)
 	droppedNodes := make(map[proto.NodeID]struct{})
 	nodeHost := make(map[proto.NodeID]string, len(allNodes))
 	for _, n := range allNodes {
@@ -161,7 +267,7 @@ func (d *dashboardMgr) fresh() {
 		}
 	}
 	disk := buildDisk(allDisks, droppedNodes)
-	service := buildService(svcInfo.Nodes, expiredDisks, func(nodeID proto.NodeID) string {
+	service := buildService(services.Nodes, expiredDisks, func(nodeID proto.NodeID) string {
 		return nodeHost[nodeID]
 	})
 
@@ -175,12 +281,14 @@ func (d *dashboardMgr) fresh() {
 		unsafeDiskSet[di.DiskID] = struct{}{}
 	}
 
+	d.volMu.Lock()
 	d.service.VolumeMgr.RangeUpdateVolume(context.Background(), d.volumes)
 	volume := buildVolume(d.volumes,
 		d.service.VolumeMgr.AllocatableSize,
 		d.service.VolumeMgr.RetainThreshold,
 		d.service.VolumeMgr.AllocatableDiskLoadThreshold)
 	safety := buildVolumeSafety(d.volumes, unsafeDiskSet)
+	d.volMu.Unlock()
 
 	score := scope.Score.Max(disk.Score, service.Score, volume.Score, safety.Score)
 	d.snapshot.Store(&dashboardSnapshot{
@@ -189,7 +297,7 @@ func (d *dashboardMgr) fresh() {
 			Scope:        scope,
 			Disk:         disk,
 			Service:      service,
-			VolumeStat:   volume,
+			Volume:       volume,
 			VolumeSafety: safety,
 			GeneratedAt:  now.UnixNano(),
 		},
@@ -446,6 +554,7 @@ func buildVolume(volumes map[proto.Vid]*clustermgr.VolumeBasic,
 	}
 
 	status := clustermgr.VolumeStatusStat{
+		Total:           activeTotal + idleTotal + otherTotal,
 		ActiveTotal:     activeTotal,
 		ActiveHealthy:   activeHealthy,
 		ActiveUnhealthy: activeUnhealthy,
@@ -616,4 +725,16 @@ func buildVolumeSafety(
 		DataLossVolumes: dataLoss,
 		UnsafeDetails:   details,
 	}
+}
+
+func hostIP(host string) string {
+	u, err := url.Parse(host)
+	if err != nil {
+		return host
+	}
+	ip, _, err := net.SplitHostPort(u.Host)
+	if err != nil {
+		return u.Host
+	}
+	return ip
 }
