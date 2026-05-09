@@ -108,7 +108,7 @@ docker:
 	@docker/run_docker.sh --build
 	@docker/run_docker.sh --clean
 
-IMAGE_NAME?=hub.shiyak-office.com/storage/cubefs:v3.5.3.rc1
+IMAGE_NAME?=hub.shiyak-office.com/storage/cubefs:v3.5.3.rc6
 
 phony += image
 image:
