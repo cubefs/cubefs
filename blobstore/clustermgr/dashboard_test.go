@@ -447,8 +447,10 @@ func TestDashboardDisk_EmptyOnFreshService(t *testing.T) {
 	require.Equal(t, clustermgr.DashboardScoreOK, snap.dashboard.Disk.Score)
 	// No service nodes registered → PROXY/WORKER/BLOBNODE all absent → Service.Score is Major.
 	require.Equal(t, clustermgr.DashboardScoreMajor, snap.dashboard.Service.Score)
-	// Overall score is dominated by Service.
-	require.Equal(t, clustermgr.DashboardScoreMajor, snap.dashboard.Score)
+	// No volumes at all → ActiveTotal==0 && IdleTotal==0 → VolumeStat.Score is Critical.
+	require.Equal(t, clustermgr.DashboardScoreCritical, snap.dashboard.VolumeStat.Score)
+	// Overall score is dominated by VolumeStat (Critical > Major).
+	require.Equal(t, clustermgr.DashboardScoreCritical, snap.dashboard.Score)
 }
 
 func TestDashboardGetSnapshot_NeverNil(t *testing.T) {
@@ -565,8 +567,9 @@ func volMap(vols []clustermgr.VolumeBasic) map[proto.Vid]*clustermgr.VolumeBasic
 }
 
 func TestBuildVolume_Empty(t *testing.T) {
+	// No volumes → ActiveTotal==0 && IdleTotal==0 → Critical (cluster has no usable volumes).
 	v := buildVolume(volMap(nil), 1<<30, 0, 0)
-	require.Equal(t, clustermgr.DashboardScoreOK, v.Score)
+	require.Equal(t, clustermgr.DashboardScoreCritical, v.Score)
 	require.Equal(t, 0, v.Status.ActiveTotal)
 	require.Equal(t, 0, v.Status.IdleTotal)
 	require.Empty(t, v.ByScore)
@@ -596,19 +599,22 @@ func TestBuildVolume_ByScore(t *testing.T) {
 }
 
 func TestBuildVolume_ScoreOKWhenThresholdZero(t *testing.T) {
-	d1 := proto.DiskID(1)
+	d1, d2 := proto.DiskID(1), proto.DiskID(2)
 	vols := []clustermgr.VolumeBasic{
 		{CodeMode: codemode.EC6P6, Score: 0, Status: proto.VolumeStatusActive, DiskIDs: []proto.DiskID{d1}},
 		{CodeMode: codemode.EC6P6, Score: 0, Status: proto.VolumeStatusActive, DiskIDs: []proto.DiskID{d1}},
+		// Must have at least one Idle volume; otherwise CalcScore → Critical.
+		{CodeMode: codemode.EC6P6, Score: 0, Status: proto.VolumeStatusIdle, DiskIDs: []proto.DiskID{d2}},
 	}
-	// threshold=0 → CalcScore always returns OK regardless of load
+	// threshold=0 → CalcScore returns OK (cluster has both Active and Idle volumes).
 	v := buildVolume(volMap(vols), 1<<30, 0, 0)
 	require.Equal(t, clustermgr.DashboardScoreOK, v.Score)
 }
 
 func TestBuildVolume_ScoreDiskLoad(t *testing.T) {
-	d1 := proto.DiskID(1)
-	// disk1 hosts 5 active volume units (load=5)
+	d1, d2 := proto.DiskID(1), proto.DiskID(2)
+	// disk1 hosts 5 active volume units (load=5); disk2 hosts one idle unit.
+	// Both Active and Idle are required so CalcScore proceeds past the Critical guard.
 	vols := make([]clustermgr.VolumeBasic, 5)
 	for i := range vols {
 		vols[i] = clustermgr.VolumeBasic{
@@ -618,6 +624,13 @@ func TestBuildVolume_ScoreDiskLoad(t *testing.T) {
 			DiskIDs:  []proto.DiskID{d1},
 		}
 	}
+	vols = append(vols, clustermgr.VolumeBasic{
+		CodeMode: codemode.EC6P6,
+		Score:    0,
+		Status:   proto.VolumeStatusIdle,
+		DiskIDs:  []proto.DiskID{d2},
+	})
+
 	// threshold=10: load(5) ≤ 10 → OK
 	v := buildVolume(volMap(vols), 1<<30, 0, 10)
 	require.Equal(t, clustermgr.DashboardScoreOK, v.Score)
@@ -683,4 +696,144 @@ func TestBuildVolume_TopDiskLoad(t *testing.T) {
 	global := v.TopDiskLoad[len(v.TopDiskLoad)-1]
 	require.Equal(t, "", global.CodeMode)
 	require.Equal(t, 3, global.Total)
+}
+
+// makeUnsafeSet returns a set from a list of DiskIDs.
+func makeUnsafeSet(ids ...proto.DiskID) map[proto.DiskID]struct{} {
+	s := make(map[proto.DiskID]struct{}, len(ids))
+	for _, id := range ids {
+		s[id] = struct{}{}
+	}
+	return s
+}
+
+func TestBuildDataSafety_AllSafe(t *testing.T) {
+	vols := []clustermgr.VolumeBasic{
+		{CodeMode: codemode.EC6P6, DiskIDs: []proto.DiskID{1, 2, 3}},
+		{CodeMode: codemode.EC6P6, DiskIDs: []proto.DiskID{4, 5, 6}},
+	}
+	stat := buildVolumeSafety(volMap(vols), nil)
+	require.Equal(t, clustermgr.DashboardScoreOK, stat.Score)
+	require.Equal(t, 2, stat.SafeVolumes)
+	require.Equal(t, 0, stat.DegradedVolumes)
+	require.Equal(t, 0, stat.AtRiskVolumes)
+	require.Equal(t, 0, stat.DataLossVolumes)
+	require.Empty(t, stat.UnsafeDetails)
+}
+
+// TestBuildDataSafety_Degraded_Notice: unsafe <= M/2 → degraded, Notice score.
+func TestBuildDataSafety_Degraded_Notice(t *testing.T) {
+	// EC6P6: M = 6; M/2 = 3; unsafe=2 ≤ 3 → degraded, Notice
+	vols := []clustermgr.VolumeBasic{
+		{CodeMode: codemode.EC6P6, DiskIDs: []proto.DiskID{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}},
+	}
+	// Make disks 1 and 2 unsafe (2 unsafe units, M/2 = 3)
+	stat := buildVolumeSafety(volMap(vols), makeUnsafeSet(1, 2))
+	require.Equal(t, clustermgr.DashboardScoreNotice, stat.Score)
+	require.Equal(t, 1, stat.DegradedVolumes)
+	require.Equal(t, 0, stat.AtRiskVolumes)
+	require.Equal(t, 0, stat.DataLossVolumes)
+	require.Empty(t, stat.UnsafeDetails)
+}
+
+// TestBuildDataSafety_Degraded_Warning: unsafe > M/2 but < M-1 → Warning score.
+func TestBuildDataSafety_Degraded_Warning(t *testing.T) {
+	// EC6P6: M = 6; M/2 = 3; unsafe=4 > 3 and < 5 (M-1) → Warning
+	vols := []clustermgr.VolumeBasic{
+		{CodeMode: codemode.EC6P6, DiskIDs: []proto.DiskID{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}},
+	}
+	stat := buildVolumeSafety(volMap(vols), makeUnsafeSet(1, 2, 3, 4))
+	require.Equal(t, clustermgr.DashboardScoreWarning, stat.Score)
+	require.Equal(t, 1, stat.DegradedVolumes)
+	require.Empty(t, stat.UnsafeDetails)
+}
+
+// TestBuildDataSafety_AtRisk: unsafe == M-1 → at_risk, Major score.
+func TestBuildDataSafety_AtRisk(t *testing.T) {
+	// EC6P6: M = 6; M-1 = 5
+	vols := []clustermgr.VolumeBasic{
+		{CodeMode: codemode.EC6P6, DiskIDs: []proto.DiskID{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}},
+	}
+	stat := buildVolumeSafety(volMap(vols), makeUnsafeSet(1, 2, 3, 4, 5))
+	require.Equal(t, clustermgr.DashboardScoreMajor, stat.Score)
+	require.Equal(t, 0, stat.DegradedVolumes)
+	require.Equal(t, 1, stat.AtRiskVolumes)
+	require.Equal(t, 0, stat.DataLossVolumes)
+	require.Len(t, stat.UnsafeDetails, 1)
+	require.Equal(t, "at_risk", stat.UnsafeDetails[0].Level)
+	require.Equal(t, 5, stat.UnsafeDetails[0].UnsafeUnits)
+}
+
+// TestBuildDataSafety_AtRisk_EqualM: unsafe == M is also at_risk (Major), not data_loss.
+func TestBuildDataSafety_AtRisk_EqualM(t *testing.T) {
+	// EC6P6: M = 6; unsafe=6 == M → at_risk (Major)
+	vols := []clustermgr.VolumeBasic{
+		{CodeMode: codemode.EC6P6, DiskIDs: []proto.DiskID{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}},
+	}
+	stat := buildVolumeSafety(volMap(vols), makeUnsafeSet(1, 2, 3, 4, 5, 6))
+	require.Equal(t, clustermgr.DashboardScoreMajor, stat.Score)
+	require.Equal(t, 1, stat.AtRiskVolumes)
+	require.Equal(t, 0, stat.DataLossVolumes)
+	require.Len(t, stat.UnsafeDetails, 1)
+	require.Equal(t, "at_risk", stat.UnsafeDetails[0].Level)
+	require.Equal(t, 6, stat.UnsafeDetails[0].UnsafeUnits)
+}
+
+// TestBuildDataSafety_DataLoss: unsafe > M → data_loss, Critical score.
+func TestBuildDataSafety_DataLoss(t *testing.T) {
+	// EC6P6: M = 6; unsafe=7 > M → data_loss (Critical)
+	vols := []clustermgr.VolumeBasic{
+		{CodeMode: codemode.EC6P6, DiskIDs: []proto.DiskID{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}},
+	}
+	stat := buildVolumeSafety(volMap(vols), makeUnsafeSet(1, 2, 3, 4, 5, 6, 7))
+	require.Equal(t, clustermgr.DashboardScoreCritical, stat.Score)
+	require.Equal(t, 1, stat.DataLossVolumes)
+	require.Len(t, stat.UnsafeDetails, 1)
+	require.Equal(t, "data_loss", stat.UnsafeDetails[0].Level)
+	require.Equal(t, 7, stat.UnsafeDetails[0].UnsafeUnits)
+}
+
+// TestBuildDataSafety_MixedLevels: worst score wins; details sorted.
+func TestBuildDataSafety_MixedLevels(t *testing.T) {
+	vols := []clustermgr.VolumeBasic{
+		{CodeMode: codemode.EC6P6, DiskIDs: []proto.DiskID{1, 2, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19}},
+		{CodeMode: codemode.EC6P6, DiskIDs: []proto.DiskID{20, 21, 22, 23, 24, 30, 31, 32, 33, 34, 35, 36}},
+		{CodeMode: codemode.EC6P6, DiskIDs: []proto.DiskID{40, 41, 42, 43, 44, 45, 50, 51, 52, 53, 54, 55}},
+		{CodeMode: codemode.EC6P6, DiskIDs: []proto.DiskID{60, 61, 62, 63, 64, 65, 66, 70, 71, 72, 73, 74}},
+	}
+	unsafe := makeUnsafeSet(
+		1, 2, // vol1: 2 unsafe → degraded
+		20, 21, 22, 23, 24, // vol2: 5 unsafe == M-1 → at_risk
+		40, 41, 42, 43, 44, 45, // vol3: 6 unsafe == M → at_risk
+		60, 61, 62, 63, 64, 65, 66, // vol4: 7 unsafe > M → data_loss
+	)
+	stat := buildVolumeSafety(volMap(vols), unsafe)
+	require.Equal(t, clustermgr.DashboardScoreCritical, stat.Score)
+	require.Equal(t, 1, stat.DegradedVolumes)
+	require.Equal(t, 2, stat.AtRiskVolumes)
+	require.Equal(t, 1, stat.DataLossVolumes)
+	// details: data_loss (7) before at_risk (6) before at_risk (5)
+	require.Len(t, stat.UnsafeDetails, 3)
+	require.Equal(t, "data_loss", stat.UnsafeDetails[0].Level)
+	require.Equal(t, 7, stat.UnsafeDetails[0].UnsafeUnits)
+	require.Equal(t, "at_risk", stat.UnsafeDetails[1].Level)
+	require.Equal(t, 6, stat.UnsafeDetails[1].UnsafeUnits)
+	require.Equal(t, "at_risk", stat.UnsafeDetails[2].Level)
+	require.Equal(t, 5, stat.UnsafeDetails[2].UnsafeUnits)
+}
+
+func TestBuildDataSafety_CapAt(t *testing.T) {
+	const n = 150
+	// Use a globally unsafe set for disks 1-5
+	unsafe := makeUnsafeSet(1, 2, 3, 4, 5)
+	vols := make([]clustermgr.VolumeBasic, n)
+	for i := range vols {
+		vols[i] = clustermgr.VolumeBasic{
+			CodeMode: codemode.EC6P6,
+			DiskIDs:  []proto.DiskID{1, 2, 3, 4, 5, proto.DiskID(100 + i)},
+		}
+	}
+	stat := buildVolumeSafety(volMap(vols), unsafe)
+	require.Equal(t, n, stat.AtRiskVolumes)
+	require.Len(t, stat.UnsafeDetails, maxUnsafeDetails)
 }

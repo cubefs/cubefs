@@ -64,7 +64,28 @@ type ClusterDashboard struct {
 	Disk    DiskStat    `json:"disk"`
 	Service ServiceStat `json:"service"`
 
-	VolumeStat VolumeStat `json:"volume_stat"`
+	VolumeStat   VolumeStat       `json:"volume"`
+	VolumeSafety VolumeSafetyStat `json:"volume_safety"`
+}
+
+// VolumeSafetyEntry records the safety level of one non-safe volume.
+type VolumeSafetyEntry struct {
+	Vid           proto.Vid         `json:"vid"`
+	CodeMode      codemode.CodeMode `json:"code_mode"`
+	Level         string            `json:"level"` // "degraded" | "at_risk" | "data_loss"
+	UnsafeUnits   int               `json:"unsafe_units"`
+	UnsafeDiskIDs []proto.DiskID    `json:"unsafe_disks"`
+}
+
+type VolumeSafetyStat struct {
+	Score           DashboardScore `json:"score"`
+	SafeVolumes     int            `json:"safe_volumes"`
+	DegradedVolumes int            `json:"degraded_volumes"`
+	AtRiskVolumes   int            `json:"at_risk_volumes"`
+	DataLossVolumes int            `json:"data_loss_volumes"`
+	// UnsafeDetails lists at_risk and data_loss volumes sorted by unsafe_units
+	// descending; capped at 100 entries.
+	UnsafeDetails []VolumeSafetyEntry `json:"unsafe_details"`
 }
 
 // VolumeStatEntry holds aggregated capacity metrics for one bucket.

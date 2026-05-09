@@ -164,21 +164,34 @@ func (d *dashboardMgr) fresh() {
 	service := buildService(svcInfo.Nodes, expiredDisks, func(nodeID proto.NodeID) string {
 		return nodeHost[nodeID]
 	})
+
+	unsafeDiskSet := make(map[proto.DiskID]struct{}, len(allDisks))
+	for _, di := range allDisks {
+		if di.Status != proto.DiskStatusNormal {
+			unsafeDiskSet[di.DiskID] = struct{}{}
+		}
+	}
+	for _, di := range expiredDisks {
+		unsafeDiskSet[di.DiskID] = struct{}{}
+	}
+
 	d.service.VolumeMgr.RangeUpdateVolume(context.Background(), d.volumes)
 	volume := buildVolume(d.volumes,
 		d.service.VolumeMgr.AllocatableSize,
 		d.service.VolumeMgr.RetainThreshold,
 		d.service.VolumeMgr.AllocatableDiskLoadThreshold)
+	safety := buildVolumeSafety(d.volumes, unsafeDiskSet)
 
-	score := scope.Score.Max(disk.Score, service.Score, volume.Score)
+	score := scope.Score.Max(disk.Score, service.Score, volume.Score, safety.Score)
 	d.snapshot.Store(&dashboardSnapshot{
 		dashboard: clustermgr.ClusterDashboard{
-			Score:       score,
-			Scope:       scope,
-			Disk:        disk,
-			Service:     service,
-			VolumeStat:  volume,
-			GeneratedAt: now.UnixNano(),
+			Score:        score,
+			Scope:        scope,
+			Disk:         disk,
+			Service:      service,
+			VolumeStat:   volume,
+			VolumeSafety: safety,
+			GeneratedAt:  now.UnixNano(),
 		},
 	})
 
@@ -509,4 +522,98 @@ func topKDiskLoad(loads map[proto.DiskID]int, k int) []clustermgr.DiskLoadEntry 
 		entries = entries[:k]
 	}
 	return entries
+}
+
+const maxUnsafeDetails = 100
+
+// buildVolumeSafety cross-references each volume's DiskIDs against unsafeDiskSet
+// to determine real-time data-safety levels
+//
+// Scoring per volume (M = CodeMode parity / fault-tolerance count):
+//
+//	unsafe == 0           → safe          (Score OK)
+//	0 < unsafe ≤ M/2      → degraded      (Score Notice)
+//	M/2 < unsafe < M-1    → degraded      (Score Warning)
+//	unsafe == M-1 or M    → at_risk       (Score Major)
+//	unsafe > M            → data_loss     (Score Critical)
+//
+// The overall score is the worst level observed across all volumes.
+func buildVolumeSafety(
+	volumes map[proto.Vid]*clustermgr.VolumeBasic,
+	unsafeDiskSet map[proto.DiskID]struct{},
+) clustermgr.VolumeSafetyStat {
+	var (
+		safe, degraded, atRisk, dataLoss int
+
+		details []clustermgr.VolumeSafetyEntry
+		score   clustermgr.DashboardScore
+	)
+
+	for vid, vp := range volumes {
+		v := vp
+		tolerance := v.CodeMode.Tactic().M
+		if tolerance <= 0 {
+			continue
+		}
+
+		var unsafeDiskIDs []proto.DiskID
+		for _, diskID := range v.DiskIDs {
+			if _, bad := unsafeDiskSet[diskID]; bad {
+				unsafeDiskIDs = append(unsafeDiskIDs, diskID)
+			}
+		}
+		unsafeCount := len(unsafeDiskIDs)
+		if unsafeCount == 0 {
+			safe++
+			continue
+		}
+
+		var level string
+		var volScore clustermgr.DashboardScore
+		switch {
+		case unsafeCount > tolerance:
+			level = "data_loss"
+			volScore = clustermgr.DashboardScoreCritical
+			dataLoss++
+		case unsafeCount >= tolerance-1:
+			level = "at_risk"
+			volScore = clustermgr.DashboardScoreMajor
+			atRisk++
+		case unsafeCount*2 > tolerance:
+			level = "degraded"
+			volScore = clustermgr.DashboardScoreWarning
+			degraded++
+		default:
+			level = "degraded"
+			volScore = clustermgr.DashboardScoreNotice
+			degraded++
+		}
+		score = score.Max(volScore)
+
+		if level == "at_risk" || level == "data_loss" {
+			details = append(details, clustermgr.VolumeSafetyEntry{
+				Vid:           vid,
+				CodeMode:      v.CodeMode,
+				UnsafeUnits:   unsafeCount,
+				Level:         level,
+				UnsafeDiskIDs: unsafeDiskIDs,
+			})
+		}
+	}
+
+	sort.Slice(details, func(i, j int) bool {
+		return details[i].UnsafeUnits > details[j].UnsafeUnits
+	})
+	if len(details) > maxUnsafeDetails {
+		details = details[:maxUnsafeDetails]
+	}
+
+	return clustermgr.VolumeSafetyStat{
+		Score:           score,
+		SafeVolumes:     safe,
+		DegradedVolumes: degraded,
+		AtRiskVolumes:   atRisk,
+		DataLossVolumes: dataLoss,
+		UnsafeDetails:   details,
+	}
 }
