@@ -353,8 +353,22 @@ func (cs *connState) handleReadSlot(ctx *DataNodeRDMACtx, p *repl.Packet, slotId
 
 	dataSlice := scratch[dataOff : dataOff+int(p.Size)]
 	store := partition.ExtentStore()
+	// isReadOp groups all read-style opcodes together for RDMA dispatch,
+	// but the storage layer behaves differently per opcode: repair reads
+	// bypass the file's hot cache, backup reads target a snapshot view,
+	// and stream reads are normal hot-path reads. Pass the flags
+	// faithfully so RDMA-served reads match TCP-served behaviour.
+	//
+	// TODO: OpExtentRepairRead's TCP path also gates on
+	// partition.disk.RequireReadExtentToken to throttle repair traffic;
+	// the RDMA path here bypasses that gate. Currently safe because
+	// repair traffic is initiated between datanodes and does NOT use
+	// RDMA in this revision (datanode/repl/packet.go OpExtentRepairRead
+	// senders go via TCP). If repair is migrated to RDMA in future,
+	// mirror the disk-token check here.
+	isRepairRead := p.Opcode == proto.OpExtentRepairRead
 	isBackup := p.Opcode == proto.OpBackupRead
-	crc, err := store.Read(p.ExtentID, p.ExtentOffset, int64(p.Size), dataSlice, false /* isRepairRead */, isBackup)
+	crc, err := store.Read(p.ExtentID, p.ExtentOffset, int64(p.Size), dataSlice, isRepairRead, isBackup)
 	if err != nil {
 		log.LogWarnf("rdma handleReadSlot: store.Read dp=%d ext=%d off=%d size=%d: %v",
 			p.PartitionID, p.ExtentID, p.ExtentOffset, p.Size, err)

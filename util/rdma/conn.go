@@ -144,7 +144,19 @@ type RDMAConn struct {
 	// drainer goroutine; Close flushes after the drainer exits.
 	cqEventsToAck uint32
 
-	closed int32 // atomic; 1 = closed
+	// faulted is set by markFault() when the drainer observes an
+	// unrecoverable transport error. It signals "logical close" — pool
+	// stops handing out slots, in-flight credit/recv waiters bail —
+	// WITHOUT freeing resources. Resource cleanup remains the
+	// responsibility of Close(), which sets `closed`.
+	//
+	// Two flags rather than one because if markFault() set `closed`
+	// directly, the subsequent Close() call from SlotPool would CAS-fail
+	// and skip the entire teardown path: drainer goroutine would never
+	// observe drainerStop, MRs would leak, and waitCQEvent would block
+	// forever on a dead QP.
+	faulted int32 // atomic; 1 = drainer detected fault
+	closed  int32 // atomic; 1 = Close() called and resources freed
 }
 
 // RDMAConnConfig is defined in config.go (no build tag) so the same type
@@ -757,17 +769,18 @@ func (c *RDMAConn) runDrainer() {
 	}
 }
 
-// markFault flips the connection into the closed state without freeing
+// markFault flips the connection into the faulted state without freeing
 // resources or stopping the drainer. Used by the drainer when it
 // observes an unrecoverable send-side completion error so callers
 // (SlotPool, in-flight WritePacket) stop using the conn promptly.
 //
-// Resource cleanup still happens via the regular Close path; markFault
-// just makes IsClosed() return true earlier so the pool's tryAcquire
-// guard skips this conn and existing goroutines parked on credit /
-// recvCond return ErrCreditClosed instead of waiting forever.
+// Crucially this sets the `faulted` flag, NOT `closed`. Close() owns
+// the `closed` CAS and the resource-cleanup path; if markFault stole
+// the closed CAS, Close would no-op and we would leak the drainer
+// goroutine + every pinned MR. IsClosed reports either flag so the
+// pool / waiters react identically to faults and explicit closes.
 func (c *RDMAConn) markFault() {
-	if !atomic.CompareAndSwapInt32(&c.closed, 0, 1) {
+	if !atomic.CompareAndSwapInt32(&c.faulted, 0, 1) {
 		return
 	}
 	if c.credit != nil {
@@ -919,17 +932,22 @@ func (c *RDMAConn) ReturnCredit(slotIdx int) error {
 	}
 	processed := c.credit.onProcessSlot()
 
-	// Encode processed count into the local credit-scratch buffer
-	// (8 bytes LE).
-	scratch := c.creditScratch.Bytes()
-	scratch[0] = byte(processed)
-	scratch[1] = byte(processed >> 8)
-	scratch[2] = byte(processed >> 16)
-	scratch[3] = byte(processed >> 24)
-	scratch[4] = byte(processed >> 32)
-	scratch[5] = byte(processed >> 40)
-	scratch[6] = byte(processed >> 48)
-	scratch[7] = byte(processed >> 56)
+	// Atomic 8-byte write into the pinned credit-scratch buffer.
+	// Multiple handleSlot goroutines can call ReturnCredit concurrently
+	// (P1 dispatches one goroutine per arriving slot), all targeting the
+	// same 8-byte cell. A naive byte-by-byte stamp races at the Go level
+	// (race detector flags it) and exposes the NIC to torn reads
+	// composed of bytes from two different processed counts.
+	// atomic.StoreUint64 collapses both: the value the NIC DMA-reads is
+	// always a complete uint64 snapshot. The peer's onPeerCreditUpdate
+	// is monotonic so out-of-order writes between goroutines do not
+	// regress its view — only the monotonicity of *each* snapshot
+	// matters, and that's what the atomic guarantees.
+	//
+	// creditScratch.VA is C.malloc'd, which on glibc is at least 16-byte
+	// aligned — atomic.StoreUint64 is safe on x86_64 / arm64.
+	creditCell := (*uint64)(unsafe.Pointer(uintptr(c.creditScratch.VA)))
+	atomic.StoreUint64(creditCell, processed)
 
 	signaled := c.creditAckMode == CreditAckSync
 	qp := getQPFromCMID(c.cmID)
@@ -945,10 +963,18 @@ func (c *RDMAConn) ReturnCredit(slotIdx int) error {
 // Close tears down the RDMA connection and frees all resources.
 // Idempotent. Safe to call concurrently with WritePacket / pollLoop;
 // any in-flight callers will exit via ErrCreditClosed.
+//
+// Close owns the `closed` CAS — the resource-cleanup path. markFault
+// sets a separate `faulted` flag so Close still runs end-to-end even
+// after the drainer has already noticed a fault.
 func (c *RDMAConn) Close() error {
 	if !atomic.CompareAndSwapInt32(&c.closed, 0, 1) {
 		return nil
 	}
+	// Also mark faulted so any code that races between the load of
+	// closed and faulted sees a consistent "not usable" state.
+	atomic.StoreInt32(&c.faulted, 1)
+
 	if c.credit != nil {
 		c.credit.closeCredits()
 	}
@@ -1003,8 +1029,12 @@ func (c *RDMAConn) Close() error {
 // RemoteAddr returns the peer's address string.
 func (c *RDMAConn) RemoteAddr() string { return c.remoteAddr }
 
-// IsClosed reports whether the connection has been closed.
-func (c *RDMAConn) IsClosed() bool { return atomic.LoadInt32(&c.closed) == 1 }
+// IsClosed reports whether the connection is no longer usable for new
+// requests. Returns true after either markFault (drainer-detected
+// fault) or Close (explicit teardown).
+func (c *RDMAConn) IsClosed() bool {
+	return atomic.LoadInt32(&c.closed)|atomic.LoadInt32(&c.faulted) != 0
+}
 
 // RecvSeq returns the last received doorbell seq for slot, used by callers
 // to persist state across pooled round-trips on the same connection.
