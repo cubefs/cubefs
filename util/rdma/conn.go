@@ -137,20 +137,6 @@ type RDMAConn struct {
 	recvMu   sync.Mutex
 	recvCond *sync.Cond
 
-	// sendMu serialises postSlotAndDoorbell. ibv_post_send is itself
-	// thread-safe but does NOT preserve caller order: under concurrent
-	// posts the QP send-queue admission order is whichever goroutine
-	// won its internal spinlock, not the order WritePacket was called
-	// in. Without this lock, two leader-side goroutines posting the
-	// same extent's append writes can flip into the QP in reversed
-	// order, and the receiver's doorbells fire out of sequence — the
-	// server's append-offset check (extent.go:530) then rejects them
-	// with ArgUnmatchErr. Locking around the (slot WR + doorbell WR)
-	// pair makes the post sequence atomic per conn, and combined with
-	// hash-routed AcquireSlotForKey it pins same-extent posts to the
-	// same lock.
-	sendMu sync.Mutex
-
 	numSlots   int
 	slotSize   int
 	remoteAddr string
@@ -649,11 +635,17 @@ func (c *RDMAConn) postSlotAndDoorbell(slotIdx int, payload []byte, seq uint32) 
 	lSlotAddr := c.sendScratch.VA + uint64(slotIdx*c.slotSize)
 	rSlotAddr := c.peerRecvBaseVA + uint64(slotIdx*c.slotSize)
 
-	// Hold sendMu across the (slot WR + doorbell WR) pair so concurrent
-	// callers can't interleave their posts on the same QP send queue.
-	// See sendMu's docstring on RDMAConn for why this matters.
-	c.sendMu.Lock()
-	defer c.sendMu.Unlock()
+	// NOTE: previously held c.sendMu around the (slot WR + doorbell WR)
+	// pair to keep the post sequence atomic. With the leader fan-out
+	// already serialised by repl_protocol.go (sync followerRDMASend
+	// inside OperatorAndForwardPktGoRoutine, single goroutine per
+	// replication conn) and the server side draining via a single
+	// per-conn worker, only one post call is in flight per QP at a
+	// time on either side, so the lock had no callers to exclude and
+	// was reverted after WC status=10/12 (REM_OP_ERR/REM_INV_REQ_ERR)
+	// errors appeared simultaneously across all peers — symptom of a
+	// hot-path interaction we couldn't isolate. The serialisation we
+	// need now lives one layer up.
 
 	// Slot payload: not signaled (no CQE). The doorbell that follows is
 	// signaled; ordered RC delivery means data lands in peer memory before
