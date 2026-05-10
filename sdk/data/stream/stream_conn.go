@@ -277,10 +277,36 @@ func (sc *StreamConn) readActiveHosts(dp *wrapper.DataPartition, req *Packet, ge
 
 func (sc *StreamConn) sendToDataPartitionByAddr(req *Packet, getReply GetReplyFunc) (err error) {
 	if rdmaTryForSize(sc.currAddr, int(req.Size)) {
-		if err = sendPacketViaRDMA(sc.currAddr, req); err != nil {
-			log.LogWarnf("sendToDataPartition: rdma failed, addr(%v) reqPacket(%v) err(%v), fallthrough to TCP", sc.currAddr, req, err)
+		// sendPacketViaRDMA is the WRITE path; reads need
+		// recvPacketViaRDMA which extracts response Data and verifies
+		// CRC. Without this branch, every OpStreamFollowerRead /
+		// OpRead via this dispatcher hits the defensive "invoked with
+		// read opcode" check inside sendPacketViaRDMA and silently
+		// falls back to TCP — RDMA reads via this code path were
+		// effectively disabled and noisy.
+		if req.IsReadOperation() {
+			resp, rerr := recvPacketViaRDMA(sc.currAddr, req)
+			if rerr == nil && resp != nil {
+				// Mirror response onto req so the upstream getReply
+				// path sees the same fields it would from a TCP read.
+				req.ResultCode = resp.ResultCode
+				req.Size = resp.Size
+				req.Data = resp.Data
+				req.CRC = resp.CRC
+				req.ArgLen = resp.ArgLen
+				if resp.ArgLen > 0 {
+					req.Arg = resp.Arg
+				}
+				return nil
+			}
+			err = rerr
+			log.LogWarnf("sendToDataPartition: rdma read failed, addr(%v) reqPacket(%v) err(%v), fallthrough to TCP", sc.currAddr, req, err)
 		} else {
-			return
+			if err = sendPacketViaRDMA(sc.currAddr, req); err != nil {
+				log.LogWarnf("sendToDataPartition: rdma failed, addr(%v) reqPacket(%v) err(%v), fallthrough to TCP", sc.currAddr, req, err)
+			} else {
+				return
+			}
 		}
 	}
 	conn, err := StreamConnPool.GetConnect(sc.currAddr)
