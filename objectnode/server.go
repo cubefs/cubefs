@@ -146,6 +146,20 @@ const (
 	configMaxDentryCacheNum       = "maxDentryCacheNum"
 	configMaxInodeAttrCacheNum    = "maxInodeAttrCacheNum"
 
+	// RDMA client config — process-global, applied once before any
+	// volume's ExtentClient is constructed. All keys default to
+	// disabled / spec-defaults if absent, so adding RDMA support is
+	// a no-op for existing TCP-only deployments.
+	configRDMAEnable           = "rdmaEnable"
+	configRDMAPortShift        = "rdmaPortShift"
+	configRDMANumSlots         = "rdmaNumSlots"
+	configRDMASlotSize         = "rdmaSlotSize"
+	configRDMAMaxConns         = "rdmaMaxConns"
+	configRDMAMinPayloadBytes  = "rdmaMinPayloadBytes"
+	configRDMABusySpinCount    = "rdmaBusySpinCount"
+	configRDMAYieldCount       = "rdmaYieldCount"
+	configRDMASleepThresholdUs = "rdmaSleepThresholdUs"
+
 	// enable block cache when reading data in cold volume
 	enableBcache = "enableBcache"
 	// define thread numbers for writing and reading ebs
@@ -381,6 +395,13 @@ func handleStart(s common.Server, cfg *config.Config) (err error) {
 	}
 	// parse config
 	if err = o.loadConfig(cfg); err != nil {
+		return
+	}
+	// Initialise the SDK-side RDMA pool BEFORE any volume's
+	// ExtentClient is created. Pool is process-global; init is a
+	// no-op when rdmaEnable=false in the config so existing TCP-only
+	// deployments are unaffected.
+	if err = initRDMAClientPool(cfg); err != nil {
 		return
 	}
 	// Get cluster info from master
