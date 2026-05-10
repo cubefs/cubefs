@@ -15,9 +15,18 @@ import (
 )
 
 const (
-	followerRDMATimeout    = 30 * time.Second
-	rdmaTransportSendQSize = 256
-	rdmaTransportRecvQSize = 256
+	followerRDMATimeout = 30 * time.Second
+	// rdmaTransportSendQSize buffers bursts of dispatches between
+	// OperatorAndForwardPktGoRoutine and the per-peer sendLoop. Sized
+	// to comfortably absorb fio iodepth=64 × multiple jobs without
+	// gratuitous back-pressure: at 1024 we can hold a full burst from
+	// 16 jobs × 64 depth = 1024 in-flight requests before blocking.
+	// On overflow the dispatcher BLOCKS (mirrors TCP's
+	// FollowerTransport.Write) rather than falling back, because the
+	// fallback path triggers SDK retries that hurt tail latency more
+	// than the brief back-pressure does.
+	rdmaTransportSendQSize = 1024
+	rdmaTransportRecvQSize = 1024
 )
 
 var (
@@ -103,8 +112,17 @@ func EnableFollowerRDMA(cfg rdma.RDMAPoolConfig) error {
 // repl_protocol.go for the matching adjustment.
 //
 // Returning a non-nil error here means the dispatch itself failed
-// (queue full, transport closed). In that case the caller is expected
-// to push the error to fp.respCh on our behalf.
+// (transport closed). In that case the caller is expected to push the
+// error to fp.respCh on our behalf.
+//
+// On a full sendCh we BLOCK rather than fallback. Earlier the code
+// returned a "send_queue_full" error in that case, which exposed
+// every back-pressure event as a TCP fallback — under fio iodepth=64
+// × 4 jobs we measured ~135 K such fallbacks in a single run,
+// inflating tail latency through SDK retries. TCP's FollowerTransport
+// (repl_protocol.go:221) blocks on its sendCh send for the same
+// reason; matching that behaviour preserves correctness while letting
+// the SDK pace itself.
 func rdmaSendToFollower(addr string, fp *FollowerPacket) error {
 	t := getOrCreateRDMATransport(addr)
 	if t == nil {
@@ -113,12 +131,8 @@ func rdmaSendToFollower(addr string, fp *FollowerPacket) error {
 	select {
 	case t.sendCh <- fp:
 		return nil
-	default:
-		// sendCh full means too many in-flight requests — back-pressure
-		// to the caller via TCP fallback (caller treats this as a
-		// transport error and will retry/fallback).
-		rdma.MetricsObserveFallback(rdma.RoleFollower, addr, "send_queue_full")
-		return fmt.Errorf("repl follower rdma: sendCh full for %s", addr)
+	case <-t.stopCh:
+		return fmt.Errorf("repl follower rdma: transport for %s closing", addr)
 	}
 }
 
