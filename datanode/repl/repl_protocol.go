@@ -328,25 +328,21 @@ func (rp *ReplProtocol) sendRequestToAllFollowers(request *Packet) (index int, e
 
 		if followerRDMASend != nil && (followerRDMACanCarry == nil || followerRDMACanCarry(followerRequest)) {
 			addr := request.followersAddrs[index]
-			// Synchronous fan-out, NOT a goroutine. The TCP path achieves
-			// strict per-(addr,extent) ordering by handing each follower a
-			// dedicated worker goroutine that drains a FIFO channel
-			// (FollowerTransport.serverWriteToFollower); the leader caller
-			// just enqueues. RDMA has no equivalent serialiser per address,
-			// so spawning a goroutine here lets multiple same-extent
-			// requests race for ibv_post_send and arrive at the server out
-			// of order — the receiver's append-offset check
-			// (storage/extent.go:530) then rejects them. Calling
-			// followerRDMASend inline keeps OperatorAndForwardPktGoRoutine
-			// (single goroutine per replication conn) as the natural
-			// serialiser. Cross-follower parallelism is lost (a 2-3x
-			// fan-out is now sequential) but each RDMA round-trip is
-			// microsecond-scale, so the trade-off is correctness for
-			// modest extra latency. If profiling shows fan-out is
-			// dominant, we can later add a per-follower RDMA worker
-			// channel mirroring FollowerTransport.
-			fp := followerRequest
-			fp.respCh <- followerRDMASend(addr, fp)
+			// followerRDMASend is now an ASYNC dispatch — it pushes
+			// followerRequest into the per-(addr) RDMA transport's
+			// send queue and returns immediately. The actual round-trip
+			// runs in the transport's send/recv goroutine pair, which
+			// pushes the result to followerRequest.respCh on completion.
+			// This mirrors TCP's FollowerTransport.Write semantics
+			// (repl_protocol.go:221) so checkLocalResultAndReciveAllFollowerResponse
+			// reads respCh the same way it always has.
+			//
+			// If dispatch itself fails (queue full / transport closed),
+			// we synthesise the error onto respCh so the caller's wait
+			// terminates instead of hanging forever.
+			if dispatchErr := followerRDMASend(addr, followerRequest); dispatchErr != nil {
+				followerRequest.respCh <- dispatchErr
+			}
 			continue
 		}
 
