@@ -35,6 +35,23 @@ type RDMAServerConfig struct {
 type connState struct {
 	conn    *rdma.RDMAConn
 	lastSeq []uint32 // per-slot last-seen doorbell seq
+
+	// workCh decouples doorbell scanning (cheap, latency-sensitive)
+	// from packet handling (potentially slow disk I/O). pollLoop
+	// enqueues slot indices in QP arrival order; a single worker
+	// goroutine drains the channel serially. Single worker preserves
+	// arrival order; the buffer (== numSlots) prevents pollLoop from
+	// blocking under bursty load and keeps recv-ring credit refills
+	// flowing through the drainer goroutine.
+	//
+	// Why the indirection: putting a goroutine per slot races on the
+	// extent.go append-offset check; running handleSlot inline in
+	// pollLoop pins the scanner inside disk writes, so leader-side
+	// WaitRecvDoneSeq trips its 30 s timeout, force-closes slots, and
+	// the conn faults with "credit state closed". The worker pattern
+	// gives both: ordered processing and a responsive scanner.
+	workCh chan int
+	workWg sync.WaitGroup
 }
 
 // DataNodeRDMACtx manages the DataNode RDMA receive loop. It holds a
@@ -141,12 +158,20 @@ func (ctx *DataNodeRDMACtx) acceptLoop() {
 		cs := &connState{
 			conn:    conn,
 			lastSeq: make([]uint32, conn.NumSlots()),
+			workCh:  make(chan int, conn.NumSlots()),
 		}
 		ctx.wg.Add(1)
 		go func() {
 			defer ctx.wg.Done()
 			defer conn.Close()
+			// Single worker drains workCh serially; pollLoop closes the
+			// channel on exit so the worker terminates and we wait for
+			// it before letting conn.Close release the QP/MRs.
+			cs.workWg.Add(1)
+			go cs.workerLoop(ctx)
 			cs.pollLoop(ctx)
+			close(cs.workCh)
+			cs.workWg.Wait()
 		}()
 	}
 }
@@ -176,19 +201,14 @@ func (cs *connState) pollLoop(ctx *DataNodeRDMACtx) {
 				continue
 			}
 			cs.lastSeq[slotIdx] = seq
-			// Sequential per-conn dispatch (NOT a goroutine). The QP
-			// delivers WRs in posted order; processing them in arrival
-			// order preserves the strict offset ordering the storage
-			// layer's append-write check requires (see
-			// datanode/storage/extent.go:530 — IsAppendWrite refuses
-			// when e.dataSize != param.Offset). Cross-conn parallelism
-			// is preserved at the pollLoop dispatch level above; with
-			// hash-routed leader-side AcquireSlotForKey, same-extent
-			// writes always land on the same conn → same QP → strict
-			// FIFO. Dropping `go` here is the second half of that
-			// guarantee — re-introducing a goroutine here would re-open
-			// the offset-mismatch window.
-			cs.handleSlot(ctx, slotIdx)
+			// Hand off to the per-conn worker. Buffered to NumSlots so
+			// this send is wait-free under steady state; if the worker
+			// is genuinely behind, blocking here is the right back
+			// pressure (better than racing goroutines that violate the
+			// extent.go append-offset invariant). Order is preserved
+			// because slotIdx scan order matches QP arrival order on
+			// the recv ring (RC delivers WRs in posted order).
+			cs.workCh <- slotIdx
 			found = true
 		}
 
@@ -235,6 +255,17 @@ func isReadOp(op uint8) bool {
 		return true
 	}
 	return false
+}
+
+// workerLoop drains workCh serially; one worker per conn means slots
+// are handled in QP arrival order (and therefore leader send order),
+// which is what extent.go's append-offset invariant requires. Disk I/O
+// inside handleSlot stays here, off the pollLoop's hot path.
+func (cs *connState) workerLoop(ctx *DataNodeRDMACtx) {
+	defer cs.workWg.Done()
+	for slotIdx := range cs.workCh {
+		cs.handleSlot(ctx, slotIdx)
+	}
 }
 
 // handleSlot deserializes one slot, returns its credit, dispatches the
