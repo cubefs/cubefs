@@ -53,7 +53,16 @@ func rdmaSendToFollower(addr string, fp *FollowerPacket) error {
 	if followerRDMAPortShift != 0 {
 		rdmaAddr = util.ShiftAddrPort(addr, followerRDMAPortShift)
 	}
-	handle, err := followerRDMAPool.AcquireSlot(rdmaAddr)
+	// Hash routing: route same (PartitionID, ExtentID) to the same conn
+	// on every send. Combined with sequential per-conn dispatch on the
+	// server (rdma_server.go pollLoop), this preserves the strict
+	// offset ordering that storage/extent.go's append-write path
+	// requires. Without this, OpWrite packets for one extent fan out
+	// across multiple QPs, arrive out of order, and trip the
+	// "extent current size != Offset" check, returning OpTryOtherExtent
+	// and forcing repeated retries.
+	key := fmt.Sprintf("%d-%d", fp.PartitionID, fp.ExtentID)
+	handle, err := followerRDMAPool.AcquireSlotForKey(rdmaAddr, key)
 	if err != nil {
 		rdma.MetricsObserveFallback(rdma.RoleFollower, addr, "acquire_slot")
 		return fmt.Errorf("repl follower rdma: acquire slot to %s: %w", rdmaAddr, err)

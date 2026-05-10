@@ -24,6 +24,7 @@ package rdma
 import (
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"sync"
 	"time"
 
@@ -32,6 +33,15 @@ import (
 
 // ErrSlotPoolClosed is returned by AcquireSlot after Close has been called.
 var ErrSlotPoolClosed = errors.New("rdma: slot pool closed")
+
+// fnvHash32 hashes s with FNV-1a 32-bit. Used to pin (PartitionID,
+// ExtentID)-style routing keys to a stable conn index in singleSlotPool
+// so the same extent always lands on the same QP.
+func fnvHash32(s string) uint32 {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(s))
+	return h.Sum32()
+}
 
 // SlotHandle represents a borrowed slot on a specific connection. Returned
 // by AcquireSlot; must be returned via ReleaseSlot.
@@ -115,17 +125,24 @@ type singleSlotPool struct {
 	maxConns int
 	dial     dialFunc
 
-	mu    sync.Mutex
-	cond  *sync.Cond
+	mu   sync.Mutex
+	cond *sync.Cond
+	// conns is a fixed-size positional array of length maxConns. Index i
+	// is the "stable hash slot i": when a caller passes a hashKey to
+	// acquire, the conn at i = hash(key) % maxConns is returned
+	// deterministically. nil means no conn dialed for that index yet.
+	//
+	// Stable indexing matters because a leader→follower path that fans
+	// the same extent's append writes across multiple conns destroys the
+	// strict offset ordering datanode/storage/extent.go requires; routing
+	// each (Partition,Extent) to a fixed conn keeps server-side dispatch
+	// linearisable. Empty hashKey falls back to round-robin scan over all
+	// indices for callers that don't care about ordering.
 	conns []*connSlots
-	// dialing tracks Dial calls currently in flight. We must count them
-	// against maxConns so concurrent acquirers don't all see
-	// len(conns) < maxConns simultaneously, all release the lock to dial,
-	// and then all append — exceeding the cap. The lock-around-Dial
-	// pattern is intentional (Dial may take seconds and shouldn't block
-	// other allocators), so the counter is the cheapest way to keep the
-	// invariant len(conns)+dialing <= maxConns at all times.
-	dialing int
+	// dialing[i] = true means a single-flight dial is in flight for
+	// conns[i]. Replaces the previous integer counter; per-index gating
+	// is required because hash routing pins a specific index.
+	dialing []bool
 	closed  bool
 }
 
@@ -135,6 +152,8 @@ func newSingleSlotPool(addr string, cfg RDMAConnConfig, maxConns int, dial dialF
 		cfg:      cfg,
 		maxConns: maxConns,
 		dial:     dial,
+		conns:    make([]*connSlots, maxConns),
+		dialing:  make([]bool, maxConns),
 	}
 	p.cond = sync.NewCond(&p.mu)
 	return p
@@ -143,9 +162,21 @@ func newSingleSlotPool(addr string, cfg RDMAConnConfig, maxConns int, dial dialF
 // acquire blocks until a slot is available, then returns a handle.
 // Records slot_wait_seconds when it had to block (skipped on the fast
 // path so the histogram isn't scrubbed with zero observations).
-func (p *singleSlotPool) acquire() (*SlotHandle, error) {
+//
+// hashKey, when non-empty, pins the call to a deterministic conn index
+// (hash(key) % maxConns); same key → same conn → same QP → server
+// processes serially → strict ordering preserved. hashKey == "" falls
+// back to round-robin across all conns for callers that don't care
+// about ordering.
+func (p *singleSlotPool) acquire(hashKey string) (*SlotHandle, error) {
 	start := time.Now()
 	blocked := false
+
+	// indices defines the candidate conn slots for this call.
+	var targetIdx int = -1
+	if hashKey != "" {
+		targetIdx = int(fnvHash32(hashKey)) % p.maxConns
+	}
 
 	p.mu.Lock()
 	for {
@@ -154,27 +185,59 @@ func (p *singleSlotPool) acquire() (*SlotHandle, error) {
 			return nil, ErrSlotPoolClosed
 		}
 
-		// Try to find a free slot among existing conns.
-		for _, cs := range p.conns {
-			if idx := cs.tryAcquire(); idx >= 0 {
-				h := &SlotHandle{Conn: cs.conn, SlotIdx: idx, pool: p}
-				active := p.activeSlotsLocked()
-				p.mu.Unlock()
-				if blocked {
-					metricsObserveSlotWait(p.cfg.Role, p.addr, time.Since(start))
+		// Try to find a free slot among existing conns. With hash routing
+		// (targetIdx>=0) only that one conn is a candidate; otherwise scan
+		// all of them (legacy round-robin).
+		if targetIdx >= 0 {
+			if cs := p.conns[targetIdx]; cs != nil {
+				if idx := cs.tryAcquire(); idx >= 0 {
+					h := &SlotHandle{Conn: cs.conn, SlotIdx: idx, pool: p}
+					active := p.activeSlotsLocked()
+					p.mu.Unlock()
+					if blocked {
+						metricsObserveSlotWait(p.cfg.Role, p.addr, time.Since(start))
+					}
+					metricsSetActiveSlots(p.cfg.Role, p.addr, active)
+					return h, nil
 				}
-				metricsSetActiveSlots(p.cfg.Role, p.addr, active)
-				return h, nil
+			}
+		} else {
+			for _, cs := range p.conns {
+				if cs == nil {
+					continue
+				}
+				if idx := cs.tryAcquire(); idx >= 0 {
+					h := &SlotHandle{Conn: cs.conn, SlotIdx: idx, pool: p}
+					active := p.activeSlotsLocked()
+					p.mu.Unlock()
+					if blocked {
+						metricsObserveSlotWait(p.cfg.Role, p.addr, time.Since(start))
+					}
+					metricsSetActiveSlots(p.cfg.Role, p.addr, active)
+					return h, nil
+				}
 			}
 		}
 
-		// No free slot. If we still have headroom under maxConns, dial a
-		// new connection (outside the lock so a slow Dial doesn't stall
-		// other waiters). Track in-flight dials with `dialing` so
-		// concurrent acquirers cooperate on the maxConns cap rather
-		// than racing past the len(conns)<maxConns check.
-		if len(p.conns)+p.dialing < p.maxConns {
-			p.dialing++
+		// Dial a missing conn if one is needed. Hash-routed callers can
+		// only ever dial their specific index; round-robin callers pick
+		// the first nil index. Single-flight via dialing[i] so concurrent
+		// acquirers cooperate on the maxConns cap.
+		dialIdx := -1
+		if targetIdx >= 0 {
+			if p.conns[targetIdx] == nil && !p.dialing[targetIdx] {
+				dialIdx = targetIdx
+			}
+		} else {
+			for i := range p.conns {
+				if p.conns[i] == nil && !p.dialing[i] {
+					dialIdx = i
+					break
+				}
+			}
+		}
+		if dialIdx >= 0 {
+			p.dialing[dialIdx] = true
 			cfg := p.cfg
 			addr := p.addr
 			dial := p.dial
@@ -183,11 +246,11 @@ func (p *singleSlotPool) acquire() (*SlotHandle, error) {
 			conn, err := dial(addr, cfg)
 
 			p.mu.Lock()
-			p.dialing--
+			p.dialing[dialIdx] = false
 			if err != nil {
 				// Wake other waiters parked on cond — they may now want
-				// to attempt the dial themselves (the dialing counter
-				// has dropped, freeing a maxConns slot).
+				// to attempt the dial themselves (the dialing flag has
+				// cleared).
 				p.cond.Broadcast()
 				p.mu.Unlock()
 				return nil, fmt.Errorf("rdma: dial %s: %w", addr, err)
@@ -199,7 +262,7 @@ func (p *singleSlotPool) acquire() (*SlotHandle, error) {
 				conn.Close()
 				return nil, ErrSlotPoolClosed
 			}
-			p.conns = append(p.conns, newConnSlots(conn, p.cfg.NumSlots))
+			p.conns[dialIdx] = newConnSlots(conn, p.cfg.NumSlots)
 			// New conn brings numSlots free slots; wake other waiters
 			// so they can claim slots from the new conn rather than
 			// staying parked until the next ReleaseSlot.
@@ -207,8 +270,8 @@ func (p *singleSlotPool) acquire() (*SlotHandle, error) {
 			continue // retry the allocation loop with the new conn
 		}
 
-		// All conns full and maxConns reached. Block until a slot is
-		// released (or the pool closes).
+		// Either: target conn is dialed but full, or someone else is
+		// dialing it. Block until a slot is released or a dial completes.
 		blocked = true
 		p.cond.Wait()
 	}
@@ -217,12 +280,15 @@ func (p *singleSlotPool) acquire() (*SlotHandle, error) {
 // release returns h to the pool. forceClose=true marks the slot dirty
 // (excluded from future allocation) without disturbing other slots on the
 // same connection. When every slot of a connection becomes dirty and no
-// in-use slot remains, the connection is closed and removed.
+// in-use slot remains, the connection is closed and the entry is set to
+// nil so a future acquire can re-dial it (preserving the stable hash
+// index — slice splicing would shift remaining indices and break
+// hash-routed callers' ordering guarantees).
 func (p *singleSlotPool) release(h *SlotHandle, forceClose bool) {
 	p.mu.Lock()
 	var toClose *RDMAConn
 	for i, cs := range p.conns {
-		if cs.conn != h.Conn {
+		if cs == nil || cs.conn != h.Conn {
 			continue
 		}
 		if h.SlotIdx >= 0 && h.SlotIdx < len(cs.inUse) {
@@ -233,7 +299,7 @@ func (p *singleSlotPool) release(h *SlotHandle, forceClose bool) {
 		}
 		if cs.allDeadAndIdle() {
 			toClose = cs.conn
-			p.conns = append(p.conns[:i], p.conns[i+1:]...)
+			p.conns[i] = nil
 		}
 		break
 	}
@@ -252,8 +318,13 @@ func (p *singleSlotPool) release(h *SlotHandle, forceClose bool) {
 func (p *singleSlotPool) closeAll() {
 	p.mu.Lock()
 	p.closed = true
-	conns := p.conns
-	p.conns = nil
+	conns := make([]*connSlots, 0, len(p.conns))
+	for i, cs := range p.conns {
+		if cs != nil {
+			conns = append(conns, cs)
+			p.conns[i] = nil
+		}
+	}
 	p.cond.Broadcast()
 	p.mu.Unlock()
 	for _, cs := range conns {
@@ -276,6 +347,9 @@ func (p *singleSlotPool) activeSlots() int {
 func (p *singleSlotPool) activeSlotsLocked() int {
 	n := 0
 	for _, cs := range p.conns {
+		if cs == nil {
+			continue
+		}
 		for _, u := range cs.inUse {
 			if u {
 				n++
@@ -318,7 +392,23 @@ func newPool(cfg RDMAPoolConfig, dial dialFunc) (*RDMAConnPool, error) {
 // AcquireSlot returns a borrowed slot to addr, blocking until one is
 // available. The returned handle MUST be returned via ReleaseSlot or it
 // will leak both the slot and any flow-control credit attached to it.
+//
+// AcquireSlot uses round-robin slot selection. Callers that require
+// strict per-stream ordering (datanode→follower replication, SDK
+// per-extent appends) MUST call AcquireSlotForKey instead with a stable
+// (PartitionID, ExtentID)-style key — otherwise concurrent slots
+// dispatch their packets across multiple QPs and the server-side
+// extent.go append-offset check will reject out-of-order writes with
+// OpTryOtherExtent.
 func (p *RDMAConnPool) AcquireSlot(addr string) (*SlotHandle, error) {
+	return p.AcquireSlotForKey(addr, "")
+}
+
+// AcquireSlotForKey is like AcquireSlot but pins the call to a
+// deterministic conn (hash(key) % maxConns) within the per-addr
+// sub-pool, so all calls with the same key share a QP and observe FIFO
+// ordering at the server side.
+func (p *RDMAConnPool) AcquireSlotForKey(addr, key string) (*SlotHandle, error) {
 	p.mu.RLock()
 	sp := p.pools[addr]
 	p.mu.RUnlock()
@@ -339,7 +429,7 @@ func (p *RDMAConnPool) AcquireSlot(addr string) (*SlotHandle, error) {
 		}
 		p.mu.Unlock()
 	}
-	return sp.acquire()
+	return sp.acquire(key)
 }
 
 // ReleaseSlot returns h to its originating pool. forceClose=true marks the

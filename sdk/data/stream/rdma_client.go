@@ -45,7 +45,13 @@ func rdmaRoundTrip(addr string, req *Packet) (*proto.Packet, error) {
 	if rdmaConnPortShift != 0 {
 		rdmaAddr = util.ShiftAddrPort(addr, rdmaConnPortShift)
 	}
-	handle, err := rdmaConnPool.AcquireSlot(rdmaAddr)
+	// Hash-route by (PartitionID, ExtentID) so successive writes /
+	// reads on the same extent share a QP and arrive at the server in
+	// post order. Without this, append-write packets for one extent
+	// fan out across multiple conns and trip the offset-mismatch check
+	// in datanode/storage/extent.go.
+	key := fmt.Sprintf("%d-%d", req.PartitionID, req.ExtentID)
+	handle, err := rdmaConnPool.AcquireSlotForKey(rdmaAddr, key)
 	if err != nil {
 		rdma.MetricsObserveFallback(rdma.RoleClient, addr, "acquire_slot")
 		return nil, fmt.Errorf("rdma client: acquire slot to %s: %w", rdmaAddr, err)

@@ -286,6 +286,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		poolCfg := rdma.RDMAPoolConfig{
 			NumSlots:        int(opt.RDMANumSlots),
 			SlotSize:        int(opt.RDMASlotSize),
+			MaxConns:        int(opt.RDMAMaxConns),
 			Role:            rdma.RoleClient,
 			MinPayloadBytes: int(opt.RDMAMinPayloadBytes),
 			RDMAPortShift:   int(opt.RDMAPortShift),
@@ -298,8 +299,8 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		if rerr := stream.InitRDMAConnPool(poolCfg); rerr != nil {
 			log.LogWarnf("NewSuper: RDMA init failed, falling back to TCP: %v", rerr)
 		} else {
-			log.LogInfof("NewSuper: RDMA client pool initialized (numSlots=%d slotSize=%d busy=%d yield=%d sleep=%dus portShift=%d)",
-				opt.RDMANumSlots, opt.RDMASlotSize,
+			log.LogInfof("NewSuper: RDMA client pool initialized (numSlots=%d slotSize=%d maxConns=%d busy=%d yield=%d sleep=%dus portShift=%d)",
+				opt.RDMANumSlots, opt.RDMASlotSize, opt.RDMAMaxConns,
 				opt.RDMABusySpinCount, opt.RDMAYieldCount, opt.RDMASleepThresholdUs, opt.RDMAPortShift)
 		}
 	}

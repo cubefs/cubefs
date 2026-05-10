@@ -113,6 +113,9 @@ const (
 	RDMAMinPayloadBytes
 	// rdma port translation: peer's RDMA listen port = data port + shift.
 	RDMAPortShift
+	// rdma per-peer max conns (parallel QPs). More conns → more
+	// cross-extent parallelism, more pinned memory per peer.
+	RDMAMaxConns
 	MaxMountOption
 )
 
@@ -235,6 +238,7 @@ func InitMountOptions(opts []MountOption) {
 	// RDMA round trip costs more than the TCP path's syscall overhead.
 	opts[RDMAMinPayloadBytes] = MountOption{"rdmaMinPayloadBytes", "Skip RDMA path when payload size is below this threshold", "", int64(4096)}
 	opts[RDMAPortShift] = MountOption{"rdmaPortShift", "Add this to peer's data port to reach its RDMA listen port", "", int64(40)}
+	opts[RDMAMaxConns] = MountOption{"rdmaMaxConns", "Max parallel RDMA conns per peer (cross-extent parallelism)", "", int64(4)}
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
 	}
@@ -437,4 +441,5 @@ type MountOptions struct {
 	RDMASleepThresholdUs int64
 	RDMAMinPayloadBytes  int64
 	RDMAPortShift        int64
+	RDMAMaxConns         int64
 }

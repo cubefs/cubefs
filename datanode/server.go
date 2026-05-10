@@ -118,6 +118,11 @@ const (
 	ConfigKeyRDMAPort     = "rdmaPort"     // int
 	ConfigKeyRDMANumSlots = "rdmaNumSlots" // int
 	ConfigKeyRDMASlotSize = "rdmaSlotSize" // int
+	// MaxConns caps how many parallel RDMA connections the leader will
+	// open per follower. Larger = more cross-extent parallelism, but
+	// each conn costs ~2 × numSlots × slotSize bytes pinned. Zero or
+	// missing → default 4.
+	ConfigKeyRDMAMaxConns = "rdmaMaxConns" // int
 	// P2 adaptive poll knobs. All optional; zero falls back to spec defaults.
 	ConfigKeyRDMABusySpinCount    = "rdmaBusySpinCount"    // int (phase-1 max iterations)
 	ConfigKeyRDMAYieldCount       = "rdmaYieldCount"       // int (phase-2 max iterations)
@@ -208,6 +213,7 @@ type DataNode struct {
 	rdmaPort            int
 	rdmaNumSlots        int
 	rdmaSlotSize        int
+	rdmaMaxConns        int
 	rdmaPollCfg         rdma.PollConfig
 	rdmaMinPayloadBytes int
 	rdmaCtx             *DataNodeRDMACtx
@@ -335,6 +341,10 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	s.rdmaSlotSize = cfg.GetInt(ConfigKeyRDMASlotSize)
 	if s.rdmaSlotSize <= 0 {
 		s.rdmaSlotSize = rdma.DefaultSlotSize // 132 KB; covers SlotHeader + max packet header + 128KB BlockSize
+	}
+	s.rdmaMaxConns = cfg.GetInt(ConfigKeyRDMAMaxConns)
+	if s.rdmaMaxConns <= 0 {
+		s.rdmaMaxConns = 4
 	}
 	// P2 adaptive poll knobs. Zero values fall back to rdma.DefaultPollConfig
 	// inside the conn layer, so leaving these unset matches the spec defaults.
@@ -1257,6 +1267,7 @@ func (s *DataNode) initConnPool() {
 				followerCfg := rdma.RDMAPoolConfig{
 					NumSlots:        s.rdmaNumSlots,
 					SlotSize:        s.rdmaSlotSize,
+					MaxConns:        s.rdmaMaxConns,
 					Poll:            s.rdmaPollCfg,
 					Role:            rdma.RoleFollower,
 					MinPayloadBytes: s.rdmaMinPayloadBytes,
@@ -1269,8 +1280,8 @@ func (s *DataNode) initConnPool() {
 				if ferr := repl.EnableFollowerRDMA(followerCfg); ferr != nil {
 					log.LogWarnf("initConnPool: follower RDMA init failed, replication uses TCP: %v", ferr)
 				} else {
-					log.LogInfof("initConnPool: follower RDMA enabled (numSlots=%d slotSize=%d portShift=%d)",
-						s.rdmaNumSlots, s.rdmaSlotSize, followerCfg.RDMAPortShift)
+					log.LogInfof("initConnPool: follower RDMA enabled (numSlots=%d slotSize=%d maxConns=%d portShift=%d)",
+						s.rdmaNumSlots, s.rdmaSlotSize, s.rdmaMaxConns, followerCfg.RDMAPortShift)
 				}
 			}
 		}

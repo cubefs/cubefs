@@ -176,8 +176,19 @@ func (cs *connState) pollLoop(ctx *DataNodeRDMACtx) {
 				continue
 			}
 			cs.lastSeq[slotIdx] = seq
-			slot := slotIdx // capture for goroutine
-			go cs.handleSlot(ctx, slot)
+			// Sequential per-conn dispatch (NOT a goroutine). The QP
+			// delivers WRs in posted order; processing them in arrival
+			// order preserves the strict offset ordering the storage
+			// layer's append-write check requires (see
+			// datanode/storage/extent.go:530 — IsAppendWrite refuses
+			// when e.dataSize != param.Offset). Cross-conn parallelism
+			// is preserved at the pollLoop dispatch level above; with
+			// hash-routed leader-side AcquireSlotForKey, same-extent
+			// writes always land on the same conn → same QP → strict
+			// FIFO. Dropping `go` here is the second half of that
+			// guarantee — re-introducing a goroutine here would re-open
+			// the offset-mismatch window.
+			cs.handleSlot(ctx, slotIdx)
 			found = true
 		}
 
