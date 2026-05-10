@@ -39,7 +39,19 @@ func EnableFollowerRDMA(cfg rdma.RDMAPoolConfig) error {
 		if max <= 0 {
 			return true
 		}
-		return int(fp.Size)+int(fp.ArgLen) <= max
+		if int(fp.Size)+int(fp.ArgLen) <= max {
+			return true
+		}
+		// Record so operators can see WHY RDMA hit rate is low without
+		// having to grep packet sizes. Without this metric the
+		// canCarry-false path is invisible: the dispatcher silently
+		// falls through to TCP and neither rdma_request_total nor
+		// rdma_fallback_total moves, looking like "no RDMA traffic".
+		// Addr label is empty because canCarry is called before the
+		// per-follower loop has selected one; reason is enough to
+		// drive the alert.
+		rdma.MetricsObserveFallback(rdma.RoleFollower, "", "large_payload")
+		return false
 	}
 	return nil
 }
