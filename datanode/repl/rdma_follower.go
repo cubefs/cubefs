@@ -50,7 +50,8 @@ type rdmaFollowerTransport struct {
 	sendCh   chan *FollowerPacket
 	inflight chan *rdmaInflight
 	stopCh   chan struct{}
-	wg       sync.WaitGroup
+	wg       sync.WaitGroup // tracks sendLoop + recvLoop dispatcher
+	workerWg sync.WaitGroup // tracks per-response goroutines spawned by recvLoop
 	closed   bool
 	mu       sync.Mutex
 }
@@ -178,7 +179,19 @@ func (t *rdmaFollowerTransport) sendLoop() {
 		case fp := <-t.sendCh:
 			t.processSend(fp)
 		case <-t.stopCh:
-			return
+			// Drain residual packets so their callers don't park on
+			// respCh forever after a graceful close. Critical: without
+			// this drain, OperatorAndForwardPktGoRoutine waits in
+			// checkLocalResultAndReciveAllFollowerResponse → <-respCh
+			// for any packet enqueued just before the close signal.
+			for {
+				select {
+				case fp := <-t.sendCh:
+					fp.respCh <- fmt.Errorf("repl follower rdma: transport closing")
+				default:
+					return
+				}
+			}
 		}
 	}
 }
@@ -224,22 +237,40 @@ func (t *rdmaFollowerTransport) processSend(fp *FollowerPacket) {
 	}
 }
 
-// recvLoop drains the inflight queue and waits for each round-trip's
-// response, then signals the caller via fp.respCh.
+// recvLoop drains the inflight queue and dispatches each request to a
+// dedicated goroutine for response polling. Single-goroutine drain
+// would serialise all responses on the same follower (each
+// pollFollowerRDMAResponse blocks for ~1 ms per RTT), capping
+// throughput at ~120 MB/s for 128 KB packets — the actual cause of
+// the post-fix gap vs TCP. Spawning per response lets all in-flight
+// slots wake from their per-slot recv-cond independently, scaling
+// throughput with the QP's pipelining depth.
 //
-// Single recv goroutine per peer is enough because pipelined sends
-// produce responses in order — the QP delivers WRITE_WITH_IMM CQEs
-// in posted order on the follower side, and the doorbells fire in
-// the same order on our side. Polling per-slot in inflight order
-// matches that order.
+// Spawning per request is safe for ordering: the SEND order is set by
+// sendLoop (single goroutine, single ibv_post_send caller per QP) and
+// is what the server uses to enforce the append-offset invariant.
+// Response RECV order is independent — each fp has its own respCh,
+// and checkLocalResultAndReciveAllFollowerResponse iterates them
+// rather than depending on a global order.
+//
+// Concurrency is bounded by the inflight channel capacity (= numSlots
+// × maxConns at most), so at most that many response-waiter goroutines
+// exist per transport at any time.
 func (t *rdmaFollowerTransport) recvLoop() {
 	defer t.wg.Done()
 	for {
 		select {
 		case in := <-t.inflight:
-			t.processRecv(in)
+			t.workerWg.Add(1)
+			go func(in *rdmaInflight) {
+				defer t.workerWg.Done()
+				t.processRecv(in)
+			}(in)
 		case <-t.stopCh:
-			// Drain remaining inflight so callers don't block forever.
+			// Wait for all spawned response-waiters to settle before
+			// draining residual inflight items, so we don't release the
+			// same handle from two goroutines.
+			t.workerWg.Wait()
 			for {
 				select {
 				case in := <-t.inflight:
