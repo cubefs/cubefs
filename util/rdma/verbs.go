@@ -291,6 +291,24 @@ func destroyCMID(id *C.struct_rdma_cm_id) {
 	C.rdma_destroy_id(id)
 }
 
+// migrateCMID moves id from its current event channel to ch. Required
+// on the accept path: by default a connID created from a listener
+// CONNECT_REQUEST inherits the listener's event channel, which means
+// later events for that conn (ESTABLISHED, DISCONNECTED, ERROR) get
+// queued on the same channel as future CONNECT_REQUESTs. Under load
+// the accept loop's waitCMEvent for ESTABLISHED then races with a
+// fresh CONNECT_REQUEST and surfaces "expected event 9, got 4",
+// leaving the half-accepted conn in a state where the QP never
+// transitions to RTS — every leader send to it then fails with
+// REM_OP_ERR / REM_INV_REQ_ERR. Migrating each new conn to its own
+// channel right after getRequest fixes the cross-talk.
+func migrateCMID(id *C.struct_rdma_cm_id, ch *C.struct_rdma_event_channel) error {
+	if ret, err := C.rdma_migrate_id(id, ch); ret != 0 {
+		return fmt.Errorf("rdma: rdma_migrate_id failed: %w", err)
+	}
+	return nil
+}
+
 // resolveAddr resolves the destination address. timeoutMS in milliseconds.
 func resolveAddr(id *C.struct_rdma_cm_id, addr string, timeoutMS int) error {
 	host, port, err := net.SplitHostPort(addr)

@@ -320,9 +320,26 @@ func Accept(listenID *C.struct_rdma_cm_id, cfg RDMAConnConfig) (*RDMAConn, Conne
 	if err != nil {
 		return nil, ConnectInfo{}, err
 	}
+	// Migrate connID off the listener's event channel onto its own
+	// dedicated channel BEFORE rdma_accept. Otherwise ESTABLISHED for
+	// this conn would land on the same queue as future
+	// CONNECT_REQUESTs and the acceptConn waitCMEvent below would
+	// race, surfacing as "expected event 9, got 4" — half-accepted
+	// conns then fail every send with REM_OP_ERR.
+	connCh, err := createEventChannel()
+	if err != nil {
+		destroyCMID(connID)
+		return nil, ConnectInfo{}, err
+	}
+	if err = migrateCMID(connID, connCh); err != nil {
+		destroyEventChannel(connCh)
+		destroyCMID(connID)
+		return nil, ConnectInfo{}, err
+	}
 	ci, err := UnmarshalConnectInfo(privData)
 	if err != nil {
 		destroyCMID(connID)
+		destroyEventChannel(connCh)
 		return nil, ConnectInfo{}, fmt.Errorf("rdma: bad ConnectInfo: %w", err)
 	}
 
@@ -330,22 +347,26 @@ func Accept(listenID *C.struct_rdma_cm_id, cfg RDMAConnConfig) (*RDMAConn, Conne
 	pd, err := allocPD(ctx)
 	if err != nil {
 		destroyCMID(connID)
+		destroyEventChannel(connCh)
 		return nil, ConnectInfo{}, err
 	}
 	compCh, err := createCompChannel(ctx)
 	if err != nil {
 		destroyCMID(connID)
+		destroyEventChannel(connCh)
 		return nil, ConnectInfo{}, err
 	}
 	cq, err := createCQ(ctx, cqSizeFor(cfg.NumSlots), compCh)
 	if err != nil {
 		destroyCompChannel(compCh)
 		destroyCMID(connID)
+		destroyEventChannel(connCh)
 		return nil, ConnectInfo{}, err
 	}
 	if err = createQP(connID, pd, cq, sendQueueDepthFor(cfg.NumSlots), cfg.NumSlots); err != nil {
 		destroyCompChannel(compCh)
 		destroyCMID(connID)
+		destroyEventChannel(connCh)
 		return nil, ConnectInfo{}, err
 	}
 
@@ -354,6 +375,7 @@ func Accept(listenID *C.struct_rdma_cm_id, cfg RDMAConnConfig) (*RDMAConn, Conne
 	if err != nil {
 		destroyCompChannel(compCh)
 		destroyCMID(connID)
+		destroyEventChannel(connCh)
 		return nil, ConnectInfo{}, err
 	}
 	rp, err := newRecvPool(pd, getQPFromCMID(connID), cfg.NumSlots)
@@ -361,6 +383,7 @@ func Accept(listenID *C.struct_rdma_cm_id, cfg RDMAConnConfig) (*RDMAConn, Conne
 		mems.free()
 		destroyCompChannel(compCh)
 		destroyCMID(connID)
+		destroyEventChannel(connCh)
 		return nil, ConnectInfo{}, err
 	}
 
@@ -379,10 +402,11 @@ func Accept(listenID *C.struct_rdma_cm_id, cfg RDMAConnConfig) (*RDMAConn, Conne
 		mems.free()
 		destroyCompChannel(compCh)
 		destroyCMID(connID)
+		destroyEventChannel(connCh)
 		return nil, ConnectInfo{}, err
 	}
 
-	conn := newRDMAConn(connID, pd, cq, compCh, nil, mems, rp,
+	conn := newRDMAConn(connID, pd, cq, compCh, connCh, mems, rp,
 		ci.RespRkey, ci.RespBaseVA, ci.RespDbRkey, ci.RespDbVA,
 		ci.CreditRkey, ci.CreditVA, "", cfg)
 	conn.startDrainer()
