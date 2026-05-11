@@ -4949,6 +4949,14 @@ func (c *Cluster) checkVolDuplicate(req *createVolReq, vol *Vol) bool {
 	if (vol.allowedStorageClass != nil && req.allowedStorageClass != nil) && !reflect.DeepEqual(vol.allowedStorageClass, req.allowedStorageClass) {
 		return false
 	}
+
+	if vol.defaultPoolId != req.defaultPoolId || !reflect.DeepEqual(vol.allowedPools, req.allowedPools) {
+		return false
+	}
+
+	if vol.defaultRegion != req.defaultRegion || !reflect.DeepEqual(vol.allowedRegions, req.allowedRegions) {
+		return false
+	}
 	return true
 }
 

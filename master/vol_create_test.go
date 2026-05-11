@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
 )
 
 // TestCreateVolAdvanced tests advanced volume creation scenarios
@@ -32,6 +33,51 @@ func TestCreateVolAdvanced(t *testing.T) {
 	t.Run("ConcurrentCreation", testConcurrentVolumeCreation)
 	t.Run("ConcurrentSameName", testConcurrentSameNameCreation)
 	t.Run("ResourceShortageRetry", testResourceShortageRetry)
+}
+
+func TestCheckVolDuplicateRequiresSamePoolParams(t *testing.T) {
+	req := createDefaultReq("test_check_vol_duplicate_pool_params", "cfs_test_user")
+	req.allowedStorageClass = []uint32{req.volStorageClass}
+
+	vol := &Vol{
+		Owner:             req.owner,
+		zoneName:          req.zoneName,
+		dataPartitionSize: uint64(req.dpSize) * util.GB,
+		Capacity:          uint64(req.capacity),
+		volStorageClass:   req.volStorageClass,
+		VolType:           req.volType,
+		TopoSubItem: TopoSubItem{
+			crossZone:       req.crossZone,
+			defaultPriority: req.normalZonesFirst,
+			domainId:        req.domainId,
+		},
+		DefaultStoreMode:    req.storeMode,
+		allowedStorageClass: append([]uint32(nil), req.allowedStorageClass...),
+		defaultPoolId:       req.defaultPoolId,
+		allowedPools:        append([]uint8(nil), req.allowedPools...),
+		defaultRegion:       req.defaultRegion,
+		allowedRegions:      append([]string(nil), req.allowedRegions...),
+	}
+
+	require.True(t, server.cluster.checkVolDuplicate(req, vol))
+
+	differentDefaultPoolReq := *req
+	differentDefaultPoolReq.defaultPoolId = req.defaultPoolId + 1
+	require.False(t, server.cluster.checkVolDuplicate(&differentDefaultPoolReq, vol))
+
+	differentAllowedPoolsReq := *req
+	differentAllowedPoolsReq.allowedPools = append([]uint8(nil), req.allowedPools...)
+	differentAllowedPoolsReq.allowedPools = append(differentAllowedPoolsReq.allowedPools, req.defaultPoolId+1)
+	require.False(t, server.cluster.checkVolDuplicate(&differentAllowedPoolsReq, vol))
+
+	differentDefaultRegionReq := *req
+	differentDefaultRegionReq.defaultRegion = req.defaultRegion + "-other"
+	require.False(t, server.cluster.checkVolDuplicate(&differentDefaultRegionReq, vol))
+
+	differentAllowedRegionsReq := *req
+	differentAllowedRegionsReq.allowedRegions = append([]string(nil), req.allowedRegions...)
+	differentAllowedRegionsReq.allowedRegions = append(differentAllowedRegionsReq.allowedRegions, req.defaultRegion+"-other")
+	require.False(t, server.cluster.checkVolDuplicate(&differentAllowedRegionsReq, vol))
 }
 
 // testSameNameCreate tests creating volume with same name
@@ -838,6 +884,8 @@ func createDefaultReq(name string, owner string) *createVolReq {
 		remoteCacheReadTimeout:   proto.ReadDeadlineTime,
 		remoteCacheOnlyForNotSSD: true,
 		allowedPools:             []uint8{defaultPoolId},
+		defaultRegion:            proto.DefaultRegion,
+		allowedRegions:           []string{proto.DefaultRegion},
 	}
 }
 
