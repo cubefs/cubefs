@@ -325,9 +325,41 @@ func (cs *connState) handleSlot(ctx *DataNodeRDMACtx, slotIdx int) {
 			log.LogErrorf("rdma handleSlot slot=%d remote=%s op=0x%x pid=%d ext=%d size=%d claimedCRC=%d reqId=%d: Prepare: %v",
 				slotIdx, cs.conn.RemoteAddr(), replPkt.Opcode, replPkt.PartitionID,
 				replPkt.ExtentID, replPkt.Size, replPkt.CRC, replPkt.ReqID, err)
-		} else if err = ctx.node.OperatePacket(replPkt, fakeC); err != nil {
-			log.LogErrorf("rdma handleSlot slot=%d remote=%s op=0x%x reqId=%d: OperatePacket: %v",
-				slotIdx, cs.conn.RemoteAddr(), replPkt.Opcode, replPkt.ReqID, err)
+		} else {
+			// Forward to followers BEFORE applying locally, mirroring
+			// the TCP path's OperatorAndForwardPktGoRoutine ordering.
+			// Without this, RDMA-received writes apply only on the
+			// receiving node — leaving the other replicas stale and
+			// surfacing later as OpArgMismatchErr on reads after any
+			// leader switch.
+			//
+			// On dispatch-prerequisite failure (follower RDMA not
+			// enabled, Arg parse error) we abort with OpAgain so the
+			// SDK falls back to TCP, where the standard replication
+			// machinery handles the write. We do NOT apply locally in
+			// that case — a leader-only write here is exactly the
+			// inconsistency this fix is meant to prevent.
+			if forwardErr := repl.PrepareRDMAReplicate(replPkt); forwardErr != nil {
+				log.LogWarnf("rdma handleSlot slot=%d reqId=%d op=0x%x pid=%d: PrepareRDMAReplicate: %v, replying OpAgain",
+					slotIdx, replPkt.ReqID, replPkt.Opcode, replPkt.PartitionID, forwardErr)
+				replPkt.ResultCode = proto.OpAgain
+			} else {
+				// Local operate runs in parallel with follower processing
+				// (followerRDMASend is async — it queues to a per-addr
+				// goroutine pair and returns immediately).
+				if err = ctx.node.OperatePacket(replPkt, fakeC); err != nil {
+					log.LogErrorf("rdma handleSlot slot=%d remote=%s op=0x%x reqId=%d: OperatePacket: %v",
+						slotIdx, cs.conn.RemoteAddr(), replPkt.Opcode, replPkt.ReqID, err)
+				}
+				// Wait for all follower responses. On follower failure,
+				// override the response body so the SDK sees the same
+				// OpErr it would see via the TCP path.
+				if waitErr := repl.WaitForRDMAReplicate(replPkt); waitErr != nil {
+					log.LogWarnf("rdma handleSlot slot=%d reqId=%d op=0x%x pid=%d: follower replicate: %v",
+						slotIdx, replPkt.ReqID, replPkt.Opcode, replPkt.PartitionID, waitErr)
+					replPkt.PackErrorBody(repl.ActionReceiveFromFollower, waitErr.Error())
+				}
+			}
 		}
 	}
 
