@@ -316,9 +316,18 @@ func (cs *connState) handleSlot(ctx *DataNodeRDMACtx, slotIdx int) {
 		// fakeConn (Write panics if a handler tries to stream).
 		fakeC := &rdmaFakeConn{addr: rdmaNetAddr(cs.conn.RemoteAddr())}
 		if err = ctx.node.Prepare(replPkt); err != nil {
-			log.LogErrorf("rdma handleSlot slot=%d: Prepare: %v", slotIdx, err)
+			// Enrich the error log with packet identity so operators
+			// can correlate with the SDK-side ReqID log line and not
+			// have to guess which client sent the bad packet. CRC
+			// mismatch is the canonical example (see wrap_prepare.go
+			// checkCrc) but other Prepare errors benefit from the
+			// same context.
+			log.LogErrorf("rdma handleSlot slot=%d remote=%s op=0x%x pid=%d ext=%d size=%d claimedCRC=%d reqId=%d: Prepare: %v",
+				slotIdx, cs.conn.RemoteAddr(), replPkt.Opcode, replPkt.PartitionID,
+				replPkt.ExtentID, replPkt.Size, replPkt.CRC, replPkt.ReqID, err)
 		} else if err = ctx.node.OperatePacket(replPkt, fakeC); err != nil {
-			log.LogErrorf("rdma handleSlot slot=%d: OperatePacket: %v", slotIdx, err)
+			log.LogErrorf("rdma handleSlot slot=%d remote=%s op=0x%x reqId=%d: OperatePacket: %v",
+				slotIdx, cs.conn.RemoteAddr(), replPkt.Opcode, replPkt.ReqID, err)
 		}
 	}
 
