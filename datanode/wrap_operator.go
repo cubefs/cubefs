@@ -924,6 +924,14 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 	// the original write already replicated. Tiny extents skip dedup
 	// because the leader assigns their ExtentID/Offset, so the key
 	// would not match across retries.
+	//
+	// Remember happens out-of-band:
+	//   - TCP path: in Post() once checkLocalResultAndReciveAllFollowerResponse
+	//     has set the final ResultCode, so we never cache a write whose
+	//     follower replication actually failed (which would skip a real
+	//     retry that needs to land on the lagging follower).
+	//   - RDMA path: in handleSlot after WaitForRDMAReplicate, for the
+	//     same reason.
 	dedupEligible := p.IsNormalWriteOperation() && !proto.IsTinyExtentType(p.ExtentType)
 	if dedupEligible && s.writeDedup.Has(p.PartitionID, p.ExtentID, p.ReqID) {
 		p.PacketOkReply()
@@ -937,9 +945,6 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			p.PackErrorBody(ActionWrite, err.Error())
 		} else {
 			p.PacketOkReply()
-			if dedupEligible {
-				s.writeDedup.Remember(p.PartitionID, p.ExtentID, p.ReqID)
-			}
 		}
 	}()
 

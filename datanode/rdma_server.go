@@ -359,6 +359,13 @@ func (cs *connState) handleSlot(ctx *DataNodeRDMACtx, slotIdx int) {
 						slotIdx, replPkt.ReqID, replPkt.Opcode, replPkt.PartitionID, waitErr)
 					replPkt.PackErrorBody(repl.ActionReceiveFromFollower, waitErr.Error())
 				}
+				// Cache OpOk for idempotent SDK retries. Mirrors the
+				// TCP-path Post() hook — both transports must record the
+				// same final state so subsequent retries (on either
+				// transport) hit dedup before re-applying the write.
+				if replPkt.IsNormalWriteOperation() && !proto.IsTinyExtentType(replPkt.ExtentType) && replPkt.ResultCode == proto.OpOk {
+					ctx.node.writeDedup.Remember(replPkt.PartitionID, replPkt.ExtentID, replPkt.ReqID)
+				}
 			}
 		}
 	}

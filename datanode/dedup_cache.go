@@ -32,9 +32,9 @@ import (
 //     retry might succeed where the first attempt failed.
 
 const (
-	writeDedupTTL             = 60 * time.Second
-	writeDedupMaxEntries      = 200000
-	writeDedupCleanupInterval = 30 * time.Second
+	writeDedupTTL             = 5 * time.Minute
+	writeDedupMaxEntries      = 1000000
+	writeDedupCleanupInterval = 60 * time.Second
 )
 
 type writeDedupKey struct {
