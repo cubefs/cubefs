@@ -198,7 +198,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[TcpAliveTime] = MountOption{"tcpAliveTime", "tcp alive time in seconds", "", int64(0)}
 	opts[FileSystemName] = MountOption{"fileSystemName", "The explicit name of the filesystem", "", ""}
 	opts[SnapshotReadVerSeq] = MountOption{"snapshotReadSeq", "Snapshot read seq", "", int64(0)} // default false
-	opts[DisableMountSubtype] = MountOption{"disableMountSubtype", "Disable Mount Subtype", "", false}
+	opts[DisableMountSubtype] = MountOption{"disableMountSubtype", "Disable Mount Subtype", "", true}
 	opts[StreamRetryTimeOut] = MountOption{"streamRetryTimeout", "max stream retry timeout, s", "", int64(0)}
 	opts[BcacheOnlyForNotSSD] = MountOption{"enableBcacheOnlyForNotSSD", "Enable block cache only for not ssd", "", false}
 
