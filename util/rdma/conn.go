@@ -174,6 +174,15 @@ type RDMAConn struct {
 	// forever on a dead QP.
 	faulted int32 // atomic; 1 = drainer detected fault
 	closed  int32 // atomic; 1 = Close() called and resources freed
+
+	// One-sided RDMA Read state (Sprint A.5b). Lazily initialised on
+	// the first PostRDMAReadAndWait call; allocates an MR-registered
+	// scratch buffer + per-slot completion waiters. See read_waiter.go.
+	readScratchInitMu sync.Mutex
+	readScratchInited bool
+	readScratchInitErr error
+	readScratch       *RDMAMem
+	readWaiters       []readWaiter
 }
 
 // RDMAConnConfig is defined in config.go (no build tag) so the same type
@@ -976,6 +985,11 @@ func (c *RDMAConn) dispatchCompletion(qp *C.struct_ibv_qp, ev CompletionEvent) {
 	case op == opDoorbell || op == opCredit || op == opSlot:
 		// Send-side completion: nothing to wait on in fire-and-forget mode.
 		// Diagnostic counters (CreditStats) live in creditState.
+	case op == opRDMARead:
+		// One-sided RDMA Read completion (Sprint A.5b). Route to the
+		// per-slot read waiter; non-blocking send guarantees the
+		// drainer never stalls behind a timed-out caller.
+		c.completeRDMARead(slot, ev)
 	default:
 		log.LogWarnf("rdma drainer (%s): unknown WR op=%v wr_id=0x%x", c.remoteAddr, op, ev.WRID)
 	}
@@ -1192,6 +1206,9 @@ func (c *RDMAConn) Close() error {
 			m.Free()
 		}
 	}
+	// Sprint A.5b: tear down the one-sided read scratch + waiters.
+	// Safe even if init never ran — freeReadScratch checks for that.
+	c.freeReadScratch()
 	if c.cmID != nil {
 		destroyCMID(c.cmID)
 		c.cmID = nil

@@ -108,3 +108,8 @@ func (c *RDMAConn) NewMRBufferPool(_, _ int, _ time.Duration) (*MRBufferPool, er
 func (c *RDMAConn) RegisterExtentFile(_ string, _ bool) (*RDMAMem, bool, error) {
 	return nil, false, errNotSupported
 }
+
+// PostRDMAReadAndWait stub for non-RDMA builds.
+func (c *RDMAConn) PostRDMAReadAndWait(_ []byte, _ uint64, _ uint32, _ time.Duration) error {
+	return errNotSupported
+}

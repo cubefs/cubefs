@@ -42,6 +42,11 @@ const (
 	// drainer goroutine if it is blocked on the comp_channel. Carries no
 	// real semantics; the drainer just observes it and exits.
 	opShutdownPing
+	// opRDMARead — a client-initiated RDMA_READ posted via
+	// PostRDMAReadAndWait. Always signaled; the drainer routes the
+	// CQE back to the per-slot read waiter by decoding the slot
+	// field as an index into RDMAConn.readWaiters.
+	opRDMARead
 )
 
 // String for diagnostics.
@@ -57,6 +62,8 @@ func (o wrOp) String() string {
 		return "recv"
 	case opShutdownPing:
 		return "shutdown"
+	case opRDMARead:
+		return "rdma_read"
 	default:
 		return "unknown"
 	}
