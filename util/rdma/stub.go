@@ -32,7 +32,16 @@ type AcceptInfo struct {
 	CreditVA           uint64
 }
 
-type RDMAMem struct{}
+type RDMAMem struct {
+	// Stub fields mirror the rdma-build definition so non-RDMA code
+	// can read them without conditional compilation. All zero by
+	// default — handlers that depend on real values must check the
+	// constructor's error.
+	Lkey uint32
+	Rkey uint32
+	VA   uint64
+	Size int
+}
 
 func (m *RDMAMem) Free()                     {}
 func (m *RDMAMem) Bytes() []byte             { return nil }
