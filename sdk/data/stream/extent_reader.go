@@ -85,8 +85,17 @@ func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) 
 	if chunkSize > util.ReadBlockSize {
 		chunkSize = util.ReadBlockSize
 	}
-	if reader.dp != nil && len(reader.dp.Hosts) > 0 && rdmaTryForSize(reader.dp.Hosts[0], chunkSize) {
-		rdmaAddr := reader.dp.Hosts[0]
+	// Use the same target host that NewStreamConn just picked for the
+	// TCP fallback below: when followerRead=false this is dp.LeaderAddr,
+	// when followerRead=true it's the nearest / epoch-selected follower.
+	// Previously this branch hard-coded dp.Hosts[0], which after a leader
+	// election would route reads to a still-replicating follower and trip
+	// the server's checkReadOffsetAndSize (offset > e.Size → 244
+	// OpArgMismatchErr). Mismatched routing was invisible while CRC
+	// errors masked everything; once the CRC bug was fixed the lagging
+	// reads surfaced as ~6% read failures on 4 MB s3bench.
+	rdmaAddr := sc.CurrAddr()
+	if rdmaAddr != "" && rdmaTryForSize(rdmaAddr, chunkSize) {
 		if n, rerr := reader.readViaRDMA(rdmaAddr, reqPacket, req, offset, size); rerr == nil {
 			readBytes = n
 			return
