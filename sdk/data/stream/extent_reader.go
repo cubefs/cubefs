@@ -73,7 +73,19 @@ func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) 
 	// below, which has its own host-iteration retry. Skipped if the
 	// total read is below the P6 small-payload threshold so the SDK
 	// doesn't pay round-trip overhead on tiny reads.
-	if reader.dp != nil && len(reader.dp.Hosts) > 0 && rdmaTryForSize(reader.dp.Hosts[0], size) {
+	//
+	// The size passed to rdmaTryForSize is clamped to ReadBlockSize
+	// because readViaRDMA internally chunks the read into
+	// ReadBlockSize-sized RDMA round-trips — each one fits one slot.
+	// Without this clamp, any read > slot capacity (e.g. an S3 1 MB
+	// GET that flows through here as size=1048576) would fail the
+	// gate's max_payload check and fall back to TCP, even though every
+	// actual per-chunk RDMA call would fit fine.
+	chunkSize := size
+	if chunkSize > util.ReadBlockSize {
+		chunkSize = util.ReadBlockSize
+	}
+	if reader.dp != nil && len(reader.dp.Hosts) > 0 && rdmaTryForSize(reader.dp.Hosts[0], chunkSize) {
 		rdmaAddr := reader.dp.Hosts[0]
 		if n, rerr := reader.readViaRDMA(rdmaAddr, reqPacket, req, offset, size); rerr == nil {
 			readBytes = n
