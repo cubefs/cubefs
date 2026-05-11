@@ -2,47 +2,7 @@ package repl
 
 import (
 	"fmt"
-	"sync"
-	"sync/atomic"
-	"time"
-
-	"github.com/cubefs/cubefs/util/log"
 )
-
-// RDMA replication call counters, dumped periodically via log so
-// operators can confirm the RDMA receive path is actually replicating.
-var (
-	rdmaReplCallCount         atomic.Uint64
-	rdmaReplNotForwardCount   atomic.Uint64
-	rdmaReplDispatchOK        atomic.Uint64
-	rdmaReplDispatchSkipCarry atomic.Uint64
-	rdmaReplDispatchSendErr   atomic.Uint64
-	rdmaReplWaitErr           atomic.Uint64
-
-	rdmaReplStatsOnce sync.Once
-)
-
-func startRDMAReplicateStatsLoop() {
-	go func() {
-		ticker := time.NewTicker(60 * time.Second)
-		defer ticker.Stop()
-		var prevCalls uint64
-		for range ticker.C {
-			calls := rdmaReplCallCount.Load()
-			if calls == prevCalls {
-				continue
-			}
-			prevCalls = calls
-			log.LogInfof("RDMA repl stats: calls=%d notForward=%d dispatchOK=%d skipCanCarry=%d sendErr=%d waitErr=%d",
-				calls,
-				rdmaReplNotForwardCount.Load(),
-				rdmaReplDispatchOK.Load(),
-				rdmaReplDispatchSkipCarry.Load(),
-				rdmaReplDispatchSendErr.Load(),
-				rdmaReplWaitErr.Load())
-		}
-	}()
-}
 
 // PrepareRDMAReplicate parses the packet's Arg into followersAddrs and
 // asynchronously dispatches a copy of the packet to every follower via
@@ -66,21 +26,12 @@ func startRDMAReplicateStatsLoop() {
 // pushed onto each follower's respCh so they surface uniformly in
 // WaitForRDMAReplicate alongside genuine remote-side rejections.
 func PrepareRDMAReplicate(p *Packet) error {
-	rdmaReplStatsOnce.Do(startRDMAReplicateStatsLoop)
-	n := rdmaReplCallCount.Add(1)
 	if err := p.resolveFollowersAddr(); err != nil {
 		return err
 	}
 	if !p.IsForwardPacket() {
-		rdmaReplNotForwardCount.Add(1)
-		// Surface first few non-forward cases so operators can confirm
-		// whether IsForwardPacket=false (e.g. RemainingFollowers got
-		// stripped along the wire) is the reason follower replication
-		// never fires.
-		if n < 20 || n%5000 == 0 {
-			log.LogInfof("RDMA repl: skip (not forward) reqId=%d op=0x%x rf=%d argLen=%d",
-				p.ReqID, p.Opcode, p.RemainingFollowers, p.ArgLen)
-		}
+		// Single-replica DP, or the special-replica-count sentinel:
+		// nothing to forward.
 		return nil
 	}
 	if followerRDMASend == nil {
@@ -93,17 +44,13 @@ func PrepareRDMAReplicate(p *Packet) error {
 		p.followerPackets[index] = fp
 
 		if followerRDMACanCarry != nil && !followerRDMACanCarry(fp) {
-			rdmaReplDispatchSkipCarry.Add(1)
 			fp.respCh <- fmt.Errorf("repl: follower packet exceeds RDMA slot (size=%d arg=%d)", fp.Size, fp.ArgLen)
 			continue
 		}
 		addr := p.followersAddrs[index]
 		if err := followerRDMASend(addr, fp); err != nil {
-			rdmaReplDispatchSendErr.Add(1)
 			fp.respCh <- err
-			continue
 		}
-		rdmaReplDispatchOK.Add(1)
 	}
 	return nil
 }
@@ -128,9 +75,6 @@ func WaitForRDMAReplicate(p *Packet) error {
 		if err := <-fp.respCh; err != nil && firstErr == nil {
 			firstErr = err
 		}
-	}
-	if firstErr != nil {
-		rdmaReplWaitErr.Add(1)
 	}
 	return firstErr
 }
