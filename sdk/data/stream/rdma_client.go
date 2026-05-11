@@ -63,6 +63,17 @@ func rdmaRoundTrip(addr string, req *Packet) (*proto.Packet, error) {
 
 	lastDoneSeq := conn.RecvDoneSeq(slot)
 
+	// Mirror packet.go:writeToConn — TCP recomputes CRC right before
+	// sending so wire bytes and header CRC are guaranteed consistent.
+	// The RDMA path used to skip this; for fresh write packets built
+	// by ExtentHandler the CRC field is zero, which made DataNode's
+	// checkCrc (wrap_prepare.go) reject every OpWrite / OpSyncWrite
+	// with "packet Crc is incorrect". Only writes need a fresh CRC;
+	// for reads Size is 0 and Data is nil.
+	if req.Data != nil && len(req.Data) >= int(req.Size) && req.Size > 0 {
+		req.CRC = crc32.ChecksumIEEE(req.Data[:req.Size])
+	}
+
 	if err = conn.WritePacket(slot, &req.Packet); err != nil {
 		forceClose = true
 		rdma.MetricsObserveFallback(rdma.RoleClient, addr, "write_packet")
