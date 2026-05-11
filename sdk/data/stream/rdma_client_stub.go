@@ -22,6 +22,11 @@ func sendPacketViaRDMA(_ string, _ *Packet) error { return nil }
 // extent_reader.go compiles unconditionally.
 func recvPacketViaRDMA(_ string, _ *Packet) (*proto.Packet, error) { return nil, nil }
 
+// rdmaRoundTrip is never called in non-RDMA builds (rdmaTryForSize returns
+// false so the call site is unreachable). Stub exists so the
+// build-tag-free ExtentHandler.sender compiles.
+func rdmaRoundTrip(_ string, _ *Packet) (*proto.Packet, error) { return nil, nil }
+
 // rdmaTryForSize always returns false on non-RDMA builds: the path is
 // not compiled in, so callers must use TCP.
 func rdmaTryForSize(_ string, _ int) bool { return false }
