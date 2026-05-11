@@ -5,6 +5,7 @@ package stream
 import (
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -72,7 +73,7 @@ func lookupExtentMR(addr string, pid, extentID uint64, ttlHint time.Duration) (*
 		Size:        reply.Size,
 	}
 	deadline := time.Now().Add(time.Duration(reply.GrantedSeconds) * time.Second)
-	info.expiresAtNanos.Store(deadline.UnixNano())
+	atomic.StoreInt64(&info.expiresAtNanos, deadline.UnixNano())
 	return info, nil
 }
 
