@@ -225,6 +225,14 @@ const (
 	OpReadMRLookup  uint8 = 0xB9
 	OpReadMRRelease uint8 = 0xBA
 
+	// Persistent-MR one-sided read protocol (Phase A). Replaces the
+	// pool-based Sprint 2.2 protocol once the SDK is ready. Lookup
+	// grants the client an opaque LeaseID + (rkey, VA, size). Renew
+	// extends the lease's TTL before expiry. Unknown / expired
+	// leases force the client to re-Lookup (or fall back to TCP).
+	OpExtentMRLookup uint8 = 0xBB
+	OpExtentMRRenew  uint8 = 0xBC
+
 	// Commons
 	OpNoSpaceErr uint8 = 0xEE
 	OpForbidErr  uint8 = 0xEF
@@ -529,6 +537,10 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpReadMRLookup"
 	case OpReadMRRelease:
 		m = "OpReadMRRelease"
+	case OpExtentMRLookup:
+		m = "OpExtentMRLookup"
+	case OpExtentMRRenew:
+		m = "OpExtentMRRenew"
 	case OpGetAllWatermarks:
 		m = "OpGetAllWatermarks"
 	case OpNotifyReplicasToRepair:
