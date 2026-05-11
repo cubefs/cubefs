@@ -274,29 +274,29 @@ func (r *raftFsm) Step(m *proto.Message) {
 		}
 
 	case m.Term < r.term:
-		if (r.config.LeaseCheck || r.config.PreVote) && (m.Type == proto.ReqMsgHeartBeat || m.Type == proto.ReqMsgAppend) {
-			// We have received messages from a leader at a lower term. It is possible
-			// that these messages were simply delayed in the network, but this could
-			// also mean that this node has advanced its term number during a network
-			// partition, and it is now unable to either win an election or to rejoin
-			// the majority on the old term. If checkQuorum is false, this will be
-			// handled by incrementing term numbers in response to MsgVote with a
-			// higher term, but if checkQuorum is true we may not advance the term on
-			// MsgVote and must generate other messages to advance the term. The net
-			// result of these two features is to minimize the disruption caused by
-			// nodes that have been removed from the cluster's configuration: a
-			// removed node will send MsgVotes (or MsgPreVotes) which will be ignored,
-			// but it will not receive MsgApp or MsgHeartbeat, so it will not create
-			// disruptive term increases, by notifying leader of this node's activeness.
-			// The above comments also true for Pre-Vote
+		if m.Type == proto.ReqMsgHeartBeat || m.Type == proto.ReqMsgAppend {
+			// We have received messages from a leader at a lower term. This means
+			// the sender is a stale leader that hasn't learned about the new term yet.
+			// We must always reply with our higher term to force it to step down.
 			//
-			// When follower gets isolated, it soon starts an election ending
-			// up with a higher term than leader, although it won't receive enough
-			// votes to win the election. When it regains connectivity, this response
-			// with "proto.MsgAppResp" of higher term would force leader to step down.
-			// However, this disruption is inevitable to free this stuck node with
-			// fresh election. This can be prevented with Pre-Vote phase.
-			r.send(&proto.Message{To: m.From, Term: r.term, Type: proto.RespMsgAppend})
+			// NOTE: This differs from etcd/raft, which only replies when checkQuorum
+			// or preVote is enabled. etcd assumes that without these features, the
+			// high-term node will eventually send MsgVote to propagate the higher term.
+			// That assumption holds for etcd because each raft group has independent
+			// heartbeat timers. However, our multi-raft design merges heartbeats across
+			// raft groups into a single transport-level mechanism. When the cluster
+			// majority has already elected a new leader for this group, the merged
+			// heartbeat from the new leader continuously resets this node's
+			// electionElapsed, so it will never timeout and never send MsgVote to the
+			// stale leader. Without this unconditional reply, the stale leader would
+			// remain a "zombie" indefinitely, causing unnecessary network traffic and
+			// potential client confusion.
+			nmsg := proto.GetMessage()
+			nmsg.Type = proto.RespMsgAppend
+			nmsg.To = m.From
+			nmsg.Term = r.term
+			r.send(nmsg)
+			return
 		} else if m.Type == proto.ReqMsgPreVote {
 			// Before Pre-Vote enable, there may have candidate with higher term,
 			// but less log. After update to Pre-Vote, the cluster may deadlock if
