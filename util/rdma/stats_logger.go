@@ -5,6 +5,7 @@ package rdma
 import (
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/util/log"
@@ -44,12 +45,12 @@ func StartStatsLogger(callerName string) {
 
 var (
 	statsLoggerOnce sync.Once
-	statsLoggerName sync.Map // single key "name" → string; sync.Map for atomic store
+	statsLoggerName atomic.Value // string; updated by every StartStatsLogger call
 )
 
 func loadStatsLoggerName() string {
-	v, ok := statsLoggerName.Load("name")
-	if !ok {
+	v := statsLoggerName.Load()
+	if v == nil {
 		return "rdma"
 	}
 	return v.(string)
