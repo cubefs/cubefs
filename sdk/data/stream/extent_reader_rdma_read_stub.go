@@ -15,3 +15,9 @@ func (reader *ExtentReader) tryReadViaRDMARead(_ string, _ *Packet, _ *ExtentReq
 }
 
 func invalidateExtentMRCache(_ string, _, _ uint64) {}
+
+// PhaseAStatsSnapshot returns zeros on non-RDMA builds so the stats
+// logger compiles cleanly without conditional imports at the call site.
+func PhaseAStatsSnapshot() (attempt, success, noCache, lookup, bounds, conn, wr int64) {
+	return 0, 0, 0, 0, 0, 0, 0
+}

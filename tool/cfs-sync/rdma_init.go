@@ -78,6 +78,7 @@ func initRDMAFromConfig(cfg *cliConfig) {
 		return
 	}
 	rdma.StartStatsLogger("cfs-sync")
+	stream.StartPhaseAStatsLogger("cfs-sync")
 	fmt.Fprintf(os.Stderr,
 		"RDMA: cfs-sync client pool initialized (numSlots=%d slotSize=%d maxConns=%d "+
 			"portShift=%d minPayload=%d busy=%d yield=%d sleep=%dus)\n"+

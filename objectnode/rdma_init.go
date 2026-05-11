@@ -79,6 +79,7 @@ func initRDMAClientPool(cfg *config.Config) error {
 		return nil
 	}
 	rdma.StartStatsLogger("ObjectNode")
+	stream.StartPhaseAStatsLogger("ObjectNode")
 	log.LogInfof("RDMA: ObjectNode client pool initialized "+
 		"(numSlots=%d slotSize=%d maxConns=%d portShift=%d minPayload=%d busy=%d yield=%d sleep=%dus). "+
 		"Metrics: cubefs_rdma_requests_total / cubefs_rdma_fallback_total / cubefs_rdma_latency_seconds. "+
