@@ -36,23 +36,42 @@ type connState struct {
 	conn    *rdma.RDMAConn
 	lastSeq []uint32 // per-slot last-seen doorbell seq
 
-	// workCh decouples doorbell scanning (cheap, latency-sensitive)
+	// workChs decouples doorbell scanning (cheap, latency-sensitive)
 	// from packet handling (potentially slow disk I/O). pollLoop
-	// enqueues slot indices in QP arrival order; a single worker
-	// goroutine drains the channel serially. Single worker preserves
-	// arrival order; the buffer (== numSlots) prevents pollLoop from
-	// blocking under bursty load and keeps recv-ring credit refills
-	// flowing through the drainer goroutine.
+	// hashes slot indices to a fixed-size worker pool by `slotIdx %
+	// numWorkers`; each worker drains its own channel serially. The
+	// hash split is what makes the pool safe under the AppendWrite
+	// ordering invariant in storage/extent.go:
 	//
-	// Why the indirection: putting a goroutine per slot races on the
-	// extent.go append-offset check; running handleSlot inline in
-	// pollLoop pins the scanner inside disk writes, so leader-side
-	// WaitRecvDoneSeq trips its 30 s timeout, force-closes slots, and
-	// the conn faults with "credit state closed". The worker pattern
-	// gives both: ordered processing and a responsive scanner.
-	workCh chan int
-	workWg sync.WaitGroup
+	//   - The SDK pool (slot_pool.go) routes same-(PartitionID, ExtentID)
+	//     traffic to the same conn AND the same slot via AcquireSlotForKey.
+	//   - So all writes to one extent always show up on the same slotIdx
+	//     on the server.
+	//   - Hash by slotIdx → same extent → same worker → serial processing
+	//     within that worker, preserving offset == dataSize invariants.
+	//   - Different extents may sit on different slots → different
+	//     workers → parallel handleSlot/disk-IO/follower-replicate.
+	//
+	// Previous design ran a single worker per conn, which serialised
+	// everything (reads, writes to unrelated extents, follower forwarding)
+	// behind disk I/O of the slowest in-flight request. At 64 concurrent
+	// clients × 16 MB this manifested as a hard ~700 MB/s write ceiling
+	// and cascading 243 (IntraGroupNetErr) errors when the follower's
+	// reply queue couldn't catch up.
+	//
+	// Worker channel capacity is sized so any one worker can absorb its
+	// expected fraction of NumSlots without blocking pollLoop. We round
+	// up by 1 to handle hash skew.
+	workChs []chan int
+	workWg  sync.WaitGroup
 }
+
+// rdmaServerWorkersPerConn is the per-connection worker pool size. Each
+// worker processes its `slotIdx % N` partition of slots. The value
+// trades CPU/goroutine count against in-flight parallelism; 4 is a
+// reasonable default for the typical 3-replica DataNode where each
+// conn carries up to NumSlots in flight (256 by default).
+const rdmaServerWorkersPerConn = 4
 
 // DataNodeRDMACtx manages the DataNode RDMA receive loop. It holds a
 // reference to the *DataNode so handlers can call Prepare / OperatePacket
@@ -158,19 +177,27 @@ func (ctx *DataNodeRDMACtx) acceptLoop() {
 		cs := &connState{
 			conn:    conn,
 			lastSeq: make([]uint32, conn.NumSlots()),
-			workCh:  make(chan int, conn.NumSlots()),
+			workChs: make([]chan int, rdmaServerWorkersPerConn),
+		}
+		perWorker := conn.NumSlots()/rdmaServerWorkersPerConn + 1
+		for i := 0; i < rdmaServerWorkersPerConn; i++ {
+			cs.workChs[i] = make(chan int, perWorker)
 		}
 		ctx.wg.Add(1)
 		go func() {
 			defer ctx.wg.Done()
 			defer conn.Close()
-			// Single worker drains workCh serially; pollLoop closes the
-			// channel on exit so the worker terminates and we wait for
-			// it before letting conn.Close release the QP/MRs.
-			cs.workWg.Add(1)
-			go cs.workerLoop(ctx)
+			// Spawn the worker pool; pollLoop hashes slots to one of
+			// these workers. Closing the channels on pollLoop exit
+			// drains each worker before conn.Close releases the QP/MRs.
+			for i := 0; i < rdmaServerWorkersPerConn; i++ {
+				cs.workWg.Add(1)
+				go cs.workerLoop(ctx, i)
+			}
 			cs.pollLoop(ctx)
-			close(cs.workCh)
+			for _, ch := range cs.workChs {
+				close(ch)
+			}
 			cs.workWg.Wait()
 		}()
 	}
@@ -201,14 +228,15 @@ func (cs *connState) pollLoop(ctx *DataNodeRDMACtx) {
 				continue
 			}
 			cs.lastSeq[slotIdx] = seq
-			// Hand off to the per-conn worker. Buffered to NumSlots so
-			// this send is wait-free under steady state; if the worker
-			// is genuinely behind, blocking here is the right back
-			// pressure (better than racing goroutines that violate the
-			// extent.go append-offset invariant). Order is preserved
-			// because slotIdx scan order matches QP arrival order on
-			// the recv ring (RC delivers WRs in posted order).
-			cs.workCh <- slotIdx
+			// Hand off to the worker pool. Hash by slotIdx so writes
+			// to the same extent (same slotIdx via SDK hash-pinning)
+			// always land on the same worker → ordered. Channel is
+			// sized for the worker's expected slot share so this send
+			// is wait-free in steady state; if a worker is genuinely
+			// behind, blocking here is the right back pressure (better
+			// than racing goroutines that violate the extent.go
+			// append-offset invariant).
+			cs.workChs[slotIdx%rdmaServerWorkersPerConn] <- slotIdx
 			found = true
 		}
 
@@ -260,10 +288,13 @@ func isReadOp(op uint8) bool {
 // workerLoop drains workCh serially; one worker per conn means slots
 // are handled in QP arrival order (and therefore leader send order),
 // which is what extent.go's append-offset invariant requires. Disk I/O
+// workerLoop drains its own slot channel serially; the pool dispatch
+// in pollLoop hashes (slotIdx % numWorkers) so same-extent traffic
+// stays on the same worker → AppendWrite ordering preserved. Disk I/O
 // inside handleSlot stays here, off the pollLoop's hot path.
-func (cs *connState) workerLoop(ctx *DataNodeRDMACtx) {
+func (cs *connState) workerLoop(ctx *DataNodeRDMACtx, workerID int) {
 	defer cs.workWg.Done()
-	for slotIdx := range cs.workCh {
+	for slotIdx := range cs.workChs[workerID] {
 		cs.handleSlot(ctx, slotIdx)
 	}
 }
