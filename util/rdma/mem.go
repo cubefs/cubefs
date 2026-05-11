@@ -23,6 +23,14 @@ type RDMAMem struct {
 	Rkey uint32           // remote key (shared with peer; peer uses when RDMA-Writing here)
 	VA   uint64           // virtual address = uintptr(buf); shared with peer
 	Size int
+
+	// extraCleanup runs after the MR is deregistered and any
+	// internally-owned C.malloc buffer is freed. Used by callers
+	// that register externally-owned regions (e.g. mmap'd extent
+	// files) so the Free() path tears down the whole stack —
+	// dereg MR, munmap the buffer, close the fd — without the
+	// caller having to track parallel state.
+	extraCleanup func()
 }
 
 // AllocRDMAMem allocates size bytes of pinned memory and registers it with pd.
@@ -96,6 +104,29 @@ func (m *RDMAMem) Free() {
 		C.free(m.buf)
 		m.buf = nil
 	}
+	if m.extraCleanup != nil {
+		m.extraCleanup()
+		m.extraCleanup = nil
+	}
+}
+
+// SetCleanup installs a callback that Free() will invoke AFTER the
+// MR has been deregistered and any internally-owned buffer has been
+// C.freed. Idiomatic use is to attach the munmap + close calls for
+// an externally-mmap'd region:
+//
+//	mem, _, err := RegisterFileMR(pd, base, size)
+//	mem.SetCleanup(func() {
+//	    syscall.Munmap(mmapBuf)
+//	    f.Close()
+//	})
+//
+// Calling SetCleanup more than once chains the callbacks (latest
+// wins ordering is not part of the contract — callers should
+// install a single cleanup that internalises any chaining they
+// need). nil clears the callback.
+func (m *RDMAMem) SetCleanup(fn func()) {
+	m.extraCleanup = fn
 }
 
 // Bytes returns a Go slice backed by the same C memory.

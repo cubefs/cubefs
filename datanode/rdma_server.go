@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"path"
 	"runtime"
 	"sync"
 	"time"
@@ -42,6 +43,18 @@ type connState struct {
 	// handlers detect nil and fall through to the existing two-sided
 	// handleReadSlot path so the SDK can retry with OpStreamRead.
 	mrPool *rdma.MRBufferPool
+
+	// extentMR is the per-conn registry + lease tracker for the
+	// persistent-MR one-sided read path (Phase A). Lazily populated
+	// on the first OpExtentMRLookup for each (partition, extent);
+	// the registry's LRU + reference counting keeps the active set
+	// bounded while the tracker handles client-driven lease renewal.
+	// One bundle per DataPartition because:
+	//   - extent IDs are unique only within a DP
+	//   - the DP's data directory is the source of truth for the
+	//     file path passed to mmap + RegisterFileMR
+	extentMRMu       sync.Mutex
+	extentMRBundles  map[uint64]*extentMRBundle // pid → bundle
 
 	// workChs decouples doorbell scanning (cheap, latency-sensitive)
 	// from packet handling (potentially slow disk I/O). pollLoop
@@ -97,6 +110,38 @@ const (
 	rdmaMRPoolBufferSize = 1 << 20 // 1 MiB; comfortably above ReadBlockSize 128 KiB
 	rdmaMRPoolTTL        = 10 * time.Second
 )
+
+// Phase A persistent-MR cache parameters (per-(conn, partition)).
+// The LRU bounds how many extents are concurrently mmap'd +
+// registered; the lease TTL bounds how long a granted rkey remains
+// valid without client renewal. Keep these modest until A.6
+// benchmarks tune them; the cost of a small cache is just more
+// RegisterExtentFile calls under read churn, not a correctness hit.
+const (
+	rdmaExtentMRCacheSize = 256
+	rdmaExtentMRMaxTTL    = 60 * time.Second
+)
+
+// extentMRBundle holds the registry + lease tracker for one
+// (conn, partition) pair. Created lazily on the first
+// OpExtentMRLookup for that pid so a conn that only ever talks to
+// one DP doesn't pay for state it never uses.
+type extentMRBundle struct {
+	registry *rdma.FileMRRegistry
+	tracker  *rdma.LeaseTracker
+}
+
+func (b *extentMRBundle) close() {
+	if b == nil {
+		return
+	}
+	if b.tracker != nil {
+		b.tracker.Close()
+	}
+	if b.registry != nil {
+		b.registry.Close()
+	}
+}
 
 // DataNodeRDMACtx manages the DataNode RDMA receive loop. It holds a
 // reference to the *DataNode so handlers can call Prepare / OperatePacket
@@ -200,9 +245,10 @@ func (ctx *DataNodeRDMACtx) acceptLoop() {
 		backoff = initialBackoff
 
 		cs := &connState{
-			conn:    conn,
-			lastSeq: make([]uint32, conn.NumSlots()),
-			workChs: make([]chan int, rdmaServerWorkersPerConn),
+			conn:            conn,
+			lastSeq:         make([]uint32, conn.NumSlots()),
+			workChs:         make([]chan int, rdmaServerWorkersPerConn),
+			extentMRBundles: make(map[uint64]*extentMRBundle),
 		}
 		perWorker := conn.NumSlots()/rdmaServerWorkersPerConn + 1
 		for i := 0; i < rdmaServerWorkersPerConn; i++ {
@@ -224,6 +270,19 @@ func (ctx *DataNodeRDMACtx) acceptLoop() {
 			if cs.mrPool != nil {
 				defer cs.mrPool.Close()
 			}
+			// Tear down all per-DP extent MR bundles when the conn
+			// exits. close() releases every tracker lease and frees
+			// every registry MR (which in turn munmaps + closes the
+			// underlying extent file).
+			defer func() {
+				cs.extentMRMu.Lock()
+				bundles := cs.extentMRBundles
+				cs.extentMRBundles = nil
+				cs.extentMRMu.Unlock()
+				for _, b := range bundles {
+					b.close()
+				}
+			}()
 			// Spawn the worker pool; pollLoop hashes slots to one of
 			// these workers. Closing the channels on pollLoop exit
 			// drains each worker before conn.Close releases the QP/MRs.
@@ -388,6 +447,15 @@ func (cs *connState) handleSlot(ctx *DataNodeRDMACtx, slotIdx int) {
 	} else if replPkt.Opcode == proto.OpReadMRRelease {
 		// Client done with a previously-acquired MR buffer.
 		cs.handleReadMRRelease(replPkt)
+	} else if replPkt.Opcode == proto.OpExtentMRLookup {
+		// Phase A persistent-MR lookup: grant the client a lease on
+		// the extent file's MR so subsequent reads are pure
+		// RDMA Read with zero server CPU on the data path.
+		cs.handleExtentMRLookup(ctx, replPkt)
+	} else if replPkt.Opcode == proto.OpExtentMRRenew {
+		// Client extends a lease before TTL expiry to keep its
+		// cached rkey alive.
+		cs.handleExtentMRRenew(replPkt)
 	} else {
 		// Write / control path: existing OperatePacket dispatch with
 		// fakeConn (Write panics if a handler tries to stream).
@@ -700,6 +768,183 @@ func (cs *connState) handleReadMRRelease(p *repl.Packet) {
 	}
 	cs.mrPool.ReleaseByIndex(int(arg.PoolIndex))
 	p.ResultCode = proto.OpOk
+}
+
+// getOrCreateExtentMRBundle returns the (registry, tracker) bundle
+// for the given DataPartition, creating it on first use. The
+// RegisterFunc passed to the registry binds the partition's data
+// path so subsequent Acquire(extentID) calls open the correct
+// extent file.
+//
+// Returns an error if the conn is closing (extentMRBundles map nil-ed
+// by the conn-close defer) so handlers cleanly bail.
+func (cs *connState) getOrCreateExtentMRBundle(partition *DataPartition) (*extentMRBundle, error) {
+	pid := partition.partitionID
+	cs.extentMRMu.Lock()
+	if cs.extentMRBundles == nil {
+		cs.extentMRMu.Unlock()
+		return nil, fmt.Errorf("rdma: conn closing")
+	}
+	if b, ok := cs.extentMRBundles[pid]; ok {
+		cs.extentMRMu.Unlock()
+		return b, nil
+	}
+	cs.extentMRMu.Unlock()
+
+	// Build the bundle outside the lock so a slow first-extent
+	// registration doesn't block lookups for other partitions.
+	dataPath := partition.Path()
+	registerFn := func(extentID uint64) (*rdma.RDMAMem, int, error) {
+		extentPath := path.Join(dataPath, fmt.Sprintf("%d", extentID))
+		mem, _, err := cs.conn.RegisterExtentFile(extentPath, true)
+		if err != nil {
+			return nil, 0, err
+		}
+		return mem, mem.Size, nil
+	}
+	registry, err := rdma.NewFileMRRegistry(rdmaExtentMRCacheSize, registerFn)
+	if err != nil {
+		return nil, err
+	}
+	tracker, err := rdma.NewLeaseTracker(registry, rdmaExtentMRMaxTTL, 0)
+	if err != nil {
+		registry.Close()
+		return nil, err
+	}
+	b := &extentMRBundle{registry: registry, tracker: tracker}
+
+	// Install under lock, but if someone else raced us → keep theirs
+	// and tear down ours (avoiding orphaned MR registrations).
+	cs.extentMRMu.Lock()
+	if cs.extentMRBundles == nil {
+		cs.extentMRMu.Unlock()
+		b.close()
+		return nil, fmt.Errorf("rdma: conn closing")
+	}
+	if existing, ok := cs.extentMRBundles[pid]; ok {
+		cs.extentMRMu.Unlock()
+		b.close()
+		return existing, nil
+	}
+	cs.extentMRBundles[pid] = b
+	cs.extentMRMu.Unlock()
+	return b, nil
+}
+
+// handleExtentMRLookup processes OpExtentMRLookup. Parses the
+// request's Arg for (pid, extentID, ttl_hint), resolves the
+// DataPartition, looks up (or registers) the extent file's MR via
+// the per-(conn, partition) registry, and grants a lease via the
+// tracker. The reply (rkey + VA + size + leaseID + granted_seconds)
+// goes back in the response packet's Arg field.
+//
+// On any failure (unknown partition, registration error, registry
+// full) we pack an error body; the client falls back to the
+// existing two-sided OpStreamRead path so reads stay correct.
+func (cs *connState) handleExtentMRLookup(ctx *DataNodeRDMACtx, p *repl.Packet) {
+	if int(p.ArgLen) < rdma.ExtentMRLookupRequestSize || len(p.Arg) < int(p.ArgLen) {
+		p.PackErrorBody("rdma_extent_mr_lookup", "arg too short")
+		return
+	}
+	var req rdma.ExtentMRLookupRequest
+	if err := req.Unmarshal(p.Arg[:p.ArgLen]); err != nil {
+		p.PackErrorBody("rdma_extent_mr_lookup", err.Error())
+		return
+	}
+	partition := ctx.node.space.Partition(req.PartitionID)
+	if partition == nil {
+		p.PackErrorBody("rdma_extent_mr_lookup",
+			fmt.Sprintf("partition %d not found", req.PartitionID))
+		return
+	}
+	bundle, err := cs.getOrCreateExtentMRBundle(partition)
+	if err != nil {
+		p.PackErrorBody("rdma_extent_mr_lookup", err.Error())
+		return
+	}
+	entry, err := bundle.registry.Acquire(req.ExtentID)
+	if err != nil {
+		log.LogWarnf("rdma handleExtentMRLookup: registry Acquire pid=%d ext=%d: %v",
+			req.PartitionID, req.ExtentID, err)
+		p.PackErrorBody("rdma_extent_mr_lookup", err.Error())
+		return
+	}
+	// Grant takes ownership of the entry's refcount; we must NOT
+	// call registry.Release on a successful Grant — the tracker
+	// owns it now (via lease lifecycle).
+	ttl := time.Duration(req.LeaseSecondsHint) * time.Second
+	lease, grantedSecs, err := bundle.tracker.Grant(entry, ttl)
+	if err != nil {
+		bundle.registry.Release(entry)
+		p.PackErrorBody("rdma_extent_mr_lookup", err.Error())
+		return
+	}
+	reply := rdma.ExtentMRLookupReply{
+		LeaseID:        lease.ID,
+		Rkey:           entry.Rkey(),
+		GrantedSeconds: grantedSecs,
+		VA:             entry.VA(),
+		Size:           uint64(entry.Size),
+	}
+	argBuf := make([]byte, rdma.ExtentMRLookupReplySize)
+	if merr := reply.Marshal(argBuf); merr != nil {
+		// Marshal can only fail on a too-small buffer, which the
+		// fixed slice rules out. Defensive: release the lease so
+		// the entry isn't pinned forever.
+		_ = bundle.tracker.Release(lease.ID)
+		p.PackErrorBody("rdma_extent_mr_lookup", merr.Error())
+		return
+	}
+	p.Arg = argBuf
+	p.ArgLen = uint32(len(argBuf))
+	p.Size = 0 // reply carries no payload data
+	p.ResultCode = proto.OpOk
+}
+
+// handleExtentMRRenew extends an existing lease's TTL. Parses the
+// request, finds the bundle whose tracker owns the lease, and
+// either replies with the granted seconds or OpNotExistErr so the
+// client knows to re-Lookup.
+//
+// The bundle-discovery step is brute-force (scan all bundles) on
+// the assumption that a single conn rarely touches many DPs and
+// the renew rate is low (≤ 1 per lease per renew interval). If
+// this becomes a hot path we'll add a leaseID → bundle index map.
+func (cs *connState) handleExtentMRRenew(p *repl.Packet) {
+	if int(p.ArgLen) < rdma.ExtentMRRenewRequestSize || len(p.Arg) < int(p.ArgLen) {
+		p.PackErrorBody("rdma_extent_mr_renew", "arg too short")
+		return
+	}
+	var req rdma.ExtentMRRenewRequest
+	if err := req.Unmarshal(p.Arg[:p.ArgLen]); err != nil {
+		p.PackErrorBody("rdma_extent_mr_renew", err.Error())
+		return
+	}
+	cs.extentMRMu.Lock()
+	bundles := make([]*extentMRBundle, 0, len(cs.extentMRBundles))
+	for _, b := range cs.extentMRBundles {
+		bundles = append(bundles, b)
+	}
+	cs.extentMRMu.Unlock()
+
+	ttl := time.Duration(req.LeaseSecondsHint) * time.Second
+	for _, b := range bundles {
+		grantedSecs, err := b.tracker.Renew(req.LeaseID, ttl)
+		if err == nil {
+			reply := rdma.ExtentMRRenewReply{GrantedSeconds: grantedSecs}
+			argBuf := make([]byte, rdma.ExtentMRRenewReplySize)
+			_ = reply.Marshal(argBuf)
+			p.Arg = argBuf
+			p.ArgLen = uint32(len(argBuf))
+			p.Size = 0
+			p.ResultCode = proto.OpOk
+			return
+		}
+	}
+	// No bundle recognised this lease — expired or never existed.
+	// OpNotExistErr is the canonical "your reference is gone";
+	// client treats it as cue to re-Lookup.
+	p.ResultCode = proto.OpNotExistErr
 }
 
 // rdmaNetAddr implements net.Addr for RDMA remote addresses.

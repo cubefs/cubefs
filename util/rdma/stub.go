@@ -46,6 +46,7 @@ type RDMAMem struct {
 func (m *RDMAMem) Free()                     {}
 func (m *RDMAMem) Bytes() []byte             { return nil }
 func (m *RDMAMem) SlotBytes(_, _ int) []byte { return nil }
+func (m *RDMAMem) SetCleanup(_ func())       {}
 
 // RDMAConn is a minimal stub. Methods are no-ops so the same call sites
 // compile in both builds; the SlotPool tests in non-rdma builds exercise
@@ -101,4 +102,9 @@ func (l *RDMAListener) Close() error                        { return nil }
 // path and stay on the existing two-sided handler.
 func (c *RDMAConn) NewMRBufferPool(_, _ int, _ time.Duration) (*MRBufferPool, error) {
 	return nil, errNotSupported
+}
+
+// RegisterExtentFile stub for non-RDMA builds.
+func (c *RDMAConn) RegisterExtentFile(_ string, _ bool) (*RDMAMem, bool, error) {
+	return nil, false, errNotSupported
 }
