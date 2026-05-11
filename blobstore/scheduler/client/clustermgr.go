@@ -301,10 +301,12 @@ func (vunit *AllocVunitInfo) set(info *cmapi.AllocVolumeUnit, host string) {
 
 // VunitInfoSimple volume unit simple info
 type VunitInfoSimple struct {
-	Vuid   proto.Vuid   `json:"vuid"`
-	DiskID proto.DiskID `json:"disk_id"`
-	Host   string       `json:"host"`
-	Used   uint64       `json:"used"`
+	Vuid       proto.Vuid   `json:"vuid"`
+	DiskID     proto.DiskID `json:"disk_id"`
+	Host       string       `json:"host"`
+	Used       uint64       `json:"used"`
+	LogicSize  uint64       `json:"logic_size"`
+	Compacting bool         `json:"compact"`
 }
 
 func (vunit *VunitInfoSimple) set(info *cmapi.VolumeUnitInfo, host string) {
@@ -312,6 +314,8 @@ func (vunit *VunitInfoSimple) set(info *cmapi.VolumeUnitInfo, host string) {
 	vunit.DiskID = info.DiskID
 	vunit.Host = host
 	vunit.Used = info.Used
+	vunit.LogicSize = info.LogicSize
+	vunit.Compacting = info.Compacting
 }
 
 // DiskInfoSimple disk simple info for blobnode

@@ -337,6 +337,7 @@ func (v *VolumeMgr) applyChunkReport(ctx context.Context, chunks *cmapi.ReportCh
 			vol.vUnits[idx].vuInfo.Free = chunk.Free
 			vol.vUnits[idx].vuInfo.Used = chunk.Used
 			vol.vUnits[idx].vuInfo.Total = chunk.Total
+			vol.vUnits[idx].vuInfo.LogicSize = chunk.Size
 
 			dataChunkNum := uint64(v.codeMode[vol.volInfoBase.CodeMode].tactic.N)
 			volFree := vol.vUnits[idx].vuInfo.Free * dataChunkNum
