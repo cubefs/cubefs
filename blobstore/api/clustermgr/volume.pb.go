@@ -36,6 +36,7 @@ type VolumeUnitInfoBase struct {
 	Used                 uint64                                                 `protobuf:"varint,5,opt,name=used,proto3" json:"used,omitempty"`
 	Compacting           bool                                                   `protobuf:"varint,6,opt,name=compact,proto3" json:"compact,omitempty"`
 	Host                 string                                                 `protobuf:"bytes,7,opt,name=host,proto3" json:"host,omitempty"`
+	LogicSize            uint64                                                 `protobuf:"varint,8,opt,name=logic_size,json=logicSize,proto3" json:"logic_size,omitempty"`
 	XXX_NoUnkeyedLiteral struct{}                                               `json:"-"`
 	XXX_unrecognized     []byte                                                 `json:"-"`
 	XXX_sizecache        int32                                                  `json:"-"`
@@ -770,6 +771,11 @@ func (m *VolumeUnitInfoBase) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i -= len(m.XXX_unrecognized)
 		copy(dAtA[i:], m.XXX_unrecognized)
 	}
+	if m.LogicSize != 0 {
+		i = encodeVarintVolume(dAtA, i, uint64(m.LogicSize))
+		i--
+		dAtA[i] = 0x40
+	}
 	if len(m.Host) > 0 {
 		i -= len(m.Host)
 		copy(dAtA[i:], m.Host)
@@ -1175,6 +1181,9 @@ func (m *VolumeUnitInfoBase) Size() (n int) {
 	l = len(m.Host)
 	if l > 0 {
 		n += 1 + l + sovVolume(uint64(l))
+	}
+	if m.LogicSize != 0 {
+		n += 1 + sovVolume(uint64(m.LogicSize))
 	}
 	if m.XXX_unrecognized != nil {
 		n += len(m.XXX_unrecognized)
@@ -1631,6 +1640,25 @@ func (m *VolumeUnitInfoBase) Unmarshal(dAtA []byte) error {
 			}
 			m.Host = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
+		case 8:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LogicSize", wireType)
+			}
+			m.LogicSize = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowVolume
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.LogicSize |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipVolume(dAtA[iNdEx:])
