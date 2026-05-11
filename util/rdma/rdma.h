@@ -80,6 +80,77 @@ static inline int cubefs_post_rdma_write_with_imm(
     return ret ? errno : 0;
 }
 
+/* Post a single RDMA Read WR to qp. The local NIC issues a read from
+ * the remote (raddr, rkey) → into local (laddr, lkey). Used by the
+ * one-sided read fast path: clients pull extent data directly from a
+ * DataNode's pre-registered MR without involving server CPU.
+ *
+ * signaled=1 → IBV_SEND_SIGNALED (CQE on completion). RDMA Read
+ * completions go to the same CQ as RDMA Writes; the wr_id
+ * disambiguates the originating call site.
+ *
+ * Returns 0 on success, errno on failure. */
+static inline int cubefs_post_rdma_read(
+    struct ibv_qp  *qp,
+    uint64_t        laddr,
+    uint32_t        lkey,
+    uint32_t        len,
+    uint64_t        raddr,
+    uint32_t        rkey,
+    uint64_t        wr_id,
+    int             signaled)
+{
+    struct ibv_sge sge;
+    sge.addr   = laddr;
+    sge.length = len;
+    sge.lkey   = lkey;
+
+    struct ibv_send_wr wr;
+    memset(&wr, 0, sizeof(wr));
+    wr.wr_id               = wr_id;
+    wr.sg_list             = &sge;
+    wr.num_sge             = 1;
+    wr.opcode              = IBV_WR_RDMA_READ;
+    wr.send_flags          = signaled ? IBV_SEND_SIGNALED : 0;
+    wr.wr.rdma.remote_addr = raddr;
+    wr.wr.rdma.rkey        = rkey;
+
+    struct ibv_send_wr *bad_wr = NULL;
+    int ret = ibv_post_send(qp, &wr, &bad_wr);
+    return ret ? errno : 0;
+}
+
+/* Register a memory region with full read+write access (local and
+ * remote) plus, when on_demand=1, IBV_ACCESS_ON_DEMAND (ODP). ODP
+ * lets the kernel demand-page the region instead of pinning the
+ * entire range — crucial for registering large mmap'd extent files
+ * (up to 128 MiB each) without consuming pinned-memory budget.
+ *
+ * If ODP is requested but not supported by the HCA, ibv_reg_mr will
+ * fail; the caller can detect this and retry without the flag.
+ *
+ * Sets *out_mr on success. Returns 0 on success, errno on failure. */
+static inline int cubefs_reg_mr_ex(
+    struct ibv_pd      *pd,
+    void               *buf,
+    size_t              size,
+    int                 on_demand,
+    struct ibv_mr     **out_mr)
+{
+    int flags = IBV_ACCESS_LOCAL_WRITE
+              | IBV_ACCESS_REMOTE_WRITE
+              | IBV_ACCESS_REMOTE_READ;
+    if (on_demand) {
+        flags |= IBV_ACCESS_ON_DEMAND;
+    }
+    struct ibv_mr *mr = ibv_reg_mr(pd, buf, size, flags);
+    if (mr == NULL) {
+        return errno;
+    }
+    *out_mr = mr;
+    return 0;
+}
+
 /* Post a single recv WR with a 1-element SGE pointing at a small dummy
  * buffer. The buffer is needed even though we only care about the imm_data
  * in the resulting CQE (an RDMA_WRITE_WITH_IMM consumes a recv WR but does

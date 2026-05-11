@@ -51,6 +51,40 @@ func AllocRDMAMem(pd *C.struct_ibv_pd, size int) (*RDMAMem, error) {
 	}, nil
 }
 
+// RegisterRDMABuffer wraps an externally-allocated buffer (e.g. an
+// mmap'd extent file) in a registered MR without taking ownership of
+// the memory itself. The caller MUST keep the underlying buffer alive
+// for the lifetime of the returned RDMAMem and call Free() to
+// deregister; the buf pointer in the returned struct is left nil so
+// (*RDMAMem).Free will NOT C.free it.
+//
+// onDemand=true requests ODP (IBV_ACCESS_ON_DEMAND) so the kernel
+// can demand-page the region — essential for large file-backed
+// regions where pinning the entire range would exceed memory budget.
+// If ODP isn't supported by the HCA the call returns an error so
+// the caller can retry with onDemand=false or fall back to a
+// different strategy.
+func RegisterRDMABuffer(pd *C.struct_ibv_pd, base uintptr, size int, onDemand bool) (*RDMAMem, error) {
+	if size <= 0 {
+		return nil, fmt.Errorf("rdma: RegisterRDMABuffer: invalid size %d", size)
+	}
+	if base == 0 {
+		return nil, fmt.Errorf("rdma: RegisterRDMABuffer: nil base pointer")
+	}
+	mr, err := regMRWithODP(pd, unsafe.Pointer(base), size, onDemand)
+	if err != nil {
+		return nil, err
+	}
+	return &RDMAMem{
+		buf:  nil, // caller owns the memory; Free will only dereg the MR
+		mr:   mr,
+		Lkey: uint32(mr.lkey),
+		Rkey: uint32(mr.rkey),
+		VA:   uint64(base),
+		Size: size,
+	}, nil
+}
+
 // Free deregisters the MR and frees the underlying C memory.
 // Must be called when the connection is torn down.
 func (m *RDMAMem) Free() {

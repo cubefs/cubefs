@@ -120,12 +120,31 @@ func createQP(id *C.struct_rdma_cm_id, pd *C.struct_ibv_pd, cq *C.struct_ibv_cq,
 }
 
 // regMR registers a memory region for RDMA access.
-// flags: IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE
+// Default permissions cover local read/write plus remote read AND
+// remote write so a single MR works for both two-sided write paths
+// (where the peer writes into our slot buffers) and the one-sided
+// read fast path (where the peer reads from our extent buffers).
+//
+// onDemand=true requests IBV_ACCESS_ON_DEMAND so the kernel can
+// demand-page the region instead of pinning the full size; useful
+// for large extent-file MRs. If the HCA doesn't support ODP the
+// kernel returns EOPNOTSUPP / EINVAL; callers may then retry with
+// onDemand=false.
 func regMR(pd *C.struct_ibv_pd, buf unsafe.Pointer, size int) (*C.struct_ibv_mr, error) {
-	flags := C.IBV_ACCESS_LOCAL_WRITE | C.IBV_ACCESS_REMOTE_WRITE
-	mr := C.ibv_reg_mr(pd, buf, C.size_t(size), C.int(flags))
-	if mr == nil {
-		return nil, fmt.Errorf("rdma: ibv_reg_mr failed (size=%d)", size)
+	return regMRWithODP(pd, buf, size, false)
+}
+
+// regMRWithODP exposes the on-demand-paging variant so callers that
+// register large file-backed regions can opt in.
+func regMRWithODP(pd *C.struct_ibv_pd, buf unsafe.Pointer, size int, onDemand bool) (*C.struct_ibv_mr, error) {
+	var mr *C.struct_ibv_mr
+	odp := C.int(0)
+	if onDemand {
+		odp = 1
+	}
+	ret := C.cubefs_reg_mr_ex(pd, buf, C.size_t(size), odp, &mr)
+	if ret != 0 {
+		return nil, fmt.Errorf("rdma: ibv_reg_mr failed (size=%d odp=%v): errno %d", size, onDemand, ret)
 	}
 	return mr, nil
 }
@@ -172,6 +191,33 @@ func postRDMAWriteWithImm(qp *C.struct_ibv_qp, laddr uint64, lkey uint32, length
 		C.uint64_t(wrID), C.uint32_t(immData), sig)
 	if ret != 0 {
 		return fmt.Errorf("rdma: ibv_post_send (with imm) failed: errno %d", ret)
+	}
+	return nil
+}
+
+// postRDMARead posts a single RDMA Read WR — local NIC initiates a
+// read from the remote (raddr, rkey) into local (laddr, lkey). The
+// peer's CPU does not participate; the data lands directly in the
+// caller's local memory.
+//
+// Used by the one-sided read fast path: the SDK posts an RDMA Read
+// against an extent MR previously published by the DataNode. The
+// completion comes back on the QP's send CQ with the supplied wrID.
+//
+// signaled=true generates a CQE; in the typical fast path the SDK
+// waits on this CQE to know the read completed.
+func postRDMARead(qp *C.struct_ibv_qp, laddr uint64, lkey uint32, length uint32,
+	raddr uint64, rkey uint32, wrID uint64, signaled bool) error {
+	sig := C.int(0)
+	if signaled {
+		sig = 1
+	}
+	ret := C.cubefs_post_rdma_read(qp,
+		C.uint64_t(laddr), C.uint32_t(lkey), C.uint32_t(length),
+		C.uint64_t(raddr), C.uint32_t(rkey),
+		C.uint64_t(wrID), sig)
+	if ret != 0 {
+		return fmt.Errorf("rdma: ibv_post_send (read) failed: errno %d", ret)
 	}
 	return nil
 }
