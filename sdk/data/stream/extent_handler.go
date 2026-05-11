@@ -32,6 +32,7 @@ import (
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/rdma"
 	"github.com/cubefs/cubefs/util/stat"
 )
 
@@ -363,7 +364,29 @@ func (eh *ExtentHandler) sender() {
 				leaderAddr = eh.dp.Hosts[0]
 			}
 			if leaderAddr != "" && rdmaTryForSize(leaderAddr, int(packet.Size)) {
+				rdmaStart := time.Now()
 				if reply, rdmaErr := rdmaRoundTrip(leaderAddr, packet); rdmaErr == nil {
+					// rdmaRoundTrip itself only records fallback metrics
+					// on failure paths (acquire_slot / write_packet /
+					// poll_response). Its two wrappers in rdma_client.go
+					// (sendPacketViaRDMA / recvPacketViaRDMA) call
+					// MetricsObserveRequest on the success path; since
+					// we bypass them and call the inner function
+					// directly, record success here so the
+					// cubefs_rdma_requests_total counter actually moves
+					// for ObjectNode / FUSE / cfs-sync write traffic.
+					rdma.MetricsObserveRequest(rdma.RoleClient, leaderAddr, time.Since(rdmaStart))
+					if reply.ResultCode != proto.OpOk {
+						// Server-rejected RDMA write — handleWriteReply
+						// will mark the packet for recovery, but log
+						// the rejection at the RDMA boundary so it's
+						// distinguishable from TCP rejects in the warn
+						// log. Includes ReqID for correlation with the
+						// DataNode-side error.
+						log.LogWarnf("ExtentHandler sender: RDMA server reject addr(%v) op=0x%x pid=%d ext=%d size=%d crc=%d reqId=%d rc=%d",
+							leaderAddr, packet.Opcode, packet.PartitionID, packet.ExtentID,
+							packet.Size, packet.CRC, packet.ReqID, reply.ResultCode)
+					}
 					status := eh.getStatus()
 					if status >= ExtentStatusError {
 						eh.discardPacket(packet)

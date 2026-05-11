@@ -11,6 +11,7 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/rdma"
 )
 
@@ -121,6 +122,13 @@ func sendPacketViaRDMA(addr string, req *Packet) error {
 	req.ResultCode = resp.ResultCode
 	rdma.MetricsObserveRequest(rdma.RoleClient, addr, time.Since(start))
 	if resp.ResultCode != proto.OpOk {
+		// Server-side rejection: most commonly OpErr from checkCrc /
+		// checkPartition. Log enough context (opcode, partition,
+		// extent, size, CRC) so the operator can correlate with the
+		// DataNode error log line at the same ReqID without paging
+		// through hex dumps.
+		log.LogWarnf("rdma client: server rejected addr(%v) op=0x%x pid=%d ext=%d size=%d crc=%d reqId=%d resultCode=%d",
+			addr, req.Opcode, req.PartitionID, req.ExtentID, req.Size, req.CRC, req.ReqID, resp.ResultCode)
 		return fmt.Errorf("rdma client: server ResultCode=%d", resp.ResultCode)
 	}
 	return nil
