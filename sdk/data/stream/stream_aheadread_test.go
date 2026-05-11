@@ -16,8 +16,11 @@ func newTestStreamerWithAheadRead(t *testing.T, partitionID uint64) (*Streamer, 
 	w := &wrapper.Wrapper{}
 	w.InitInnerReq(true)
 	// Preload a DataPartition to avoid fetching from master
-	dp := &wrapper.DataPartition{}
-	dp.PartitionID = partitionID
+	dp := &wrapper.DataPartition{
+		DataPartitionResponse: proto.DataPartitionResponse{
+			PartitionID: partitionID,
+		},
+	}
 	dp.ClientWrapper = w
 	wrapper.InsertPartitionForTest(w, dp)
 
@@ -156,5 +159,79 @@ func TestAheadRead_CrossBlocks_FullHit(t *testing.T) {
 		if reqData[i] != 'B' {
 			t.Fatalf("unexpected data B at %d, got %v", i, reqData[i])
 		}
+	}
+}
+
+func TestAheadRead_DoTask_ReadFailed(t *testing.T) {
+	s, arc := newTestStreamerWithAheadRead(t, 4)
+	defer arc.Stop()
+
+	// Create a task with an invalid host to simulate read failure
+	dp := &wrapper.DataPartition{
+		DataPartitionResponse: proto.DataPartitionResponse{
+			PartitionID: 4,
+			Hosts:       []string{"127.0.0.1:1"}, // invalid host
+		},
+	}
+	ek := &proto.ExtentKey{PartitionId: 4, ExtentId: 400, FileOffset: 0, ExtentOffset: 0, Size: 8 * util.MB}
+	p := NewReadPacket(ek, 0, util.CacheReadBlockSize, s.inode, 0, false)
+	req := &ExtentRequest{
+		FileOffset: 0,
+		Size:       util.CacheReadBlockSize,
+		ExtentKey:  ek,
+	}
+
+	task := &AheadReadTask{
+		p:         p,
+		dp:        dp,
+		time:      time.Now(),
+		req:       req,
+		cacheSize: util.CacheReadBlockSize,
+		cacheType: "test",
+		logTime:   &time.Time{},
+		reqID:     "req-1",
+		poolId:    0,
+		retry:     MaxCacheBlockRetry + 1, // set to max to avoid pushing back to taskC
+	}
+
+	key := createAheadBlockKey(s.inode, 4, 400, 0, 0)
+
+	// Ensure block is not in cache before
+	if _, ok := arc.blockCache.Load(key); ok {
+		t.Fatalf("block should not be in cache")
+	}
+
+	// Call doTask directly
+	s.aheadReadWindow.doTask(task)
+
+	// Block should be deleted from cache
+	if _, ok := arc.blockCache.Load(key); ok {
+		t.Fatalf("block should be deleted from cache after read failure")
+	}
+}
+
+func TestAheadRead_EvictCacheBlock(t *testing.T) {
+	s, arc := newTestStreamerWithAheadRead(t, 5)
+	defer arc.Stop()
+
+	// Prepare a cache block in Init state
+	key := putCacheBlock(arc, s.inode, 5, 500, 0, util.CacheReadBlockSize, 'A')
+
+	// Verify it's in cache
+	if _, ok := arc.blockCache.Load(key); !ok {
+		t.Fatalf("block should be in cache")
+	}
+
+	req := &ExtentRequest{
+		FileOffset: 0,
+		Size:       util.CacheReadBlockSize,
+		ExtentKey:  &proto.ExtentKey{PartitionId: 5, ExtentId: 500, FileOffset: 0, ExtentOffset: 0, Size: 8 * util.MB},
+	}
+
+	s.aheadReadWindow.evictCacheBlock(req)
+
+	// Verify it's deleted from cache
+	if _, ok := arc.blockCache.Load(key); ok {
+		t.Fatalf("block should be deleted from cache after evictCacheBlock")
 	}
 }

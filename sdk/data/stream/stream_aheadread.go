@@ -379,8 +379,9 @@ func (arw *AheadReadWindow) doTask(task *AheadReadTask) {
 	log.LogErrorf("doTask inode(%v) key(%v) offset(%v) size(%v) err(%v) reqID(%v)- read failed,"+
 		" marking as recycled and deleting cache block",
 		cacheBlock.inode, key, task.p.ExtentOffset, task.cacheSize, err, task.reqID)
-	arw.cache.blockCache.Delete(key)
-	arw.cache.putAheadReadBlock(key, cacheBlock)
+	if actual, loaded1 := arw.cache.blockCache.LoadAndDelete(key); loaded1 {
+		arw.cache.putAheadReadBlock(key, actual.(*AheadReadBlock))
+	}
 	// retry failed task for updateRightIndex cannot be reverted
 	if task.retry <= MaxCacheBlockRetry && shouldRetry {
 		task.retry++
@@ -519,8 +520,9 @@ func (arw *AheadReadWindow) evictCacheBlock(req *ExtentRequest) {
 		bv.lock.Lock()
 		bv.key = ""
 		if atomic.LoadUint32(&bv.state) == AheadReadBlockStateInit {
-			arw.cache.blockCache.Delete(key)
-			arw.cache.putAheadReadBlock(key, bv)
+			if actual, loaded := arw.cache.blockCache.LoadAndDelete(key); loaded {
+				arw.cache.putAheadReadBlock(key, actual.(*AheadReadBlock))
+			}
 		}
 		bv.lock.Unlock()
 	}
