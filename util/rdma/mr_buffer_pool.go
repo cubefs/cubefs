@@ -59,7 +59,10 @@ type MRBuffer struct {
 	// acquiredAtUnixNanos holds time.Now().UnixNano() while the
 	// buffer is held by a caller; 0 when free. Used by the TTL
 	// sweep to detect leaked acquisitions.
-	acquiredAtUnixNanos atomic.Int64
+	//
+	// Plain int64 + atomic helpers (Go 1.17 compat — atomic.Int64
+	// is Go 1.19+).
+	acquiredAtUnixNanos int64
 }
 
 // MRBufferPool is a thread-safe pool of MRBuffer. Acquire blocks when
@@ -150,7 +153,7 @@ func (p *MRBufferPool) Acquire(ctx context.Context) (*MRBuffer, error) {
 			idx := p.freeIdx[n-1]
 			p.freeIdx = p.freeIdx[:n-1]
 			buf := p.buffers[idx]
-			buf.acquiredAtUnixNanos.Store(time.Now().UnixNano())
+			atomic.StoreInt64(&buf.acquiredAtUnixNanos, time.Now().UnixNano())
 			return buf, nil
 		}
 		p.cond.Wait()
@@ -171,7 +174,7 @@ func (p *MRBufferPool) TryAcquire() (*MRBuffer, bool) {
 		idx := p.freeIdx[n-1]
 		p.freeIdx = p.freeIdx[:n-1]
 		buf := p.buffers[idx]
-		buf.acquiredAtUnixNanos.Store(time.Now().UnixNano())
+		atomic.StoreInt64(&buf.acquiredAtUnixNanos, time.Now().UnixNano())
 		return buf, true
 	}
 	return nil, false
@@ -186,10 +189,10 @@ func (p *MRBufferPool) Release(b *MRBuffer) {
 	}
 	// Guard against double-release: if the buffer was already freed
 	// (e.g. via TTL sweep before the caller's defer ran), skip.
-	if b.acquiredAtUnixNanos.Load() == 0 {
+	if atomic.LoadInt64(&b.acquiredAtUnixNanos) == 0 {
 		return
 	}
-	b.acquiredAtUnixNanos.Store(0)
+	atomic.StoreInt64(&b.acquiredAtUnixNanos, 0)
 
 	p.mu.Lock()
 	if !p.closed {
@@ -289,13 +292,13 @@ func (p *MRBufferPool) sweepLoop() {
 func (p *MRBufferPool) sweepExpired() {
 	deadlineNanos := time.Now().Add(-p.ttl).UnixNano()
 	for _, b := range p.buffers {
-		acq := b.acquiredAtUnixNanos.Load()
+		acq := atomic.LoadInt64(&b.acquiredAtUnixNanos)
 		if acq == 0 || acq > deadlineNanos {
 			continue
 		}
 		// Atomically transition from "acquired" to "free" so a racing
 		// Release does not double-add to the free list.
-		if !b.acquiredAtUnixNanos.CompareAndSwap(acq, 0) {
+		if !atomic.CompareAndSwapInt64(&b.acquiredAtUnixNanos, acq, 0) {
 			continue
 		}
 		p.mu.Lock()

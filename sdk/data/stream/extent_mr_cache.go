@@ -57,12 +57,14 @@ type LeaseInfo struct {
 	VA      uint64
 	Size    uint64
 
-	expiresAtNanos atomic.Int64
+	// expiresAtNanos uses atomic helpers (Go 1.17 compat —
+	// atomic.Int64 is Go 1.19+).
+	expiresAtNanos int64
 }
 
 // IsExpired reports whether the lease's deadline has passed.
 func (l *LeaseInfo) IsExpired(now time.Time) bool {
-	return l.expiresAtNanos.Load() <= now.UnixNano()
+	return atomic.LoadInt64(&l.expiresAtNanos) <= now.UnixNano()
 }
 
 // extentMRCacheKey is the cache map key. Addr is included because
@@ -280,7 +282,7 @@ func (c *extentMRCache) renewExpiringEntries() {
 	}
 	targets := make([]renewTarget, 0)
 	for k, e := range c.entries {
-		if e.expiresAtNanos.Load()-now.UnixNano() < marginNanos {
+		if atomic.LoadInt64(&e.expiresAtNanos)-now.UnixNano() < marginNanos {
 			targets = append(targets, renewTarget{k, e})
 		}
 	}
@@ -296,6 +298,6 @@ func (c *extentMRCache) renewExpiringEntries() {
 			continue
 		}
 		newDeadline := c.cfg.NowFn().Add(time.Duration(granted) * time.Second).UnixNano()
-		t.info.expiresAtNanos.Store(newDeadline)
+		atomic.StoreInt64(&t.info.expiresAtNanos, newDeadline)
 	}
 }

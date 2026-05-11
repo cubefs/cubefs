@@ -17,6 +17,7 @@ package rdma
 import (
 	"errors"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -80,7 +81,7 @@ func TestLeaseTracker_GrantRenewRelease(t *testing.T) {
 	}
 
 	// Renew extends expiry.
-	preExp := lease.expiresAtUnixNanos.Load()
+	preExp := atomic.LoadInt64(&lease.expiresAtUnixNanos)
 	time.Sleep(2 * time.Millisecond)
 	newGranted, err := tr.Renew(lease.ID, 20*time.Second)
 	if err != nil {
@@ -89,7 +90,7 @@ func TestLeaseTracker_GrantRenewRelease(t *testing.T) {
 	if newGranted != 20 {
 		t.Errorf("Renew granted: got %d want 20", newGranted)
 	}
-	if lease.expiresAtUnixNanos.Load() <= preExp {
+	if atomic.LoadInt64(&lease.expiresAtUnixNanos) <= preExp {
 		t.Error("Renew did not advance expiry")
 	}
 

@@ -67,8 +67,10 @@ type FileMREntry struct {
 
 	registry *FileMRRegistry
 	lruElem  *list.Element
-	refCount atomic.Int32
-	lastUsed atomic.Int64
+	// Atomics use Load/Store/Add helpers (Go 1.17 compat — atomic.Int32
+	// / atomic.Int64 are Go 1.19+).
+	refCount int32
+	lastUsed int64
 }
 
 // Rkey is a convenience accessor.
@@ -134,8 +136,8 @@ func (r *FileMRRegistry) Acquire(key uint64) (*FileMREntry, error) {
 	}
 	// Fast path: cache hit.
 	if e, ok := r.active[key]; ok {
-		e.refCount.Add(1)
-		e.lastUsed.Store(time.Now().UnixNano())
+		atomic.AddInt32(&e.refCount, 1)
+		atomic.StoreInt64(&e.lastUsed, time.Now().UnixNano())
 		r.lru.MoveToFront(e.lruElem)
 		r.mu.Unlock()
 		return e, nil
@@ -157,8 +159,8 @@ func (r *FileMRRegistry) Acquire(key uint64) (*FileMREntry, error) {
 		// The pending caller already inserted the entry; bump
 		// refCount and reuse.
 		if e, ok := r.active[key]; ok && e == p.entry {
-			e.refCount.Add(1)
-			e.lastUsed.Store(time.Now().UnixNano())
+			atomic.AddInt32(&e.refCount, 1)
+			atomic.StoreInt64(&e.lastUsed, time.Now().UnixNano())
 			r.lru.MoveToFront(e.lruElem)
 			r.mu.Unlock()
 			return e, nil
@@ -216,8 +218,8 @@ func (r *FileMRRegistry) Acquire(key uint64) (*FileMREntry, error) {
 		Size:     size,
 		registry: r,
 	}
-	e.refCount.Store(1)
-	e.lastUsed.Store(time.Now().UnixNano())
+	atomic.StoreInt32(&e.refCount, 1)
+	atomic.StoreInt64(&e.lastUsed, time.Now().UnixNano())
 	e.lruElem = r.lru.PushFront(e)
 	r.active[key] = e
 	p.entry = e
@@ -234,7 +236,7 @@ func (r *FileMRRegistry) Release(e *FileMREntry) {
 	// Allow refCount to go negative briefly so a double-Release is
 	// detectable, but the worst case is the entry becomes eligible
 	// for eviction earlier than intended — not a correctness bug.
-	e.refCount.Add(-1)
+	atomic.AddInt32(&e.refCount, -1)
 }
 
 // Invalidate forcibly removes the entry for key. Used by the
@@ -310,7 +312,7 @@ func (r *FileMRRegistry) MaxEntries() int { return r.maxEntries }
 func (r *FileMRRegistry) evictOneLocked() error {
 	for e := r.lru.Back(); e != nil; e = e.Prev() {
 		entry := e.Value.(*FileMREntry)
-		if entry.refCount.Load() <= 0 {
+		if atomic.LoadInt32(&entry.refCount) <= 0 {
 			r.lru.Remove(e)
 			delete(r.active, entry.Key)
 			entry.Mem.Free()

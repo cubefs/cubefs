@@ -68,7 +68,8 @@ type readCompletion struct {
 
 // readWaiter is one entry in RDMAConn.readWaiters.
 type readWaiter struct {
-	inUse  atomic.Bool
+	// inUse is 0/1 accessed via atomic.CAS / Store (Go 1.17 compat).
+	inUse  uint32
 	doneCh chan readCompletion
 }
 
@@ -146,7 +147,7 @@ func (c *RDMAConn) PostRDMAReadAndWait(dst []byte, remoteVA uint64, rkey uint32,
 	// finds one in the first few iterations.
 	slot := -1
 	for i := range c.readWaiters {
-		if c.readWaiters[i].inUse.CompareAndSwap(false, true) {
+		if atomic.CompareAndSwapUint32(&c.readWaiters[i].inUse, 0, 1) {
 			slot = i
 			break
 		}
@@ -154,7 +155,7 @@ func (c *RDMAConn) PostRDMAReadAndWait(dst []byte, remoteVA uint64, rkey uint32,
 	if slot < 0 {
 		return ErrReadSlotsExhausted
 	}
-	defer c.readWaiters[slot].inUse.Store(false)
+	defer atomic.StoreUint32(&c.readWaiters[slot].inUse, 0)
 
 	// Drain any stale completion that landed after a prior caller's
 	// timeout. The buffered channel can hold exactly one entry per

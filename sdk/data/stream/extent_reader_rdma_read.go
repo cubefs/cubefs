@@ -30,8 +30,23 @@ const (
 )
 
 var (
-	extentMRCacheRef     atomic.Pointer[extentMRCache]
+	// extentMRCacheRef holds the SDK-wide *extentMRCache. We use
+	// atomic.Value (rather than atomic.Pointer[T] which is Go 1.19+)
+	// to stay on Go 1.17. Stored value is *extentMRCache; nil-safe
+	// via the helper below.
+	extentMRCacheRef atomic.Value
 )
+
+// loadExtentMRCache returns the cached pointer or nil. Wrapping the
+// type assertion here keeps the Load sites tidy and ensures we never
+// panic on the empty-value (nil) case before any Store.
+func loadExtentMRCache() *extentMRCache {
+	v := extentMRCacheRef.Load()
+	if v == nil {
+		return nil
+	}
+	return v.(*extentMRCache)
+}
 
 // initExtentMRCacheOnce sets up the SDK-wide cache the first time a
 // reader needs it. Idempotent; subsequent calls observe the cached
@@ -40,7 +55,7 @@ var (
 var initExtentMRCacheOnce sync.Once
 
 func ensureExtentMRCache() *extentMRCache {
-	if c := extentMRCacheRef.Load(); c != nil {
+	if c := loadExtentMRCache(); c != nil {
 		return c
 	}
 	initExtentMRCacheOnce.Do(func() {
@@ -49,14 +64,14 @@ func ensureExtentMRCache() *extentMRCache {
 			extentMRCacheRef.Store(c)
 		}
 	})
-	return extentMRCacheRef.Load()
+	return loadExtentMRCache()
 }
 
 // invalidateExtentMRCache is the hook ExtentReader calls after a
 // failed one-sided read so the next attempt forces a fresh lookup.
 // Safe to call even when the cache hasn't been initialised.
 func invalidateExtentMRCache(addr string, pid, extentID uint64) {
-	c := extentMRCacheRef.Load()
+	c := loadExtentMRCache()
 	if c == nil {
 		return
 	}

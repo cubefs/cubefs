@@ -25,10 +25,13 @@ import (
 // mockLookup is a controllable extentMRLookupFunc / extentMRRenewFunc
 // pair shared by the cache tests. callDelay simulates a slow remote
 // so concurrent Gets actually race the single-flight gate.
+//
+// Counters use plain int64 + atomic helpers (Go 1.17 compat —
+// atomic.Int64 is Go 1.19+).
 type mockLookup struct {
 	mu         sync.Mutex
-	lookupCnt  atomic.Int64
-	renewCnt   atomic.Int64
+	lookupCnt  int64
+	renewCnt   int64
 	failKeys   map[uint64]error
 	callDelay  time.Duration
 	ttlSeconds uint32
@@ -58,7 +61,7 @@ func (m *mockLookup) advance(d time.Duration) {
 }
 
 func (m *mockLookup) lookup(addr string, pid, extentID uint64, _ time.Duration) (*LeaseInfo, error) {
-	m.lookupCnt.Add(1)
+	atomic.AddInt64(&m.lookupCnt, 1)
 	if m.callDelay > 0 {
 		time.Sleep(m.callDelay)
 	}
@@ -74,12 +77,12 @@ func (m *mockLookup) lookup(addr string, pid, extentID uint64, _ time.Duration) 
 		VA:          uint64(extentID + 2000),
 		Size:        1 << 20,
 	}
-	info.expiresAtNanos.Store(m.now().Add(time.Duration(m.ttlSeconds) * time.Second).UnixNano())
+	atomic.StoreInt64(&info.expiresAtNanos, m.now().Add(time.Duration(m.ttlSeconds)*time.Second).UnixNano())
 	return info, nil
 }
 
 func (m *mockLookup) renew(_ string, _ uint64, _ time.Duration) (uint32, error) {
-	m.renewCnt.Add(1)
+	atomic.AddInt64(&m.renewCnt, 1)
 	return m.ttlSeconds, nil
 }
 
@@ -119,7 +122,7 @@ func TestExtentMRCache_HitMiss(t *testing.T) {
 	if info.LeaseID != 200 {
 		t.Errorf("LeaseID: got %d want 200", info.LeaseID)
 	}
-	if got := m.lookupCnt.Load(); got != 1 {
+	if got := atomic.LoadInt64(&m.lookupCnt); got != 1 {
 		t.Errorf("lookupCnt: got %d want 1", got)
 	}
 
@@ -131,7 +134,7 @@ func TestExtentMRCache_HitMiss(t *testing.T) {
 	if info2 != info {
 		t.Error("expected cache hit returning same LeaseInfo")
 	}
-	if got := m.lookupCnt.Load(); got != 1 {
+	if got := atomic.LoadInt64(&m.lookupCnt); got != 1 {
 		t.Errorf("lookupCnt after hit: got %d want 1", got)
 	}
 
@@ -140,7 +143,7 @@ func TestExtentMRCache_HitMiss(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := m.lookupCnt.Load(); got != 2 {
+	if got := atomic.LoadInt64(&m.lookupCnt); got != 2 {
 		t.Errorf("lookupCnt after different addr: got %d want 2", got)
 	}
 }
@@ -154,7 +157,7 @@ func TestExtentMRCache_ExpiredEntryRefetches(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := m.lookupCnt.Load(); got != 1 {
+	if got := atomic.LoadInt64(&m.lookupCnt); got != 1 {
 		t.Fatal("setup")
 	}
 
@@ -164,7 +167,7 @@ func TestExtentMRCache_ExpiredEntryRefetches(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get after expiry: %v", err)
 	}
-	if got := m.lookupCnt.Load(); got != 2 {
+	if got := atomic.LoadInt64(&m.lookupCnt); got != 2 {
 		t.Errorf("expected re-lookup after expiry, lookupCnt=%d", got)
 	}
 }
@@ -189,7 +192,7 @@ func TestExtentMRCache_SingleFlight(t *testing.T) {
 	}
 	wg.Wait()
 
-	if got := m.lookupCnt.Load(); got != 1 {
+	if got := atomic.LoadInt64(&m.lookupCnt); got != 1 {
 		t.Errorf("single-flight: lookupCnt = %d, want 1", got)
 	}
 	for i := 0; i < N; i++ {
@@ -246,12 +249,12 @@ func TestExtentMRCache_Invalidate(t *testing.T) {
 		t.Errorf("Len after Invalidate = %d", c.Len())
 	}
 
-	pre := m.lookupCnt.Load()
+	pre := atomic.LoadInt64(&m.lookupCnt)
 	_, err = c.Get("dn", 1, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.lookupCnt.Load() != pre+1 {
+	if atomic.LoadInt64(&m.lookupCnt) != pre+1 {
 		t.Errorf("expected fresh lookup after Invalidate")
 	}
 }
@@ -316,15 +319,15 @@ func TestExtentMRCache_RenewerExtendsExpiry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	origExp := info.expiresAtNanos.Load()
+	origExp := atomic.LoadInt64(&info.expiresAtNanos)
 
 	// Wait several renewer ticks.
 	time.Sleep(250 * time.Millisecond)
 
-	if got := m.renewCnt.Load(); got == 0 {
+	if got := atomic.LoadInt64(&m.renewCnt); got == 0 {
 		t.Errorf("renewer never ran (renewCnt=%d)", got)
 	}
-	if newExp := info.expiresAtNanos.Load(); newExp <= origExp {
+	if newExp := atomic.LoadInt64(&info.expiresAtNanos); newExp <= origExp {
 		t.Errorf("renewer did not advance expiry: old=%d new=%d", origExp, newExp)
 	}
 }

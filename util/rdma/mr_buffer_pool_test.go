@@ -63,7 +63,7 @@ func TestMRBufferPool_AcquireRelease(t *testing.T) {
 	if got := p.Available(); got != 0 {
 		t.Fatalf("after 2 acquires Available: got %d want 0", got)
 	}
-	if b1.acquiredAtUnixNanos.Load() == 0 {
+	if atomic.LoadInt64(&b1.acquiredAtUnixNanos) == 0 {
 		t.Errorf("acquired buffer should have non-zero timestamp")
 	}
 
@@ -71,7 +71,7 @@ func TestMRBufferPool_AcquireRelease(t *testing.T) {
 	if got := p.Available(); got != 1 {
 		t.Fatalf("after release Available: got %d want 1", got)
 	}
-	if b1.acquiredAtUnixNanos.Load() != 0 {
+	if atomic.LoadInt64(&b1.acquiredAtUnixNanos) != 0 {
 		t.Errorf("released buffer should have zero timestamp")
 	}
 
@@ -224,7 +224,7 @@ func TestMRBufferPool_ReleaseByIndex(t *testing.T) {
 	if got := p.Available(); got != 1 {
 		t.Fatalf("Available after ReleaseByIndex: got %d want 1", got)
 	}
-	if bufs[2].acquiredAtUnixNanos.Load() != 0 {
+	if atomic.LoadInt64(&bufs[2].acquiredAtUnixNanos) != 0 {
 		t.Errorf("released buffer should have zero timestamp")
 	}
 
@@ -300,7 +300,7 @@ func TestMRBufferPool_ConcurrentAcquireRelease(t *testing.T) {
 	p := makeTestPool(poolSize, 0)
 	defer p.Close()
 
-	var acquireCount, releaseCount atomic.Int64
+	var acquireCount, releaseCount int64
 	var wg sync.WaitGroup
 	for w := 0; w < workers; w++ {
 		wg.Add(1)
@@ -312,18 +312,18 @@ func TestMRBufferPool_ConcurrentAcquireRelease(t *testing.T) {
 					t.Errorf("Acquire: %v", err)
 					return
 				}
-				acquireCount.Add(1)
+				atomic.AddInt64(&acquireCount, 1)
 				// Brief simulated work so contention happens.
 				time.Sleep(50 * time.Microsecond)
 				p.Release(b)
-				releaseCount.Add(1)
+				atomic.AddInt64(&releaseCount, 1)
 			}
 		}()
 	}
 	wg.Wait()
 
-	if acquireCount.Load() != releaseCount.Load() {
-		t.Errorf("acquire/release mismatch: %d / %d", acquireCount.Load(), releaseCount.Load())
+	if atomic.LoadInt64(&acquireCount) != atomic.LoadInt64(&releaseCount) {
+		t.Errorf("acquire/release mismatch: %d / %d", atomic.LoadInt64(&acquireCount), atomic.LoadInt64(&releaseCount))
 	}
 	if got := p.Available(); got != poolSize {
 		t.Errorf("final Available: got %d want %d", got, poolSize)

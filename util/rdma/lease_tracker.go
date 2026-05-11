@@ -56,12 +56,14 @@ type Lease struct {
 	Key   uint64 // mirrors entry.Key for log/diagnostic ease
 	entry *FileMREntry
 
-	expiresAtUnixNanos atomic.Int64
+	// expiresAtUnixNanos is accessed via atomic helpers (Go 1.17
+	// compat — atomic.Int64 is Go 1.19+).
+	expiresAtUnixNanos int64
 }
 
 // ExpiresAt returns the absolute deadline for this lease.
 func (l *Lease) ExpiresAt() time.Time {
-	return time.Unix(0, l.expiresAtUnixNanos.Load())
+	return time.Unix(0, atomic.LoadInt64(&l.expiresAtUnixNanos))
 }
 
 // LeaseTracker is goroutine-safe.
@@ -139,7 +141,7 @@ func (t *LeaseTracker) Grant(entry *FileMREntry, ttl time.Duration) (*Lease, uin
 		Key:   entry.Key,
 		entry: entry,
 	}
-	l.expiresAtUnixNanos.Store(time.Now().Add(granted).UnixNano())
+	atomic.StoreInt64(&l.expiresAtUnixNanos, time.Now().Add(granted).UnixNano())
 
 	t.byID[id] = l
 	leasesForKey, ok := t.byKey[entry.Key]
@@ -173,12 +175,12 @@ func (t *LeaseTracker) Renew(id uint64, ttl time.Duration) (uint32, error) {
 	// (it must re-Lookup).
 	now := time.Now().UnixNano()
 	for {
-		cur := l.expiresAtUnixNanos.Load()
+		cur := atomic.LoadInt64(&l.expiresAtUnixNanos)
 		if cur < now {
 			return 0, ErrLeaseUnknown
 		}
 		newExp := now + int64(ttl)
-		if l.expiresAtUnixNanos.CompareAndSwap(cur, newExp) {
+		if atomic.CompareAndSwapInt64(&l.expiresAtUnixNanos, cur, newExp) {
 			break
 		}
 	}
@@ -306,7 +308,7 @@ func (t *LeaseTracker) sweepExpired() {
 	}
 	var expired []*Lease
 	for _, l := range t.byID {
-		if l.expiresAtUnixNanos.Load() <= nowNanos {
+		if atomic.LoadInt64(&l.expiresAtUnixNanos) <= nowNanos {
 			t.deleteLeaseLocked(l)
 			expired = append(expired, l)
 		}

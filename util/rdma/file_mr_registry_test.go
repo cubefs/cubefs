@@ -27,7 +27,7 @@ import (
 // asserted. registerDelay simulates slow mmap/ibv_reg_mr so concurrent
 // callers actually race.
 type mockRegister struct {
-	callCount atomic.Int64
+	callCount int64 // accessed atomically (Go 1.17 compat)
 	failKeys  map[uint64]error // keys whose register call should error
 	delay     time.Duration
 	mu        sync.Mutex
@@ -35,7 +35,7 @@ type mockRegister struct {
 }
 
 func (m *mockRegister) register(key uint64) (*RDMAMem, int, error) {
-	m.callCount.Add(1)
+	atomic.AddInt64(&m.callCount, 1)
 	m.mu.Lock()
 	m.calls = append(m.calls, key)
 	m.mu.Unlock()
@@ -82,7 +82,7 @@ func TestFileMRRegistry_AcquireRelease(t *testing.T) {
 	if got := r.Len(); got != 1 {
 		t.Errorf("Len after first acquire: got %d want 1", got)
 	}
-	if got := mr.callCount.Load(); got != 1 {
+	if got := atomic.LoadInt64(&mr.callCount); got != 1 {
 		t.Errorf("register calls: got %d want 1", got)
 	}
 
@@ -94,7 +94,7 @@ func TestFileMRRegistry_AcquireRelease(t *testing.T) {
 	if e2 != e1 {
 		t.Error("expected same entry on cache hit")
 	}
-	if got := mr.callCount.Load(); got != 1 {
+	if got := atomic.LoadInt64(&mr.callCount); got != 1 {
 		t.Errorf("register calls after hit: got %d want 1", got)
 	}
 
@@ -140,11 +140,11 @@ func TestFileMRRegistry_LRUEviction(t *testing.T) {
 	}
 
 	// 2 should now be a miss (re-registered).
-	preCalls := mr.callCount.Load()
+	preCalls := atomic.LoadInt64(&mr.callCount)
 	if _, err := r.Acquire(2); err != nil {
 		t.Fatalf("Acquire(2): %v", err)
 	}
-	if mr.callCount.Load() != preCalls+1 {
+	if atomic.LoadInt64(&mr.callCount) != preCalls+1 {
 		t.Errorf("re-Acquire(2) should hit register again")
 	}
 }
@@ -199,7 +199,7 @@ func TestFileMRRegistry_SingleFlight(t *testing.T) {
 	wg.Wait()
 
 	// register should have been called exactly once.
-	if got := mr.callCount.Load(); got != 1 {
+	if got := atomic.LoadInt64(&mr.callCount); got != 1 {
 		t.Errorf("single-flight: register calls = %d, want 1", got)
 	}
 	// Every goroutine got the same entry.
@@ -212,7 +212,7 @@ func TestFileMRRegistry_SingleFlight(t *testing.T) {
 		}
 	}
 	// refCount equals N (each successful Acquire incremented).
-	if got := entries[0].refCount.Load(); int(got) != N {
+	if got := atomic.LoadInt32(&entries[0].refCount); int(got) != N {
 		t.Errorf("refCount = %d, want %d", got, N)
 	}
 }
@@ -245,7 +245,7 @@ func TestFileMRRegistry_SingleFlightFailure(t *testing.T) {
 	// register called once (or possibly twice on retry); allow up to
 	// 2 because each waiter that observed an error may retry the
 	// next round. But all N callers must see the same error pattern.
-	if got := mr.callCount.Load(); got < 1 {
+	if got := atomic.LoadInt64(&mr.callCount); got < 1 {
 		t.Errorf("expected register to be called at least once, got %d", got)
 	}
 	for i := 0; i < N; i++ {
@@ -275,12 +275,12 @@ func TestFileMRRegistry_Invalidate(t *testing.T) {
 	}
 
 	// Re-acquire after Invalidate must trigger a fresh register.
-	pre := mr.callCount.Load()
+	pre := atomic.LoadInt64(&mr.callCount)
 	_, err = r.Acquire(5)
 	if err != nil {
 		t.Fatalf("re-Acquire: %v", err)
 	}
-	if mr.callCount.Load() != pre+1 {
+	if atomic.LoadInt64(&mr.callCount) != pre+1 {
 		t.Errorf("re-Acquire after Invalidate should call register again")
 	}
 }
@@ -326,11 +326,11 @@ func TestFileMRRegistry_AcquireDoesNotBlockOtherKeys(t *testing.T) {
 	// for key 2. Use a per-key delay so the test isolates the
 	// registry's internal locking from mock latency.
 	var (
-		registerCount atomic.Int64
+		registerCount int64
 		startedKey1   = make(chan struct{})
 	)
 	register := func(key uint64) (*RDMAMem, int, error) {
-		registerCount.Add(1)
+		atomic.AddInt64(&registerCount, 1)
 		if key == 1 {
 			close(startedKey1)
 			time.Sleep(100 * time.Millisecond)
