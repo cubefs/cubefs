@@ -97,6 +97,25 @@ func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) 
 	// reads surfaced as ~6% read failures on 4 MB s3bench.
 	rdmaAddr := sc.CurrAddr()
 	if rdmaAddr != "" && rdmaTryForSize(rdmaAddr, chunkSize) {
+		// Phase A fast path: one-sided RDMA Read against the
+		// DataNode's pre-registered extent MR. Zero server CPU on
+		// the data path — the NIC pulls bytes directly. Skipped
+		// when the cache isn't initialised (no Phase A wiring) or
+		// when a probe call returns nil + error (cache miss with
+		// lookup failure, deregistered MR, etc.) — caller drops
+		// through to the two-sided readViaRDMA below.
+		if n, rerr := reader.tryReadViaRDMARead(rdmaAddr, reqPacket, req, offset, size); rerr == nil && n > 0 {
+			readBytes = n
+			return
+		} else if rerr != nil {
+			// Invalidate the cache entry so the next read does a
+			// fresh lookup. A logged warn only — the two-sided
+			// path below still gets a chance.
+			log.LogDebugf("ExtentReader Read: one-sided RDMA failed, trying two-sided: addr(%v) req(%v) err(%v)",
+				rdmaAddr, reqPacket, rerr)
+			invalidateExtentMRCache(rdmaAddr, reader.dp.PartitionID, reqPacket.ExtentID)
+		}
+
 		if n, rerr := reader.readViaRDMA(rdmaAddr, reqPacket, req, offset, size); rerr == nil {
 			readBytes = n
 			return

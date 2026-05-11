@@ -404,6 +404,27 @@ func (p *RDMAConnPool) AcquireSlot(addr string) (*SlotHandle, error) {
 	return p.AcquireSlotForKey(addr, "")
 }
 
+// ConnForKey returns a healthy RDMAConn for the given (addr, key)
+// without holding any slot. Used by operations that need the conn's
+// QP but not the slot accounting — currently only the one-sided
+// RDMA Read fast path (Sprint A.6).
+//
+// Implementation note: this acquires a slot and immediately releases
+// it. The brief slot use is the price for reusing AcquireSlotForKey's
+// dial-on-demand machinery without duplicating it. Conns outlive
+// slots — the released slot returns to the free list while the
+// caller continues to hold the conn pointer; another caller may
+// concurrently use the same conn for sends or reads on its QP.
+func (p *RDMAConnPool) ConnForKey(addr, key string) (*RDMAConn, error) {
+	handle, err := p.AcquireSlotForKey(addr, key)
+	if err != nil {
+		return nil, err
+	}
+	conn := handle.Conn
+	p.ReleaseSlot(handle, false)
+	return conn, nil
+}
+
 // AcquireSlotForKey is like AcquireSlot but pins the call to a
 // deterministic conn (hash(key) % maxConns) within the per-addr
 // sub-pool, so all calls with the same key share a QP and observe FIFO
