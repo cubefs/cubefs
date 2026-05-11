@@ -276,6 +276,21 @@ func (sc *StreamConn) readActiveHosts(dp *wrapper.DataPartition, req *Packet, ge
 }
 
 func (sc *StreamConn) sendToDataPartitionByAddr(req *Packet, getReply GetReplyFunc) (err error) {
+	// For reads via this dispatcher, recvPacketViaRDMA does a single
+	// round-trip whose response carries the FULL Data the caller
+	// asked for — it does NOT chunk internally like
+	// ExtentReader.readViaRDMA does. So the gate must check the
+	// actual single-shot transfer size, which for reads is req.Size
+	// (the requested data length). Writes are pre-chunked at
+	// BlockSize by the caller (doDirectWriteByAppend / doOverwrite)
+	// so their req.Size already fits a slot.
+	//
+	// Note: a 1 MB GET arriving here has req.Size=1048576 → gate
+	// records reason="large_payload" once and TCP path takes over.
+	// That's the source of the large_payload counter ObjectNode sees
+	// under s3bench 1 MB GET; the bytes are still served via TCP, no
+	// data loss, just a noisy counter. The ExtentReader path is the
+	// preferred entry for big reads — it chunks at ReadBlockSize.
 	if rdmaTryForSize(sc.currAddr, int(req.Size)) {
 		// sendPacketViaRDMA is the WRITE path; reads need
 		// recvPacketViaRDMA which extracts response Data and verifies
