@@ -218,6 +218,14 @@ type DataNode struct {
 	rdmaMinPayloadBytes int
 	rdmaCtx             *DataNodeRDMACtx
 
+	// writeDedup makes OpWrite handling idempotent across SDK retries.
+	// When an RDMA round-trip's response is lost the SDK falls back to TCP
+	// and replays the same packet (same PID/ExtentID/ReqID); without this
+	// cache the replay hits AppendWrite's `dataSize == Offset` invariant
+	// on the already-committed extent and fails with OpTryOtherExtent,
+	// dragging both the SDK and the followers into spurious recovery.
+	writeDedup *writeDedupCache
+
 	getRepairConnFunc func(target string) (net.Conn, error)
 	putRepairConnFunc func(conn net.Conn, forceClose bool)
 
@@ -454,6 +462,9 @@ func doShutdown(server common.Server) {
 	if s.rdmaCtx != nil {
 		s.rdmaCtx.Stop()
 	}
+	if s.writeDedup != nil {
+		s.writeDedup.Stop()
+	}
 	MasterClient.Stop()
 	// stop cpu sample
 	close(s.cpuSamplerDone)
@@ -612,6 +623,9 @@ func (s *DataNode) updateQosLimit() {
 func (s *DataNode) newSpaceManager(cfg *config.Config) (err error) {
 	s.startTime = time.Now().Unix()
 	s.space = NewSpaceManager(s)
+	if s.writeDedup == nil {
+		s.writeDedup = newWriteDedupCache()
+	}
 	if len(strings.TrimSpace(s.port)) == 0 {
 		err = ErrNewSpaceManagerFailed
 		return
