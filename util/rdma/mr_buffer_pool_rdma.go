@@ -55,10 +55,12 @@ func NewMRBufferPoolForPD(pd *C.struct_ibv_pd, count, bufSize int, ttl time.Dura
 	return pool, nil
 }
 
-// attachMems hooks the registered RDMAMems into the pool so Close
-// can deregister them. Keeping the mems behind a method (rather than
-// a struct field exposed everywhere) lets the build-tag-free pool
-// stay agnostic about real-vs-mock memory.
-func (p *MRBufferPool) attachMems(mems []*RDMAMem) {
-	p.ownedMems = mems
+// NewMRBufferPool builds a pool whose memory is registered with this
+// connection's PD. Returned pool is valid for the lifetime of the
+// connection — callers should Close it before the conn is torn down.
+func (c *RDMAConn) NewMRBufferPool(count, bufSize int, ttl time.Duration) (*MRBufferPool, error) {
+	if c.pd == nil {
+		return nil, fmt.Errorf("rdma: NewMRBufferPool on conn with nil PD")
+	}
+	return NewMRBufferPoolForPD(c.pd, count, bufSize, ttl)
 }

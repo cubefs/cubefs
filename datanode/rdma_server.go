@@ -36,6 +36,13 @@ type connState struct {
 	conn    *rdma.RDMAConn
 	lastSeq []uint32 // per-slot last-seen doorbell seq
 
+	// mrPool serves one-sided RDMA Read requests (OpReadMRLookup /
+	// OpReadMRRelease). nil when the build does not register pinned
+	// buffers (non-rdma stub, or pool init failed during accept);
+	// handlers detect nil and fall through to the existing two-sided
+	// handleReadSlot path so the SDK can retry with OpStreamRead.
+	mrPool *rdma.MRBufferPool
+
 	// workChs decouples doorbell scanning (cheap, latency-sensitive)
 	// from packet handling (potentially slow disk I/O). pollLoop
 	// hashes slot indices to a fixed-size worker pool by `slotIdx %
@@ -72,6 +79,24 @@ type connState struct {
 // reasonable default for the typical 3-replica DataNode where each
 // conn carries up to NumSlots in flight (256 by default).
 const rdmaServerWorkersPerConn = 4
+
+// One-sided RDMA read pool defaults (Sprint 2.1/2.2). Each accepted
+// server-side conn gets its own MR-backed buffer pool — buffers are
+// pinned, registered with the conn's PD, and handed out by rkey to
+// clients servicing OpReadMRLookup. The defaults below come out to
+// 32 MB per conn (32 × 1 MB) which sits comfortably under the user-
+// approved 1 GB-per-DataNode budget for typical fan-in.
+//
+// rdmaMRPoolTTL bounds how long a single in-flight read may hold a
+// buffer before the sweeper reclaims it; defends against clients
+// that crash between Lookup and Release. 10 s is plenty for any
+// healthy round-trip but short enough that pool exhaustion under
+// real failures recovers in seconds.
+const (
+	rdmaMRPoolPerConn    = 32
+	rdmaMRPoolBufferSize = 1 << 20 // 1 MiB; comfortably above ReadBlockSize 128 KiB
+	rdmaMRPoolTTL        = 10 * time.Second
+)
 
 // DataNodeRDMACtx manages the DataNode RDMA receive loop. It holds a
 // reference to the *DataNode so handlers can call Prepare / OperatePacket
@@ -183,10 +208,22 @@ func (ctx *DataNodeRDMACtx) acceptLoop() {
 		for i := 0; i < rdmaServerWorkersPerConn; i++ {
 			cs.workChs[i] = make(chan int, perWorker)
 		}
+		// Pre-register a per-conn MR buffer pool for one-sided reads.
+		// Failure is non-fatal: the conn still serves two-sided reads,
+		// just without the zero-CPU fast path. We log and continue so
+		// a single PD-allocation hiccup doesn't drop the whole conn.
+		if pool, perr := conn.NewMRBufferPool(rdmaMRPoolPerConn, rdmaMRPoolBufferSize, rdmaMRPoolTTL); perr != nil {
+			log.LogWarnf("rdma accept: MR buffer pool init failed (one-sided reads disabled on this conn): %v", perr)
+		} else {
+			cs.mrPool = pool
+		}
 		ctx.wg.Add(1)
 		go func() {
 			defer ctx.wg.Done()
 			defer conn.Close()
+			if cs.mrPool != nil {
+				defer cs.mrPool.Close()
+			}
 			// Spawn the worker pool; pollLoop hashes slots to one of
 			// these workers. Closing the channels on pollLoop exit
 			// drains each worker before conn.Close releases the QP/MRs.
@@ -342,6 +379,15 @@ func (cs *connState) handleSlot(ctx *DataNodeRDMACtx, slotIdx int) {
 			// zero-copy path; skip the trailing WritePacket below.
 			return
 		}
+	} else if replPkt.Opcode == proto.OpReadMRLookup {
+		// One-sided RDMA read path: hand the client an MR-backed
+		// buffer it can RDMA-Read directly. Falls through to the
+		// trailing WritePacket so the client receives the
+		// (rkey, VA, CRC, len) reply via its slot.
+		cs.handleReadMRLookup(ctx, replPkt)
+	} else if replPkt.Opcode == proto.OpReadMRRelease {
+		// Client done with a previously-acquired MR buffer.
+		cs.handleReadMRRelease(replPkt)
 	} else {
 		// Write / control path: existing OperatePacket dispatch with
 		// fakeConn (Write panics if a handler tries to stream).
@@ -518,6 +564,142 @@ func (cs *connState) handleReadSlot(ctx *DataNodeRDMACtx, p *repl.Packet, slotId
 		return false
 	}
 	return true
+}
+
+// handleReadMRLookup serves the one-sided RDMA read fast path. The
+// client sent (pid, ext, offset, size); we acquire a pinned MR
+// buffer from cs.mrPool, fill it via store.Read, attach the
+// (rkey, VA, length) reply in p.Arg and the data CRC in p.CRC, and
+// reply OpOk. The caller (handleSlot) writes p back via the existing
+// slot mechanism so the client decodes it from its receive ring.
+//
+// The actual data does NOT flow through this reply — the client
+// follows up with its own RDMA Read against (rkey, VA). The server
+// only releases the buffer when an OpReadMRRelease arrives or the
+// pool's TTL sweep reclaims it (cs.mrPool's ttl, ~10 s).
+//
+// On any failure (Prepare reject, pool exhausted, disk read error)
+// we pack an error body and return; the client will read the error
+// ResultCode and either retry or fall back to the two-sided
+// OpStreamRead path. p.NeedReply stays true so handleSlot ships
+// the response regardless of outcome.
+func (cs *connState) handleReadMRLookup(ctx *DataNodeRDMACtx, p *repl.Packet) {
+	if cs.mrPool == nil {
+		// Pool wasn't created on this conn (e.g. non-rdma build, PD
+		// alloc failure during accept). Force fallback.
+		p.PackErrorBody("rdma_mr_lookup", "MR pool not available")
+		return
+	}
+	if err := ctx.node.Prepare(p); err != nil {
+		log.LogErrorf("rdma handleReadMRLookup: Prepare reqId=%d pid=%d ext=%d: %v",
+			p.ReqID, p.PartitionID, p.ExtentID, err)
+		p.PackErrorBody(repl.ActionPreparePkt, err.Error())
+		return
+	}
+	partition, ok := p.Object.(*DataPartition)
+	if !ok || partition == nil {
+		p.PackErrorBody("rdma_mr_lookup", "partition object missing")
+		return
+	}
+	if int(p.Size) <= 0 {
+		p.PackErrorBody("rdma_mr_lookup", "invalid size 0")
+		return
+	}
+	// Reject reads larger than the pool's buffer size — caller is
+	// expected to chunk at ReadBlockSize, so this should never fire
+	// in practice; defensive check guards against a misbehaving SDK.
+	if int(p.Size) > rdmaMRPoolBufferSize {
+		p.PackErrorBody("rdma_mr_lookup",
+			fmt.Sprintf("size %d exceeds MR buffer %d", p.Size, rdmaMRPoolBufferSize))
+		return
+	}
+
+	// TryAcquire so a saturated pool surfaces as OpAgain rather than
+	// blocking the worker goroutine and starving other slots.
+	buf, ok := cs.mrPool.TryAcquire()
+	if !ok {
+		p.ResultCode = proto.OpAgain
+		return
+	}
+	releaseOnError := buf
+	defer func() {
+		// If we didn't manage to ship the rkey to the client (error
+		// branch), give the buffer back immediately so the pool
+		// doesn't have to wait for the TTL sweep.
+		if releaseOnError != nil {
+			cs.mrPool.Release(releaseOnError)
+		}
+	}()
+
+	store := partition.ExtentStore()
+	isBackup := p.GetOpcode() == proto.OpBackupRead
+	dataSlice := buf.Data[:int(p.Size)]
+	crc, err := store.Read(p.ExtentID, p.ExtentOffset, int64(p.Size), dataSlice, false, isBackup)
+	if err != nil {
+		log.LogWarnf("rdma handleReadMRLookup: store.Read dp=%d ext=%d off=%d size=%d: %v",
+			p.PartitionID, p.ExtentID, p.ExtentOffset, p.Size, err)
+		switch {
+		case err == storage.LimitedIoError:
+			p.ResultCode = proto.OpLimitedIoErr
+		default:
+			p.PackErrorBody("rdma_mr_lookup", err.Error())
+		}
+		return
+	}
+
+	reply := rdma.MRLookupReply{
+		Rkey:      buf.Rkey,
+		PoolIndex: uint32(buf.Index),
+		VA:        buf.VA,
+		Length:    uint64(p.Size),
+	}
+	argBuf := make([]byte, rdma.MRLookupReplySize)
+	if merr := reply.Marshal(argBuf); merr != nil {
+		// Should be impossible given the fixed buffer size, but guard
+		// anyway so a future refactor doesn't silently corrupt the
+		// wire format.
+		p.PackErrorBody("rdma_mr_lookup", merr.Error())
+		return
+	}
+	p.Arg = argBuf
+	p.ArgLen = uint32(len(argBuf))
+	p.CRC = crc
+	// p.Size is left as-is — the client compares it to the requested
+	// size to detect a partial fill (e.g. short read at EOF).
+	p.ResultCode = proto.OpOk
+	releaseOnError = nil // success: buffer stays out, released by OpReadMRRelease or TTL
+}
+
+// handleReadMRRelease returns an MR buffer to the pool when the
+// client signals it has finished its RDMA Read. The buffer index is
+// in p.Arg per the MRReleaseArg wire format; any malformed input is
+// logged and ignored so a misbehaving client cannot cause spurious
+// errors on the server's response path (the buffer will still be
+// reclaimed by the TTL sweep).
+func (cs *connState) handleReadMRRelease(p *repl.Packet) {
+	if cs.mrPool == nil {
+		p.ResultCode = proto.OpOk // nothing to do; ack the client anyway
+		return
+	}
+	if p.ArgLen < rdma.MRReleaseArgSize || len(p.Arg) < int(p.ArgLen) {
+		log.LogWarnf("rdma handleReadMRRelease: arg too short reqId=%d argLen=%d", p.ReqID, p.ArgLen)
+		p.PackErrorBody("rdma_mr_release", "arg too short")
+		return
+	}
+	var arg rdma.MRReleaseArg
+	if err := arg.Unmarshal(p.Arg[:p.ArgLen]); err != nil {
+		log.LogWarnf("rdma handleReadMRRelease: arg unmarshal reqId=%d: %v", p.ReqID, err)
+		p.PackErrorBody("rdma_mr_release", err.Error())
+		return
+	}
+	if int(arg.PoolIndex) >= cs.mrPool.Len() {
+		log.LogWarnf("rdma handleReadMRRelease: PoolIndex %d out of range (pool size %d) reqId=%d",
+			arg.PoolIndex, cs.mrPool.Len(), p.ReqID)
+		p.PackErrorBody("rdma_mr_release", "PoolIndex out of range")
+		return
+	}
+	cs.mrPool.ReleaseByIndex(int(arg.PoolIndex))
+	p.ResultCode = proto.OpOk
 }
 
 // rdmaNetAddr implements net.Addr for RDMA remote addresses.

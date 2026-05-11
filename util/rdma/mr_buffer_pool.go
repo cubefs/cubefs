@@ -199,6 +199,18 @@ func (p *MRBufferPool) Release(b *MRBuffer) {
 	p.mu.Unlock()
 }
 
+// ReleaseByIndex is equivalent to Release(p.buffers[i]) but lets a
+// caller release a buffer it identified by index — e.g. the server-
+// side OpReadMRRelease handler, which receives the PoolIndex from
+// the client on the wire. Out-of-range indices are silently ignored
+// (the TTL sweep will reclaim any genuinely stuck buffer regardless).
+func (p *MRBufferPool) ReleaseByIndex(idx int) {
+	if idx < 0 || idx >= len(p.buffers) {
+		return
+	}
+	p.Release(p.buffers[idx])
+}
+
 // Len reports the configured pool size. Useful for metrics export.
 func (p *MRBufferPool) Len() int {
 	return len(p.buffers)
@@ -239,6 +251,14 @@ func (p *MRBufferPool) freeOwnedMems() {
 		m.Free()
 	}
 	p.ownedMems = nil
+}
+
+// attachMems hooks the registered RDMAMems into the pool so Close
+// can deregister them. Keeping the mems behind a method (rather than
+// a struct field exposed everywhere) lets the build-tag-free pool
+// stay agnostic about real-vs-mock memory.
+func (p *MRBufferPool) attachMems(mems []*RDMAMem) {
+	p.ownedMems = mems
 }
 
 // sweepLoop runs while ttl > 0. Once a second it reclaims buffers

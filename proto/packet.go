@@ -212,6 +212,19 @@ const (
 	OpSyncTryWriteAppend    uint8 = 0xB7
 	OpVersionOp             uint8 = 0xB8
 
+	// One-sided RDMA read negotiation (Phase 2). The client sends
+	// OpReadMRLookup with the usual ExtentKey + offset + size; the
+	// DataNode acquires an MR-backed buffer, fills it via store.Read,
+	// and replies with (rkey, VA, CRC) in the response Arg field. The
+	// client then issues a native RDMA Read against that buffer with
+	// zero further server CPU involvement, and afterwards sends
+	// OpReadMRRelease so the server can return the buffer to its pool.
+	// Both opcodes are RDMA-only — falling back to the existing
+	// OpStreamRead path is automatic when the server isn't on a build
+	// that registered the pool.
+	OpReadMRLookup  uint8 = 0xB9
+	OpReadMRRelease uint8 = 0xBA
+
 	// Commons
 	OpNoSpaceErr uint8 = 0xEE
 	OpForbidErr  uint8 = 0xEF
@@ -512,6 +525,10 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpStreamRead"
 	case OpStreamFollowerRead:
 		m = "OpStreamFollowerRead"
+	case OpReadMRLookup:
+		m = "OpReadMRLookup"
+	case OpReadMRRelease:
+		m = "OpReadMRRelease"
 	case OpGetAllWatermarks:
 		m = "OpGetAllWatermarks"
 	case OpNotifyReplicasToRepair:

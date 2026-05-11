@@ -201,6 +201,56 @@ func TestMRBufferPool_NilReleaseIgnored(t *testing.T) {
 	p.Release(nil)
 }
 
+func TestMRBufferPool_ReleaseByIndex(t *testing.T) {
+	p := makeTestPool(4, 0)
+	defer p.Close()
+
+	// Acquire all 4, then release by index 2 — should leave 1 buffer
+	// free and the released one available again.
+	bufs := make([]*MRBuffer, 4)
+	for i := range bufs {
+		b, err := p.Acquire(context.Background())
+		if err != nil {
+			t.Fatalf("Acquire %d: %v", i, err)
+		}
+		bufs[i] = b
+	}
+	if got := p.Available(); got != 0 {
+		t.Fatalf("Available after 4 acquires: got %d want 0", got)
+	}
+
+	// ReleaseByIndex with the actual index of bufs[2]
+	p.ReleaseByIndex(bufs[2].Index)
+	if got := p.Available(); got != 1 {
+		t.Fatalf("Available after ReleaseByIndex: got %d want 1", got)
+	}
+	if bufs[2].acquiredAtUnixNanos.Load() != 0 {
+		t.Errorf("released buffer should have zero timestamp")
+	}
+
+	// Re-acquire should hand the same buffer back (LIFO).
+	b, err := p.Acquire(context.Background())
+	if err != nil {
+		t.Fatalf("re-Acquire: %v", err)
+	}
+	if b.Index != bufs[2].Index {
+		t.Errorf("re-Acquire returned different index: got %d want %d", b.Index, bufs[2].Index)
+	}
+}
+
+func TestMRBufferPool_ReleaseByIndex_OutOfRange(t *testing.T) {
+	p := makeTestPool(2, 0)
+	defer p.Close()
+	// Out-of-range indices must be silently ignored — a misbehaving
+	// remote peer must not be able to corrupt the free list.
+	p.ReleaseByIndex(-1)
+	p.ReleaseByIndex(2)
+	p.ReleaseByIndex(99999)
+	if got := p.Available(); got != 2 {
+		t.Fatalf("Available after bogus ReleaseByIndex: got %d want 2", got)
+	}
+}
+
 func TestMRBufferPool_CloseUnblocksWaiters(t *testing.T) {
 	p := makeTestPool(1, 0)
 

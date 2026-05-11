@@ -7,6 +7,7 @@ package rdma
 
 import (
 	"errors"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
 )
@@ -85,3 +86,10 @@ type RDMAListener struct{}
 func Listen(_ int, _ RDMAConnConfig) (*RDMAListener, error) { return nil, errNotSupported }
 func (l *RDMAListener) Accept() (*RDMAConn, error)          { return nil, errNotSupported }
 func (l *RDMAListener) Close() error                        { return nil }
+
+// NewMRBufferPool stub: non-RDMA builds can't register memory. The
+// returned error lets callers cleanly skip the one-sided-read fast
+// path and stay on the existing two-sided handler.
+func (c *RDMAConn) NewMRBufferPool(_, _ int, _ time.Duration) (*MRBufferPool, error) {
+	return nil, errNotSupported
+}
