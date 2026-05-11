@@ -46,12 +46,23 @@ func rdmaRoundTrip(addr string, req *Packet) (*proto.Packet, error) {
 	if rdmaConnPortShift != 0 {
 		rdmaAddr = util.ShiftAddrPort(addr, rdmaConnPortShift)
 	}
-	// Hash-route by (PartitionID, ExtentID) so successive writes /
-	// reads on the same extent share a QP and arrive at the server in
-	// post order. Without this, append-write packets for one extent
-	// fan out across multiple conns and trip the offset-mismatch check
-	// in datanode/storage/extent.go.
-	key := fmt.Sprintf("%d-%d", req.PartitionID, req.ExtentID)
+	// Hash-route writes by (PartitionID, ExtentID) so successive
+	// AppendWrites on the same extent share a QP and arrive at the
+	// server in post order — without this, packets for one extent fan
+	// out across multiple conns and trip the offset-mismatch check in
+	// datanode/storage/extent.go.
+	//
+	// Reads have no such ordering constraint: the server's
+	// store.Read is read-only and any chunk can be served from any
+	// slot. Routing reads through the same key as writes would force
+	// every chunk of one object through a single slot serially,
+	// defeating ExtentReader.readViaRDMA's parallel chunk prefetch.
+	// Empty key triggers slot_pool's round-robin which spreads chunks
+	// across available conns/slots.
+	key := ""
+	if !req.IsReadOperation() {
+		key = fmt.Sprintf("%d-%d", req.PartitionID, req.ExtentID)
+	}
 	handle, err := rdmaConnPool.AcquireSlotForKey(rdmaAddr, key)
 	if err != nil {
 		rdma.MetricsObserveFallback(rdma.RoleClient, addr, "acquire_slot")

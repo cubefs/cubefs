@@ -19,6 +19,7 @@ import (
 	"hash/crc32"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -166,6 +167,45 @@ func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) 
 	return
 }
 
+// readPrefetchDepth caps how many ReadBlockSize-sized RDMA round-trips
+// run concurrently inside a single readViaRDMA call. Higher = better
+// latency hiding for large reads, but each in-flight chunk consumes
+// one slot pool entry and one ReadBlockSize buffer. 4 is a balanced
+// default given the typical pool config (numSlots=256 / maxConns=4).
+const readPrefetchDepth = 4
+
+// readChunkSpec describes one ReadBlockSize-aligned subrange of an
+// outer ExtentReader.Read request. Pure data — chunk splitting logic
+// is in splitReadChunks() so it can be unit-tested without RDMA.
+type readChunkSpec struct {
+	extentOff int // offset within the server-side extent
+	bufOff    int // destination offset within req.Data
+	bufSize   int // bytes to fetch (== copy length)
+}
+
+// splitReadChunks divides a [extentOff, extentOff+size) read into
+// ReadBlockSize-aligned pieces. The first and last chunks may be
+// smaller. The returned slice is in increasing-offset order.
+func splitReadChunks(extentOff, size, blockSize int) []readChunkSpec {
+	if size <= 0 || blockSize <= 0 {
+		return nil
+	}
+	n := (size + blockSize - 1) / blockSize
+	chunks := make([]readChunkSpec, 0, n)
+	for off := 0; off < size; off += blockSize {
+		bufSize := blockSize
+		if off+bufSize > size {
+			bufSize = size - off
+		}
+		chunks = append(chunks, readChunkSpec{
+			extentOff: extentOff + off,
+			bufOff:    off,
+			bufSize:   bufSize,
+		})
+	}
+	return chunks
+}
+
 // readViaRDMA tries to satisfy req entirely over RDMA, chunked at
 // util.ReadBlockSize. Returns the number of bytes filled into req.Data
 // (== size on success) and an error if any chunk failed; the caller
@@ -174,27 +214,94 @@ func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) 
 // the TCP path's getReply expects a single ReqID per StreamConn session
 // and re-issuing only the failed tail under a new ReqID would race with
 // the server's replication semantics.
+//
+// Chunks dispatch up to readPrefetchDepth in parallel, each on its own
+// slot — the SDK pool's read-side empty-key path (see rdma_client.go
+// rdmaRoundTrip) round-robins reads across available slots, so the
+// chunks don't serialise behind one slot. Failures cancel only the
+// completion-collection side; in-flight chunks that finish after the
+// first error are still drained to release their slots cleanly.
 func (reader *ExtentReader) readViaRDMA(addr string, reqPacket *Packet, req *ExtentRequest, offset, size int) (int, error) {
-	readBytes := 0
-	for readBytes < size {
-		bufSize := util.Min(util.ReadBlockSize, size-readBytes)
-		chunkReq := NewReadPacket(reader.key, offset+readBytes, bufSize,
-			reader.inode, req.FileOffset+readBytes, reader.followerRead)
-		// Inherit ReqID from the outer reqPacket so server-side audit
-		// logs correlate; chunk index is implicit in offset.
-		chunkReq.ReqID = reqPacket.ReqID
-
-		resp, rerr := recvPacketViaRDMA(addr, chunkReq)
-		if rerr != nil {
-			return readBytes, rerr
-		}
-		if int(resp.Size) != bufSize {
-			return readBytes, fmt.Errorf("rdma read: chunk size %d != requested %d", resp.Size, bufSize)
-		}
-		copy(req.Data[readBytes:readBytes+bufSize], resp.Data[:resp.Size])
-		readBytes += bufSize
+	chunks := splitReadChunks(offset, size, util.ReadBlockSize)
+	if len(chunks) == 0 {
+		return 0, nil
 	}
-	return readBytes, nil
+	if len(chunks) == 1 {
+		// Single-chunk fast path: avoids goroutine + channel overhead
+		// for the common small-read case.
+		return reader.readChunkViaRDMA(addr, reqPacket, req, chunks[0])
+	}
+	return reader.readChunksParallel(addr, reqPacket, req, chunks)
+}
+
+// readChunkViaRDMA performs one ReadBlockSize-sized RDMA round-trip
+// and copies the response data into the caller-provided req.Data
+// region. Returns the number of bytes successfully copied (== bufSize
+// on success, 0 on failure).
+func (reader *ExtentReader) readChunkViaRDMA(addr string, reqPacket *Packet, req *ExtentRequest, chk readChunkSpec) (int, error) {
+	chunkReq := NewReadPacket(reader.key, chk.extentOff, chk.bufSize,
+		reader.inode, req.FileOffset+chk.bufOff, reader.followerRead)
+	// Inherit ReqID from the outer reqPacket so server-side audit logs
+	// correlate; chunk index is implicit in offset.
+	chunkReq.ReqID = reqPacket.ReqID
+
+	resp, rerr := recvPacketViaRDMA(addr, chunkReq)
+	if rerr != nil {
+		return 0, rerr
+	}
+	if int(resp.Size) != chk.bufSize {
+		return 0, fmt.Errorf("rdma read: chunk size %d != requested %d", resp.Size, chk.bufSize)
+	}
+	copy(req.Data[chk.bufOff:chk.bufOff+chk.bufSize], resp.Data[:resp.Size])
+	return chk.bufSize, nil
+}
+
+// readChunksParallel dispatches up to readPrefetchDepth chunks
+// concurrently, blocking the caller until every chunk has completed
+// or any has failed. On success returns size bytes copied; on failure
+// returns the first error and 0 (partial reads aren't returned —
+// the outer Read() falls back to TCP which restarts from offset 0).
+func (reader *ExtentReader) readChunksParallel(addr string, reqPacket *Packet, req *ExtentRequest, chunks []readChunkSpec) (int, error) {
+	sem := make(chan struct{}, readPrefetchDepth)
+	errCh := make(chan error, len(chunks))
+	var wg sync.WaitGroup
+
+	for i := range chunks {
+		chk := chunks[i]
+		wg.Add(1)
+		sem <- struct{}{} // back-pressure: at most prefetchDepth in flight
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			if _, err := reader.readChunkViaRDMA(addr, reqPacket, req, chk); err != nil {
+				// Buffered to len(chunks) so this send is wait-free
+				// regardless of how many chunks fail.
+				errCh <- err
+			}
+		}()
+	}
+	wg.Wait()
+	close(errCh)
+
+	// First error wins. Drain the rest so logs aren't silent on
+	// follow-up failures (useful when triaging cascades).
+	var firstErr error
+	for err := range errCh {
+		if firstErr == nil {
+			firstErr = err
+		} else if log.EnableDebug() {
+			log.LogDebugf("readChunksParallel: additional chunk error after first: %v", err)
+		}
+	}
+	if firstErr != nil {
+		return 0, firstErr
+	}
+
+	totalSize := 0
+	for _, chk := range chunks {
+		totalSize += chk.bufSize
+	}
+	return totalSize, nil
 }
 
 func (reader *ExtentReader) checkStreamReply(request *Packet, reply *Packet) (err error) {
