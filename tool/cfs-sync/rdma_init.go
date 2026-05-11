@@ -77,10 +77,11 @@ func initRDMAFromConfig(cfg *cliConfig) {
 		fmt.Fprintf(os.Stderr, "RDMA: init failed, falling back to TCP: %v\n", err)
 		return
 	}
+	rdma.StartStatsLogger("cfs-sync")
 	fmt.Fprintf(os.Stderr,
 		"RDMA: cfs-sync client pool initialized (numSlots=%d slotSize=%d maxConns=%d "+
 			"portShift=%d minPayload=%d busy=%d yield=%d sleep=%dus)\n"+
 			"      Metrics on /metrics: cubefs_rdma_requests_total, cubefs_rdma_fallback_total, "+
-			"cubefs_rdma_latency_seconds\n",
+			"cubefs_rdma_latency_seconds. Periodic stats every 60s in stderr.\n",
 		num, size, mc, shift, minp, busy, yield, sleepUs)
 }

@@ -1280,7 +1280,9 @@ func (s *DataNode) initConnPool() {
 				if ferr := repl.EnableFollowerRDMA(followerCfg); ferr != nil {
 					log.LogWarnf("initConnPool: follower RDMA init failed, replication uses TCP: %v", ferr)
 				} else {
-					log.LogInfof("initConnPool: follower RDMA enabled (numSlots=%d slotSize=%d maxConns=%d portShift=%d)",
+					rdma.StartStatsLogger("DataNode")
+					log.LogInfof("initConnPool: follower RDMA enabled (numSlots=%d slotSize=%d maxConns=%d portShift=%d). "+
+						"Periodic stats logged every 60s — grep 'RDMA stats[DataNode]'.",
 						s.rdmaNumSlots, s.rdmaSlotSize, s.rdmaMaxConns, followerCfg.RDMAPortShift)
 				}
 			}

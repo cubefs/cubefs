@@ -78,9 +78,11 @@ func initRDMAClientPool(cfg *config.Config) error {
 		log.LogWarnf("RDMA: init failed, falling back to TCP: %v", err)
 		return nil
 	}
+	rdma.StartStatsLogger("ObjectNode")
 	log.LogInfof("RDMA: ObjectNode client pool initialized "+
 		"(numSlots=%d slotSize=%d maxConns=%d portShift=%d minPayload=%d busy=%d yield=%d sleep=%dus). "+
-		"Metrics: cubefs_rdma_requests_total / cubefs_rdma_fallback_total / cubefs_rdma_latency_seconds",
+		"Metrics: cubefs_rdma_requests_total / cubefs_rdma_fallback_total / cubefs_rdma_latency_seconds. "+
+		"Periodic stats logged every 60s — grep 'RDMA stats[ObjectNode]'.",
 		numSlots, slotSize, maxConns, portShift, minPayload, busy, yield, sleepUs)
 	return nil
 }
