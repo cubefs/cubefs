@@ -328,13 +328,27 @@ func (reader *ExtentReader) readChunkViaRDMARead(conn *rdma.RDMAConn, lease *Lea
 	elapsed := time.Since(start)
 	if elapsed >= phaseASlowChunkThreshold {
 		n := recordPhaseASlowChunk()
-		if n == 1 || n%phaseAWarnEvery == 0 {
+		// Slow chunks are by definition rare relative to total chunks
+		// (they're the long-tail outliers). The 1/256 sampling we use
+		// for failure logs is far too aggressive here — at 27 % slow
+		// rate over 938 chunks we saw only ONE WARN, not enough to
+		// spot patterns. Sample every 10th instead, with a separate
+		// always-log path for the truly bad ones (≥ 2 s = stalled
+		// rather than slow). This trades some log volume for the
+		// ability to correlate slow tail with specific connIdx /
+		// datanode / extent IDs.
+		shouldLog := n == 1 || n%phaseASlowChunkWarnEvery == 0 || elapsed >= phaseAStalledChunkThreshold
+		if shouldLog {
 			pid := reader.dp.PartitionID
 			extID := reader.key.ExtentId
 			poolKey := fmt.Sprintf("%d-%d", pid, extID)
 			idx := rdma.HashKeyToConnIndex(poolKey, rdmaPhaseAConnPool.MaxConns())
-			log.LogWarnf("rdma Phase A SLOW chunk addr=%s connIdx=%d pid=%d ext=%d off=%d size=%d elapsed=%v threshold=%v (n=%d)",
-				reader.dp.LeaderAddr, idx, pid, extID,
+			tag := "SLOW"
+			if elapsed >= phaseAStalledChunkThreshold {
+				tag = "STALLED"
+			}
+			log.LogWarnf("rdma Phase A %s chunk addr=%s connIdx=%d pid=%d ext=%d off=%d size=%d elapsed=%v threshold=%v (n=%d)",
+				tag, reader.dp.LeaderAddr, idx, pid, extID,
 				chk.extentOff, chk.bufSize, elapsed, phaseASlowChunkThreshold, n)
 		}
 	}

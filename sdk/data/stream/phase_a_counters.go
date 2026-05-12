@@ -29,6 +29,21 @@ import (
 // during normal warmup variance.
 const phaseASlowChunkThreshold = 500 * time.Millisecond
 
+// phaseASlowChunkWarnEvery samples the SLOW WARN log. Tighter than
+// phaseAWarnEvery (256) on purpose: slow chunks are themselves the
+// rare-tail events we're diagnosing, so 1/256 leaves the operator
+// with one log line per ~thousand chunks — not enough to spot the
+// pattern of which connIdx / datanode clusters they on. 1/10
+// trades a small bump in log volume for actually usable evidence.
+const phaseASlowChunkWarnEvery = 10
+
+// phaseAStalledChunkThreshold is the secondary bar above which EVERY
+// occurrence logs (no sampling). 2 s is the readViaRDMAReadTimeout
+// default — at this point the WR was effectively in queueing / fault
+// territory rather than slow execution, and the operator wants every
+// instance to surface so they can correlate with TCP fallback events.
+const phaseAStalledChunkThreshold = 2 * time.Second
+
 // Phase A observability counters live in this build-tag-free file so
 // the (also build-tag-free) phase_a_stats.go logger can read them in
 // both the RDMA and non-RDMA builds. The actual RDMA path
