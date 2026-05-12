@@ -32,21 +32,25 @@ import (
 
 const (
 	// defaultReadViaRDMAReadTimeout is the fallback for
-	// cfg.ReadTimeoutMs when the value is 0 or unset. Healthy RoCE
-	// round-trips are ≈100 µs and a busy server adds tens of ms at
-	// most; 5 s was the original (overly generous) value, which in
-	// production became the dominant source of tail latency: any
-	// transient WR fault stalled the read for 5 s before the SDK
-	// even started the fallback, and a 64-client s3bench run with
-	// 1.8 % failure rate saw p99 read latency at 41 s.
+	// cfg.ReadTimeoutMs when the value is 0 or unset.
 	//
-	// 1 s gives 10 000× headroom over healthy RTT — plenty for
-	// queueing, slot contention, scheduler hiccups — while making
-	// the worst-case fallback path 5× faster per failed WR.
-	// Lowering further (e.g. 200 ms) pushes toward false-positive
-	// territory under network congestion; 1 s is the safe-but-
-	// aggressive sweet spot.
-	defaultReadViaRDMAReadTimeout = 1 * time.Second
+	// History — three production data points calibrated this:
+	//   - 5 s (original): max read latency 55 s, p99 41 s; failed
+	//     WRs blocked the read 5 s before fallback even started.
+	//   - 1 s (cut #1): max 15 s, p99 12 s — long tail dropped
+	//     3× — but p50 went from 484 ms to 745 ms because some
+	//     reads that would have completed in 1–5 s were now killed
+	//     and re-tried via the slower fallback. Net regression on
+	//     the median.
+	//   - 2 s (current): the empirical sweet spot. Keeps the bulk
+	//     of in-flight WRs that would complete in <2 s while still
+	//     capping the tail at ~2 s + fallback per failed chunk.
+	//
+	// Healthy RoCE round-trips are ≈100 µs; 2 s is 20 000× over
+	// nominal, enough to absorb transient queueing without
+	// false-positive timeouts. Operators can override with
+	// rdmaReadTimeoutMs= for fabric-specific tuning.
+	defaultReadViaRDMAReadTimeout = 2 * time.Second
 
 	// phaseAWarnEvery samples failure logs so a permanent fault
 	// doesn't spam the log file — but the first occurrence is
