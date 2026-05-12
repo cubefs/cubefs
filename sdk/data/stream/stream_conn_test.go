@@ -14,8 +14,11 @@
 package stream
 
 import (
+	"fmt"
+	"net"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data/wrapper"
@@ -86,4 +89,50 @@ func TestSortByStatus(t *testing.T) {
 	if !reflect.DeepEqual(hosts, expected) {
 		t.Errorf("Expected %v, got %v", expected, hosts)
 	}
+}
+
+func TestStreamConn_Backoff(t *testing.T) {
+	dp := &wrapper.DataPartition{
+		DataPartitionResponse: proto.DataPartitionResponse{
+			PartitionID: 1,
+			Hosts:       []string{"127.0.0.1:65534", "127.0.0.1:65535"},
+			LeaderAddr:  "127.0.0.1:65534",
+		},
+	}
+	dp.ClientWrapper = &wrapper.Wrapper{
+		HostsStatus: map[string]bool{
+			"127.0.0.1:65534": true,
+			"127.0.0.1:65535": true,
+		},
+	}
+
+	sc := NewStreamConn(dp, false, 150*time.Millisecond)
+	req := NewReadPacket(&proto.ExtentKey{PartitionId: 1, ExtentId: 1}, 0, 4096, 1, 0, false)
+	retry := true
+
+	// Test sendToDataPartitionLeader
+	sc.maxRetryTimeout = 150 * time.Millisecond
+	err := sc.sendToDataPartitionLeader(req, &retry, func(conn *net.TCPConn) (error, bool) {
+		return TryOtherAddrError, false
+	})
+	if err == nil {
+		t.Errorf("expected error, got nil")
+	}
+
+	// Test readQuorumHosts
+	sc.maxRetryTimeout = 150 * time.Millisecond
+	err = sc.readQuorumHosts(dp, req, func(conn *net.TCPConn) (error, bool) {
+		return TryOtherAddrError, false
+	})
+	if err == nil {
+		t.Errorf("readQuorumHosts expected error, got nil")
+	}
+
+	// Test readActiveHosts
+	// Need to reset timeout since it was modified by previous calls
+	sc.maxRetryTimeout = 150 * time.Millisecond
+	err = sc.readActiveHosts(dp, req, func(conn *net.TCPConn) (error, bool) {
+		return fmt.Errorf("mock error"), false
+	})
+	t.Logf("readActiveHosts returned err: %v", err)
 }

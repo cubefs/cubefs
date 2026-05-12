@@ -40,10 +40,11 @@ var (
 )
 
 const (
-	StreamSendMaxRetry      = 200
-	StreamSendSleepInterval = 100 * time.Millisecond
-	StreamSendMaxTimeout    = 10 * time.Minute
-	RetryFactor             = 12 / 10
+	StreamSendMaxRetry         = 200
+	StreamSendSleepInterval    = 100 * time.Millisecond
+	StreamSendMaxSleepInterval = 30 * time.Second
+	StreamSendMaxTimeout       = 10 * time.Minute
+	RetryFactor                = 12 / 10
 )
 
 type GetReplyFunc func(conn *net.TCPConn) (err error, again bool)
@@ -187,11 +188,14 @@ func (sc *StreamConn) readQuorumHosts(dp *wrapper.DataPartition, req *Packet, ge
 
 	wait:
 		if time.Since(start) > sc.getRetryTimeOut() {
-
 			log.LogWarnf("readQuorumHosts failed: retry timeout sc(%v) reqPacket(%v) time(%v)", sc, req, time.Since(start))
 			return
 		}
 		time.Sleep(retryInterval)
+		retryInterval = retryInterval*RetryFactor + time.Duration(rand.Int63n(int64(retryInterval)))
+		if retryInterval > StreamSendMaxSleepInterval {
+			retryInterval = StreamSendMaxSleepInterval
+		}
 	}
 	log.LogWarnf("readQuorumHosts: retried %v times and still failed, sc(%v) reqPacket(%v)", StreamSendMaxRetry, sc, req)
 	return errors.NewErrorf("readQuorumHosts failed: sc(%v) reqPacket(%v)", sc, req)
@@ -213,6 +217,11 @@ func (sc *StreamConn) sendToDataPartitionLeader(req *Packet, retry *bool, getRep
 
 		if req.IsRandomWrite() {
 			retryInterval = retryInterval*RetryFactor + time.Duration(rand.Int63n(int64(retryInterval)))
+		} else {
+			retryInterval = retryInterval*RetryFactor + time.Duration(rand.Int63n(int64(retryInterval)))
+		}
+		if retryInterval > StreamSendMaxSleepInterval {
+			retryInterval = StreamSendMaxSleepInterval
 		}
 
 		log.LogWarnf("sendToDataPartitionLeader: err(%v), req %d, interval %d ms, cost %d ms",
@@ -270,6 +279,10 @@ func (sc *StreamConn) readActiveHosts(dp *wrapper.DataPartition, req *Packet, ge
 			return
 		}
 		time.Sleep(retryInterval)
+		retryInterval = retryInterval*RetryFactor + time.Duration(rand.Int63n(int64(retryInterval)))
+		if retryInterval > StreamSendMaxSleepInterval {
+			retryInterval = StreamSendMaxSleepInterval
+		}
 	}
 	log.LogWarnf("readActiveHosts: retried %v times and still failed, sc(%v) reqPacket(%v)", StreamSendMaxRetry, sc, req)
 	return errors.NewErrorf("readActiveHosts failed: sc(%v) reqPacket(%v)", sc, req)
