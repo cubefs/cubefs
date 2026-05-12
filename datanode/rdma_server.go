@@ -886,6 +886,13 @@ func (cs *connState) handleExtentMRLookup(ctx *DataNodeRDMACtx, p *repl.Packet) 
 		VA:             entry.VA(),
 		Size:           uint64(entry.Size),
 	}
+	// TEMP DIAG (Phase A debug): one INFO per granted lease so we can
+	// cross-reference the values the server actually published against
+	// what the client posts in its RDMA Read WR. grep both logs by
+	// pid+ext to pair the lines up. Remove once the rkey/VA flow is
+	// confirmed end-to-end.
+	log.LogInfof("Phase A DIAG: lookup grant pid=%d ext=%d leaseID=%d rkey=0x%x va=0x%x size=%d remote=%s",
+		req.PartitionID, req.ExtentID, lease.ID, entry.Rkey(), entry.VA(), entry.Size, cs.conn.RemoteAddr())
 	argBuf := make([]byte, rdma.ExtentMRLookupReplySize)
 	if merr := reply.Marshal(argBuf); merr != nil {
 		// Marshal can only fail on a too-small buffer, which the

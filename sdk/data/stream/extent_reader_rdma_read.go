@@ -286,6 +286,14 @@ func (reader *ExtentReader) tryReadViaRDMARead(rdmaAddr string, reqPacket *Packe
 func (reader *ExtentReader) readChunkViaRDMARead(conn *rdma.RDMAConn, lease *LeaseInfo, req *ExtentRequest, chk readChunkSpec) (int, error) {
 	dst := req.Data[chk.bufOff : chk.bufOff+chk.bufSize]
 	remoteVA := lease.VA + uint64(chk.extentOff)
+	// TEMP DIAG (Phase A debug): one INFO per chunk so we can pair
+	// each RDMA Read post against the server's "lookup grant" log
+	// line (grep both by pid+ext). Mismatch in rkey or VA would
+	// pinpoint a stale-cache or PD-scope bug; identical values but
+	// still timing out means the WR is real and the failure is on
+	// the NIC/network layer.
+	log.LogInfof("Phase A DIAG: RDMA Read post pid=%d ext=%d extOff=%d size=%d rkey=0x%x remoteVA=0x%x remote=%s",
+		reader.dp.PartitionID, lease.ExtentID, chk.extentOff, chk.bufSize, lease.Rkey, remoteVA, conn.RemoteAddr())
 	if err := conn.PostRDMAReadAndWait(dst, remoteVA, lease.Rkey, readViaRDMAReadTimeout); err != nil {
 		return 0, err
 	}
