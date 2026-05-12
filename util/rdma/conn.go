@@ -240,7 +240,7 @@ func Dial(addr string, cfg RDMAConnConfig) (*RDMAConn, error) {
 	}
 
 	ctx := getCTXFromCMID(id)
-	pd, err := allocPD(ctx)
+	pd, err := getOrAllocPDForCtx(ctx)
 	if err != nil {
 		destroyCMID(id)
 		destroyEventChannel(ch)
@@ -353,7 +353,7 @@ func Accept(listenID *C.struct_rdma_cm_id, cfg RDMAConnConfig) (*RDMAConn, Conne
 	}
 
 	ctx := getCTXFromCMID(connID)
-	pd, err := allocPD(ctx)
+	pd, err := getOrAllocPDForCtx(ctx)
 	if err != nil {
 		destroyCMID(connID)
 		destroyEventChannel(connCh)

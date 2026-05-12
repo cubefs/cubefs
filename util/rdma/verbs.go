@@ -41,12 +41,44 @@ func openDevice(name string) (*C.struct_ibv_context, error) {
 }
 
 // allocPD allocates a Protection Domain on ctx.
+//
+// Deprecated for production use — call getOrAllocPDForCtx instead.
+// Kept exported (lowercase, package-internal) because some test
+// harnesses construct PDs directly with a separate lifecycle.
 func allocPD(ctx *C.struct_ibv_context) (*C.struct_ibv_pd, error) {
 	pd := C.ibv_alloc_pd(ctx)
 	if pd == nil {
 		return nil, fmt.Errorf("rdma: ibv_alloc_pd failed")
 	}
 	return pd, nil
+}
+
+// getOrAllocPDForCtx returns the per-device singleton PD for ctx,
+// allocating it on first use. See pd_cache.go for the rationale —
+// short version: MR rkey is PD-scoped, so two conns on the same
+// device that don't share a PD can't see each other's MRs, which
+// is exactly what made the Phase A read pool's RDMA Reads silently
+// time out.
+//
+// The cache logic lives in a build-tag-free file so unit tests can
+// drive it on darwin with a mock allocator; this thin wrapper just
+// converts cgo types and injects the real ibv_alloc_pd.
+func getOrAllocPDForCtx(ctx *C.struct_ibv_context) (*C.struct_ibv_pd, error) {
+	if ctx == nil {
+		return nil, fmt.Errorf("rdma: getOrAllocPDForCtx: nil ctx")
+	}
+	key := uintptr(unsafe.Pointer(ctx))
+	p, err := getOrAllocPDCached(key, func(k uintptr) (unsafe.Pointer, error) {
+		pd, err := allocPD((*C.struct_ibv_context)(unsafe.Pointer(k)))
+		if err != nil {
+			return nil, err
+		}
+		return unsafe.Pointer(pd), nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return (*C.struct_ibv_pd)(p), nil
 }
 
 // createCompChannel creates a completion channel bound to ctx. The channel
