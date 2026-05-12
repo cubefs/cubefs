@@ -15,6 +15,7 @@ import (
 	"github.com/cubefs/cubefs/datanode/repl"
 	"github.com/cubefs/cubefs/datanode/storage"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/rdma"
 )
@@ -603,8 +604,18 @@ func (cs *connState) handleReadSlot(ctx *DataNodeRDMACtx, p *repl.Packet, slotId
 	// mirror the disk-token check here.
 	isRepairRead := p.Opcode == proto.OpExtentRepairRead
 	isBackup := p.Opcode == proto.OpBackupRead
+	var ioLabels map[string]string
+	var partitionIOMetric *exporter.TimePointCount
+	if !p.ShallDegrade() {
+		ioLabels = GetIoMetricLabels(partition, "read")
+		partitionIOMetric = exporter.NewTPCnt(MetricPartitionIOName)
+	}
 	crc, err := store.Read(p.ExtentID, p.ExtentOffset, int64(p.Size), dataSlice, isRepairRead, isBackup)
 	if err != nil {
+		if partitionIOMetric != nil {
+			partitionIOMetric.SetWithLabels(err, ioLabels)
+		}
+		partition.checkIsDiskError(err, ReadFlag)
 		log.LogWarnf("rdma handleReadSlot: store.Read dp=%d ext=%d off=%d size=%d: %v",
 			p.PartitionID, p.ExtentID, p.ExtentOffset, p.Size, err)
 		switch {
@@ -624,15 +635,13 @@ func (cs *connState) handleReadSlot(ctx *DataNodeRDMACtx, p *repl.Packet, slotId
 	// Arg (if any) would go between PacketHeader and Data; for reads
 	// ArgLen is 0 so nothing to stamp here.
 
-	// Mirror NormalExtentRepairRead's IO-bytes accounting
-	// (data_partition_repair.go:678). The RDMA dispatch path was
-	// pulled out of OperatePacket for performance and lost the
-	// MetricIOBytes increment along the way — read traffic served via
-	// RDMA was invisible to the per-partition IO bytes gauge, which
-	// skewed any dashboard that watched it.
 	if !p.ShallDegrade() && ctx.node.metrics != nil {
-		ctx.node.metrics.MetricIOBytes.AddWithLabels(int64(p.Size), GetIoMetricLabels(partition, "read"))
+		ctx.node.metrics.MetricIOBytes.AddWithLabels(int64(p.Size), ioLabels)
+		if partitionIOMetric != nil {
+			partitionIOMetric.SetWithLabels(nil, ioLabels)
+		}
 	}
+	partition.checkIsDiskError(nil, ReadFlag)
 
 	if err := cs.conn.WriteSlotZeroCopy(slotIdx, totalLen); err != nil {
 		log.LogErrorf("rdma handleReadSlot: WriteSlotZeroCopy: %v", err)
@@ -712,8 +721,18 @@ func (cs *connState) handleReadMRLookup(ctx *DataNodeRDMACtx, p *repl.Packet) {
 	store := partition.ExtentStore()
 	isBackup := p.GetOpcode() == proto.OpBackupRead
 	dataSlice := buf.Data[:int(p.Size)]
+	var ioLabels map[string]string
+	var partitionIOMetric *exporter.TimePointCount
+	if !p.ShallDegrade() {
+		ioLabels = GetIoMetricLabels(partition, "read")
+		partitionIOMetric = exporter.NewTPCnt(MetricPartitionIOName)
+	}
 	crc, err := store.Read(p.ExtentID, p.ExtentOffset, int64(p.Size), dataSlice, false, isBackup)
 	if err != nil {
+		if partitionIOMetric != nil {
+			partitionIOMetric.SetWithLabels(err, ioLabels)
+		}
+		partition.checkIsDiskError(err, ReadFlag)
 		log.LogWarnf("rdma handleReadMRLookup: store.Read dp=%d ext=%d off=%d size=%d: %v",
 			p.PartitionID, p.ExtentID, p.ExtentOffset, p.Size, err)
 		switch {
@@ -745,6 +764,13 @@ func (cs *connState) handleReadMRLookup(ctx *DataNodeRDMACtx, p *repl.Packet) {
 	// p.Size is left as-is — the client compares it to the requested
 	// size to detect a partial fill (e.g. short read at EOF).
 	p.ResultCode = proto.OpOk
+	if !p.ShallDegrade() && ctx.node.metrics != nil {
+		ctx.node.metrics.MetricIOBytes.AddWithLabels(int64(p.Size), ioLabels)
+		if partitionIOMetric != nil {
+			partitionIOMetric.SetWithLabels(nil, ioLabels)
+		}
+	}
+	partition.checkIsDiskError(nil, ReadFlag)
 	releaseOnError = nil // success: buffer stays out, released by OpReadMRRelease or TTL
 }
 
