@@ -1,4 +1,16 @@
-//go:build linux && rdma
+// Copyright 2018 The CubeFS Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
 
 package rdma
 
@@ -6,7 +18,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/util"
@@ -46,6 +57,10 @@ import (
 //     sees (nil, false) and silently falls back to two-sided. The
 //     two-sided path may then dial successfully (it has its own
 //     conn pool), and the next Phase A attempt will try ours again.
+//
+// Build-tag-free so it can be unit-tested on darwin (the cgo Dial is
+// injected via dialFunc — production wiring passes the real verbs
+// Dial in pool.go's NewReadOnlyConnPool wrapper; tests pass mocks).
 
 // ErrReadOnlyPoolClosed is returned by ConnIfReady after Close.
 var ErrReadOnlyPoolClosed = errors.New("rdma: ReadOnlyConnPool closed")
@@ -61,7 +76,8 @@ type readOnlyConnState struct {
 
 // ReadOnlyConnPool is goroutine-safe.
 type ReadOnlyConnPool struct {
-	cfg RDMAPoolConfig
+	cfg  RDMAPoolConfig
+	dial dialFunc
 
 	mu     sync.RWMutex
 	conns  map[string]*readOnlyConnState
@@ -75,19 +91,20 @@ type ReadOnlyConnPool struct {
 	dialBackoff time.Duration
 }
 
-// NewReadOnlyConnPool constructs a pool. The cfg fields that matter for
-// the dial: Device, Port (passed through to verbs), NumSlots/SlotSize
-// (these end up unused for Phase A but the conn constructor still
-// allocates them — accepted as a "complete RDMAConn" cost in exchange
-// for not forking Dial). RDMAPortShift is honoured by ConnIfReady's
-// translation so callers can pass TCP addresses, same UX as the
-// two-sided pool.
-func NewReadOnlyConnPool(cfg RDMAPoolConfig) (*ReadOnlyConnPool, error) {
+// newReadOnlyConnPool builds a pool with the supplied dial function.
+// Production code uses NewReadOnlyConnPool in pool.go (rdma build)
+// or pool_stub.go (non-rdma) which inject the real / stub dial; tests
+// inject mocks directly via this entry point.
+func newReadOnlyConnPool(cfg RDMAPoolConfig, dial dialFunc) (*ReadOnlyConnPool, error) {
 	if cfg.NumSlots <= 0 || cfg.SlotSize <= 0 {
 		return nil, fmt.Errorf("rdma: ReadOnlyConnPool: NumSlots/SlotSize must be > 0")
 	}
+	if dial == nil {
+		return nil, errors.New("rdma: ReadOnlyConnPool: nil dial")
+	}
 	return &ReadOnlyConnPool{
 		cfg:         cfg,
+		dial:        dial,
 		conns:       make(map[string]*readOnlyConnState),
 		dialBackoff: time.Second,
 	}, nil
@@ -141,19 +158,25 @@ func (p *ReadOnlyConnPool) ConnIfReady(callerAddr string) (*RDMAConn, bool) {
 	}
 
 	st.mu.Lock()
-	defer st.mu.Unlock()
 
 	// Fast path: alive conn cached.
 	if st.conn != nil && !st.conn.IsClosed() {
-		return st.conn, true
+		conn := st.conn
+		st.mu.Unlock()
+		return conn, true
 	}
 
 	// Tear down a faulted/closed conn so the next dial gets a clean
 	// state. Conn.Close is idempotent on already-closed conns.
 	if st.conn != nil {
-		_ = st.conn.Close()
+		old := st.conn
 		st.conn = nil
 		log.LogWarnf("rdma readonly pool: conn to %s was closed/faulted — will redial", target)
+		// Close outside the lock to avoid blocking other goroutines
+		// during teardown (Close may take milliseconds).
+		st.mu.Unlock()
+		_ = old.Close()
+		st.mu.Lock()
 	}
 
 	// Don't redial faster than dialBackoff. Phase A is called
@@ -162,31 +185,52 @@ func (p *ReadOnlyConnPool) ConnIfReady(callerAddr string) (*RDMAConn, bool) {
 	// dial round-trip before they all give up. With it, only the
 	// first request after the backoff window tries.
 	if !st.lastDial.IsZero() && time.Since(st.lastDial) < p.dialBackoff && st.lastErr != nil {
+		st.mu.Unlock()
 		return nil, false
 	}
 
 	// Concurrent guard so N parallel readers don't all dial at once.
 	if st.dialing {
+		st.mu.Unlock()
 		return nil, false
 	}
 	st.dialing = true
 	cfg := readOnlyConnCfg(p.cfg)
 	st.mu.Unlock()
 
-	conn, err := Dial(target, cfg)
+	conn, err := p.dial(target, cfg)
 
 	st.mu.Lock()
 	st.dialing = false
 	st.lastDial = time.Now()
 	st.lastErr = err
+	// Pool may have been Closed while we were dialing; if so, throw
+	// away the new conn and report miss.
+	if p.isClosed() {
+		st.mu.Unlock()
+		if err == nil && conn != nil {
+			_ = conn.Close()
+		}
+		return nil, false
+	}
 	if err != nil {
+		st.mu.Unlock()
 		log.LogWarnf("rdma readonly pool: dial %s FAILED: %v — Phase A disabled for this addr until %s",
 			target, err, st.lastDial.Add(p.dialBackoff).Format(time.RFC3339))
 		return nil, false
 	}
 	st.conn = conn
+	st.mu.Unlock()
 	log.LogInfof("rdma readonly pool: dial %s OK — Phase A conn ready", target)
 	return conn, true
+}
+
+// isClosed is a small helper to read p.closed under the rwmutex.
+// Used by ConnIfReady's post-dial check.
+func (p *ReadOnlyConnPool) isClosed() bool {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.closed
 }
 
 // Close tears down every cached conn. Subsequent ConnIfReady calls
@@ -213,18 +257,18 @@ func (p *ReadOnlyConnPool) Close() {
 	}
 }
 
-// readOnlyConnStats is exposed for the Phase A stats logger so the
-// next 60s line shows how many Phase A conns are alive across all
-// DataNodes — a quick health signal independent of the success/fail
-// counters.
-type readOnlyConnStats struct {
-	Tracked int
-	Alive   int
-	Faulted int
+// ReadOnlyConnStats is a snapshot of the pool's per-addr conn health,
+// surfaced by the 60s Phase A stats logger so operators can confirm
+// that Phase A's QPs are alive without having to read the per-fault
+// WARN log.
+type ReadOnlyConnStats struct {
+	Tracked int // addrs we've ever tried to dial
+	Alive   int // addrs with an open, non-faulted conn right now
+	Faulted int // addrs whose conn was markFault'd or never dialed successfully
 }
 
-func (p *ReadOnlyConnPool) Stats() readOnlyConnStats {
-	var s readOnlyConnStats
+func (p *ReadOnlyConnPool) Stats() ReadOnlyConnStats {
+	var s ReadOnlyConnStats
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	for _, st := range p.conns {
@@ -242,11 +286,6 @@ func (p *ReadOnlyConnPool) Stats() readOnlyConnStats {
 	}
 	return s
 }
-
-// readOnlyDialCount exposed for tests — used nowhere in prod.
-var readOnlyDialCount int64
-
-func incReadOnlyDialCount() { atomic.AddInt64(&readOnlyDialCount, 1) }
 
 // readOnlyConnCfg derives the per-conn config from the pool config.
 // We override Role to a dedicated label so the existing prometheus

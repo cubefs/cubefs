@@ -30,3 +30,9 @@ func rdmaRoundTrip(_ string, _ *Packet) (*proto.Packet, error) { return nil, nil
 // rdmaTryForSize always returns false on non-RDMA builds: the path is
 // not compiled in, so callers must use TCP.
 func rdmaTryForSize(_ string, _ int) bool { return false }
+
+// phaseAPoolHealth returns a static placeholder on non-RDMA builds —
+// the Phase A stats goroutine still runs (logger init is build-tag-
+// free) but reports the path is disabled. The string format matches
+// the rdma-build version so log post-processors can rely on it.
+func phaseAPoolHealth() string { return "pool=disabled" }

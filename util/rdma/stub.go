@@ -91,6 +91,13 @@ func NewRDMAConnPool(_ RDMAPoolConfig) (*RDMAConnPool, error) {
 	return nil, errNotSupported
 }
 
+// NewReadOnlyConnPool returns errNotSupported on non-RDMA builds, same
+// pattern as NewRDMAConnPool. The ReadOnlyConnPool type itself is
+// tag-free in readonly_pool.go so test/stub references compile.
+func NewReadOnlyConnPool(_ RDMAPoolConfig) (*ReadOnlyConnPool, error) {
+	return nil, errNotSupported
+}
+
 type RDMAListener struct{}
 
 func Listen(_ int, _ RDMAConnConfig) (*RDMAListener, error) { return nil, errNotSupported }

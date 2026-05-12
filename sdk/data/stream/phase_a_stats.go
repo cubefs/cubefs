@@ -95,15 +95,18 @@ func phaseAStatsLoop() {
 			// Quiet line so absence of Phase A traffic is itself a
 			// signal — without this, "no log" could mean either
 			// "stats off" or "no traffic". The cum= part lets an
-			// operator confirm process uptime.
-			log.LogInfof("Phase A stats[%s] attempt=+0 (cum attempt=%d success=%d) — no one-sided traffic",
-				phaseAStatsName.Load(), attempt, success)
+			// operator confirm process uptime. Pool health follows
+			// on the same line so operators don't need to grep
+			// elsewhere to know "did Phase A's dedicated conns
+			// even come up?"
+			log.LogInfof("Phase A stats[%s] attempt=+0 (cum attempt=%d success=%d) — no one-sided traffic; %s",
+				phaseAStatsName.Load(), attempt, success, phaseAPoolHealth())
 			continue
 		}
 		hit := 100.0 * float64(dSuccess) / float64(dAttempt)
-		log.LogInfof("Phase A stats[%s] attempt=+%d success=+%d (hit=%.1f%%) fail: noCache=%d lookup=%d bounds=%d conn=%d wr=%d (cum attempt=%d success=%d)",
+		log.LogInfof("Phase A stats[%s] attempt=+%d success=+%d (hit=%.1f%%) fail: noCache=%d lookup=%d bounds=%d conn=%d wr=%d (cum attempt=%d success=%d); %s",
 			phaseAStatsName.Load(), dAttempt, dSuccess, hit,
 			dNoCache, dLookup, dBounds, dConn, dWr,
-			attempt, success)
+			attempt, success, phaseAPoolHealth())
 	}
 }

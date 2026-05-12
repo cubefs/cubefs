@@ -57,6 +57,23 @@ func InitRDMAConnPool(cfg rdma.RDMAPoolConfig) error {
 	return nil
 }
 
+// phaseAPoolHealth renders a one-line health snapshot of the read-only
+// pool (Phase A's dedicated conns). Embedded into every 60s Phase A
+// stats line so operators can confirm at a glance whether each
+// DataNode has a live Phase A conn — without grepping the dial logs.
+//
+// Format: "pool=tracked=N,alive=M,faulted=K". A healthy cluster reads
+// as alive == tracked. Sustained faulted>0 means the dial backoff
+// gate has kicked in for at least one DataNode and Phase A is
+// disabled for it until the next backoff window.
+func phaseAPoolHealth() string {
+	if rdmaReadOnlyPool == nil {
+		return "pool=uninit"
+	}
+	s := rdmaReadOnlyPool.Stats()
+	return fmt.Sprintf("pool=tracked=%d,alive=%d,faulted=%d", s.Tracked, s.Alive, s.Faulted)
+}
+
 // rdmaRoundTrip is the inner one-slot send + wait + return-credit cycle
 // shared by both write and read RDMA paths. On success it returns the
 // deserialised response packet; the caller is responsible for
