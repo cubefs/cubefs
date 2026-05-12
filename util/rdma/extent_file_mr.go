@@ -16,6 +16,13 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
+// prefaultSink is a package-level byte that the prefault-touch loop
+// XORs into. Storing into a package var forces the compiler to
+// preserve every memory load in the loop body — without this, Go's
+// SSA dead-code elimination would prove the loop pointless and
+// remove every page touch, defeating the whole prefault.
+var prefaultSink byte
+
 // RegisterExtentFile opens path, mmap's the entire file (size taken
 // from the file's stat — extent files should be at their final size
 // before this is called), and registers the mmap region as an MR
@@ -68,22 +75,49 @@ func RegisterExtentFile(pd *C.struct_ibv_pd, path string, readOnly bool) (*RDMAM
 	// Read against a not-yet-resident page triggers a NIC-side ODP
 	// page fault; on mlx5 that fault path is known to take seconds
 	// under load, and the SDK's 5s WR timeout doesn't survive it.
-	// With the prefault loop, the page table is already populated
-	// when the NIC touches the MR — fault handling is microseconds
-	// or skipped entirely.
 	//
-	// Cost: register time goes up roughly by the file read time
-	// (sequential page-touch ~ GB/s on modern disks → milliseconds
-	// per typical 1MB extent). Hit rate of Phase A reads against
-	// cached extents was 0% before this fix; one extra ms at register
-	// time to unblock the entire read path is a trivial trade.
+	// Belt-and-suspenders ordering — earlier attempts that used
+	// "_ = mmapBuf[off]" alone got compiled away (Go SSA treats the
+	// blank-identifier read as dead code; only the bounds check
+	// remains, which doesn't touch the page). Production confirmed
+	// this: WR timeouts persisted with the bare-touch loop. So:
 	//
-	// We don't fail register on prefault errors — the page-cache
-	// state is best-effort and the ibv_reg_mr below will surface
-	// any real problem.
-	pageSize := os.Getpagesize()
-	for off := 0; off < size; off += pageSize {
-		_ = mmapBuf[off]
+	//   1) MADV_WILLNEED: kernel hint to read-ahead the range. Async
+	//      on its own but kernels actually start the readahead now,
+	//      so by the time we get to (2) most pages are already in.
+	//   2) Mlock: synchronously page in AND lock pages resident in
+	//      RAM. This is the guarantee we need — once mlock returns,
+	//      every page in the mmap'd range is in the page table and
+	//      stays there until munlock / Munmap. mlock makes the
+	//      page-touch loop redundant but we keep both for the case
+	//      where mlock returns EAGAIN (transient resource pressure)
+	//      or EPERM (RLIMIT_MEMLOCK exhausted).
+	//   3) Page-touch loop with sink variable: fallback prefault
+	//      that the Go compiler cannot eliminate (atomic-load via
+	//      runtime.KeepAlive escape would also work; XOR-accumulate
+	//      into a stack var is simpler and equally effective).
+	//
+	// Cost: prefault adds ~1ms per MB on NVMe-backed page cache;
+	// extents in this cluster are typically ~1MB so the per-extent
+	// register time goes up by a millisecond or so — trivially
+	// dominated by the network RTT of the lookup round-trip the
+	// register is serving.
+	_ = syscall.Madvise(mmapBuf, syscall.MADV_WILLNEED)
+	mlocked := syscall.Mlock(mmapBuf) == nil
+	if !mlocked {
+		// Mlock failed (probably RLIMIT_MEMLOCK). Fall back to
+		// software prefault. sink prevents the compiler from
+		// killing the read; the XOR keeps the value live across
+		// loop iterations so SSA can't prove it dead.
+		var sink byte
+		pageSize := os.Getpagesize()
+		for off := 0; off < size; off += pageSize {
+			sink ^= mmapBuf[off]
+		}
+		// runtime.KeepAlive isn't strictly required for a stack-local
+		// byte that we read after the loop, but make the dependency
+		// explicit so future refactors don't lose it.
+		prefaultSink ^= sink
 	}
 
 	base := uintptr(unsafe.Pointer(&mmapBuf[0]))
@@ -97,8 +131,8 @@ func RegisterExtentFile(pd *C.struct_ibv_pd, path string, readOnly bool) (*RDMAM
 	// can verify the MR's rkey/VA/size match what handleExtentMRLookup
 	// later returns and what the client posts. base != mem.VA in some
 	// ODP variants would already indicate a bug.
-	log.LogInfof("Phase A DIAG: RegisterExtentFile path=%s base=0x%x mr.va=0x%x size=%d lkey=0x%x rkey=0x%x odp=%v pd=%p",
-		path, uint64(base), mem.VA, size, mem.Lkey, mem.Rkey, usedODP, pd)
+	log.LogInfof("Phase A DIAG: RegisterExtentFile path=%s base=0x%x mr.va=0x%x size=%d lkey=0x%x rkey=0x%x odp=%v mlocked=%v pd=%p",
+		path, uint64(base), mem.VA, size, mem.Lkey, mem.Rkey, usedODP, mlocked, pd)
 	// Capture the mmap slice + file by value so the closure keeps
 	// them alive until Free() runs. Order matters: munmap before
 	// f.Close so the kernel doesn't reject either step.
