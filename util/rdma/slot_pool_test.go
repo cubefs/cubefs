@@ -651,3 +651,57 @@ func TestSlotPool_ConnIfReadyReturnsFalseAfterFault(t *testing.T) {
 		t.Error("ConnIfReady should return false after the only conn was faulted")
 	}
 }
+
+// TestRDMAConnPool_ConnIfReadyKeyingMatchesAcquire locks in the
+// contract that ConnIfReady and AcquireSlotForKey use the SAME
+// address form as the pools map key — i.e. caller is responsible
+// for any address translation (port shift, etc.) and must apply
+// it uniformly to both APIs.
+//
+// Regression for the C1 Phase A deploy that produced
+// fail.conn=7213/attempt=7213: lookupExtentMR translated TCP→RDMA
+// addr before AcquireSlotForKey (so pool[rdma_addr] was populated)
+// but extent_reader_rdma_read.go called ConnIfReady(tcp_addr).
+// ConnIfReady never found the live conn even though one existed.
+// The test passes addresses A and B and verifies they are distinct
+// keys; if any future change adds an implicit shift inside the pool,
+// the test will fail and force the author to reconcile both APIs.
+func TestRDMAConnPool_ConnIfReadyKeyingMatchesAcquire(t *testing.T) {
+	pool := newTestPool(t, 4, 1, nil)
+
+	// AcquireSlotForKey populates pool.pools["addr-X"].
+	h, err := pool.AcquireSlotForKey("addr-X", "k")
+	if err != nil {
+		t.Fatalf("AcquireSlotForKey: %v", err)
+	}
+	conn := h.Conn
+	pool.ReleaseSlot(h, false)
+
+	// ConnIfReady with the SAME addr must find that conn.
+	got, ok := pool.ConnIfReady("addr-X")
+	if !ok || got != conn {
+		t.Fatalf("ConnIfReady(\"addr-X\"): ok=%v conn=%v want %v", ok, got, conn)
+	}
+
+	// ConnIfReady with a DIFFERENT addr must return false. This is
+	// the literal "callers responsible for translation" contract:
+	// pool maps key by addr string, no implicit normalisation.
+	if _, ok := pool.ConnIfReady("addr-Y"); ok {
+		t.Error("ConnIfReady(\"addr-Y\") should return false; pool was populated under \"addr-X\"")
+	}
+
+	// Mixed addr forms (the bug class): if the caller mistakenly
+	// passes a pre-shift addr to one API and a post-shift addr to
+	// the other, the post-shift API's data is invisible to the
+	// pre-shift caller. Verify by acquiring under one key and
+	// looking up under another.
+	h2, err := pool.AcquireSlotForKey("post-shift-addr", "k")
+	if err != nil {
+		t.Fatalf("AcquireSlotForKey(post-shift-addr): %v", err)
+	}
+	pool.ReleaseSlot(h2, false)
+
+	if _, ok := pool.ConnIfReady("pre-shift-addr"); ok {
+		t.Error("ConnIfReady with mismatched addr form should return false; this is the contract callers depend on")
+	}
+}

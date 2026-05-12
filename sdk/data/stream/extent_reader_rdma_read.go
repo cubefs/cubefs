@@ -192,8 +192,13 @@ func (reader *ExtentReader) tryReadViaRDMARead(rdmaAddr string, reqPacket *Packe
 	// returns (nil, false) and we silently fall back to two-sided;
 	// the next lookup will trigger a fresh dial via the slot pool.
 	//
-	// rdmaAddr is the TCP listen addr from sc.CurrAddr(); the pool
-	// applies RDMAPortShift internally so no translation is needed.
+	// addr translation: pool maps are keyed by the POST-SHIFT RDMA
+	// listen addr (lookup's rdmaRoundTripVia translated it before
+	// AcquireSlotForKey). rdmaAddr here is the caller's TCP addr
+	// from sc.CurrAddr() — without this shift, ConnIfReady looks
+	// up a key that was never inserted and returns false even when
+	// a live conn exists. Reproduced in production: attempt=7213
+	// success=0 fail.conn=7213, every read missed the cache.
 	//
 	// Same pool as the lookup above — that's the whole point. lookup
 	// + read on one conn ⟹ one PD ⟹ rkey returned by lookup is
@@ -203,10 +208,14 @@ func (reader *ExtentReader) tryReadViaRDMARead(rdmaAddr string, reqPacket *Packe
 	if rdmaPhaseAConnPool == nil {
 		return 0, nil
 	}
-	conn, ok := rdmaPhaseAConnPool.ConnIfReady(rdmaAddr)
+	poolAddr := rdmaAddr
+	if rdmaConnPortShift != 0 {
+		poolAddr = util.ShiftAddrPort(rdmaAddr, rdmaConnPortShift)
+	}
+	conn, ok := rdmaPhaseAConnPool.ConnIfReady(poolAddr)
 	if !ok {
 		if phaseAShouldWarn(&phaseACounters.connErr) {
-			log.LogWarnf("rdma Phase A: no ready conn for addr=%s — falling back (next lookup will dial)", rdmaAddr)
+			log.LogWarnf("rdma Phase A: no ready conn for poolAddr=%s (tcpAddr=%s) — falling back (next lookup will dial)", poolAddr, rdmaAddr)
 		}
 		return 0, nil // fall through silently — no error to invalidate cache over
 	}

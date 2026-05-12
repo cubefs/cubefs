@@ -489,6 +489,16 @@ func (p *RDMAConnPool) ConnForKey(addr, key string) (*RDMAConn, error) {
 // The returned conn is shared with the two-sided path; callers must
 // only use it for QP-level operations (post_send / post_recv) that do
 // not need slot bookkeeping — exactly what PostRDMAReadAndWait does.
+//
+// IMPORTANT keying contract: addr is used verbatim as the pools map
+// key. Callers MUST pass the same form of address they passed to
+// AcquireSlotForKey on the same pool — typically the post-shift RDMA
+// listen addr. Passing a pre-shift TCP addr here while AcquireSlot
+// uses the shifted form looks innocuous but produces a 100% miss
+// rate: the pool was populated under one key and ConnIfReady looks
+// under another. This is exactly how the C1 Phase A deploy landed
+// fail.conn=7213/attempt=7213 in production (commit 6843e0136).
+// Locked in by TestRDMAConnPool_ConnIfReadyKeyingMatchesAcquire below.
 func (p *RDMAConnPool) ConnIfReady(addr string) (*RDMAConn, bool) {
 	p.mu.RLock()
 	sp := p.pools[addr]
