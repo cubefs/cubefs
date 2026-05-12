@@ -12,8 +12,6 @@ import (
 	"os"
 	"syscall"
 	"unsafe"
-
-	"github.com/cubefs/cubefs/util/log"
 )
 
 // prefaultSink is a package-level byte that the prefault-touch loop
@@ -127,12 +125,6 @@ func RegisterExtentFile(pd *C.struct_ibv_pd, path string, readOnly bool) (*RDMAM
 		f.Close()
 		return nil, false, fmt.Errorf("rdma: RegisterExtentFile: regMR %s: %w", path, err)
 	}
-	// TEMP DIAG (Phase A debug): one INFO per registered extent so we
-	// can verify the MR's rkey/VA/size match what handleExtentMRLookup
-	// later returns and what the client posts. base != mem.VA in some
-	// ODP variants would already indicate a bug.
-	log.LogInfof("Phase A DIAG: RegisterExtentFile path=%s base=0x%x mr.va=0x%x size=%d lkey=0x%x rkey=0x%x odp=%v mlocked=%v pd=%p",
-		path, uint64(base), mem.VA, size, mem.Lkey, mem.Rkey, usedODP, mlocked, pd)
 	// Capture the mmap slice + file by value so the closure keeps
 	// them alive until Free() runs. Order matters: munmap before
 	// f.Close so the kernel doesn't reject either step.

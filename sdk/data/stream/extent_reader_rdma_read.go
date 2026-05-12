@@ -32,10 +32,21 @@ import (
 
 const (
 	// readViaRDMAReadTimeout caps how long one chunk's RDMA Read
-	// may take before we abandon and fall back. Sized for healthy
-	// RoCE round-trips (≈100 µs) plus generous headroom for
-	// transient congestion.
-	readViaRDMAReadTimeout = 5 * time.Second
+	// may take before we abandon and fall back. Healthy RoCE
+	// round-trips are ≈100 µs and a busy server adds tens of ms at
+	// most; 5 s was the original (overly generous) value, which in
+	// production became the dominant source of tail latency: any
+	// transient WR fault stalled the read for 5 s before the SDK
+	// even started the fallback, and a 64-client s3bench run with
+	// 1.8 % failure rate saw p99 read latency at 41 s.
+	//
+	// 1 s gives us 10 000× headroom over healthy RTT — plenty to
+	// absorb queueing, slot contention, and recv-side scheduling
+	// hiccups — while making the worst-case fallback path 5× faster
+	// per failed WR. Lowering further (e.g. 200 ms) would push us
+	// closer to false-positive territory under network congestion;
+	// 1 s is the safe-but-aggressive sweet spot.
+	readViaRDMAReadTimeout = 1 * time.Second
 
 	// phaseAWarnEvery samples failure logs so a permanent fault
 	// doesn't spam the log file — but the first occurrence is
@@ -286,14 +297,6 @@ func (reader *ExtentReader) tryReadViaRDMARead(rdmaAddr string, reqPacket *Packe
 func (reader *ExtentReader) readChunkViaRDMARead(conn *rdma.RDMAConn, lease *LeaseInfo, req *ExtentRequest, chk readChunkSpec) (int, error) {
 	dst := req.Data[chk.bufOff : chk.bufOff+chk.bufSize]
 	remoteVA := lease.VA + uint64(chk.extentOff)
-	// TEMP DIAG (Phase A debug): one INFO per chunk so we can pair
-	// each RDMA Read post against the server's "lookup grant" log
-	// line (grep both by pid+ext). Mismatch in rkey or VA would
-	// pinpoint a stale-cache or PD-scope bug; identical values but
-	// still timing out means the WR is real and the failure is on
-	// the NIC/network layer.
-	log.LogInfof("Phase A DIAG: RDMA Read post pid=%d ext=%d extOff=%d size=%d rkey=0x%x remoteVA=0x%x remote=%s",
-		reader.dp.PartitionID, lease.ExtentID, chk.extentOff, chk.bufSize, lease.Rkey, remoteVA, conn.RemoteAddr())
 	if err := conn.PostRDMAReadAndWait(dst, remoteVA, lease.Rkey, readViaRDMAReadTimeout); err != nil {
 		return 0, err
 	}
