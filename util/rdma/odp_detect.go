@@ -34,7 +34,19 @@ func RegisterFileMR(pd *C.struct_ibv_pd, base uintptr, size int) (*RDMAMem, bool
 	if pd == nil {
 		return nil, false, errors.New("rdma: RegisterFileMR: nil pd")
 	}
-	if odpSupported(pd) {
+	// TEMP DIAG (Phase A debug): force PINNED registration to test
+	// whether the 5s RDMA Read timeout is caused by ODP page-fault
+	// latency on the server side. Production log shows all rkey/VA/
+	// size match end-to-end, so the failure is not in the SDK — most
+	// likely the mlx5 ODP fault path. If pinned regs fix the timeout
+	// we know ODP is the culprit and can either:
+	//   - keep pinned for read-path (cost: more pinned memory)
+	//   - add IBV_ADVISE_MR_FLAG_FLUSH prefetch on the MR right after
+	//     registration so first-touch is paid up front
+	// If pinned regs ALSO time out, ODP is not the issue and we
+	// move to NIC counter analysis (ethtool -S mlx5_bond_0).
+	const odpForceOff = true
+	if !odpForceOff && odpSupported(pd) {
 		if mem, err := RegisterRDMABuffer(pd, base, size, true); err == nil {
 			return mem, true, nil
 		}
