@@ -78,6 +78,7 @@ var (
 		boundsErr    int64 // read range outside lease.Size
 		connErr      int64 // rdmaConnPool.ConnForKey failed
 		wrErr        int64 // PostRDMAReadAndWait failed
+		bytes        int64 // total bytes transferred via RDMA Read (client-side)
 	}
 )
 
@@ -85,14 +86,15 @@ var (
 // logger to compute deltas. Exported via an accessor (rather than a
 // package-level variable read) so the rdma package — which lives below
 // the SDK — doesn't need an import cycle.
-func PhaseAStatsSnapshot() (attempt, success, noCache, lookup, bounds, conn, wr int64) {
+func PhaseAStatsSnapshot() (attempt, success, noCache, lookup, bounds, conn, wr, bytes int64) {
 	return atomic.LoadInt64(&phaseACounters.attempt),
 		atomic.LoadInt64(&phaseACounters.success),
 		atomic.LoadInt64(&phaseACounters.noCacheInit),
 		atomic.LoadInt64(&phaseACounters.lookupErr),
 		atomic.LoadInt64(&phaseACounters.boundsErr),
 		atomic.LoadInt64(&phaseACounters.connErr),
-		atomic.LoadInt64(&phaseACounters.wrErr)
+		atomic.LoadInt64(&phaseACounters.wrErr),
+		atomic.LoadInt64(&phaseACounters.bytes)
 }
 
 // phaseAShouldWarn returns true on count==1 (first occurrence) and
@@ -289,6 +291,7 @@ func (reader *ExtentReader) tryReadViaRDMARead(rdmaAddr string, reqPacket *Packe
 			return 0, cerr
 		}
 		atomic.AddInt64(&phaseACounters.success, 1)
+		atomic.AddInt64(&phaseACounters.bytes, int64(n))
 		return n, nil
 	}
 
@@ -328,6 +331,7 @@ func (reader *ExtentReader) tryReadViaRDMARead(rdmaAddr string, reqPacket *Packe
 		total += c.bufSize
 	}
 	atomic.AddInt64(&phaseACounters.success, 1)
+	atomic.AddInt64(&phaseACounters.bytes, int64(total))
 	return total, nil
 }
 

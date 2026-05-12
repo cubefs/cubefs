@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -76,10 +77,10 @@ func phaseAStatsLoop() {
 	ticker := time.NewTicker(phaseAStatsInterval)
 	defer ticker.Stop()
 	var prev struct {
-		attempt, success, noCache, lookup, bounds, conn, wr int64
+		attempt, success, noCache, lookup, bounds, conn, wr, bytes int64
 	}
 	for range ticker.C {
-		attempt, success, noCache, lookup, bounds, conn, wr := PhaseAStatsSnapshot()
+		attempt, success, noCache, lookup, bounds, conn, wr, bytes := PhaseAStatsSnapshot()
 		dAttempt := attempt - prev.attempt
 		dSuccess := success - prev.success
 		dNoCache := noCache - prev.noCache
@@ -87,9 +88,17 @@ func phaseAStatsLoop() {
 		dBounds := bounds - prev.bounds
 		dConn := conn - prev.conn
 		dWr := wr - prev.wr
+		dBytes := bytes - prev.bytes
 		prev.attempt, prev.success = attempt, success
 		prev.noCache, prev.lookup = noCache, lookup
 		prev.bounds, prev.conn, prev.wr = bounds, conn, wr
+		prev.bytes = bytes
+
+		// Publish to Prometheus so Grafana can show RDMA Read bandwidth.
+		// Called from a single goroutine — no data race on the counter.
+		if dBytes > 0 {
+			exporter.NewCounter("phaseAReadBytes").Add(dBytes)
+		}
 
 		if dAttempt == 0 {
 			// Quiet line so absence of Phase A traffic is itself a
@@ -104,8 +113,9 @@ func phaseAStatsLoop() {
 			continue
 		}
 		hit := 100.0 * float64(dSuccess) / float64(dAttempt)
-		log.LogInfof("Phase A stats[%s] attempt=+%d success=+%d (hit=%.1f%%) fail: noCache=%d lookup=%d bounds=%d conn=%d wr=%d (cum attempt=%d success=%d); %s",
-			phaseAStatsName.Load(), dAttempt, dSuccess, hit,
+		mbps := float64(dBytes) / float64(phaseAStatsInterval/time.Second) / 1e6
+		log.LogInfof("Phase A stats[%s] attempt=+%d success=+%d (hit=%.1f%%) bytes=+%d (%.1f MB/s) fail: noCache=%d lookup=%d bounds=%d conn=%d wr=%d (cum attempt=%d success=%d); %s",
+			phaseAStatsName.Load(), dAttempt, dSuccess, hit, dBytes, mbps,
 			dNoCache, dLookup, dBounds, dConn, dWr,
 			attempt, success, phaseAPoolHealth())
 	}

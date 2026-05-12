@@ -18,6 +18,6 @@ func invalidateExtentMRCache(_ string, _, _ uint64) {}
 
 // PhaseAStatsSnapshot returns zeros on non-RDMA builds so the stats
 // logger compiles cleanly without conditional imports at the call site.
-func PhaseAStatsSnapshot() (attempt, success, noCache, lookup, bounds, conn, wr int64) {
-	return 0, 0, 0, 0, 0, 0, 0
+func PhaseAStatsSnapshot() (attempt, success, noCache, lookup, bounds, conn, wr, bytes int64) {
+	return 0, 0, 0, 0, 0, 0, 0, 0
 }
