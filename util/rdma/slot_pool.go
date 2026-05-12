@@ -43,6 +43,18 @@ func fnvHash32(s string) uint32 {
 	return h.Sum32()
 }
 
+// HashKeyToConnIndex exposes the same key→index math singleSlotPool
+// uses internally so callers (e.g. SDK Phase A instrumentation) can
+// label their metrics by the conn slot that will actually be picked.
+// Returns -1 if maxConns is non-positive — caller should treat that
+// as "pool not initialised, skip the metric".
+func HashKeyToConnIndex(key string, maxConns int) int {
+	if maxConns <= 0 {
+		return -1
+	}
+	return int(fnvHash32(key)) % maxConns
+}
+
 // SlotHandle represents a borrowed slot on a specific connection. Returned
 // by AcquireSlot; must be returned via ReleaseSlot.
 type SlotHandle struct {
@@ -688,4 +700,47 @@ func (p *RDMAConnPool) ActiveSlots() int {
 		n += sp.activeSlots()
 	}
 	return n
+}
+
+// MaxConns returns the per-addr conn cap. Useful for instrumentation
+// that wants to compute the same hash → index mapping used by
+// ConnIfReadyForKey without reaching into the pool internals.
+func (p *RDMAConnPool) MaxConns() int {
+	if p == nil {
+		return 0
+	}
+	return p.cfg.MaxConns
+}
+
+// ActiveConnsByAddr returns, for every remote addr seen by this pool,
+// the number of non-nil conn slots currently held. This counts both
+// dialed-and-healthy and dialed-but-closed (the latter get reaped on
+// the next acquire, so the snapshot momentarily over-counts; that's
+// acceptable for a diagnostic metric).
+//
+// Intended for periodic stats logging, NOT the hot path — it takes the
+// per-addr mutex on every singleSlotPool.
+func (p *RDMAConnPool) ActiveConnsByAddr() map[string]int {
+	if p == nil {
+		return nil
+	}
+	p.mu.RLock()
+	out := make(map[string]int, len(p.pools))
+	pools := make(map[string]*singleSlotPool, len(p.pools))
+	for addr, sp := range p.pools {
+		pools[addr] = sp
+	}
+	p.mu.RUnlock()
+	for addr, sp := range pools {
+		sp.mu.Lock()
+		n := 0
+		for _, cs := range sp.conns {
+			if cs != nil && cs.conn != nil {
+				n++
+			}
+		}
+		sp.mu.Unlock()
+		out[addr] = n
+	}
+	return out
 }

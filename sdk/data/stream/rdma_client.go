@@ -121,6 +121,14 @@ func phaseAPoolHealth() string {
 	return fmt.Sprintf("pool=activeSlots=%d", rdmaPhaseAConnPool.ActiveSlots())
 }
 
+// GetPhaseAConnPool returns the Phase A pool pointer (or nil if Phase
+// A is disabled) for external instrumentation. Callers should treat
+// nil as "Phase A inactive" and skip pool-derived metrics; the pool's
+// own methods all nil-check internally so this getter is safe to chain.
+func GetPhaseAConnPool() *rdma.RDMAConnPool {
+	return rdmaPhaseAConnPool
+}
+
 // rdmaRoundTrip is the inner one-slot send + wait + return-credit cycle
 // shared by both write and read RDMA paths. On success it returns the
 // deserialised response packet; the caller is responsible for

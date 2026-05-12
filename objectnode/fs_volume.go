@@ -1632,8 +1632,14 @@ func (v *Volume) read(inode, inodeSize uint64, path string, writer io.Writer, of
 		upper = inodeSize - offset
 	}
 
+	// Instrumentation: track concurrent in-flight GET handlers + per-
+	// iteration timing breakdown. Cheap atomic adds; periodic logger
+	// in get_object_stats.go dumps the aggregates every 10s.
+	releaseInFlight := enterGetObject()
+	defer releaseInFlight()
+
 	var n int
-	tmp := make([]byte, 2*util.BlockSize)
+	tmp := make([]byte, getObjectBufSize())
 	for {
 		rest := upper - offset
 		if rest == 0 {
@@ -1647,7 +1653,9 @@ func (v *Volume) read(inode, inodeSize uint64, path string, writer io.Writer, of
 		if err != nil {
 			return err
 		}
+		sdkStart := time.Now()
 		n, err = v.ec.Read(inode, tmp, off, readSize, storageClass, false)
+		sdkNs := time.Since(sdkStart).Nanoseconds()
 		if err != nil && err != io.EOF {
 			log.LogErrorf("ReadFile: data read fail: volume(%v) path(%v) inode(%v) offset(%v) size(%v) err(%v)",
 				v.name, path, inode, offset, size, err)
@@ -1656,10 +1664,17 @@ func (v *Volume) read(inode, inodeSize uint64, path string, writer io.Writer, of
 			return err
 		}
 		if n > 0 {
+			httpStart := time.Now()
 			if _, err = writer.Write(tmp[:n]); err != nil {
 				return err
 			}
+			httpNs := time.Since(httpStart).Nanoseconds()
+			recordGetObjectIteration(sdkNs, httpNs, int64(n))
 			offset += uint64(n)
+		} else {
+			// Zero-byte read: still record so a stuck SDK shows up as
+			// huge iteration count with no bytes moved.
+			recordGetObjectIteration(sdkNs, 0, 0)
 		}
 		if n == 0 || err == io.EOF {
 			break

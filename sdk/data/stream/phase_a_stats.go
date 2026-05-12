@@ -15,6 +15,8 @@
 package stream
 
 import (
+	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -78,9 +80,12 @@ func phaseAStatsLoop() {
 	defer ticker.Stop()
 	var prev struct {
 		attempt, success, noCache, lookup, bounds, conn, wr, bytes int64
+		chunks1, chunks2to4, chunks5plus                           int64
 	}
 	for range ticker.C {
 		attempt, success, noCache, lookup, bounds, conn, wr, bytes := PhaseAStatsSnapshot()
+		c1, c2to4, c5plus := PhaseAChunkBucketsSnapshot()
+		idxHits := PhaseAConnIdxHitsSnapshot()
 		dAttempt := attempt - prev.attempt
 		dSuccess := success - prev.success
 		dNoCache := noCache - prev.noCache
@@ -89,10 +94,14 @@ func phaseAStatsLoop() {
 		dConn := conn - prev.conn
 		dWr := wr - prev.wr
 		dBytes := bytes - prev.bytes
+		dC1 := c1 - prev.chunks1
+		dC2to4 := c2to4 - prev.chunks2to4
+		dC5plus := c5plus - prev.chunks5plus
 		prev.attempt, prev.success = attempt, success
 		prev.noCache, prev.lookup = noCache, lookup
 		prev.bounds, prev.conn, prev.wr = bounds, conn, wr
 		prev.bytes = bytes
+		prev.chunks1, prev.chunks2to4, prev.chunks5plus = c1, c2to4, c5plus
 
 		// Publish to Prometheus so Grafana can show RDMA Read bandwidth.
 		// Called from a single goroutine — no data race on the counter.
@@ -118,5 +127,37 @@ func phaseAStatsLoop() {
 			phaseAStatsName.Load(), dAttempt, dSuccess, hit, dBytes, mbps,
 			dNoCache, dLookup, dBounds, dConn, dWr,
 			attempt, success, phaseAPoolHealth())
+		// Chunk-count distribution: confirms whether the multi-chunk
+		// parallel path is being exercised. If everything is in chunks1
+		// the upper layer's buffer is too small to split — see
+		// objectnode/get_object_bufsize.go.
+		log.LogInfof("Phase A chunks[%s] +chunks1=%d +chunks2to4=%d +chunks5plus=%d",
+			phaseAStatsName.Load(), dC1, dC2to4, dC5plus)
+		// Per-conn-index hit distribution. Shows whether hash routing
+		// is spreading load across the configured maxConns. Skip zero
+		// buckets so the line stays short on small-maxConns deployments.
+		log.LogInfof("Phase A connIdx[%s] %s", phaseAStatsName.Load(), formatPhaseAConnIdx(idxHits))
 	}
+}
+
+// formatPhaseAConnIdx renders the per-index hit array compactly,
+// omitting indices with zero hits. e.g. "idx0=12345 idx3=23456 idx7=8901"
+// — that pattern flags clear hash skew at a glance.
+func formatPhaseAConnIdx(hits [phaseAConnIdxMax]int64) string {
+	var b strings.Builder
+	first := true
+	for i, n := range hits {
+		if n == 0 {
+			continue
+		}
+		if !first {
+			b.WriteByte(' ')
+		}
+		first = false
+		fmt.Fprintf(&b, "idx%d=%d", i, n)
+	}
+	if first {
+		return "(no hits yet)"
+	}
+	return b.String()
 }

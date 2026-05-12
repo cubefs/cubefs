@@ -166,6 +166,23 @@ const (
 	configRDMAOneSidedReadDisabled = "rdmaOneSidedReadDisabled"
 	configRDMAReadTimeoutMs        = "rdmaReadTimeoutMs"
 	configRDMAReadPrefetchDepth    = "rdmaReadPrefetchDepth"
+	// configGetObjectBufSize sets the per-iteration buffer size of the
+	// GET-object inner loop (objectnode/fs_volume.go: Volume.read). The
+	// loop is "Read N bytes from SDK → Write N bytes to HTTP" in
+	// lockstep, so N is also the granularity of every SDK Read call.
+	//
+	// The default (0) preserves the historical 2*util.BlockSize = 256
+	// KiB, which is smaller than the Phase A RDMA chunk size (4 MiB by
+	// default) — meaning sdk/data/stream/extent_reader_rdma_read.go
+	// always takes the single-chunk fast path and readPrefetchDepth is
+	// dead code on the Phase A path for objectnode workloads.
+	//
+	// Raise this (e.g. 16777216 = 16 MiB) to let Phase A split a
+	// single SDK Read into multiple parallel RDMA Read WRs, lifting
+	// per-object throughput above the single-QP ceiling. Trade-off is
+	// time-to-first-byte (HTTP write is delayed until the whole buffer
+	// fills) and steady-state memory (size × concurrent GETs).
+	configGetObjectBufSize = "objectNodeGetBufSize"
 
 	// enable block cache when reading data in cold volume
 	enableBcache = "enableBcache"
@@ -411,6 +428,18 @@ func handleStart(s common.Server, cfg *config.Config) (err error) {
 	if err = initRDMAClientPool(cfg); err != nil {
 		return
 	}
+	// Apply optional GET-object inner-loop buffer override. Zero
+	// leaves the historical 2*util.BlockSize default in place; see
+	// configGetObjectBufSize doc for the trade-offs of raising it.
+	if n := cfg.GetInt64(configGetObjectBufSize); n > 0 {
+		setGetObjectBufSize(int(n))
+	}
+	// Start GET-path observability logger. Prints one summary line
+	// every 10s with: iteration count, bytes/s, sdkRead and httpWrite
+	// timing (avg + max), in-flight GET handlers, and Phase A pool
+	// live conn counts per datanode. Pair with the Phase A stats
+	// logger (started in initRDMAClientPool) for full GET visibility.
+	StartGetObjectStatsLogger()
 	// Get cluster info from master
 	var ci *proto.ClusterInfo
 	if ci, err = o.mc.AdminAPI().GetClusterInfo(); err != nil {

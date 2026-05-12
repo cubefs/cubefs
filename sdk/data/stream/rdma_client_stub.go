@@ -36,3 +36,9 @@ func rdmaTryForSize(_ string, _ int) bool { return false }
 // free) but reports the path is disabled. The string format matches
 // the rdma-build version so log post-processors can rely on it.
 func phaseAPoolHealth() string { return "pool=disabled" }
+
+// GetPhaseAConnPool returns nil on non-RDMA builds. Mirrors the
+// rdma-tagged accessor so external instrumentation (objectnode
+// get_object_stats.go) compiles unconditionally; callers must
+// nil-check before using the returned pool.
+func GetPhaseAConnPool() *rdma.RDMAConnPool { return nil }

@@ -51,12 +51,10 @@ const (
 	// false-positive timeouts. Operators can override with
 	// rdmaReadTimeoutMs= for fabric-specific tuning.
 	defaultReadViaRDMAReadTimeout = 2 * time.Second
-
-	// phaseAWarnEvery samples failure logs so a permanent fault
-	// doesn't spam the log file — but the first occurrence is
-	// always logged so the first deploy surfaces the issue.
-	phaseAWarnEvery = 256
 )
+
+// phaseAWarnEvery is declared in phase_a_counters.go (build-tag-free)
+// so the sampler is available to non-RDMA builds too.
 
 // readViaRDMAReadTimeout is the active per-WR Phase A read timeout.
 // Set by InitRDMAConnPool from RDMAPoolConfig.ReadTimeoutMs; falls
@@ -65,45 +63,10 @@ const (
 // mount option without rebuilding.
 var readViaRDMAReadTimeout = defaultReadViaRDMAReadTimeout
 
-// Phase A observability counters. All are accessed via atomic helpers
-// so they're safe to read from the stats logger without holding a
-// mutex. Stats output joins them every 60s alongside the existing
-// two-sided RDMA stats.
-var (
-	phaseACounters struct {
-		attempt      int64 // tryReadViaRDMARead called at all
-		success      int64 // returned (n>0, nil)
-		noCacheInit  int64 // cache was never initialised (returned 0,nil)
-		lookupErr    int64 // cache.Get returned err
-		boundsErr    int64 // read range outside lease.Size
-		connErr      int64 // rdmaConnPool.ConnForKey failed
-		wrErr        int64 // PostRDMAReadAndWait failed
-		bytes        int64 // total bytes transferred via RDMA Read (client-side)
-	}
-)
-
-// PhaseAStatsSnapshot returns the atomic counter values for the stats
-// logger to compute deltas. Exported via an accessor (rather than a
-// package-level variable read) so the rdma package — which lives below
-// the SDK — doesn't need an import cycle.
-func PhaseAStatsSnapshot() (attempt, success, noCache, lookup, bounds, conn, wr, bytes int64) {
-	return atomic.LoadInt64(&phaseACounters.attempt),
-		atomic.LoadInt64(&phaseACounters.success),
-		atomic.LoadInt64(&phaseACounters.noCacheInit),
-		atomic.LoadInt64(&phaseACounters.lookupErr),
-		atomic.LoadInt64(&phaseACounters.boundsErr),
-		atomic.LoadInt64(&phaseACounters.connErr),
-		atomic.LoadInt64(&phaseACounters.wrErr),
-		atomic.LoadInt64(&phaseACounters.bytes)
-}
-
-// phaseAShouldWarn returns true on count==1 (first occurrence) and
-// every phaseAWarnEvery-th thereafter. Cheap atomic Add — fine on the
-// hot path.
-func phaseAShouldWarn(counter *int64) bool {
-	n := atomic.AddInt64(counter, 1)
-	return n == 1 || n%phaseAWarnEvery == 0
-}
+// Phase A observability counters and snapshot helpers live in
+// phase_a_counters.go (build-tag-free) so the periodic stats logger
+// can read them in both RDMA and stub builds. This file is the only
+// writer.
 
 var (
 	// extentMRCacheRef holds the SDK-wide *extentMRCache. We use
@@ -261,6 +224,14 @@ func (reader *ExtentReader) tryReadViaRDMARead(rdmaAddr string, reqPacket *Packe
 		}
 		return 0, nil // fall through silently — no error to invalidate cache over
 	}
+	// Bucket the conn index this hash routed to. Same modulo math as
+	// slot_pool.ConnIfReadyForKey so the histogram lines up exactly
+	// with which slot got dialed. Cheap atomic add; no impact on the
+	// hot path. Skipped when maxConns is 0 (pool not initialised) or
+	// the cap is exceeded (see phaseAConnIdxMax doc).
+	if idx := rdma.HashKeyToConnIndex(poolKey, rdmaPhaseAConnPool.MaxConns()); idx >= 0 {
+		recordPhaseAConnIdx(idx)
+	}
 
 	// Phase A chunks against the conn's read scratch slot size — not
 	// util.ReadBlockSize. The scratch slot is the upper bound on a
@@ -275,6 +246,7 @@ func (reader *ExtentReader) tryReadViaRDMARead(rdmaAddr string, reqPacket *Packe
 		chunkSize = util.ReadBlockSize
 	}
 	chunks := splitReadChunks(extentOffset, size, chunkSize)
+	recordPhaseAChunkBucket(len(chunks))
 	if len(chunks) == 0 {
 		return 0, nil
 	}

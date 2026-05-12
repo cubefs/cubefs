@@ -16,8 +16,7 @@ func (reader *ExtentReader) tryReadViaRDMARead(_ string, _ *Packet, _ *ExtentReq
 
 func invalidateExtentMRCache(_ string, _, _ uint64) {}
 
-// PhaseAStatsSnapshot returns zeros on non-RDMA builds so the stats
-// logger compiles cleanly without conditional imports at the call site.
-func PhaseAStatsSnapshot() (attempt, success, noCache, lookup, bounds, conn, wr, bytes int64) {
-	return 0, 0, 0, 0, 0, 0, 0, 0
-}
+// PhaseAStatsSnapshot has moved to phase_a_counters.go (build-tag-free)
+// so both the RDMA path and this stub can share one definition. Kept
+// here only as a comment marker — if someone re-adds a build-tagged
+// declaration of the same name the compiler will reject it.
