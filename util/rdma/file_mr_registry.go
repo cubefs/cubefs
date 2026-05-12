@@ -42,6 +42,33 @@ import (
 // ErrFileMRRegistryClosed is returned by Acquire after Close.
 var ErrFileMRRegistryClosed = errors.New("rdma: FileMRRegistry closed")
 
+// activeExtentMRCount tracks the number of currently-active (i.e.
+// registered AND not yet evicted/freed) MRs across every
+// FileMRRegistry instance in the process. Server-side scale signal:
+// each MR consumes one entry in the NIC's MR table (mlx5 TLB), and
+// when the table fills the hardware silently falls back to memory
+// lookups, dropping RDMA Read latency from microseconds to
+// milliseconds.
+//
+// Exposed via ActiveExtentMRCount() for the datanode metrics layer
+// to publish as a Prometheus gauge. Updated atomically from Acquire
+// (increment), evictOneLocked (decrement), and Close (decrement by
+// the number of freed entries).
+//
+// Note: this counts only persistent extent MRs (FileMRRegistry).
+// Conn-local MRs (recv pool, send scratch, Phase A read scratch)
+// are not counted — they're bounded by the conn count, not by extent
+// churn, and don't typically threaten the NIC MR table.
+var activeExtentMRCount int64
+
+// ActiveExtentMRCount returns the current count of registered extent
+// MRs across all FileMRRegistry instances in this process. Safe to
+// call concurrently. Intended for periodic metric scrape only — not
+// a hot-path read.
+func ActiveExtentMRCount() int64 {
+	return atomic.LoadInt64(&activeExtentMRCount)
+}
+
 // ErrFileMRRegistryFull is returned by Acquire when the cache is at
 // MaxEntries and every cached entry is currently in use (refCount>0).
 // Callers should fall back to the two-sided read path.
@@ -222,6 +249,7 @@ func (r *FileMRRegistry) Acquire(key uint64) (*FileMREntry, error) {
 	atomic.StoreInt64(&e.lastUsed, time.Now().UnixNano())
 	e.lruElem = r.lru.PushFront(e)
 	r.active[key] = e
+	atomic.AddInt64(&activeExtentMRCount, 1)
 	p.entry = e
 	return e, nil
 }
@@ -256,6 +284,7 @@ func (r *FileMRRegistry) Invalidate(key uint64) {
 	}
 	delete(r.active, key)
 	r.lru.Remove(e.lruElem)
+	atomic.AddInt64(&activeExtentMRCount, -1)
 	r.mu.Unlock()
 	// Free now if no readers; otherwise the last Release after our
 	// removal will see the entry orphaned from the active map and
@@ -281,6 +310,7 @@ func (r *FileMRRegistry) Close() {
 	}
 	r.active = map[uint64]*FileMREntry{}
 	r.lru = list.New()
+	atomic.AddInt64(&activeExtentMRCount, -int64(len(mems)))
 	// Cancel all pending registrations.
 	for _, p := range r.pendings {
 		p.err = ErrFileMRRegistryClosed
@@ -315,6 +345,7 @@ func (r *FileMRRegistry) evictOneLocked() error {
 		if atomic.LoadInt32(&entry.refCount) <= 0 {
 			r.lru.Remove(e)
 			delete(r.active, entry.Key)
+			atomic.AddInt64(&activeExtentMRCount, -1)
 			entry.Mem.Free()
 			return nil
 		}

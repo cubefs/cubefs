@@ -409,3 +409,65 @@ func TestFileMRRegistry_ConcurrentStress(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// TestFileMRRegistry_ActiveExtentMRCount verifies the process-global
+// gauge that the datanode metric path scrapes. It MUST account for
+// every register / evict / invalidate / close path or the gauge
+// drifts off the truth — the only way to validate that is to
+// exercise each path and compare against registry.Len().
+func TestFileMRRegistry_ActiveExtentMRCount(t *testing.T) {
+	before := ActiveExtentMRCount()
+	mr := &mockRegister{}
+	r, err := NewFileMRRegistry(4, mr.register)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Acquire 3 → count should go up by 3.
+	entries := make([]*FileMREntry, 3)
+	for i := 0; i < 3; i++ {
+		e, err := r.Acquire(uint64(i + 1))
+		if err != nil {
+			t.Fatalf("Acquire %d: %v", i, err)
+		}
+		entries[i] = e
+	}
+	if got := ActiveExtentMRCount(); got != before+3 {
+		t.Errorf("after 3 Acquires: got %d, want %d", got, before+3)
+	}
+
+	// Release one, then trigger eviction by Acquiring a 4th + 5th
+	// (cap=4 so the 5th forces evict of the released one).
+	r.Release(entries[0])
+	e4, err := r.Acquire(uint64(4))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = e4
+	// At this point 4 entries are cached; count should be before+4.
+	if got := ActiveExtentMRCount(); got != before+4 {
+		t.Errorf("after 4th Acquire: got %d, want %d", got, before+4)
+	}
+	// Force evict the released one (entries[0]).
+	e5, err := r.Acquire(uint64(5))
+	if err != nil {
+		t.Fatalf("evict-triggering Acquire: %v", err)
+	}
+	_ = e5
+	if got := ActiveExtentMRCount(); got != before+4 {
+		t.Errorf("after evict-triggering Acquire: got %d, want %d (one evicted, one added)", got, before+4)
+	}
+
+	// Invalidate one → count down by 1.
+	r.Invalidate(uint64(2))
+	if got := ActiveExtentMRCount(); got != before+3 {
+		t.Errorf("after Invalidate: got %d, want %d", got, before+3)
+	}
+
+	// Close the registry → all remaining entries' MRs freed,
+	// counter returns to baseline.
+	r.Close()
+	if got := ActiveExtentMRCount(); got != before {
+		t.Errorf("after Close: got %d, want %d (should drop to baseline)", got, before)
+	}
+}
