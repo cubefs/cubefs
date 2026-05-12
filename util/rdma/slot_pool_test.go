@@ -459,3 +459,195 @@ func TestRDMAConnPool_RolePropagation(t *testing.T) {
 		t.Errorf("Role() = %q, want %q", got, RoleClient)
 	}
 }
+
+// TestSlotPool_RecoverAfterConnFaultedWithNoSlotsHeld verifies the
+// scenario hit by Phase A's MaxConns=1 dedicated pool: when an
+// out-of-band fault (drainer markFault on a one-sided RDMA Read WR
+// failure) closes the only conn while NO slot is currently held,
+// the next AcquireSlot must reap the faulted conn and redial a
+// fresh one — NOT block forever.
+//
+// Before the fix, allDeadAndIdle cleanup ran only on the release()
+// path, which never fires when no slot was in use at fault time.
+// The acquire() dial branch then sees `conns[0] != nil` and refuses
+// to redial, leaving every subsequent caller parked in cond.Wait().
+//
+// The test uses MaxConns=1 to make the failure deterministic:
+// there's only one conn slot, so if reaping doesn't happen the
+// next acquire has nowhere to go.
+func TestSlotPool_RecoverAfterConnFaultedWithNoSlotsHeld(t *testing.T) {
+	var dialCount int64
+	pool := newTestPool(t, 4 /*numSlots*/, 1 /*maxConns*/, &dialCount)
+
+	// 1) Warm up — acquire and release so the conn is created.
+	h, err := pool.AcquireSlot("dn1")
+	if err != nil {
+		t.Fatalf("warm-up acquire: %v", err)
+	}
+	conn := h.Conn
+	pool.ReleaseSlot(h, false)
+	if got := atomic.LoadInt64(&dialCount); got != 1 {
+		t.Fatalf("warm-up dialCount: got %d want 1", got)
+	}
+
+	// 2) Out-of-band fault: simulate the drainer markFault'ing the
+	//    conn via a one-sided WR failure. The pool's slot accounting
+	//    has nothing in-flight at this point.
+	_ = conn.Close()
+	if !conn.IsClosed() {
+		t.Fatal("conn should be closed after simulated fault")
+	}
+
+	// 3) The very next acquire must succeed by redialing, in
+	//    bounded time. Without the fix, this AcquireSlot blocks
+	//    forever; we cap it with a goroutine + timeout so the test
+	//    fails with a clear message instead of hanging.
+	done := make(chan struct{})
+	var h2 *SlotHandle
+	var acqErr error
+	go func() {
+		h2, acqErr = pool.AcquireSlot("dn1")
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("AcquireSlot blocked after conn fault — slot pool failed to redial (deadlock)")
+	}
+
+	if acqErr != nil {
+		t.Fatalf("post-fault AcquireSlot: %v", acqErr)
+	}
+	if h2 == nil || h2.Conn == nil {
+		t.Fatal("post-fault AcquireSlot returned nil handle/conn")
+	}
+	if h2.Conn == conn {
+		t.Error("post-fault AcquireSlot returned the same faulted conn; should be fresh")
+	}
+	if got := atomic.LoadInt64(&dialCount); got != 2 {
+		t.Errorf("dialCount after fault: got %d want 2", got)
+	}
+	pool.ReleaseSlot(h2, false)
+}
+
+// TestSlotPool_RecoverAfterFaultedConnWhileOtherSlotsInUse verifies
+// the trickier variant: a fault hits the conn while OTHER slots on
+// it are still held. The faulted conn must stay in the conns table
+// until those slots get released (otherwise we'd lose track of who
+// owns what), and only THEN should the next acquire redial.
+//
+// In our Phase A usage (MaxConns=1, mixed lookup slot traffic +
+// QP-only RDMA Reads), this is the actual production path: a one-
+// sided read WR can fail while a lookup is mid-slot.
+func TestSlotPool_RecoverAfterFaultedConnWhileOtherSlotsInUse(t *testing.T) {
+	var dialCount int64
+	pool := newTestPool(t, 4 /*numSlots*/, 1 /*maxConns*/, &dialCount)
+
+	hHeld, err := pool.AcquireSlot("dn1")
+	if err != nil {
+		t.Fatalf("setup acquire: %v", err)
+	}
+	conn := hHeld.Conn
+
+	// Fault arrives while hHeld is in flight.
+	_ = conn.Close()
+
+	// While hHeld is still held, a parallel acquire should not
+	// produce a fresh conn (because the faulted one still has
+	// slots in use — releasing forceClose on those is the
+	// recovery handshake). Instead it should park.
+	parkResult := make(chan error, 1)
+	go func() {
+		_, err := pool.AcquireSlot("dn1")
+		parkResult <- err
+	}()
+	select {
+	case err := <-parkResult:
+		t.Fatalf("AcquireSlot returned %v while faulted conn still has slots in use; should park", err)
+	case <-time.After(150 * time.Millisecond):
+	}
+
+	// Now release the held slot — with forceClose=true (caller's
+	// duty after observing a failed operation on this conn). This
+	// triggers allDeadAndIdle cleanup, the pool reaps conns[0], and
+	// the parked acquire wakes up to redial.
+	pool.ReleaseSlot(hHeld, true)
+
+	select {
+	case err := <-parkResult:
+		if err != nil {
+			t.Fatalf("post-release AcquireSlot: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("AcquireSlot still blocked after the faulted conn's last slot was released")
+	}
+	if got := atomic.LoadInt64(&dialCount); got != 2 {
+		t.Errorf("dialCount: got %d want 2 (warm-up + redial)", got)
+	}
+}
+
+// TestSlotPool_HashRoutedRedialAfterFault is the keyed variant of
+// the no-slot-held recovery test. Phase A's lookup callers pass
+// non-empty key (PartitionID-ExtentID); the dial branch with
+// targetIdx >= 0 has its own redial code path that must also reap
+// faulted conns at the target index.
+func TestSlotPool_HashRoutedRedialAfterFault(t *testing.T) {
+	var dialCount int64
+	pool := newTestPool(t, 4, 1, &dialCount)
+
+	h, err := pool.AcquireSlotForKey("dn1", "k-1")
+	if err != nil {
+		t.Fatalf("warm-up: %v", err)
+	}
+	conn := h.Conn
+	pool.ReleaseSlot(h, false)
+	_ = conn.Close()
+
+	done := make(chan struct{})
+	var h2 *SlotHandle
+	var acqErr error
+	go func() {
+		h2, acqErr = pool.AcquireSlotForKey("dn1", "k-1")
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("AcquireSlotForKey blocked after fault on hash-routed conn")
+	}
+	if acqErr != nil {
+		t.Fatalf("post-fault AcquireSlotForKey: %v", acqErr)
+	}
+	if h2.Conn == conn {
+		t.Error("post-fault returned faulted conn")
+	}
+	pool.ReleaseSlot(h2, false)
+}
+
+// TestSlotPool_ConnIfReadyReturnsFalseAfterFault verifies the
+// QP-only access path Phase A uses: ConnIfReady must return
+// (nil, false) when the only conn is faulted. Otherwise Phase A
+// would happily post WRs on a dead QP and harvest WC_WR_FLUSH_ERR
+// for every chunk.
+func TestSlotPool_ConnIfReadyReturnsFalseAfterFault(t *testing.T) {
+	pool := newTestPool(t, 4, 1, nil)
+
+	// Force conn creation via an acquire.
+	h, err := pool.AcquireSlot("dn1")
+	if err != nil {
+		t.Fatalf("setup acquire: %v", err)
+	}
+	conn := h.Conn
+	pool.ReleaseSlot(h, false)
+
+	if got, ok := pool.ConnIfReady("dn1"); !ok || got != conn {
+		t.Fatalf("ConnIfReady pre-fault: ok=%v conn=%v", ok, got)
+	}
+
+	_ = conn.Close()
+
+	if _, ok := pool.ConnIfReady("dn1"); ok {
+		t.Error("ConnIfReady should return false after the only conn was faulted")
+	}
+}

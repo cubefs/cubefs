@@ -114,6 +114,20 @@ func (cs *connSlots) allDeadAndIdle() bool {
 	return true
 }
 
+// anyInUse reports whether any of the conn's slots are currently
+// held by a caller. Used by the acquire-side reap path: a faulted
+// conn that still has slots in flight CANNOT be reaped here because
+// the holders will eventually return via release(forceClose=true),
+// which is the canonical cleanup site for in-flight slots.
+func (cs *connSlots) anyInUse() bool {
+	for i := range cs.inUse {
+		if cs.inUse[i] {
+			return true
+		}
+	}
+	return false
+}
+
 // dialFunc constructs an RDMAConn for the given target. Real builds wire
 // this to Dial; tests inject a fake.
 type dialFunc func(addr string, cfg RDMAConnConfig) (*RDMAConn, error)
@@ -217,6 +231,35 @@ func (p *singleSlotPool) acquire(hashKey string) (*SlotHandle, error) {
 					return h, nil
 				}
 			}
+		}
+
+		// Reap faulted conns whose slots are all idle. This is the
+		// recovery path for out-of-band faults that don't go through
+		// release() — e.g. a Phase A one-sided RDMA Read failing on
+		// the QP marks the conn closed via the drainer's markFault,
+		// but no slot was in use at the time so allDeadAndIdle never
+		// triggers on release(). Without this reap, the dial branch
+		// below sees conns[i] != nil and refuses to redial, leaving
+		// every subsequent acquirer parked in cond.Wait forever.
+		//
+		// A conn with anyInUse() == true means a goroutine is still
+		// holding a slot on it; we MUST NOT reap there because the
+		// holder will eventually release with forceClose=true and
+		// allDeadAndIdle cleanup will run then. Reaping early would
+		// orphan the in-flight handle and break SlotHandle bookkeeping.
+		for i, cs := range p.conns {
+			if cs == nil || cs.conn == nil {
+				continue
+			}
+			if !cs.conn.IsClosed() {
+				continue
+			}
+			if cs.anyInUse() {
+				continue
+			}
+			// Conn is dead AND no slot is held → safe to clear so the
+			// dial branch can pick this index for a fresh dial.
+			p.conns[i] = nil
 		}
 
 		// Dial a missing conn if one is needed. Hash-routed callers can
