@@ -193,16 +193,21 @@ func (reader *ExtentReader) tryReadViaRDMARead(rdmaAddr string, reqPacket *Packe
 			extentOffset, extentOffset+size, lease.Size)
 	}
 
-	// Acquire a conn for the addr without taking a slot — one-sided
-	// reads use the QP but not the slot pool's 2-sided accounting.
-	conn, err := rdmaConnPool.ConnForKey(rdmaAddr, "")
-	if err != nil {
+	// Acquire a conn for the addr without taking a slot AND without
+	// triggering a new dial. Phase A is best-effort acceleration —
+	// if the two-sided path hasn't built a conn yet, we don't want
+	// to race it (and risk the server's per-peer QP cap rejecting a
+	// second dial, which empirically happens on this cluster).
+	// ConnIfReady returns false silently in that case so the caller
+	// drops to the two-sided path without an error log.
+	conn, ok := rdmaConnPool.ConnIfReady(rdmaAddr)
+	if !ok {
 		if phaseAShouldWarn(&phaseACounters.connErr) {
-			log.LogWarnf("rdma Phase A: ConnForKey FAILED addr=%s: %v", rdmaAddr, err)
+			log.LogWarnf("rdma Phase A: no ready conn for addr=%s — falling back (two-sided will dial)", rdmaAddr)
 		} else {
 			atomic.AddInt64(&phaseACounters.connErr, 1)
 		}
-		return 0, fmt.Errorf("rdma conn for %s: %w", rdmaAddr, err)
+		return 0, nil // fall through silently — no error to invalidate cache over
 	}
 
 	chunks := splitReadChunks(extentOffset, size, util.ReadBlockSize)

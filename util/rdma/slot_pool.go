@@ -425,6 +425,57 @@ func (p *RDMAConnPool) ConnForKey(addr, key string) (*RDMAConn, error) {
 	return conn, nil
 }
 
+// ConnIfReady returns an already-established RDMAConn for addr if one
+// exists, or (nil, false) if no conn has been dialed yet (or all are
+// closed). It NEVER dials a new conn — designed for the one-sided
+// RDMA Read fast path, which must not pay dial latency on the read
+// hot path and must not contend for the per-peer connection budget
+// that the two-sided path manages.
+//
+// Rationale (added after a production incident where Phase A had a
+// 100% failure rate and dropped read throughput from 1.2 GB/s to
+// 50 MB/s): ConnForKey with key="" goes through round-robin which,
+// when all existing conns are slot-saturated, falls into the
+// dial-missing-conn branch. In a read-heavy ObjectNode workload the
+// only conn that was ever established was conn 0; every Phase A
+// attempt then tried to dial conn 1, which the server rejected
+// (RDMA_CM_EVENT_REJECTED — likely per-peer QP cap). Phase A is
+// best-effort acceleration, so the right answer is "if I can't piggy-
+// back on a ready conn, fall back to two-sided silently."
+//
+// The returned conn is shared with the two-sided path; callers must
+// only use it for QP-level operations (post_send / post_recv) that do
+// not need slot bookkeeping — exactly what PostRDMAReadAndWait does.
+func (p *RDMAConnPool) ConnIfReady(addr string) (*RDMAConn, bool) {
+	p.mu.RLock()
+	sp := p.pools[addr]
+	p.mu.RUnlock()
+	if sp == nil {
+		return nil, false
+	}
+	return sp.anyAliveConn()
+}
+
+// anyAliveConn returns the first non-nil, non-closed conn in the
+// sub-pool. The "first" rule keeps callers stable (always picks conn 0
+// when present) which matches the two-sided path's natural conn-0
+// preference for read traffic; a load-balanced variant can be layered
+// on top later if Phase A becomes the dominant traffic source.
+func (p *singleSlotPool) anyAliveConn() (*RDMAConn, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for _, cs := range p.conns {
+		if cs == nil || cs.conn == nil {
+			continue
+		}
+		if cs.conn.IsClosed() {
+			continue
+		}
+		return cs.conn, true
+	}
+	return nil, false
+}
+
 // AcquireSlotForKey is like AcquireSlot but pins the call to a
 // deterministic conn (hash(key) % maxConns) within the per-addr
 // sub-pool, so all calls with the same key share a QP and observe FIFO
