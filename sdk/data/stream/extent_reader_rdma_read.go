@@ -154,8 +154,6 @@ func (reader *ExtentReader) tryReadViaRDMARead(rdmaAddr string, reqPacket *Packe
 		if phaseAShouldWarn(&phaseACounters.noCacheInit) {
 			log.LogWarnf("rdma Phase A: cache unavailable (init failed earlier), addr=%s pid=%d ext=%d — falling back to two-sided",
 				rdmaAddr, reader.dp.PartitionID, reqPacket.ExtentID)
-		} else {
-			atomic.AddInt64(&phaseACounters.noCacheInit, 1)
 		}
 		return 0, nil
 	}
@@ -164,8 +162,6 @@ func (reader *ExtentReader) tryReadViaRDMARead(rdmaAddr string, reqPacket *Packe
 		if phaseAShouldWarn(&phaseACounters.lookupErr) {
 			log.LogWarnf("rdma Phase A: cache.Get FAILED addr=%s pid=%d ext=%d: %v",
 				rdmaAddr, reader.dp.PartitionID, reqPacket.ExtentID, err)
-		} else {
-			atomic.AddInt64(&phaseACounters.lookupErr, 1)
 		}
 		return 0, fmt.Errorf("extent MR cache lookup: %w", err)
 	}
@@ -173,8 +169,6 @@ func (reader *ExtentReader) tryReadViaRDMARead(rdmaAddr string, reqPacket *Packe
 		if phaseAShouldWarn(&phaseACounters.lookupErr) {
 			log.LogWarnf("rdma Phase A: cache.Get returned nil lease addr=%s pid=%d ext=%d",
 				rdmaAddr, reader.dp.PartitionID, reqPacket.ExtentID)
-		} else {
-			atomic.AddInt64(&phaseACounters.lookupErr, 1)
 		}
 		return 0, errors.New("extent MR cache returned nil lease")
 	}
@@ -186,8 +180,6 @@ func (reader *ExtentReader) tryReadViaRDMARead(rdmaAddr string, reqPacket *Packe
 		if phaseAShouldWarn(&phaseACounters.boundsErr) {
 			log.LogWarnf("rdma Phase A: bounds miss addr=%s pid=%d ext=%d off=%d sz=%d leaseSize=%d",
 				rdmaAddr, reader.dp.PartitionID, reqPacket.ExtentID, extentOffset, size, lease.Size)
-		} else {
-			atomic.AddInt64(&phaseACounters.boundsErr, 1)
 		}
 		return 0, fmt.Errorf("read range [%d, %d) exceeds lease size %d",
 			extentOffset, extentOffset+size, lease.Size)
@@ -200,12 +192,21 @@ func (reader *ExtentReader) tryReadViaRDMARead(rdmaAddr string, reqPacket *Packe
 	// second dial, which empirically happens on this cluster).
 	// ConnIfReady returns false silently in that case so the caller
 	// drops to the two-sided path without an error log.
-	conn, ok := rdmaConnPool.ConnIfReady(rdmaAddr)
+	//
+	// rdmaAddr here is the caller's view (TCP listen port). The
+	// conn pool is keyed by the post-shift RDMA address — same
+	// translation rdmaRoundTrip does in rdma_client.go. Without
+	// this shift, ConnIfReady misses every time even when conn 0
+	// exists, which is exactly what the first deploy of this fix
+	// reproduced: attempt=68087 conn=68087 hit=0%.
+	poolAddr := rdmaAddr
+	if rdmaConnPortShift != 0 {
+		poolAddr = util.ShiftAddrPort(rdmaAddr, rdmaConnPortShift)
+	}
+	conn, ok := rdmaConnPool.ConnIfReady(poolAddr)
 	if !ok {
 		if phaseAShouldWarn(&phaseACounters.connErr) {
-			log.LogWarnf("rdma Phase A: no ready conn for addr=%s — falling back (two-sided will dial)", rdmaAddr)
-		} else {
-			atomic.AddInt64(&phaseACounters.connErr, 1)
+			log.LogWarnf("rdma Phase A: no ready conn for poolAddr=%s (tcpAddr=%s) — falling back (two-sided will dial)", poolAddr, rdmaAddr)
 		}
 		return 0, nil // fall through silently — no error to invalidate cache over
 	}
@@ -223,8 +224,6 @@ func (reader *ExtentReader) tryReadViaRDMARead(rdmaAddr string, reqPacket *Packe
 			if phaseAShouldWarn(&phaseACounters.wrErr) {
 				log.LogWarnf("rdma Phase A: WR FAILED addr=%s pid=%d ext=%d off=%d sz=%d: %v",
 					rdmaAddr, reader.dp.PartitionID, reqPacket.ExtentID, chk.extentOff, chk.bufSize, cerr)
-			} else {
-				atomic.AddInt64(&phaseACounters.wrErr, 1)
 			}
 			return 0, cerr
 		}
@@ -258,8 +257,6 @@ func (reader *ExtentReader) tryReadViaRDMARead(rdmaAddr string, reqPacket *Packe
 			if phaseAShouldWarn(&phaseACounters.wrErr) {
 				log.LogWarnf("rdma Phase A: WR FAILED (parallel) addr=%s pid=%d ext=%d: %v",
 					rdmaAddr, reader.dp.PartitionID, reqPacket.ExtentID, cerr)
-			} else {
-				atomic.AddInt64(&phaseACounters.wrErr, 1)
 			}
 			return 0, cerr
 		}
