@@ -62,6 +62,30 @@ func RegisterExtentFile(pd *C.struct_ibv_pd, path string, readOnly bool) (*RDMAM
 		return nil, false, fmt.Errorf("rdma: RegisterExtentFile: mmap %s (size=%d): %w", path, size, err)
 	}
 
+	// Prefault every page so the kernel maps the file into page cache
+	// synchronously, in user context, BEFORE we hand the buffer to the
+	// NIC via ibv_reg_mr(ODP). Without this, the first remote RDMA
+	// Read against a not-yet-resident page triggers a NIC-side ODP
+	// page fault; on mlx5 that fault path is known to take seconds
+	// under load, and the SDK's 5s WR timeout doesn't survive it.
+	// With the prefault loop, the page table is already populated
+	// when the NIC touches the MR — fault handling is microseconds
+	// or skipped entirely.
+	//
+	// Cost: register time goes up roughly by the file read time
+	// (sequential page-touch ~ GB/s on modern disks → milliseconds
+	// per typical 1MB extent). Hit rate of Phase A reads against
+	// cached extents was 0% before this fix; one extra ms at register
+	// time to unblock the entire read path is a trivial trade.
+	//
+	// We don't fail register on prefault errors — the page-cache
+	// state is best-effort and the ibv_reg_mr below will surface
+	// any real problem.
+	pageSize := os.Getpagesize()
+	for off := 0; off < size; off += pageSize {
+		_ = mmapBuf[off]
+	}
+
 	base := uintptr(unsafe.Pointer(&mmapBuf[0]))
 	mem, usedODP, err := RegisterFileMR(pd, base, size)
 	if err != nil {
