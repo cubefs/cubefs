@@ -20,17 +20,40 @@ const rdmaRoundTripTimeout = 30 * time.Second
 
 // rdmaConnPool is nil by default; non-nil only when RDMA is enabled at startup.
 //
-// rdmaReadOnlyPool is a separate, Phase-A-only pool of RDMA connections.
-// Sharing QPs between Phase A (RDMA_READ WRs) and the two-sided
-// send/recv path is unsafe: RC QP semantics force the QP into ERR on
-// any WR failure, so a single Phase A read fault (lease stale, remote
-// MR dereg'd, etc) used to kill the two-sided path's QP and push DPs
-// read-only. The dedicated pool isolates Phase A's failure blast
-// radius — see util/rdma/readonly_pool.go for the rationale in full.
+// rdmaPhaseAConnPool is a separate slot pool dedicated to Phase A
+// traffic (one-sided RDMA Read + the OpExtentMRLookup/Renew/Release
+// metadata round-trips that drive it). Two reasons it exists:
+//
+//   1) RC QP failure isolation: any WR completion error on an RC QP
+//      forces that QP into ERR state by RDMA protocol — there is no
+//      patch that lets a peer reuse a faulted QP without reset. The
+//      one-sided read path failure modes (lease expired, server MR
+//      dereg'd after extent delete, transient read fault) are
+//      legitimate and recurring; if Phase A shares a QP with the
+//      two-sided path, any of them takes down send/recv too and
+//      pushes DPs into read-only. The previous deploy reproduced
+//      this exactly.
+//
+//   2) PD scoping for rkey: MR rkey is PD-scoped. A QP can only
+//      RDMA-Read against an rkey that was registered on the same
+//      PD as the QP itself. Since librdmacm allocates a fresh PD
+//      per cm_id, "lookup over conn A, read over conn B" silently
+//      fails — server NIC checks rkey against conn B's PD, doesn't
+//      find it, NAKs indefinitely until client times out at 5 s.
+//      The previous read-only pool deploy reproduced this too.
+//
+// The fix for (2) is to make BOTH the lookup and the read use the
+// same Phase A conn so the registered MR's rkey lives on the same
+// PD as the read QP. The fix for (1) is to keep that Phase A conn
+// separate from the two-sided pool's conns. A single dedicated pool
+// (this one) gets both: MaxConns=1 so each DataNode has exactly one
+// Phase A conn; the pool's slot accounting routes lookup-style
+// round-trips through that same conn; Phase A reads pick up the
+// same conn via ConnIfReady (which doesn't acquire a slot).
 var (
-	rdmaConnPool      *rdma.RDMAConnPool
-	rdmaReadOnlyPool  *rdma.ReadOnlyConnPool
-	rdmaConnPortShift int
+	rdmaConnPool       *rdma.RDMAConnPool
+	rdmaPhaseAConnPool *rdma.RDMAConnPool
+	rdmaConnPortShift  int
 )
 
 // InitRDMAConnPool initializes the client-side RDMA slot pool.
@@ -42,43 +65,65 @@ func InitRDMAConnPool(cfg rdma.RDMAPoolConfig) error {
 	}
 	rdmaConnPool = pool
 	rdmaConnPortShift = cfg.RDMAPortShift
-	// Phase A pool reuses the same cfg (Device/Port/Shift) but gets
-	// its own conn map. Failure here doesn't fail the whole pool
-	// init — Phase A is best-effort acceleration, two-sided still
-	// works without it.
-	roPool, roErr := rdma.NewReadOnlyConnPool(cfg)
-	if roErr != nil {
-		// Log via fmt to stderr; the SDK log layer may not be
-		// wired at this point. Two-sided path is unaffected.
-		fmt.Fprintf(os.Stderr, "rdma client: init Phase A read-only pool FAILED: %v — one-sided reads disabled\n", roErr)
+	// Phase A pool: same cfg, but pinned to one conn per DataNode so
+	// the lookup-read pair shares a PD (see big comment above).
+	// Failure to build it doesn't fail two-sided — Phase A is best-
+	// effort acceleration.
+	phaseACfg := cfg
+	phaseACfg.MaxConns = 1
+	// Smaller slot count: Phase A's two-sided traffic is only the
+	// occasional lookup/renew/release, not the per-chunk read stream
+	// (those go through the QP directly via PostRDMAReadAndWait).
+	// 16 slots is generous for the expected lookup rate even under
+	// 64-client object workloads.
+	if phaseACfg.NumSlots > 16 {
+		phaseACfg.NumSlots = 16
+	}
+	phaseAPool, paErr := rdma.NewRDMAConnPool(phaseACfg)
+	if paErr != nil {
+		fmt.Fprintf(os.Stderr, "rdma client: init Phase A pool FAILED: %v — one-sided reads disabled\n", paErr)
 	} else {
-		rdmaReadOnlyPool = roPool
+		rdmaPhaseAConnPool = phaseAPool
 	}
 	return nil
 }
 
-// phaseAPoolHealth renders a one-line health snapshot of the read-only
-// pool (Phase A's dedicated conns). Embedded into every 60s Phase A
-// stats line so operators can confirm at a glance whether each
-// DataNode has a live Phase A conn — without grepping the dial logs.
+// phaseAPoolHealth renders a one-line health snapshot of the Phase A
+// pool. Embedded into every 60s Phase A stats line so operators can
+// confirm at a glance whether each DataNode has a live Phase A conn.
 //
-// Format: "pool=tracked=N,alive=M,faulted=K". A healthy cluster reads
-// as alive == tracked. Sustained faulted>0 means the dial backoff
-// gate has kicked in for at least one DataNode and Phase A is
-// disabled for it until the next backoff window.
+// Format: "pool=activeSlots=N". RDMAConnPool doesn't track per-addr
+// alive/faulted directly — but a non-zero ActiveSlots count is a
+// strong signal the pool is functioning. Zero with non-zero attempt
+// count in the surrounding stats line indicates Phase A isn't dialing
+// or is faulting before a slot can be held.
 func phaseAPoolHealth() string {
-	if rdmaReadOnlyPool == nil {
+	if rdmaPhaseAConnPool == nil {
 		return "pool=uninit"
 	}
-	s := rdmaReadOnlyPool.Stats()
-	return fmt.Sprintf("pool=tracked=%d,alive=%d,faulted=%d", s.Tracked, s.Alive, s.Faulted)
+	return fmt.Sprintf("pool=activeSlots=%d", rdmaPhaseAConnPool.ActiveSlots())
 }
 
 // rdmaRoundTrip is the inner one-slot send + wait + return-credit cycle
 // shared by both write and read RDMA paths. On success it returns the
 // deserialised response packet; the caller is responsible for
 // interpreting ResultCode and (for reads) verifying CRC.
+//
+// Production traffic uses the default two-sided pool; the Phase A
+// metadata round-trips (OpExtentMRLookup / Renew / Release) call
+// rdmaRoundTripVia with rdmaPhaseAConnPool so the lookup conn and
+// the read conn share a PD.
 func rdmaRoundTrip(addr string, req *Packet) (*proto.Packet, error) {
+	return rdmaRoundTripVia(rdmaConnPool, addr, req)
+}
+
+// rdmaRoundTripVia is the pool-parameterised variant of rdmaRoundTrip.
+// Callers that need the Phase A pool (lookup/renew/release) pass it
+// explicitly; rdmaRoundTrip defaults to the two-sided pool.
+func rdmaRoundTripVia(pool *rdma.RDMAConnPool, addr string, req *Packet) (*proto.Packet, error) {
+	if pool == nil {
+		return nil, fmt.Errorf("rdma client: pool not initialised")
+	}
 	// Caller passes the datanode's data (TCP) address; shift to its
 	// RDMA listen port. Pool key remains the post-shift address.
 	rdmaAddr := addr
@@ -102,7 +147,7 @@ func rdmaRoundTrip(addr string, req *Packet) (*proto.Packet, error) {
 	if !req.IsReadOperation() {
 		key = fmt.Sprintf("%d-%d", req.PartitionID, req.ExtentID)
 	}
-	handle, err := rdmaConnPool.AcquireSlotForKey(rdmaAddr, key)
+	handle, err := pool.AcquireSlotForKey(rdmaAddr, key)
 	if err != nil {
 		rdma.MetricsObserveFallback(rdma.RoleClient, addr, "acquire_slot")
 		return nil, fmt.Errorf("rdma client: acquire slot to %s: %w", rdmaAddr, err)
@@ -110,7 +155,7 @@ func rdmaRoundTrip(addr string, req *Packet) (*proto.Packet, error) {
 	conn := handle.Conn
 	slot := handle.SlotIdx
 	forceClose := false
-	defer func() { rdmaConnPool.ReleaseSlot(handle, forceClose) }()
+	defer func() { pool.ReleaseSlot(handle, forceClose) }()
 
 	lastDoneSeq := conn.RecvDoneSeq(slot)
 

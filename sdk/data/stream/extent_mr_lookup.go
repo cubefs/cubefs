@@ -48,7 +48,12 @@ func lookupExtentMR(addr string, pid, extentID uint64, ttlHint time.Duration) (*
 	req.PartitionID = pid
 	req.ExtentID = extentID
 
-	resp, err := rdmaRoundTrip(addr, req)
+	// Route the lookup through the Phase A pool so the server registers
+	// the extent MR against the same PD that will serve the subsequent
+	// RDMA Read WRs. Using the two-sided pool here was the cause of the
+	// previous "RDMA Read timed out" failure mode: server's lookup conn
+	// PD ≠ read conn PD ⟹ rkey didn't decode on the Phase A QP.
+	resp, err := rdmaRoundTripVia(rdmaPhaseAConnPool, addr, req)
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +105,9 @@ func renewExtentMR(addr string, leaseID uint64, ttlHint time.Duration) (uint32, 
 	req.Arg = argBuf
 	req.ArgLen = uint32(len(argBuf))
 
-	resp, err := rdmaRoundTrip(addr, req)
+	// Renew goes through the Phase A pool same as the original lookup
+	// — keeps PD consistency for the lease's rkey.
+	resp, err := rdmaRoundTripVia(rdmaPhaseAConnPool, addr, req)
 	if err != nil {
 		return 0, err
 	}

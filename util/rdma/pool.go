@@ -9,11 +9,3 @@ package rdma
 func NewRDMAConnPool(cfg RDMAPoolConfig) (*RDMAConnPool, error) {
 	return newPool(cfg, Dial)
 }
-
-// NewReadOnlyConnPool creates a Phase A dedicated pool that dials real
-// RDMA connections. Same Dial dependency injection pattern as
-// NewRDMAConnPool — the pool logic in readonly_pool.go is tag-free so
-// unit tests on darwin can run with a mock dial.
-func NewReadOnlyConnPool(cfg RDMAPoolConfig) (*ReadOnlyConnPool, error) {
-	return newReadOnlyConnPool(cfg, Dial)
-}
