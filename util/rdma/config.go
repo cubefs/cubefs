@@ -81,4 +81,15 @@ type RDMAPoolConfig struct {
 	// startup (e.g. from a mount option), no code change. Default
 	// false = Phase A active.
 	OneSidedReadDisabled bool
+
+	// ReadTimeoutMs caps a single Phase A RDMA Read WR's wait for
+	// completion before the SDK abandons and falls back to the two-
+	// sided path. Healthy RoCE round-trips are ~100 μs and a busy
+	// server adds at most tens of ms; 1000 ms (the default) gives
+	// 10000× headroom over healthy RTT, plenty for transient queue
+	// or scheduler hiccups, and dropped tail-latency dramatically vs
+	// the original 5 s. Set lower for read-heavy workloads on quiet
+	// fabrics where you'd rather fall back fast than wait. 0 = use
+	// default.
+	ReadTimeoutMs int
 }

@@ -31,8 +31,8 @@ import (
 // operators can still confirm the path is alive.
 
 const (
-	// readViaRDMAReadTimeout caps how long one chunk's RDMA Read
-	// may take before we abandon and fall back. Healthy RoCE
+	// defaultReadViaRDMAReadTimeout is the fallback for
+	// cfg.ReadTimeoutMs when the value is 0 or unset. Healthy RoCE
 	// round-trips are ≈100 µs and a busy server adds tens of ms at
 	// most; 5 s was the original (overly generous) value, which in
 	// production became the dominant source of tail latency: any
@@ -40,19 +40,26 @@ const (
 	// even started the fallback, and a 64-client s3bench run with
 	// 1.8 % failure rate saw p99 read latency at 41 s.
 	//
-	// 1 s gives us 10 000× headroom over healthy RTT — plenty to
-	// absorb queueing, slot contention, and recv-side scheduling
-	// hiccups — while making the worst-case fallback path 5× faster
-	// per failed WR. Lowering further (e.g. 200 ms) would push us
-	// closer to false-positive territory under network congestion;
-	// 1 s is the safe-but-aggressive sweet spot.
-	readViaRDMAReadTimeout = 1 * time.Second
+	// 1 s gives 10 000× headroom over healthy RTT — plenty for
+	// queueing, slot contention, scheduler hiccups — while making
+	// the worst-case fallback path 5× faster per failed WR.
+	// Lowering further (e.g. 200 ms) pushes toward false-positive
+	// territory under network congestion; 1 s is the safe-but-
+	// aggressive sweet spot.
+	defaultReadViaRDMAReadTimeout = 1 * time.Second
 
 	// phaseAWarnEvery samples failure logs so a permanent fault
 	// doesn't spam the log file — but the first occurrence is
 	// always logged so the first deploy surfaces the issue.
 	phaseAWarnEvery = 256
 )
+
+// readViaRDMAReadTimeout is the active per-WR Phase A read timeout.
+// Set by InitRDMAConnPool from RDMAPoolConfig.ReadTimeoutMs; falls
+// back to defaultReadViaRDMAReadTimeout when the cfg is 0. Stored as
+// a package var (not const) so operators can flip the value via
+// mount option without rebuilding.
+var readViaRDMAReadTimeout = defaultReadViaRDMAReadTimeout
 
 // Phase A observability counters. All are accessed via atomic helpers
 // so they're safe to read from the stats logger without holding a

@@ -125,6 +125,7 @@ const (
 	RDMAReadSlotCount
 	RDMAReadSlotSize
 	RDMAOneSidedReadDisabled
+	RDMAReadTimeoutMs
 	MaxMountOption
 )
 
@@ -260,6 +261,11 @@ func InitMountOptions(opts []MountOption) {
 	// the two-sided RDMA path. Lets ops roll back from a one-sided
 	// regression without rebuilding.
 	opts[RDMAOneSidedReadDisabled] = MountOption{"rdmaOneSidedReadDisabled", "Disable Phase A one-sided RDMA Read (use two-sided only)", "", false}
+	// Per-WR Phase A RDMA Read timeout. 0 = default (1000 ms). Lower
+	// for read-heavy workloads on quiet fabrics where falling back
+	// fast beats waiting; raise if your fabric routinely spikes
+	// above the default.
+	opts[RDMAReadTimeoutMs] = MountOption{"rdmaReadTimeoutMs", "Phase A RDMA Read per-WR timeout in milliseconds", "", int64(0)}
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
 	}
@@ -468,4 +474,5 @@ type MountOptions struct {
 	RDMAReadSlotCount        int64
 	RDMAReadSlotSize         int64
 	RDMAOneSidedReadDisabled bool
+	RDMAReadTimeoutMs        int64
 }

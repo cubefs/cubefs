@@ -65,6 +65,7 @@ func initRDMAClientPool(cfg *config.Config) error {
 	readSlotCount := cfg.GetInt64(configRDMAReadSlotCount)
 	readSlotSize := cfg.GetInt64(configRDMAReadSlotSize)
 	oneSidedDisabled := cfg.GetBool(configRDMAOneSidedReadDisabled)
+	readTimeoutMs := cfg.GetInt64(configRDMAReadTimeoutMs)
 
 	poolCfg := rdma.RDMAPoolConfig{
 		NumSlots:             int(numSlots),
@@ -76,6 +77,7 @@ func initRDMAClientPool(cfg *config.Config) error {
 		ReadSlotCount:        int(readSlotCount),
 		ReadSlotSize:         int(readSlotSize),
 		OneSidedReadDisabled: oneSidedDisabled,
+		ReadTimeoutMs:        int(readTimeoutMs),
 		Poll: rdma.PollConfig{
 			BusySpinCount:    int(busy),
 			YieldCount:       int(yield),

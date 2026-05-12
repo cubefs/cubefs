@@ -70,6 +70,7 @@ func initRDMAFromConfig(cfg *cliConfig) {
 		ReadSlotCount:        int(cfg.RDMAReadSlotCount),
 		ReadSlotSize:         int(cfg.RDMAReadSlotSize),
 		OneSidedReadDisabled: cfg.RDMAOneSidedReadDisabled,
+		ReadTimeoutMs:        int(cfg.RDMAReadTimeoutMs),
 		Poll: rdma.PollConfig{
 			BusySpinCount:    int(busy),
 			YieldCount:       int(yield),

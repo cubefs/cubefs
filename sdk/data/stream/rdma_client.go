@@ -72,6 +72,9 @@ func InitRDMAConnPool(cfg rdma.RDMAPoolConfig) error {
 	rdmaConnPool = pool
 	rdmaConnPortShift = cfg.RDMAPortShift
 	rdmaOneSidedReadEnabled = !cfg.OneSidedReadDisabled
+	if cfg.ReadTimeoutMs > 0 {
+		readViaRDMAReadTimeout = time.Duration(cfg.ReadTimeoutMs) * time.Millisecond
+	}
 	// Phase A pool: same cfg, but pinned to one conn per DataNode so
 	// the lookup-read pair shares a PD (see big comment above).
 	// Failure to build it doesn't fail two-sided — Phase A is best-

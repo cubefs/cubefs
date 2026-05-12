@@ -1066,6 +1066,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.RDMAReadSlotCount = GlobalMountOptions[proto.RDMAReadSlotCount].GetInt64()
 	opt.RDMAReadSlotSize = GlobalMountOptions[proto.RDMAReadSlotSize].GetInt64()
 	opt.RDMAOneSidedReadDisabled = GlobalMountOptions[proto.RDMAOneSidedReadDisabled].GetBool()
+	opt.RDMAReadTimeoutMs = GlobalMountOptions[proto.RDMAReadTimeoutMs].GetInt64()
 
 	if opt.MountPoint == "" || opt.Volname == "" || opt.Owner == "" || opt.Master == "" {
 		return nil, errors.New(fmt.Sprintf("invalid config file: lack of mandatory fields, mountPoint(%v), volName(%v), owner(%v), masterAddr(%v)", opt.MountPoint, opt.Volname, opt.Owner, opt.Master))

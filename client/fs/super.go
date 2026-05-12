@@ -293,6 +293,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 			ReadSlotCount:        int(opt.RDMAReadSlotCount),
 			ReadSlotSize:         int(opt.RDMAReadSlotSize),
 			OneSidedReadDisabled: opt.RDMAOneSidedReadDisabled,
+			ReadTimeoutMs:        int(opt.RDMAReadTimeoutMs),
 			Poll: rdma.PollConfig{
 				BusySpinCount:    int(opt.RDMABusySpinCount),
 				YieldCount:       int(opt.RDMAYieldCount),
