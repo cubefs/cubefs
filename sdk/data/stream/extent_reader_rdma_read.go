@@ -311,11 +311,32 @@ func (reader *ExtentReader) tryReadViaRDMARead(rdmaAddr string, reqPacket *Packe
 // fast path. Posts an RDMA Read against the lease's (rkey, VA +
 // chunkOff) and waits for completion; the conn's per-slot waiter
 // machinery handles the bookkeeping.
+//
+// Slow-tail diagnostic: times every chunk and bumps phaseACounters.
+// slowChunks when the post-and-wait exceeds phaseASlowChunkThreshold.
+// Every phaseAWarnEvery'th slow chunk emits a WARN line carrying the
+// (poolAddr, conn-index, pid, ext, offset, size, elapsed) tuple so
+// an operator can correlate which datanode / QP / extent the long
+// tail clusters on.
 func (reader *ExtentReader) readChunkViaRDMARead(conn *rdma.RDMAConn, lease *LeaseInfo, req *ExtentRequest, chk readChunkSpec) (int, error) {
 	dst := req.Data[chk.bufOff : chk.bufOff+chk.bufSize]
 	remoteVA := lease.VA + uint64(chk.extentOff)
+	start := time.Now()
 	if err := conn.PostRDMAReadAndWait(dst, remoteVA, lease.Rkey, readViaRDMAReadTimeout); err != nil {
 		return 0, err
+	}
+	elapsed := time.Since(start)
+	if elapsed >= phaseASlowChunkThreshold {
+		n := recordPhaseASlowChunk()
+		if n == 1 || n%phaseAWarnEvery == 0 {
+			pid := reader.dp.PartitionID
+			extID := reader.key.ExtentId
+			poolKey := fmt.Sprintf("%d-%d", pid, extID)
+			idx := rdma.HashKeyToConnIndex(poolKey, rdmaPhaseAConnPool.MaxConns())
+			log.LogWarnf("rdma Phase A SLOW chunk addr=%s connIdx=%d pid=%d ext=%d off=%d size=%d elapsed=%v threshold=%v (n=%d)",
+				reader.dp.LeaderAddr, idx, pid, extID,
+				chk.extentOff, chk.bufSize, elapsed, phaseASlowChunkThreshold, n)
+		}
 	}
 	return chk.bufSize, nil
 }

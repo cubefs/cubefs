@@ -14,7 +14,20 @@
 
 package stream
 
-import "sync/atomic"
+import (
+	"sync/atomic"
+	"time"
+)
+
+// phaseASlowChunkThreshold is the per-chunk RDMA Read latency above
+// which the chunk is counted in slowChunks and a sampled WARN log is
+// emitted (in readChunkViaRDMARead). 500 ms is well above the healthy
+// expectation (a 4-MiB Phase A Read on a 25-Gbps RoCE link should
+// complete in single-digit milliseconds, with mlx5 buffer pressure
+// adding tens) but well below the 2-second tail observed in
+// production. The threshold catches the bad tail without spamming
+// during normal warmup variance.
+const phaseASlowChunkThreshold = 500 * time.Millisecond
 
 // Phase A observability counters live in this build-tag-free file so
 // the (also build-tag-free) phase_a_stats.go logger can read them in
@@ -49,6 +62,13 @@ var phaseACounters struct {
 	chunks1     int64
 	chunks2to4  int64
 	chunks5plus int64
+	// slowChunks counts per-chunk RDMA Reads whose end-to-end time
+	// exceeded phaseASlowChunkThreshold. Diagnostic for the long-tail
+	// "max sdkRead 2 s" observation: pairs with the sampled WARN log
+	// in readChunkViaRDMARead so the cumulative bad-chunk rate is
+	// visible at the periodic stats interval rather than only as
+	// individual log lines.
+	slowChunks int64
 }
 
 // phaseAConnIdxMax bounds the per-conn-index hit array. Set high enough
@@ -99,6 +119,21 @@ func PhaseAConnIdxHitsSnapshot() [phaseAConnIdxMax]int64 {
 		out[i] = atomic.LoadInt64(&phaseAConnIdxHits[i])
 	}
 	return out
+}
+
+// PhaseASlowChunksSnapshot returns the cumulative count of chunks
+// whose RDMA Read exceeded phaseASlowChunkThreshold. Surfaces the
+// long-tail rate in periodic logs even when individual WARN lines
+// have been sampled out.
+func PhaseASlowChunksSnapshot() int64 {
+	return atomic.LoadInt64(&phaseACounters.slowChunks)
+}
+
+// recordPhaseASlowChunk increments the slow-chunk counter and returns
+// the post-increment value so the caller can decide whether to also
+// emit a sampled WARN log (matching the phaseAShouldWarn cadence).
+func recordPhaseASlowChunk() int64 {
+	return atomic.AddInt64(&phaseACounters.slowChunks, 1)
 }
 
 // recordPhaseAChunkBucket increments the chunk-count distribution

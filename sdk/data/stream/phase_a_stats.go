@@ -81,11 +81,13 @@ func phaseAStatsLoop() {
 	var prev struct {
 		attempt, success, noCache, lookup, bounds, conn, wr, bytes int64
 		chunks1, chunks2to4, chunks5plus                           int64
+		slowChunks                                                 int64
 	}
 	for range ticker.C {
 		attempt, success, noCache, lookup, bounds, conn, wr, bytes := PhaseAStatsSnapshot()
 		c1, c2to4, c5plus := PhaseAChunkBucketsSnapshot()
 		idxHits := PhaseAConnIdxHitsSnapshot()
+		slow := PhaseASlowChunksSnapshot()
 		dAttempt := attempt - prev.attempt
 		dSuccess := success - prev.success
 		dNoCache := noCache - prev.noCache
@@ -97,11 +99,13 @@ func phaseAStatsLoop() {
 		dC1 := c1 - prev.chunks1
 		dC2to4 := c2to4 - prev.chunks2to4
 		dC5plus := c5plus - prev.chunks5plus
+		dSlow := slow - prev.slowChunks
 		prev.attempt, prev.success = attempt, success
 		prev.noCache, prev.lookup = noCache, lookup
 		prev.bounds, prev.conn, prev.wr = bounds, conn, wr
 		prev.bytes = bytes
 		prev.chunks1, prev.chunks2to4, prev.chunks5plus = c1, c2to4, c5plus
+		prev.slowChunks = slow
 
 		// Publish to Prometheus so Grafana can show RDMA Read bandwidth.
 		// Called from a single goroutine — no data race on the counter.
@@ -131,8 +135,8 @@ func phaseAStatsLoop() {
 		// parallel path is being exercised. If everything is in chunks1
 		// the upper layer's buffer is too small to split — see
 		// objectnode/get_object_bufsize.go.
-		log.LogInfof("Phase A chunks[%s] +chunks1=%d +chunks2to4=%d +chunks5plus=%d",
-			phaseAStatsName.Load(), dC1, dC2to4, dC5plus)
+		log.LogInfof("Phase A chunks[%s] +chunks1=%d +chunks2to4=%d +chunks5plus=%d slowChunks=+%d (cum=%d, threshold=%v)",
+			phaseAStatsName.Load(), dC1, dC2to4, dC5plus, dSlow, slow, phaseASlowChunkThreshold)
 		// Per-conn-index hit distribution. Shows whether hash routing
 		// is spreading load across the configured maxConns. Skip zero
 		// buckets so the line stays short on small-maxConns deployments.
