@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"hash/crc32"
+	"os"
 	"runtime"
 	"time"
 
@@ -18,8 +19,17 @@ import (
 const rdmaRoundTripTimeout = 30 * time.Second
 
 // rdmaConnPool is nil by default; non-nil only when RDMA is enabled at startup.
+//
+// rdmaReadOnlyPool is a separate, Phase-A-only pool of RDMA connections.
+// Sharing QPs between Phase A (RDMA_READ WRs) and the two-sided
+// send/recv path is unsafe: RC QP semantics force the QP into ERR on
+// any WR failure, so a single Phase A read fault (lease stale, remote
+// MR dereg'd, etc) used to kill the two-sided path's QP and push DPs
+// read-only. The dedicated pool isolates Phase A's failure blast
+// radius — see util/rdma/readonly_pool.go for the rationale in full.
 var (
 	rdmaConnPool      *rdma.RDMAConnPool
+	rdmaReadOnlyPool  *rdma.ReadOnlyConnPool
 	rdmaConnPortShift int
 )
 
@@ -32,6 +42,18 @@ func InitRDMAConnPool(cfg rdma.RDMAPoolConfig) error {
 	}
 	rdmaConnPool = pool
 	rdmaConnPortShift = cfg.RDMAPortShift
+	// Phase A pool reuses the same cfg (Device/Port/Shift) but gets
+	// its own conn map. Failure here doesn't fail the whole pool
+	// init — Phase A is best-effort acceleration, two-sided still
+	// works without it.
+	roPool, roErr := rdma.NewReadOnlyConnPool(cfg)
+	if roErr != nil {
+		// Log via fmt to stderr; the SDK log layer may not be
+		// wired at this point. Two-sided path is unaffected.
+		fmt.Fprintf(os.Stderr, "rdma client: init Phase A read-only pool FAILED: %v — one-sided reads disabled\n", roErr)
+	} else {
+		rdmaReadOnlyPool = roPool
+	}
 	return nil
 }
 

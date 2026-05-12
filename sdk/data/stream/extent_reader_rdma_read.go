@@ -185,28 +185,29 @@ func (reader *ExtentReader) tryReadViaRDMARead(rdmaAddr string, reqPacket *Packe
 			extentOffset, extentOffset+size, lease.Size)
 	}
 
-	// Acquire a conn for the addr without taking a slot AND without
-	// triggering a new dial. Phase A is best-effort acceleration —
-	// if the two-sided path hasn't built a conn yet, we don't want
-	// to race it (and risk the server's per-peer QP cap rejecting a
-	// second dial, which empirically happens on this cluster).
-	// ConnIfReady returns false silently in that case so the caller
-	// drops to the two-sided path without an error log.
+	// Acquire a Phase-A-dedicated conn. This pool is intentionally
+	// separate from the two-sided rdmaConnPool: a one-sided RDMA
+	// Read can fail for legitimate reasons (stale lease rkey, server
+	// MR dereg'd, transient remote access error). RC QP semantics
+	// force the whole QP into ERR on any such WR failure, so sharing
+	// the QP with two-sided traffic used to take down the entire
+	// send/recv path and put DPs into "maybe readonly". Isolating
+	// Phase A into its own conn keeps the blast radius inside Phase A.
 	//
-	// rdmaAddr here is the caller's view (TCP listen port). The
-	// conn pool is keyed by the post-shift RDMA address — same
-	// translation rdmaRoundTrip does in rdma_client.go. Without
-	// this shift, ConnIfReady misses every time even when conn 0
-	// exists, which is exactly what the first deploy of this fix
-	// reproduced: attempt=68087 conn=68087 hit=0%.
-	poolAddr := rdmaAddr
-	if rdmaConnPortShift != 0 {
-		poolAddr = util.ShiftAddrPort(rdmaAddr, rdmaConnPortShift)
+	// rdmaAddr is the TCP listen addr from sc.CurrAddr(); the pool's
+	// ConnIfReady applies RDMAPortShift internally, so no translation
+	// is needed here.
+	if rdmaReadOnlyPool == nil {
+		// Init never ran (non-RDMA build path can't reach here, but
+		// in production this means the SDK process didn't bring up
+		// the Phase A pool, which is logged once at InitRDMAConnPool
+		// time). Fall through silently.
+		return 0, nil
 	}
-	conn, ok := rdmaConnPool.ConnIfReady(poolAddr)
+	conn, ok := rdmaReadOnlyPool.ConnIfReady(rdmaAddr)
 	if !ok {
 		if phaseAShouldWarn(&phaseACounters.connErr) {
-			log.LogWarnf("rdma Phase A: no ready conn for poolAddr=%s (tcpAddr=%s) — falling back (two-sided will dial)", poolAddr, rdmaAddr)
+			log.LogWarnf("rdma Phase A: no ready read-only conn for addr=%s — falling back (will lazy-dial)", rdmaAddr)
 		}
 		return 0, nil // fall through silently — no error to invalidate cache over
 	}
