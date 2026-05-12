@@ -242,10 +242,20 @@ func (reader *ExtentReader) tryReadViaRDMARead(rdmaAddr string, reqPacket *Packe
 	if rdmaConnPortShift != 0 {
 		poolAddr = util.ShiftAddrPort(rdmaAddr, rdmaConnPortShift)
 	}
-	conn, ok := rdmaPhaseAConnPool.ConnIfReady(poolAddr)
+	// Hash-route the read to the SAME conn that served the lookup.
+	// rdmaRoundTripVia (used by lookupExtentMR) builds the key
+	// "pid-extId" for non-read operations and AcquireSlotForKey
+	// pins the lookup to conn[hash(key) % maxConns]. ConnIfReadyForKey
+	// mirrors that hash so the RDMA Read WR posts on the same QP /
+	// same PD that owns the lease's rkey. If maxConns is 1 this is
+	// a no-op (anyAliveConn would have returned the same conn);
+	// for maxConns > 1 it's the correctness lynchpin without which
+	// the read would silently 5-second-timeout on every chunk.
+	poolKey := fmt.Sprintf("%d-%d", reader.dp.PartitionID, reqPacket.ExtentID)
+	conn, ok := rdmaPhaseAConnPool.ConnIfReadyForKey(poolAddr, poolKey)
 	if !ok {
 		if phaseAShouldWarn(&phaseACounters.connErr) {
-			log.LogWarnf("rdma Phase A: no ready conn for poolAddr=%s (tcpAddr=%s) — falling back (next lookup will dial)", poolAddr, rdmaAddr)
+			log.LogWarnf("rdma Phase A: no ready conn for poolAddr=%s key=%s (tcpAddr=%s) — falling back (next lookup will dial)", poolAddr, poolKey, rdmaAddr)
 		}
 		return 0, nil // fall through silently — no error to invalidate cache over
 	}

@@ -126,6 +126,7 @@ const (
 	RDMAReadSlotSize
 	RDMAOneSidedReadDisabled
 	RDMAReadTimeoutMs
+	RDMAReadPrefetchDepth
 	MaxMountOption
 )
 
@@ -266,6 +267,11 @@ func InitMountOptions(opts []MountOption) {
 	// fast beats waiting; raise if your fabric routinely spikes
 	// above the default.
 	opts[RDMAReadTimeoutMs] = MountOption{"rdmaReadTimeoutMs", "Phase A RDMA Read per-WR timeout in milliseconds", "", int64(0)}
+	// Per-object prefetch depth — how many chunks the SDK posts in
+	// parallel. 0 = SDK default (4). Higher pushes more in-flight
+	// WRs per object, useful when chunks are large (cfg.ReadSlotSize
+	// = 4 MiB) and a 4-deep prefetch under-uses the NIC.
+	opts[RDMAReadPrefetchDepth] = MountOption{"rdmaReadPrefetchDepth", "Phase A per-object read prefetch depth (in-flight chunks)", "", int64(0)}
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
 	}
@@ -475,4 +481,5 @@ type MountOptions struct {
 	RDMAReadSlotSize         int64
 	RDMAOneSidedReadDisabled bool
 	RDMAReadTimeoutMs        int64
+	RDMAReadPrefetchDepth    int64
 }

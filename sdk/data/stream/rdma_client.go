@@ -75,17 +75,24 @@ func InitRDMAConnPool(cfg rdma.RDMAPoolConfig) error {
 	if cfg.ReadTimeoutMs > 0 {
 		readViaRDMAReadTimeout = time.Duration(cfg.ReadTimeoutMs) * time.Millisecond
 	}
-	// Phase A pool: same cfg, but pinned to one conn per DataNode so
-	// the lookup-read pair shares a PD (see big comment above).
-	// Failure to build it doesn't fail two-sided — Phase A is best-
-	// effort acceleration.
+	if cfg.ReadPrefetchDepth > 0 {
+		readPrefetchDepth = cfg.ReadPrefetchDepth
+	}
+	// Phase A pool: inherits cfg directly. MaxConns can now be > 1
+	// because lookup and read are hash-routed by "pid-extId" via
+	// AcquireSlotForKey / ConnIfReadyForKey — both APIs run the same
+	// fnvHash, so a given extent's lookup-conn and its subsequent
+	// RDMA Read conn always match, keeping the lease's rkey valid
+	// on the read QP's PD.
+	//
+	// Phase A's NumSlots is still capped — its slot pool only carries
+	// lookup/renew/release packets (the per-chunk read stream goes
+	// through the QP directly via PostRDMAReadAndWait, bypassing
+	// slots entirely). 16 per conn is plenty for the lookup rate
+	// even under 64-client object workloads; capping it here
+	// prevents an over-broad rdmaNumSlots config from inflating
+	// Phase A scratch unnecessarily.
 	phaseACfg := cfg
-	phaseACfg.MaxConns = 1
-	// Smaller slot count: Phase A's two-sided traffic is only the
-	// occasional lookup/renew/release, not the per-chunk read stream
-	// (those go through the QP directly via PostRDMAReadAndWait).
-	// 16 slots is generous for the expected lookup rate even under
-	// 64-client object workloads.
 	if phaseACfg.NumSlots > 16 {
 		phaseACfg.NumSlots = 16
 	}

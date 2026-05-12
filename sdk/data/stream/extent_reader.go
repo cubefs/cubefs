@@ -191,7 +191,14 @@ func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) 
 // latency hiding for large reads, but each in-flight chunk consumes
 // one slot pool entry and one ReadBlockSize buffer. 4 is a balanced
 // default given the typical pool config (numSlots=256 / maxConns=4).
-const readPrefetchDepth = 4
+//
+// Now a package var (not const) so InitRDMAConnPool can override from
+// cfg.ReadPrefetchDepth at startup. Higher values are typically
+// useful when Phase A (one-sided RDMA Read) is hitting — the chunks
+// are larger (cfg.ReadSlotSize, typically 4 MiB) and a 4-deep
+// prefetch under-uses NIC bandwidth. Operators can crank this via
+// mount option rdmaReadPrefetchDepth.
+var readPrefetchDepth = 4
 
 // readChunkSpec describes one ReadBlockSize-aligned subrange of an
 // outer ExtentReader.Read request. Pure data — chunk splitting logic

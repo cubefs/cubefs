@@ -92,4 +92,12 @@ type RDMAPoolConfig struct {
 	// fabrics where you'd rather fall back fast than wait. 0 = use
 	// default.
 	ReadTimeoutMs int
+
+	// ReadPrefetchDepth caps how many ReadBlockSize-sized chunks
+	// the SDK posts in parallel for one ExtentReader.Read call.
+	// Higher = more in-flight WRs per object = better NIC pipelining
+	// at the cost of memory pressure (each in-flight chunk holds
+	// one Phase A read scratch slot). 0 = use SDK default
+	// (defaultReadPrefetchDepth in sdk/data/stream/extent_reader.go).
+	ReadPrefetchDepth int
 }

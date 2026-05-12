@@ -705,3 +705,93 @@ func TestRDMAConnPool_ConnIfReadyKeyingMatchesAcquire(t *testing.T) {
 		t.Error("ConnIfReady with mismatched addr form should return false; this is the contract callers depend on")
 	}
 }
+
+// TestRDMAConnPool_ConnIfReadyForKey_RoutesToSameConnAsAcquire
+// locks in the Phase A correctness invariant: a key passed to
+// AcquireSlotForKey and the same key later passed to
+// ConnIfReadyForKey must resolve to the same conn so the rkey
+// returned by lookup remains valid on the read QP's PD.
+//
+// With maxConns > 1 this is non-trivial — different keys hash to
+// different conns, and a key that flips between conns would silently
+// break Phase A reads with a 5s WR timeout. The test pins two
+// distinct keys, walks them up via AcquireSlotForKey, releases the
+// slots, then verifies ConnIfReadyForKey returns the same conn each
+// time AND that ConnIfReady (no key) sees the first alive one.
+func TestRDMAConnPool_ConnIfReadyForKey_RoutesToSameConnAsAcquire(t *testing.T) {
+	var dialCount int64
+	pool := newTestPool(t, 4 /*numSlots*/, 4 /*maxConns*/, &dialCount)
+
+	// Acquire under two distinct keys → triggers two dials at
+	// different indices (assuming keys hash to distinct buckets;
+	// fnv("k-a") and fnv("k-b") differ).
+	hA, err := pool.AcquireSlotForKey("dn1", "k-a")
+	if err != nil {
+		t.Fatalf("AcquireSlotForKey(k-a): %v", err)
+	}
+	connA := hA.Conn
+	pool.ReleaseSlot(hA, false)
+
+	hB, err := pool.AcquireSlotForKey("dn1", "k-b")
+	if err != nil {
+		t.Fatalf("AcquireSlotForKey(k-b): %v", err)
+	}
+	connB := hB.Conn
+	pool.ReleaseSlot(hB, false)
+
+	// ConnIfReadyForKey with the same keys must return identical
+	// pointers — that's the lookup ↔ read PD invariant.
+	gotA, ok := pool.ConnIfReadyForKey("dn1", "k-a")
+	if !ok || gotA != connA {
+		t.Errorf("ConnIfReadyForKey(k-a): got %p ok=%v want %p", gotA, ok, connA)
+	}
+	gotB, ok := pool.ConnIfReadyForKey("dn1", "k-b")
+	if !ok || gotB != connB {
+		t.Errorf("ConnIfReadyForKey(k-b): got %p ok=%v want %p", gotB, ok, connB)
+	}
+}
+
+// TestRDMAConnPool_ConnIfReadyForKey_EmptyKeyFallsBack verifies
+// that an empty key falls back to anyAliveConn() semantics, mirroring
+// AcquireSlotForKey's round-robin path. Callers shouldn't pass "" in
+// the Phase A path, but the fallback keeps the API uniform.
+func TestRDMAConnPool_ConnIfReadyForKey_EmptyKeyFallsBack(t *testing.T) {
+	pool := newTestPool(t, 4, 4, nil)
+	h, _ := pool.AcquireSlotForKey("dn1", "warm")
+	pool.ReleaseSlot(h, false)
+
+	conn, ok := pool.ConnIfReadyForKey("dn1", "")
+	if !ok || conn == nil {
+		t.Fatalf("empty key should fall back to anyAliveConn: ok=%v conn=%v", ok, conn)
+	}
+}
+
+// TestRDMAConnPool_ConnIfReadyForKey_NoSubPoolReturnsFalse
+// verifies the cold-cache case: no AcquireSlotForKey has run for
+// this addr, so the pools map has no entry. ConnIfReadyForKey must
+// return (nil, false) without dialing.
+func TestRDMAConnPool_ConnIfReadyForKey_NoSubPoolReturnsFalse(t *testing.T) {
+	pool := newTestPool(t, 4, 4, nil)
+	if conn, ok := pool.ConnIfReadyForKey("never-touched-addr", "k"); ok || conn != nil {
+		t.Errorf("ConnIfReadyForKey on cold addr: got %p ok=%v want nil false", conn, ok)
+	}
+}
+
+// TestRDMAConnPool_ConnIfReadyForKey_ClosedConnReturnsFalse
+// verifies the recovery path: if the hash-target conn has been
+// markFault'd, ConnIfReadyForKey returns false so the caller
+// silently drops to two-sided. The next AcquireSlotForKey on the
+// same key triggers the existing redial path.
+func TestRDMAConnPool_ConnIfReadyForKey_ClosedConnReturnsFalse(t *testing.T) {
+	pool := newTestPool(t, 4, 4, nil)
+	h, _ := pool.AcquireSlotForKey("dn1", "k-fault")
+	conn := h.Conn
+	pool.ReleaseSlot(h, false)
+
+	// Simulate drainer markFault by closing directly.
+	_ = conn.Close()
+
+	if got, ok := pool.ConnIfReadyForKey("dn1", "k-fault"); ok || got != nil {
+		t.Errorf("ConnIfReadyForKey on faulted conn: got %p ok=%v want nil false", got, ok)
+	}
+}

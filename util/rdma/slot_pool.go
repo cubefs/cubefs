@@ -509,6 +509,56 @@ func (p *RDMAConnPool) ConnIfReady(addr string) (*RDMAConn, bool) {
 	return sp.anyAliveConn()
 }
 
+// ConnIfReadyForKey returns the live conn for (addr, key) using the
+// SAME hash routing as AcquireSlotForKey, without taking a slot or
+// dialing. The key MUST match the key used by the lookup that
+// populated the cache the caller is about to consume — for Phase A
+// this is "pid-extId" because lookupExtentMR's rdmaRoundTripVia path
+// hashes on the same value.
+//
+// Why this exists: an RDMA Read can only target an rkey that was
+// registered on the same PD as the QP serving the request. Each conn
+// in the pool has its own PD, so the lookup and the read must land
+// on the same conn or the rkey will not decode on the read QP's PD.
+// AcquireSlotForKey already pins a key to a stable conn index;
+// ConnIfReadyForKey reads back the same conn so Phase A Read posts
+// against a PD that matches the lease.
+//
+// Returns (nil, false) if:
+//   - no sub-pool exists for addr (no lookup has run yet)
+//   - the hash-target conn isn't dialed yet or is closed
+//
+// Callers fall through to the two-sided path on miss.
+func (p *RDMAConnPool) ConnIfReadyForKey(addr, key string) (*RDMAConn, bool) {
+	p.mu.RLock()
+	sp := p.pools[addr]
+	p.mu.RUnlock()
+	if sp == nil {
+		return nil, false
+	}
+	if key == "" {
+		// Empty key uses round-robin in AcquireSlotForKey; mirror
+		// that by falling back to "any alive conn" semantics.
+		return sp.anyAliveConn()
+	}
+	return sp.aliveConnAtIndex(int(fnvHash32(key)) % sp.maxConns)
+}
+
+// aliveConnAtIndex returns conns[i] if it exists and is not closed.
+// Companion to anyAliveConn for keyed lookups.
+func (p *singleSlotPool) aliveConnAtIndex(idx int) (*RDMAConn, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if idx < 0 || idx >= len(p.conns) {
+		return nil, false
+	}
+	cs := p.conns[idx]
+	if cs == nil || cs.conn == nil || cs.conn.IsClosed() {
+		return nil, false
+	}
+	return cs.conn, true
+}
+
 // anyAliveConn returns the first non-nil, non-closed conn in the
 // sub-pool. The "first" rule keeps callers stable (always picks conn 0
 // when present) which matches the two-sided path's natural conn-0

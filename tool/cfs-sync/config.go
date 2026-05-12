@@ -31,6 +31,7 @@ type cliConfig struct {
 	RDMAReadSlotSize         int64 `json:"rdmaReadSlotSize"`
 	RDMAOneSidedReadDisabled bool  `json:"rdmaOneSidedReadDisabled"`
 	RDMAReadTimeoutMs        int64 `json:"rdmaReadTimeoutMs"`
+	RDMAReadPrefetchDepth    int64 `json:"rdmaReadPrefetchDepth"`
 }
 
 func loadCLIConfig() (*cliConfig, error) {

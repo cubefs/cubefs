@@ -165,6 +165,7 @@ const (
 	configRDMAReadSlotSize         = "rdmaReadSlotSize"
 	configRDMAOneSidedReadDisabled = "rdmaOneSidedReadDisabled"
 	configRDMAReadTimeoutMs        = "rdmaReadTimeoutMs"
+	configRDMAReadPrefetchDepth    = "rdmaReadPrefetchDepth"
 
 	// enable block cache when reading data in cold volume
 	enableBcache = "enableBcache"
