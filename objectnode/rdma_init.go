@@ -60,14 +60,22 @@ func initRDMAClientPool(cfg *config.Config) error {
 	if sleepUs <= 0 {
 		sleepUs = 50
 	}
+	// Phase A: cfg=0 → util/rdma defaults (64 × 4 MiB). disabled
+	// defaults false → Phase A active.
+	readSlotCount := cfg.GetInt64(configRDMAReadSlotCount)
+	readSlotSize := cfg.GetInt64(configRDMAReadSlotSize)
+	oneSidedDisabled := cfg.GetBool(configRDMAOneSidedReadDisabled)
 
 	poolCfg := rdma.RDMAPoolConfig{
-		NumSlots:        int(numSlots),
-		SlotSize:        int(slotSize),
-		MaxConns:        int(maxConns),
-		Role:            rdma.RoleClient,
-		MinPayloadBytes: int(minPayload),
-		RDMAPortShift:   int(portShift),
+		NumSlots:             int(numSlots),
+		SlotSize:             int(slotSize),
+		MaxConns:             int(maxConns),
+		Role:                 rdma.RoleClient,
+		MinPayloadBytes:      int(minPayload),
+		RDMAPortShift:        int(portShift),
+		ReadSlotCount:        int(readSlotCount),
+		ReadSlotSize:         int(readSlotSize),
+		OneSidedReadDisabled: oneSidedDisabled,
 		Poll: rdma.PollConfig{
 			BusySpinCount:    int(busy),
 			YieldCount:       int(yield),

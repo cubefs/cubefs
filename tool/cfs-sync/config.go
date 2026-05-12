@@ -25,6 +25,11 @@ type cliConfig struct {
 	RDMABusySpinCount    int64 `json:"rdmaBusySpinCount"`
 	RDMAYieldCount       int64 `json:"rdmaYieldCount"`
 	RDMASleepThresholdUs int64 `json:"rdmaSleepThresholdUs"`
+	// Phase A (one-sided RDMA Read) — see proto/mount_options.go
+	// for default-value rationale.
+	RDMAReadSlotCount        int64 `json:"rdmaReadSlotCount"`
+	RDMAReadSlotSize         int64 `json:"rdmaReadSlotSize"`
+	RDMAOneSidedReadDisabled bool  `json:"rdmaOneSidedReadDisabled"`
 }
 
 func loadCLIConfig() (*cliConfig, error) {

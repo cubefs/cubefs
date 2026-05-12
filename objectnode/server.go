@@ -159,6 +159,11 @@ const (
 	configRDMABusySpinCount    = "rdmaBusySpinCount"
 	configRDMAYieldCount       = "rdmaYieldCount"
 	configRDMASleepThresholdUs = "rdmaSleepThresholdUs"
+	// Phase A (one-sided RDMA Read). Set rdmaOneSidedReadDisabled=true
+	// to bypass Phase A without rebuilding.
+	configRDMAReadSlotCount        = "rdmaReadSlotCount"
+	configRDMAReadSlotSize         = "rdmaReadSlotSize"
+	configRDMAOneSidedReadDisabled = "rdmaOneSidedReadDisabled"
 
 	// enable block cache when reading data in cold volume
 	enableBcache = "enableBcache"

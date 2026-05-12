@@ -14,6 +14,18 @@ import "time"
 type RDMAConnConfig struct {
 	NumSlots int
 	SlotSize int
+	// ReadSlotCount and ReadSlotSize size the Phase A (one-sided
+	// RDMA Read) scratch pool — independent from NumSlots/SlotSize,
+	// which only serve the two-sided send/recv path. ReadSlots are
+	// allocated lazily on the first PostRDMAReadAndWait call. Zero
+	// values fall back to defaults defined alongside read_waiter.go.
+	//
+	// Larger ReadSlotSize cuts the number of WRs per object (16 MB
+	// object / 4 MB slot = 4 WRs vs 128 at 128 KB), which is the
+	// dominant overhead on the Phase A hot path. The trade-off is
+	// scratch memory: ReadSlotCount × ReadSlotSize per conn.
+	ReadSlotCount int
+	ReadSlotSize  int
 	// CreditAckMode controls whether the receiver waits for the
 	// credit-return RDMA Write's CQE before processing the next slot.
 	CreditAckMode CreditAckMode
@@ -55,4 +67,18 @@ type RDMAPoolConfig struct {
 	// caller is responsible for passing pre-shifted addresses and
 	// leaving this at 0.
 	RDMAPortShift int
+
+	// ReadSlotCount / ReadSlotSize are propagated to RDMAConnConfig
+	// for every conn the pool dials. They size the Phase A read
+	// scratch pool. Zero means "use defaults" (see read_waiter.go).
+	ReadSlotCount int
+	ReadSlotSize  int
+
+	// OneSidedReadDisabled, when true, makes the SDK skip the Phase A
+	// one-sided RDMA Read entry point entirely and use only the
+	// two-sided path. Provides an instant rollback for one-sided
+	// regressions without rebuilding the binary — set to true at
+	// startup (e.g. from a mount option), no code change. Default
+	// false = Phase A active.
+	OneSidedReadDisabled bool
 }

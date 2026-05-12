@@ -37,17 +37,37 @@ import (
 // behind one stuck waiter would defeat the parallelism goal.
 
 const (
-	// rdmaReadSlots caps the number of in-flight RDMA Reads per
-	// conn. Sized to match the typical 256-slot two-sided pool's
-	// effective parallelism — bigger would just chew more memory
-	// without unlocking more concurrency on the HCA.
-	rdmaReadSlots = 64
-	// rdmaReadSlotSize fits one ReadBlockSize chunk (128 KiB).
-	// Callers asking for larger reads must chunk; the ExtentReader
-	// already splits at util.ReadBlockSize so this is a no-op for
-	// the production callers.
-	rdmaReadSlotSize = 128 * 1024
+	// defaultReadSlots caps the number of in-flight RDMA Reads per
+	// conn when RDMAConnConfig.ReadSlotCount is 0. 64 is the legacy
+	// value; we keep it as the conservative default since it matches
+	// the typical 256-slot two-sided pool's effective parallelism.
+	// Callers expecting heavier Phase A traffic should set
+	// cfg.ReadSlotCount explicitly.
+	defaultReadSlots = 64
+	// defaultReadSlotSize is the fallback per-slot scratch size.
+	// 4 MiB is the post-Phase-A-prefault default: at 16 MiB typical
+	// object size and readPrefetchDepth=4, a 4 MiB slot lets each
+	// object complete in one prefetch batch (4 chunks × 4 MiB =
+	// 16 MiB). Smaller slots multiply WR count and per-WR overhead;
+	// larger slots waste scratch memory without unlocking more
+	// concurrency under the typical 4-way prefetch.
+	defaultReadSlotSize = 4 * 1024 * 1024
 )
+
+// readSlotConfig returns the (count, size) pair used by a conn's
+// read scratch pool, falling back to defaults when the conn config
+// fields are 0.
+func readSlotConfig(cfg RDMAConnConfig) (int, int) {
+	count := cfg.ReadSlotCount
+	if count <= 0 {
+		count = defaultReadSlots
+	}
+	size := cfg.ReadSlotSize
+	if size <= 0 {
+		size = defaultReadSlotSize
+	}
+	return count, size
+}
 
 // ErrReadSlotsExhausted indicates all per-conn read waiter slots
 // are in use. Caller should fall back to the two-sided read path
@@ -77,10 +97,10 @@ type readWaiter struct {
 // Kept off the main RDMAConn struct so the conn header file stays
 // readable; access is via the helper methods below.
 type readScratchState struct {
-	once     sync.Once
-	initErr  error
-	scratch  *RDMAMem
-	waiters  []readWaiter
+	once    sync.Once
+	initErr error
+	scratch *RDMAMem
+	waiters []readWaiter
 }
 
 // initReadScratch lazily allocates the scratch buffer + waiter
@@ -98,7 +118,7 @@ func (c *RDMAConn) initReadScratch() error {
 		c.readScratchInitMu.Unlock()
 		return c.readScratchInitErr
 	}
-	mem, err := AllocRDMAMem(c.pd, rdmaReadSlots*rdmaReadSlotSize)
+	mem, err := AllocRDMAMem(c.pd, c.readSlotCount*c.readSlotSize)
 	if err != nil {
 		c.readScratchInitErr = fmt.Errorf("rdma: alloc read scratch: %w", err)
 		c.readScratchInited = true
@@ -106,7 +126,7 @@ func (c *RDMAConn) initReadScratch() error {
 		return c.readScratchInitErr
 	}
 	c.readScratch = mem
-	c.readWaiters = make([]readWaiter, rdmaReadSlots)
+	c.readWaiters = make([]readWaiter, c.readSlotCount)
 	for i := range c.readWaiters {
 		// Buffered=1 so a CQE that arrives after the caller times
 		// out lands in the channel without blocking the drainer.
@@ -135,8 +155,8 @@ func (c *RDMAConn) PostRDMAReadAndWait(dst []byte, remoteVA uint64, rkey uint32,
 	if n == 0 {
 		return nil
 	}
-	if n > rdmaReadSlotSize {
-		return fmt.Errorf("rdma: read size %d exceeds slot size %d", n, rdmaReadSlotSize)
+	if n > c.readSlotSize {
+		return fmt.Errorf("rdma: read size %d exceeds slot size %d", n, c.readSlotSize)
 	}
 	if err := c.initReadScratch(); err != nil {
 		return err
@@ -166,7 +186,7 @@ func (c *RDMAConn) PostRDMAReadAndWait(dst []byte, remoteVA uint64, rkey uint32,
 	default:
 	}
 
-	laddr := c.readScratch.VA + uint64(slot*rdmaReadSlotSize)
+	laddr := c.readScratch.VA + uint64(slot*c.readSlotSize)
 	qp := getQPFromCMID(c.cmID)
 	wrID := encodeWRID(opRDMARead, slot)
 	if err := postRDMARead(qp, laddr, c.readScratch.Lkey, uint32(n),
@@ -187,7 +207,7 @@ func (c *RDMAConn) PostRDMAReadAndWait(dst []byte, remoteVA uint64, rkey uint32,
 	// buffer. dst sliced over caller's memory; safe because we now
 	// hold the only producer reference to this scratch slot until
 	// the next CAS on inUse.
-	copy(dst, c.readScratch.Bytes()[slot*rdmaReadSlotSize:slot*rdmaReadSlotSize+n])
+	copy(dst, c.readScratch.Bytes()[slot*c.readSlotSize:slot*c.readSlotSize+n])
 	return nil
 }
 

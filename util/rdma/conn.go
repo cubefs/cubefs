@@ -183,6 +183,12 @@ type RDMAConn struct {
 	readScratchInitErr error
 	readScratch       *RDMAMem
 	readWaiters       []readWaiter
+	// readSlotCount / readSlotSize are resolved at conn construction
+	// from cfg.ReadSlotCount / cfg.ReadSlotSize (or defaults if 0).
+	// Stored on the conn so initReadScratch and PostRDMAReadAndWait
+	// don't have to re-evaluate cfg every call.
+	readSlotCount int
+	readSlotSize  int
 }
 
 // RDMAConnConfig is defined in config.go (no build tag) so the same type
@@ -466,6 +472,7 @@ func newRDMAConn(
 		drainerStop:    make(chan struct{}),
 		drainerDone:    make(chan struct{}),
 	}
+	c.readSlotCount, c.readSlotSize = readSlotConfig(cfg)
 	c.recvCond = sync.NewCond(&c.recvMu)
 	c.recvSlotMus = make([]sync.Mutex, cfg.NumSlots)
 	c.recvSlotConds = make([]*sync.Cond, cfg.NumSlots)
@@ -535,6 +542,11 @@ func (c *RDMAConn) NumSlots() int { return c.numSlots }
 
 // SlotSize returns bytes per slot.
 func (c *RDMAConn) SlotSize() int { return c.slotSize }
+
+// ReadSlotSize returns the per-slot scratch size used by the Phase A
+// one-sided RDMA Read path. Callers chunk their requests against this
+// value so each chunk fits in one slot.
+func (c *RDMAConn) ReadSlotSize() int { return c.readSlotSize }
 
 // PollConfig returns the polling configuration applied to this connection.
 func (c *RDMAConn) PollConfig() PollConfig { return c.pollCfg }

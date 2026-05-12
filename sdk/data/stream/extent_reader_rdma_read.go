@@ -157,6 +157,14 @@ func invalidateExtentMRCache(addr string, pid, extentID uint64) {
 // "no fast path available" rather than a real error, so the caller
 // silently moves on without invalidating anything.
 func (reader *ExtentReader) tryReadViaRDMARead(rdmaAddr string, reqPacket *Packet, req *ExtentRequest, extentOffset, size int) (int, error) {
+	// Operator kill switch: when rdmaOneSidedReadEnabled is false
+	// (cfg.OneSidedReadDisabled at startup), skip Phase A entirely
+	// and let the caller drop to the two-sided path. No attempt
+	// counter increment so the stats line correctly shows zero
+	// one-sided traffic.
+	if !rdmaOneSidedReadEnabled {
+		return 0, nil
+	}
 	atomic.AddInt64(&phaseACounters.attempt, 1)
 	cache := ensureExtentMRCache()
 	if cache == nil {
@@ -231,7 +239,19 @@ func (reader *ExtentReader) tryReadViaRDMARead(rdmaAddr string, reqPacket *Packe
 		return 0, nil // fall through silently — no error to invalidate cache over
 	}
 
-	chunks := splitReadChunks(extentOffset, size, util.ReadBlockSize)
+	// Phase A chunks against the conn's read scratch slot size — not
+	// util.ReadBlockSize. The scratch slot is the upper bound on a
+	// single RDMA Read WR's payload; matching the chunk size to it
+	// minimises per-WR overhead (one WR per slot) without violating
+	// PostRDMAReadAndWait's "n > slotSize" guard. With slot=4 MiB
+	// (the default), a 16 MiB object splits into 4 chunks — perfect
+	// for readPrefetchDepth=4. Falling back to util.ReadBlockSize
+	// when ReadSlotSize is 0 keeps stub-build callers correct.
+	chunkSize := conn.ReadSlotSize()
+	if chunkSize <= 0 {
+		chunkSize = util.ReadBlockSize
+	}
+	chunks := splitReadChunks(extentOffset, size, chunkSize)
 	if len(chunks) == 0 {
 		return 0, nil
 	}

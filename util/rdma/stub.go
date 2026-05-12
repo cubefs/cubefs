@@ -58,6 +58,7 @@ type RDMAConn struct {
 
 func (c *RDMAConn) NumSlots() int                                   { return c.numSlots }
 func (c *RDMAConn) SlotSize() int                                   { return 0 }
+func (c *RDMAConn) ReadSlotSize() int                               { return 0 }
 func (c *RDMAConn) RecvSlotBytes(_ int) []byte                      { return nil }
 func (c *RDMAConn) SendScratchBytes(_ int) []byte                   { return nil }
 func (c *RDMAConn) RemoteAddr() string                              { return "" }

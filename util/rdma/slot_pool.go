@@ -545,6 +545,8 @@ func (p *RDMAConnPool) AcquireSlotForKey(addr, key string) (*SlotHandle, error) 
 			connCfg := RDMAConnConfig{
 				NumSlots:      p.cfg.NumSlots,
 				SlotSize:      p.cfg.SlotSize,
+				ReadSlotCount: p.cfg.ReadSlotCount,
+				ReadSlotSize:  p.cfg.ReadSlotSize,
 				CreditAckMode: p.cfg.CreditAckMode,
 				Poll:          p.cfg.Poll,
 				Role:          p.cfg.Role,

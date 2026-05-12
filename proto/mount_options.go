@@ -116,6 +116,15 @@ const (
 	// rdma per-peer max conns (parallel QPs). More conns → more
 	// cross-extent parallelism, more pinned memory per peer.
 	RDMAMaxConns
+	// rdma Phase A (one-sided RDMA Read) tunables. ReadSlotCount /
+	// ReadSlotSize size the per-conn scratch pool used by RDMA Reads;
+	// independent from RDMANumSlots / RDMASlotSize which serve the
+	// two-sided send/recv path. OneSidedReadDisabled is an operator
+	// kill switch that skips the Phase A entry entirely without a
+	// rebuild — set to 1 to roll back to pure two-sided RDMA.
+	RDMAReadSlotCount
+	RDMAReadSlotSize
+	RDMAOneSidedReadDisabled
 	MaxMountOption
 )
 
@@ -239,6 +248,18 @@ func InitMountOptions(opts []MountOption) {
 	opts[RDMAMinPayloadBytes] = MountOption{"rdmaMinPayloadBytes", "Skip RDMA path when payload size is below this threshold", "", int64(4096)}
 	opts[RDMAPortShift] = MountOption{"rdmaPortShift", "Add this to peer's data port to reach its RDMA listen port", "", int64(40)}
 	opts[RDMAMaxConns] = MountOption{"rdmaMaxConns", "Max parallel RDMA conns per peer (cross-extent parallelism)", "", int64(4)}
+	// Phase A (one-sided RDMA Read) tunables. ReadSlotCount /
+	// ReadSlotSize size the per-conn read scratch — independent from
+	// rdmaNumSlots / rdmaSlotSize which serve two-sided send/recv.
+	// Defaults: 64 slots × 4 MiB = 256 MiB scratch per Phase A conn,
+	// chosen so a 16 MiB object fits in 4 chunks (matches
+	// readPrefetchDepth=4 in the SDK).
+	opts[RDMAReadSlotCount] = MountOption{"rdmaReadSlotCount", "Phase A read scratch slot count per conn", "", int64(0)}
+	opts[RDMAReadSlotSize] = MountOption{"rdmaReadSlotSize", "Phase A read scratch slot size in bytes", "", int64(0)}
+	// Kill switch — set to 1 (true) to bypass Phase A and use only
+	// the two-sided RDMA path. Lets ops roll back from a one-sided
+	// regression without rebuilding.
+	opts[RDMAOneSidedReadDisabled] = MountOption{"rdmaOneSidedReadDisabled", "Disable Phase A one-sided RDMA Read (use two-sided only)", "", false}
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
 	}
@@ -442,4 +463,9 @@ type MountOptions struct {
 	RDMAMinPayloadBytes  int64
 	RDMAPortShift        int64
 	RDMAMaxConns         int64
+	// Phase A (one-sided RDMA Read) tunables. Zero values fall back
+	// to defaults baked into util/rdma (currently 64 slots × 4 MiB).
+	RDMAReadSlotCount        int64
+	RDMAReadSlotSize         int64
+	RDMAOneSidedReadDisabled bool
 }

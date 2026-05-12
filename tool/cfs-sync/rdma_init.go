@@ -61,12 +61,15 @@ func initRDMAFromConfig(cfg *cliConfig) {
 	}
 
 	pc := rdma.RDMAPoolConfig{
-		NumSlots:        int(num),
-		SlotSize:        int(size),
-		MaxConns:        int(mc),
-		Role:            rdma.RoleClient,
-		MinPayloadBytes: int(minp),
-		RDMAPortShift:   int(shift),
+		NumSlots:             int(num),
+		SlotSize:             int(size),
+		MaxConns:             int(mc),
+		Role:                 rdma.RoleClient,
+		MinPayloadBytes:      int(minp),
+		RDMAPortShift:        int(shift),
+		ReadSlotCount:        int(cfg.RDMAReadSlotCount),
+		ReadSlotSize:         int(cfg.RDMAReadSlotSize),
+		OneSidedReadDisabled: cfg.RDMAOneSidedReadDisabled,
 		Poll: rdma.PollConfig{
 			BusySpinCount:    int(busy),
 			YieldCount:       int(yield),

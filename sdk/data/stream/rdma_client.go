@@ -54,6 +54,12 @@ var (
 	rdmaConnPool       *rdma.RDMAConnPool
 	rdmaPhaseAConnPool *rdma.RDMAConnPool
 	rdmaConnPortShift  int
+	// rdmaOneSidedReadEnabled controls whether the SDK enters the
+	// Phase A one-sided RDMA Read fast path at all. Set from
+	// cfg.OneSidedReadDisabled at InitRDMAConnPool time so operators
+	// can disable Phase A via mount-option without rebuilding when
+	// they hit a regression. true (default) = Phase A active.
+	rdmaOneSidedReadEnabled = true
 )
 
 // InitRDMAConnPool initializes the client-side RDMA slot pool.
@@ -65,6 +71,7 @@ func InitRDMAConnPool(cfg rdma.RDMAPoolConfig) error {
 	}
 	rdmaConnPool = pool
 	rdmaConnPortShift = cfg.RDMAPortShift
+	rdmaOneSidedReadEnabled = !cfg.OneSidedReadDisabled
 	// Phase A pool: same cfg, but pinned to one conn per DataNode so
 	// the lookup-read pair shares a PD (see big comment above).
 	// Failure to build it doesn't fail two-sided — Phase A is best-

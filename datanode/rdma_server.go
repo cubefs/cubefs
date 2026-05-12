@@ -624,6 +624,16 @@ func (cs *connState) handleReadSlot(ctx *DataNodeRDMACtx, p *repl.Packet, slotId
 	// Arg (if any) would go between PacketHeader and Data; for reads
 	// ArgLen is 0 so nothing to stamp here.
 
+	// Mirror NormalExtentRepairRead's IO-bytes accounting
+	// (data_partition_repair.go:678). The RDMA dispatch path was
+	// pulled out of OperatePacket for performance and lost the
+	// MetricIOBytes increment along the way — read traffic served via
+	// RDMA was invisible to the per-partition IO bytes gauge, which
+	// skewed any dashboard that watched it.
+	if !p.ShallDegrade() && ctx.node.metrics != nil {
+		ctx.node.metrics.MetricIOBytes.AddWithLabels(int64(p.Size), GetIoMetricLabels(partition, "read"))
+	}
+
 	if err := cs.conn.WriteSlotZeroCopy(slotIdx, totalLen); err != nil {
 		log.LogErrorf("rdma handleReadSlot: WriteSlotZeroCopy: %v", err)
 		// The conn is likely broken; let caller fall through to WritePacket
