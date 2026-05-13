@@ -29,15 +29,6 @@ func (s *DataNode) Post(p *repl.Packet) error {
 	if p.IsReadOperation() && p.AfterPre {
 		p.NeedReply = false
 	}
-	// Cache OpOk normal-extent writes for idempotent SDK retries. By the
-	// time Post runs the response has already absorbed
-	// checkLocalResultAndReciveAllFollowerResponse's verdict, so
-	// remembering here guarantees we never claim a write succeeded that
-	// the followers actually rejected — exactly the inconsistency the
-	// dedup cache exists to prevent (see dedup_cache.go header).
-	if p.IsNormalWriteOperation() && !proto.IsTinyExtentType(p.ExtentType) && p.ResultCode == proto.OpOk {
-		s.writeDedup.Remember(p.PartitionID, p.ExtentID, p.ReqID)
-	}
 	s.cleanupPkt(p)
 	s.addMetrics(p)
 	return nil

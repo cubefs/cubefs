@@ -20,7 +20,6 @@ import (
 
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/cubefs/cubefs/util/rdma"
 )
 
 const (
@@ -33,17 +32,6 @@ const (
 	MetricDpCount              = "dataPartitionCount"
 	MetricTotalDpSize          = "totalDpSize"
 	MetricCapacity             = "capacity"
-	// MetricPhaseAActiveMR tracks how many extent files are currently
-	// registered as RDMA MRs (across all RDMA connState's
-	// extentMRBundles). This is the server-side scale signal for
-	// Phase A — each entry consumes one NIC MR table slot (mlx5 TLB
-	// in particular), and overflowing the table silently drops RDMA
-	// Read latency from µs to ms. Alarm threshold depends on the
-	// specific NIC (see /sys/class/infiniband/<dev>/ports/<port>/...);
-	// a typical CX-6 has a few M entries, but the table is shared
-	// with every conn / every direction. Watching the gauge over
-	// time tells you when you're approaching the limit.
-	MetricPhaseAActiveMR = "phaseAActiveMR"
 )
 
 type DataNodeMetrics struct {
@@ -56,7 +44,6 @@ type DataNodeMetrics struct {
 	MetricDpCount            *exporter.Gauge
 	MetricTotalDpSize        *exporter.Gauge
 	MetricCapacity           *exporter.GaugeVec
-	MetricPhaseAActiveMR     *exporter.Gauge
 }
 
 func (d *DataNode) registerMetrics() {
@@ -71,7 +58,6 @@ func (d *DataNode) registerMetrics() {
 	d.metrics.MetricDpCount = exporter.NewGauge(MetricDpCount)
 	d.metrics.MetricTotalDpSize = exporter.NewGauge(MetricTotalDpSize)
 	d.metrics.MetricCapacity = exporter.NewGaugeVec(MetricCapacity, "", []string{"type"})
-	d.metrics.MetricPhaseAActiveMR = exporter.NewGauge(MetricPhaseAActiveMR)
 }
 
 func (d *DataNode) startMetrics() {
@@ -118,7 +104,6 @@ func (dm *DataNodeMetrics) doStat() {
 	dm.setDpCountMetrics()
 	dm.setTotalDpSizeMetrics()
 	dm.setCapacityMetrics()
-	dm.setPhaseAActiveMRMetrics()
 }
 
 func (dm *DataNodeMetrics) setLackDpCountMetrics() {
@@ -157,14 +142,4 @@ func (dm *DataNodeMetrics) setCapacityMetrics() {
 	dm.MetricCapacity.SetWithLabelValues(float64(total), "total")
 	dm.MetricCapacity.SetWithLabelValues(float64(used), "used")
 	dm.MetricCapacity.SetWithLabelValues(float64(available), "available")
-}
-
-// setPhaseAActiveMRMetrics samples the process-global count of
-// currently-registered RDMA extent MRs and publishes it. The value
-// reflects every FileMRRegistry on this DataNode (one per
-// (connState, partition) bundle in the RDMA server path). Watch
-// this gauge for growth that approaches the NIC's MR table capacity
-// — see MetricPhaseAActiveMR doc for the threshold rationale.
-func (dm *DataNodeMetrics) setPhaseAActiveMRMetrics() {
-	dm.MetricPhaseAActiveMR.Set(float64(rdma.ActiveExtentMRCount()))
 }

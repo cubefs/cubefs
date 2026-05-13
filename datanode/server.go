@@ -43,7 +43,6 @@ import (
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/loadutil"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/cubefs/cubefs/util/rdma"
 	"github.com/cubefs/cubefs/util/strutil"
 
 	"github.com/cubefs/cubefs/depends/xtaci/smux"
@@ -113,24 +112,6 @@ const (
 	ConfigKeySmuxStreamPerConn = "smuxStreamPerConn"  // int
 	ConfigKeySmuxMaxBuffer     = "smuxMaxBuffer"      // int
 	ConfigKeySmuxTotalStream   = "sumxTotalStream"    // int
-
-	ConfigKeyEnableRDMA   = "rdmaEnable"   // bool
-	ConfigKeyRDMAPort     = "rdmaPort"     // int
-	ConfigKeyRDMANumSlots = "rdmaNumSlots" // int
-	ConfigKeyRDMASlotSize = "rdmaSlotSize" // int
-	// MaxConns caps how many parallel RDMA connections the leader will
-	// open per follower. Larger = more cross-extent parallelism, but
-	// each conn costs ~2 × numSlots × slotSize bytes pinned. Zero or
-	// missing → default 4.
-	ConfigKeyRDMAMaxConns = "rdmaMaxConns" // int
-	// P2 adaptive poll knobs. All optional; zero falls back to spec defaults.
-	ConfigKeyRDMABusySpinCount    = "rdmaBusySpinCount"    // int (phase-1 max iterations)
-	ConfigKeyRDMAYieldCount       = "rdmaYieldCount"       // int (phase-2 max iterations)
-	ConfigKeyRDMASleepThresholdUs = "rdmaSleepThresholdUs" // int (microseconds)
-	// P6 path selection: writes smaller than this threshold skip RDMA and
-	// use TCP. Default 4 KB; zero disables the threshold (every payload
-	// tries RDMA).
-	ConfigKeyRDMAMinPayloadBytes = "rdmaMinPayloadBytes" // int
 
 	// rate limit control enable
 	ConfigDiskQosEnable      = "diskQosEnable"      // bool
@@ -208,23 +189,6 @@ type DataNode struct {
 	smuxListener       net.Listener
 	smuxServerConfig   *smux.Config
 	smuxConnPoolConfig *util.SmuxConnPoolConfig
-
-	enableRDMA          bool
-	rdmaPort            int
-	rdmaNumSlots        int
-	rdmaSlotSize        int
-	rdmaMaxConns        int
-	rdmaPollCfg         rdma.PollConfig
-	rdmaMinPayloadBytes int
-	rdmaCtx             *DataNodeRDMACtx
-
-	// writeDedup makes OpWrite handling idempotent across SDK retries.
-	// When an RDMA round-trip's response is lost the SDK falls back to TCP
-	// and replays the same packet (same PID/ExtentID/ReqID); without this
-	// cache the replay hits AppendWrite's `dataSize == Offset` invariant
-	// on the already-committed extent and fails with OpTryOtherExtent,
-	// dragging both the SDK and the followers into spurious recovery.
-	writeDedup *writeDedupCache
 
 	getRepairConnFunc func(target string) (net.Conn, error)
 	putRepairConnFunc func(conn net.Conn, forceClose bool)
@@ -339,36 +303,6 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 		return
 	}
 
-	// parse RDMA config (no error — rdmaEnable defaults to false)
-	s.enableRDMA = cfg.GetBool(ConfigKeyEnableRDMA)
-	s.rdmaPort = cfg.GetInt(ConfigKeyRDMAPort)
-	s.rdmaNumSlots = cfg.GetInt(ConfigKeyRDMANumSlots)
-	if s.rdmaNumSlots <= 0 {
-		s.rdmaNumSlots = 256
-	}
-	s.rdmaSlotSize = cfg.GetInt(ConfigKeyRDMASlotSize)
-	if s.rdmaSlotSize <= 0 {
-		s.rdmaSlotSize = rdma.DefaultSlotSize // 132 KB; covers SlotHeader + max packet header + 128KB BlockSize
-	}
-	s.rdmaMaxConns = cfg.GetInt(ConfigKeyRDMAMaxConns)
-	if s.rdmaMaxConns <= 0 {
-		s.rdmaMaxConns = 4
-	}
-	// P2 adaptive poll knobs. Zero values fall back to rdma.DefaultPollConfig
-	// inside the conn layer, so leaving these unset matches the spec defaults.
-	s.rdmaPollCfg = rdma.PollConfig{
-		BusySpinCount:    cfg.GetInt(ConfigKeyRDMABusySpinCount),
-		YieldCount:       cfg.GetInt(ConfigKeyRDMAYieldCount),
-		SleepThresholdUs: time.Duration(cfg.GetInt(ConfigKeyRDMASleepThresholdUs)) * time.Microsecond,
-	}
-	// P6 small-payload threshold. Negative or zero disables the gate
-	// (every replication packet tries RDMA); positive values skip RDMA
-	// for writes below the threshold and use TCP.
-	s.rdmaMinPayloadBytes = cfg.GetInt(ConfigKeyRDMAMinPayloadBytes)
-	if s.rdmaMinPayloadBytes < 0 {
-		s.rdmaMinPayloadBytes = 0
-	}
-
 	s.startStat(cfg)
 
 	// connection pool must be created before initSpaceManager
@@ -459,12 +393,6 @@ func doShutdown(server common.Server) {
 	s.stopRaftServer()
 	s.stopSmuxService()
 	s.closeSmuxConnPool()
-	if s.rdmaCtx != nil {
-		s.rdmaCtx.Stop()
-	}
-	if s.writeDedup != nil {
-		s.writeDedup.Stop()
-	}
 	MasterClient.Stop()
 	// stop cpu sample
 	close(s.cpuSamplerDone)
@@ -623,9 +551,6 @@ func (s *DataNode) updateQosLimit() {
 func (s *DataNode) newSpaceManager(cfg *config.Config) (err error) {
 	s.startTime = time.Now().Unix()
 	s.space = NewSpaceManager(s)
-	if s.writeDedup == nil {
-		s.writeDedup = newWriteDedupCache()
-	}
 	if len(strings.TrimSpace(s.port)) == 0 {
 		err = ErrNewSpaceManagerFailed
 		return
@@ -1257,49 +1182,6 @@ func (s *DataNode) initConnPool() {
 		s.putRepairConnFunc = func(conn net.Conn, forceClose bool) {
 			log.LogDebugf("[dataNode.putRepairConnFunc] put tcp conn, addr(%v), forceClose(%v)", conn.RemoteAddr().String(), forceClose)
 			gConnPool.PutConnect(conn.(*net.TCPConn), forceClose)
-		}
-	}
-
-	if s.enableRDMA {
-		log.LogInfof("Start: init RDMA server on port %d", s.rdmaPort)
-		rdmaCfg := RDMAServerConfig{
-			Port:     s.rdmaPort,
-			NumSlots: s.rdmaNumSlots,
-			SlotSize: s.rdmaSlotSize,
-			Poll:     s.rdmaPollCfg,
-			Role:     rdma.RoleServer,
-		}
-		ctx, err := NewDataNodeRDMACtx(rdmaCfg, s)
-		if err != nil {
-			log.LogWarnf("initConnPool: RDMA init failed, degraded to TCP-only: %v", err)
-		} else {
-			if err = ctx.Start(); err != nil {
-				log.LogWarnf("initConnPool: RDMA Start failed, degraded to TCP-only: %v", err)
-			} else {
-				s.rdmaCtx = ctx
-				tcpPort, _ := strconv.Atoi(s.port)
-				followerCfg := rdma.RDMAPoolConfig{
-					NumSlots:        s.rdmaNumSlots,
-					SlotSize:        s.rdmaSlotSize,
-					MaxConns:        s.rdmaMaxConns,
-					Poll:            s.rdmaPollCfg,
-					Role:            rdma.RoleFollower,
-					MinPayloadBytes: s.rdmaMinPayloadBytes,
-					// Peers register their data (TCP) address with master;
-					// the leader needs to dial the peer's RDMA port. Cluster
-					// is uniform on rdmaPort/listenPort, so a fixed shift
-					// works.
-					RDMAPortShift: s.rdmaPort - tcpPort,
-				}
-				if ferr := repl.EnableFollowerRDMA(followerCfg); ferr != nil {
-					log.LogWarnf("initConnPool: follower RDMA init failed, replication uses TCP: %v", ferr)
-				} else {
-					rdma.StartStatsLogger("DataNode")
-					log.LogInfof("initConnPool: follower RDMA enabled (numSlots=%d slotSize=%d maxConns=%d portShift=%d). "+
-						"Periodic stats logged every 60s — grep 'RDMA stats[DataNode]'.",
-						s.rdmaNumSlots, s.rdmaSlotSize, s.rdmaMaxConns, followerCfg.RDMAPortShift)
-				}
-			}
 		}
 	}
 }

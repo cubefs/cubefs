@@ -680,17 +680,14 @@ func (c *RDMAConn) postSlotAndDoorbell(slotIdx int, payload []byte, seq uint32) 
 	lSlotAddr := c.sendScratch.VA + uint64(slotIdx*c.slotSize)
 	rSlotAddr := c.peerRecvBaseVA + uint64(slotIdx*c.slotSize)
 
-	// NOTE: previously held c.sendMu around the (slot WR + doorbell WR)
-	// pair to keep the post sequence atomic. With the leader fan-out
-	// already serialised by repl_protocol.go (sync followerRDMASend
-	// inside OperatorAndForwardPktGoRoutine, single goroutine per
-	// replication conn) and the server side draining via a single
-	// per-conn worker, only one post call is in flight per QP at a
-	// time on either side, so the lock had no callers to exclude and
-	// was reverted after WC status=10/12 (REM_OP_ERR/REM_INV_REQ_ERR)
-	// errors appeared simultaneously across all peers — symptom of a
-	// hot-path interaction we couldn't isolate. The serialisation we
-	// need now lives one layer up.
+	// Caller is expected to serialise WritePacket per QP (the original
+	// DataNode RDMA replication path did this via a single sendLoop
+	// goroutine; future users of this library must do the same). We do
+	// not hold a per-conn lock around the (slot WR + doorbell WR) pair
+	// here — RC delivery already orders data before the doorbell CQE
+	// for a single QP, and reintroducing a mutex previously triggered
+	// WC status=10/12 (REM_OP_ERR/REM_INV_REQ_ERR) on every peer
+	// simultaneously without a clear cause.
 
 	// Slot payload: not signaled (no CQE). The doorbell that follows is
 	// signaled; ordered RC delivery means data lands in peer memory before

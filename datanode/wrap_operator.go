@@ -915,31 +915,6 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 		metricPartitionIOLabels map[string]string
 		partitionIOMetric       *exporter.TimePointCount
 	)
-	// Idempotency short-circuit for normal-extent AppendWrites: if the
-	// SDK retries (e.g. RDMA round-trip response lost → TCP fallback for
-	// the same packet), the leader's first attempt already grew the
-	// extent and the replay would fail with OpTryOtherExtent. The cache
-	// returns a synthetic OpOk so the SDK sees what it would have seen
-	// on the first try, and skips the local write + follower forward —
-	// the original write already replicated. Tiny extents skip dedup
-	// because the leader assigns their ExtentID/Offset, so the key
-	// would not match across retries.
-	//
-	// Remember happens out-of-band:
-	//   - TCP path: in Post() once checkLocalResultAndReciveAllFollowerResponse
-	//     has set the final ResultCode, so we never cache a write whose
-	//     follower replication actually failed (which would skip a real
-	//     retry that needs to land on the lagging follower).
-	//   - RDMA path: in handleSlot after WaitForRDMAReplicate, for the
-	//     same reason.
-	dedupEligible := p.IsNormalWriteOperation() && !proto.IsTinyExtentType(p.ExtentType)
-	if dedupEligible && s.writeDedup.Has(p.PartitionID, p.ExtentID, p.ReqID) {
-		p.PacketOkReply()
-		if log.EnableDebug() {
-			log.LogDebugf("handleWritePacket: dedup hit reqId=%d pid=%d ext=%d", p.ReqID, p.PartitionID, p.ExtentID)
-		}
-		return
-	}
 	defer func() {
 		if err != nil {
 			p.PackErrorBody(ActionWrite, err.Error())

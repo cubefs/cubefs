@@ -31,16 +31,23 @@ import (
 
 var gConnPool = util.NewConnectPool()
 
-// followerRDMASend is nil by default; non-nil only on builds with RDMA enabled.
-// When set, follower replication uses RDMA Write instead of TCP for data transfer.
-var followerRDMASend func(addr string, fp *FollowerPacket) error
+func (rp *ReplProtocol) sendRequestToAllFollowers(request *Packet) (index int, err error) {
+	for index = 0; index < len(request.followersAddrs); index++ {
+		followerRequest := NewFollowerPacket()
+		copyPacket(request, followerRequest)
+		followerRequest.RemainingFollowers = 0
+		request.followerPackets[index] = followerRequest
 
-// followerRDMACanCarry, when set, returns true if the given packet fits
-// into one RDMA slot (data + arg + headers ≤ slot size). The dispatcher
-// uses it as a precondition before choosing the RDMA path; oversized
-// packets fall through to TCP instead of failing inside librdmacm. Nil
-// means "no size gating" (rare — only for tests).
-var followerRDMACanCarry func(p *FollowerPacket) bool
+		var transport *FollowerTransport
+		if transport, err = rp.allocateFollowersConns(request, index); err != nil {
+			request.PackErrorBody(ActionSendToFollowers, err.Error())
+			return
+		}
+		transport.Write(followerRequest)
+	}
+
+	return
+}
 
 // ReplProtocol defines the struct of the replication protocol.
 // 1. ServerConn reads a packet from the client socket, and analyzes the addresses of the followers.
@@ -315,44 +322,6 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 	}
 
 	err = rp.putToBeProcess(request)
-
-	return
-}
-
-func (rp *ReplProtocol) sendRequestToAllFollowers(request *Packet) (index int, err error) {
-	for index = 0; index < len(request.followersAddrs); index++ {
-		followerRequest := NewFollowerPacket()
-		copyPacket(request, followerRequest)
-		followerRequest.RemainingFollowers = 0
-		request.followerPackets[index] = followerRequest
-
-		if followerRDMASend != nil && (followerRDMACanCarry == nil || followerRDMACanCarry(followerRequest)) {
-			addr := request.followersAddrs[index]
-			// followerRDMASend is now an ASYNC dispatch — it pushes
-			// followerRequest into the per-(addr) RDMA transport's
-			// send queue and returns immediately. The actual round-trip
-			// runs in the transport's send/recv goroutine pair, which
-			// pushes the result to followerRequest.respCh on completion.
-			// This mirrors TCP's FollowerTransport.Write semantics
-			// (repl_protocol.go:221) so checkLocalResultAndReciveAllFollowerResponse
-			// reads respCh the same way it always has.
-			//
-			// If dispatch itself fails (queue full / transport closed),
-			// we synthesise the error onto respCh so the caller's wait
-			// terminates instead of hanging forever.
-			if dispatchErr := followerRDMASend(addr, followerRequest); dispatchErr != nil {
-				followerRequest.respCh <- dispatchErr
-			}
-			continue
-		}
-
-		var transport *FollowerTransport
-		if transport, err = rp.allocateFollowersConns(request, index); err != nil {
-			request.PackErrorBody(ActionSendToFollowers, err.Error())
-			return
-		}
-		transport.Write(followerRequest)
-	}
 
 	return
 }

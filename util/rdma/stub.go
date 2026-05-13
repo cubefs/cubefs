@@ -2,7 +2,8 @@
 
 // Package rdma provides RDMA transport support for CubeFS.
 // This file contains stubs for non-RDMA builds (default).
-// All functionality is disabled; callers should check rdmaEnable config before use.
+// The library is kept for the planned P1 native RDMA SDK (cfs-sync direct
+// path); DataNode no longer uses RDMA after the P0.5 cleanup.
 package rdma
 
 import (
