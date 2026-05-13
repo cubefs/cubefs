@@ -411,6 +411,19 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 				if total == 0 {
 					log.LogErrorf("Stream read: ino(%v) req(%v) readBytes(%v) err(%v)", s.inode, req, readBytes, err)
 				}
+				// Silent-failure guard: a short read with err==nil
+				// would propagate up as "read N bytes successfully"
+				// when in fact some replica path returned (0, nil)
+				// after exhausting all retries. Caller (objectnode
+				// Volume.read) treats err==nil + n==0 as EOF and
+				// truncates the HTTP response — silent data loss.
+				// Synthesise an explicit error so callers know the
+				// data was NOT served, and can decide to retry / fail
+				// loud rather than serve a partial / empty response.
+				if err == nil && readBytes < req.Size {
+					err = fmt.Errorf("stream read: short read on extent: ino(%d) reqSize(%d) gotBytes(%d) ek(%v)",
+						s.inode, req.Size, readBytes, req.ExtentKey)
+				}
 				break
 			}
 		}
