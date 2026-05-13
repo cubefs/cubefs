@@ -20,6 +20,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/cubefs/cubefs/syncnode/spec"
 )
 
 // SyncConfig is the typed configuration loaded from sync.json (or whatever
@@ -62,56 +64,16 @@ type ConcurrencyConfig struct {
 	BandwidthLimitMBps int `json:"bandwidthLimitMBps"`
 }
 
-type RuleConfig struct {
-	ID                 string          `json:"id"`
-	Type               string          `json:"type"`
-	Schedule           string          `json:"schedule"`
-	Src                EndpointConfig  `json:"src"`
-	Dst                EndpointConfig  `json:"dst"`
-	Filter             FilterConfig    `json:"filter"`
-	Retention          RetentionConfig `json:"retention"`
-	AfterCopy          string          `json:"afterCopy"`
-	DownloadStrategy   string          `json:"downloadStrategy"`
-	OnMismatch         string          `json:"onMismatch"`
-	SampleStrategy     string          `json:"sampleStrategy"`
-	SampleRate         float64         `json:"sampleRate"`
-	BandwidthLimitMBps int             `json:"bandwidthLimitMBps"`
-	Parallelism        int             `json:"parallelism"`
-	ShardingStrategy   string          `json:"shardingStrategy"`
-}
-
-type EndpointConfig struct {
-	Kind string `json:"kind"`
-	// cfs fields
-	Vol  string `json:"vol"`
-	Path string `json:"path"`
-	// s3 fields
-	Bucket       string `json:"bucket"`
-	Prefix       string `json:"prefix"`
-	Endpoint     string `json:"endpoint"`
-	Region       string `json:"region"`
-	StorageClass string `json:"storageClass"`
-	// local fields (any host-mounted POSIX path)
-	BufferSizeKiB     int  `json:"bufferSizeKiB"`
-	Concurrency       int  `json:"concurrency"`
-	DirectIO          bool `json:"directIO"`
-	FadviseSequential bool `json:"fadviseSequential"`
-}
-
-type FilterConfig struct {
-	Include []string `json:"include"`
-	Exclude []string `json:"exclude"`
-	MinSize string   `json:"minSize"`
-	MaxSize string   `json:"maxSize"`
-	MinAge  string   `json:"minAge"`
-	MaxAge  string   `json:"maxAge"`
-}
-
-type RetentionConfig struct {
-	Pattern    string `json:"pattern"`
-	KeepLast   int    `json:"keepLast"`
-	KeepWithin string `json:"keepWithin"`
-}
+// Wire types are aliased from syncnode/spec. The alias lets subpackages
+// (rules, tasks, scheduler) reference these via spec.* without an import
+// cycle back into syncnode; callers in this package keep using the short
+// names they always have.
+type (
+	RuleConfig      = spec.RuleConfig
+	EndpointConfig  = spec.EndpointConfig
+	FilterConfig    = spec.FilterConfig
+	RetentionConfig = spec.RetentionConfig
+)
 
 // ParseSyncConfig unmarshals raw JSON into SyncConfig and runs the full
 // validation pass. Returns the populated config on success, or a typed

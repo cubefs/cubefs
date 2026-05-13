@@ -15,7 +15,6 @@
 package syncnode
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -40,30 +39,18 @@ func TestHandleVersion(t *testing.T) {
 	s := &SyncNode{localServerAddr: "127.0.0.1:17710"}
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/syncnode/version", nil)
-	rec := httptest.NewRecorder()
-	s.handleVersion(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rec.Code)
+	payload, err := s.handleVersion(req)
+	if err != nil {
+		t.Fatalf("handleVersion: %v", err)
 	}
-	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
-		t.Errorf("Content-Type = %q, want application/json", ct)
+	data, ok := payload.(map[string]string)
+	if !ok {
+		t.Fatalf("payload type = %T, want map[string]string", payload)
 	}
-	var resp struct {
-		Code int                    `json:"code"`
-		Msg  string                 `json:"msg"`
-		Data map[string]interface{} `json:"data"`
+	if data["role"] != ModuleName {
+		t.Errorf("data.role = %q, want %q", data["role"], ModuleName)
 	}
-	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if resp.Code != 0 {
-		t.Errorf("code = %d, want 0", resp.Code)
-	}
-	if role, _ := resp.Data["role"].(string); role != ModuleName {
-		t.Errorf("data.role = %q, want %q", role, ModuleName)
-	}
-	if addr, _ := resp.Data["nodeAddress"].(string); addr == "" {
+	if data["nodeAddress"] == "" {
 		t.Error("data.nodeAddress should be non-empty")
 	}
 }
@@ -75,21 +62,16 @@ func TestHandleStat(t *testing.T) {
 
 	s := &SyncNode{}
 	req := httptest.NewRequest(http.MethodGet, "/admin/syncnode/stat", nil)
-	rec := httptest.NewRecorder()
-	s.handleStat(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rec.Code)
+	payload, err := s.handleStat(req)
+	if err != nil {
+		t.Fatalf("handleStat: %v", err)
 	}
-	var resp struct {
-		Code int                    `json:"code"`
-		Data map[string]interface{} `json:"data"`
+	data, ok := payload.(map[string]interface{})
+	if !ok {
+		t.Fatalf("payload type = %T, want map[string]interface{}", payload)
 	}
-	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if got, _ := resp.Data["concurrentTasks"].(float64); got != 2 {
-		t.Errorf("concurrentTasks = %v, want 2", resp.Data["concurrentTasks"])
+	if got, _ := data["concurrentTasks"].(int64); got != 2 {
+		t.Errorf("concurrentTasks = %v, want 2", data["concurrentTasks"])
 	}
 }
 

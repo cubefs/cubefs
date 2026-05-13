@@ -16,7 +16,6 @@ package syncnode
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -28,6 +27,8 @@ import (
 
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/syncnode/api"
+	"github.com/cubefs/cubefs/syncnode/rules"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
@@ -49,6 +50,13 @@ type SyncNode struct {
 	localServerAddr string
 	clusterID       string
 	nodeID          uint64
+
+	// Admin-API subsystems (Phase E). ruleStore is the JSON-file-backed
+	// persistence layer; ruleHandlers attach the CRUD endpoints to the
+	// router. Phase F-2 swaps the JSON store for BoltDB without touching
+	// either handlers or this struct.
+	ruleStore    rules.Store
+	ruleHandlers *rules.Handlers
 
 	// Lifecycle
 	stopC   chan struct{}
@@ -119,6 +127,14 @@ func doStart(srv common.Server, cfg *config.Config) (err error) {
 		return fmt.Errorf("start tcp server: %w", err)
 	}
 
+	// Admin subsystems (Phase E). Initialise the rule store BEFORE starting
+	// HTTP so handlers have something to bind to. JSON-file persistence
+	// satisfies the "rules survive restart" contract until F-2 swaps in
+	// BoltDB.
+	if err = s.initRuleStore(); err != nil {
+		return fmt.Errorf("init rule store: %w", err)
+	}
+
 	// HTTP admin server (includes /admin/syncnode/version, /metrics-friendly
 	// endpoints; full admin API lands in Phase E).
 	if err = s.startHTTPServer(); err != nil {
@@ -155,6 +171,9 @@ func doShutdown(srv common.Server) {
 	}
 	if s.tcpListener != nil {
 		_ = s.tcpListener.Close()
+	}
+	if s.ruleStore != nil {
+		_ = s.ruleStore.Close()
 	}
 	s.wg.Wait()
 	log.LogInfo("syncnode shutdown complete")
@@ -215,8 +234,13 @@ func (s *SyncNode) startTCPServer() error {
 
 func (s *SyncNode) startHTTPServer() error {
 	router := mux.NewRouter().SkipClean(true)
-	router.HandleFunc("/admin/syncnode/version", s.handleVersion).Methods(http.MethodGet)
-	router.HandleFunc("/admin/syncnode/stat", s.handleStat).Methods(http.MethodGet)
+	router.HandleFunc("/admin/syncnode/version", api.ToHTTPHandler(s.handleVersion, api.AuthMiddleware)).Methods(http.MethodGet)
+	router.HandleFunc("/admin/syncnode/stat", api.ToHTTPHandler(s.handleStat, api.AuthMiddleware)).Methods(http.MethodGet)
+
+	// Admin API subsystems register their own routes.
+	if s.ruleHandlers != nil {
+		s.ruleHandlers.Register(router)
+	}
 
 	addr := ":" + s.cfg.HTTPListen
 	l, err := net.Listen("tcp", addr)
@@ -239,39 +263,82 @@ func (s *SyncNode) startHTTPServer() error {
 	return nil
 }
 
+// initRuleStore wires up the JSON-file-backed rule store and the CRUD
+// handlers. Persistence lives under <DataDir>/rules; the directory is created
+// if missing. Phase F-2 swaps this for a BoltDB-backed Store without
+// touching the handlers.
+//
+// E-4 startup invariant: after loading, every persisted rule plus any rules
+// declared in sync.json are run through rules.Validate(). Any conflict
+// (duplicate src+dst, prefix overlap, cycle sync) FAILS Start with a clear
+// error pointing at the offending rule IDs.
+func (s *SyncNode) initRuleStore() error {
+	store, err := rules.NewJSONFileStore(s.cfg.DataDir)
+	if err != nil {
+		return fmt.Errorf("open rule store at %q: %w", s.cfg.DataDir, err)
+	}
+	s.ruleStore = store
+	s.ruleHandlers = rules.NewHandlers(store)
+	if err := s.validateRuleConflicts(); err != nil {
+		_ = store.Close()
+		s.ruleStore = nil
+		s.ruleHandlers = nil
+		return err
+	}
+	return nil
+}
+
+// validateRuleConflicts runs the E-4 validator over the union of persisted
+// rules and config-file-declared rules. The returned error names the
+// conflicting rule IDs so operators can locate them in their config.
+func (s *SyncNode) validateRuleConflicts() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	stored, err := s.ruleStore.List(ctx)
+	if err != nil {
+		return fmt.Errorf("list rules for startup validation: %w", err)
+	}
+	// Index stored rules by ID so a config-file rule with the same ID is
+	// treated as a single entry (the persisted form wins; sync.json rules
+	// are the bootstrap source, not the runtime source of truth).
+	set := make([]*rules.Rule, 0, len(stored)+len(s.cfg.Rules))
+	seen := make(map[string]bool, len(stored))
+	for _, r := range stored {
+		set = append(set, r)
+		seen[r.ID()] = true
+	}
+	for i := range s.cfg.Rules {
+		cfg := s.cfg.Rules[i]
+		if seen[cfg.ID] {
+			continue
+		}
+		set = append(set, rules.NewRule(cfg))
+	}
+	if vErr := rules.Validate(set); vErr != nil {
+		return fmt.Errorf("rule conflict at startup: %w", vErr)
+	}
+	return nil
+}
+
 // handleVersion responds with build info + role identity. AC for A-1.
-func (s *SyncNode) handleVersion(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"code": 0,
-		"msg":  "OK",
-		"data": map[string]string{
-			"role":        ModuleName,
-			"version":     BuildVersion,
-			"commit":      BuildCommit,
-			"buildTime":   BuildTime,
-			"nodeAddress": s.localServerAddr,
-		},
-	})
+func (s *SyncNode) handleVersion(r *http.Request) (interface{}, error) {
+	return map[string]string{
+		"role":        ModuleName,
+		"version":     BuildVersion,
+		"commit":      BuildCommit,
+		"buildTime":   BuildTime,
+		"nodeAddress": s.localServerAddr,
+	}, nil
 }
 
 // handleStat is a Phase-A minimal endpoint that returns node-level state.
 // More detailed fields land in Phase E.
-func (s *SyncNode) handleStat(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"code": 0,
-		"msg":  "OK",
-		"data": map[string]interface{}{
-			"role":            ModuleName,
-			"uptimeSeconds":   time.Since(startedAt).Seconds(),
-			"concurrentTasks": concurrentTasks.Load(),
-		},
-	})
-}
-
-func writeJSON(w http.ResponseWriter, status int, payload interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(payload)
+func (s *SyncNode) handleStat(r *http.Request) (interface{}, error) {
+	return map[string]interface{}{
+		"role":            ModuleName,
+		"uptimeSeconds":   time.Since(startedAt).Seconds(),
+		"concurrentTasks": concurrentTasks.Load(),
+	}, nil
 }
 
 // registerStub is a placeholder for Phase B's real register() loop. In
