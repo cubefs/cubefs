@@ -289,6 +289,25 @@ func testResourceShortageRetry(t *testing.T) {
 func TestVolumeCreationEdgeCases(t *testing.T) {
 	t.Run("DifferentOwnerSameName", testDifferentOwnerSameName)
 	t.Run("InitializingStatusHandling", testInitializingStatusHandling)
+	t.Run("MinReadAheadSize", testMinReadAheadSize)
+}
+
+func testMinReadAheadSize(t *testing.T) {
+	req := createDefaultReq("test_minreadaheadsize", "cfs_test_user")
+	// Test default setup
+	req.minReadAheadSize = 0
+	err := server.checkCreateVolReq(req)
+	require.NoError(t, err)
+	require.Equal(t, int64(proto.DefaultMinReadAheadSize), req.minReadAheadSize)
+	// Test invalid value
+	req.minReadAheadSize = proto.DefaultMinReadAheadSize - 1
+	err = server.checkCreateVolReq(req)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "less than")
+	// Test valid value
+	req.minReadAheadSize = proto.DefaultMinReadAheadSize + 1
+	err = server.checkCreateVolReq(req)
+	require.NoError(t, err)
 }
 
 // testDifferentOwnerSameName tests creating volumes with same name but different owners

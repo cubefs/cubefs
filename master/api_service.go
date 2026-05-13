@@ -3798,6 +3798,16 @@ func (m *Server) checkCreateVolReq(req *createVolReq) (err error) {
 		return err
 	}
 
+	if req.minReadAheadSize == 0 {
+		req.minReadAheadSize = proto.DefaultMinReadAheadSize
+		log.LogInfof("[checkCreateVolReq] creating vol(%v), req minReadAheadSize is 0, set as DefaultMinReadAheadSize(%v)",
+			req.name, proto.DefaultMinReadAheadSize)
+	} else if req.minReadAheadSize < proto.DefaultMinReadAheadSize {
+		err = fmt.Errorf("minReadAheadSize(%v) less than %v", req.minReadAheadSize, proto.DefaultMinReadAheadSize)
+		log.LogErrorf("[checkCreateVolReq] creating vol(%v) err:%v", req.name, err.Error())
+		return err
+	}
+
 	if !(req.storeMode == (proto.StoreModeMem) || req.storeMode == (proto.StoreModeRocksDb)) {
 		return fmt.Errorf("storeMode can only be %d and %d,received storeMode is[%v]", proto.StoreModeMem, proto.StoreModeRocksDb, req.storeMode)
 	}

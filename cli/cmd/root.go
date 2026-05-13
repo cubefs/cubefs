@@ -107,7 +107,7 @@ func stdoutlnf(format string, a ...interface{}) {
 	fmt.Fprintln(os.Stdout)
 }
 
-func errout(err error) {
+var errout = func(err error) {
 	if err == nil {
 		return
 	}

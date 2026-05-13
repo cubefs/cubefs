@@ -235,8 +235,8 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				err = fmt.Errorf("param remoteCacheMaxFileSizeMB(%v) must greater than 0", optRemoteCacheMaxFileSizeMB)
 				return
 			}
-			if optMinReadAheadSize <= 0 {
-				err = fmt.Errorf("param minReadAheadSize(%v) must greater than 0", optMinReadAheadSize)
+			if optMinReadAheadSize < cmdVolDefaultMinReadAheadSize {
+				err = fmt.Errorf("param minReadAheadSize(%v) must greater than or equal to %v", optMinReadAheadSize, cmdVolDefaultMinReadAheadSize)
 				return
 			}
 
@@ -955,8 +955,8 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				err = fmt.Errorf("param remoteCacheMaxFileSizeMB(%v) must greater than 0", optRemoteCacheMaxFileSizeMB)
 				return
 			}
-			if cmd.Flags().Changed(CliFlagMinReadAheadSize) && optMinReadAheadSize <= 0 {
-				err = fmt.Errorf("param minReadAheadSize(%v) must greater than 0", optMinReadAheadSize)
+			if cmd.Flags().Changed(CliFlagMinReadAheadSize) && optMinReadAheadSize < cmdVolDefaultMinReadAheadSize {
+				err = fmt.Errorf("param minReadAheadSize(%v) must greater than or equal to %v", optMinReadAheadSize, cmdVolDefaultMinReadAheadSize)
 				return
 			}
 
