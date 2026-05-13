@@ -58,7 +58,16 @@ func RegisterExtentFile(pd *C.struct_ibv_pd, path string, readOnly bool) (*RDMAM
 	size := int(stat.Size())
 	if size <= 0 {
 		f.Close()
-		return nil, false, fmt.Errorf("rdma: RegisterExtentFile: zero-size file %s", path)
+		// Embed "extent does not exist" so the datanode's repl error
+		// classifier (datanode/repl/packet.go: identificationErrorResultCode)
+		// maps this to OpNotExistErr instead of the catch-all
+		// OpIntraGroupNetErr. Without this, an orphan zero-size extent
+		// (leftover from a SDK write-recovery cycle that abandoned the
+		// extent before any write landed) surfaces to the SDK as the
+		// generic rc=243 — looks like a network fault, triggers retries
+		// and alarming WARN logs, when the correct semantics are "this
+		// extent has no readable content".
+		return nil, false, fmt.Errorf("rdma: RegisterExtentFile: zero-size file %s — extent does not exist on disk", path)
 	}
 
 	mmapBuf, err := syscall.Mmap(int(f.Fd()), 0, size, prot, syscall.MAP_SHARED)

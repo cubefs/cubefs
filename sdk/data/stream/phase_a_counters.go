@@ -15,9 +15,19 @@
 package stream
 
 import (
+	"errors"
 	"sync/atomic"
 	"time"
 )
+
+// ErrExtentNotPhaseAEligible is returned by the lookup path when the
+// server reported OpNotExistErr for an extent (e.g. orphan zero-size
+// file on disk left over from a write-recovery cycle). The Phase A
+// path treats this as a definitive "this extent will never serve a
+// one-sided read", so callers should fall back to two-sided AND
+// (eventually) negative-cache the result to avoid hammering the
+// server with the same hopeless lookup every TTL window.
+var ErrExtentNotPhaseAEligible = errors.New("rdma Phase A: extent not eligible (server reported NotExist)")
 
 // phaseASlowChunkThreshold is the per-chunk RDMA Read latency above
 // which the chunk is counted in slowChunks and a sampled WARN log is

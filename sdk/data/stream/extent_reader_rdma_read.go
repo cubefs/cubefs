@@ -154,6 +154,21 @@ func (reader *ExtentReader) tryReadViaRDMARead(rdmaAddr string, reqPacket *Packe
 	}
 	lease, err := cache.Get(rdmaAddr, reader.dp.PartitionID, reqPacket.ExtentID)
 	if err != nil {
+		// Orphan zero-size extent (left by an SDK write-recovery cycle)
+		// is a known benign condition — server cannot Phase A-register
+		// it, the fallback path correctly serves the read via two-sided.
+		// Demote to INFO and DON'T count as lookup-failure: a 20%
+		// "failure" rate that's really just "not eligible" pollutes the
+		// hit-rate metric and the WARN log. Real lookup errors (timeout,
+		// remote rejection for other reasons) keep WARN.
+		if errors.Is(err, ErrExtentNotPhaseAEligible) {
+			atomic.AddInt64(&phaseACounters.noCacheInit, 0) // explicit no-op; documents intent
+			if log.EnableInfo() {
+				log.LogInfof("rdma Phase A: extent not eligible (orphan zero-size) addr=%s pid=%d ext=%d — using two-sided",
+					rdmaAddr, reader.dp.PartitionID, reqPacket.ExtentID)
+			}
+			return 0, nil // fall through silently — no Phase A path possible
+		}
 		if phaseAShouldWarn(&phaseACounters.lookupErr) {
 			log.LogWarnf("rdma Phase A: cache.Get FAILED addr=%s pid=%d ext=%d: %v",
 				rdmaAddr, reader.dp.PartitionID, reqPacket.ExtentID, err)

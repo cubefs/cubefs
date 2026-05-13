@@ -58,6 +58,16 @@ func lookupExtentMR(addr string, pid, extentID uint64, ttlHint time.Duration) (*
 		return nil, err
 	}
 	if resp.ResultCode != proto.OpOk {
+		// OpNotExistErr is the expected response for orphan zero-size
+		// extents (left behind by an SDK write-recovery cycle that
+		// abandoned the extent before any write landed). The SDK
+		// caller correctly falls back to two-sided; surface this as
+		// ErrExtentNotPhaseAEligible so the cache layer can choose to
+		// negative-cache it and stop hammering the server with the
+		// same hopeless lookup every TTL window.
+		if resp.ResultCode == proto.OpNotExistErr {
+			return nil, ErrExtentNotPhaseAEligible
+		}
 		return nil, fmt.Errorf("rdma extent MR lookup: server rc=%d", resp.ResultCode)
 	}
 	if int(resp.ArgLen) < rdma.ExtentMRLookupReplySize {

@@ -9,6 +9,7 @@ import (
 	"net"
 	"path"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -900,8 +901,19 @@ func (cs *connState) handleExtentMRLookup(ctx *DataNodeRDMACtx, p *repl.Packet) 
 	}
 	entry, err := bundle.registry.Acquire(req.ExtentID)
 	if err != nil {
-		log.LogWarnf("rdma handleExtentMRLookup: registry Acquire pid=%d ext=%d: %v",
-			req.PartitionID, req.ExtentID, err)
+		// zero-size files are a known benign case (orphan extent left
+		// behind by an SDK write-recovery cycle) — already classified
+		// as OpNotExistErr by the embedded sentinel string in
+		// RegisterExtentFile. Log it at INFO to avoid alarming WARN
+		// noise; all other Acquire failures (registry full, real
+		// register errors) keep WARN.
+		if strings.Contains(err.Error(), "zero-size file") {
+			log.LogInfof("rdma handleExtentMRLookup: orphan zero-size extent pid=%d ext=%d (SDK will fall back to two-sided)",
+				req.PartitionID, req.ExtentID)
+		} else {
+			log.LogWarnf("rdma handleExtentMRLookup: registry Acquire pid=%d ext=%d: %v",
+				req.PartitionID, req.ExtentID, err)
+		}
 		p.PackErrorBody("rdma_extent_mr_lookup", err.Error())
 		return
 	}
