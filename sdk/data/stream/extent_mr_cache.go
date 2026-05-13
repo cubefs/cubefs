@@ -95,6 +95,15 @@ type extentMRCacheConfig struct {
 	NowFn         func() time.Time
 }
 
+// negEntryTTL bounds how long a "not eligible" verdict suppresses
+// further lookups for the same extent. 5 minutes is long enough to
+// quench the per-Volume.read storm we observed (250+ same-extent
+// lookups/sec) yet short enough that a legitimate extent that was
+// transiently zero-sized (e.g. mid-create race) doesn't get
+// permanently excluded from Phase A. Tunable later if real workloads
+// show false positives.
+const negEntryTTL = 5 * time.Minute
+
 func defaultExtentMRCacheConfig() extentMRCacheConfig {
 	return extentMRCacheConfig{
 		LookupTTLHint: 60 * time.Second,
@@ -120,6 +129,20 @@ type extentMRCache struct {
 	mu       sync.Mutex
 	entries  map[extentMRCacheKey]*LeaseInfo
 	pendings map[extentMRCacheKey]*pendingLookup
+	// negEntries memoises the "this extent is ineligible for Phase A"
+	// verdict (server reported OpNotExistErr — typically an orphan
+	// zero-size extent left by an SDK write-recovery cycle). Without
+	// this, an inode whose meta still references the orphan extent
+	// triggers a fresh lookup RPC per Volume.read iteration (256 KiB
+	// at default buffer size = 256 lookups per 64-MiB GET, plus
+	// retries), saturating the lookup path at hundreds per second
+	// against an extent that will never satisfy a one-sided read.
+	//
+	// Value is the wall-clock time at which the negative entry expires;
+	// after that the SDK re-tries the lookup (the orphan might have
+	// been cleaned up). negTTL bounds how long a stale orphan keeps
+	// suppressing real lookups.
+	negEntries map[extentMRCacheKey]time.Time
 
 	closeCh chan struct{}
 	wg      sync.WaitGroup
@@ -150,12 +173,13 @@ func newExtentMRCache(cfg extentMRCacheConfig, lookupFn extentMRLookupFunc, rene
 		cfg.NowFn = d.NowFn
 	}
 	c := &extentMRCache{
-		cfg:      cfg,
-		lookupFn: lookupFn,
-		renewFn:  renewFn,
-		entries:  make(map[extentMRCacheKey]*LeaseInfo),
-		pendings: make(map[extentMRCacheKey]*pendingLookup),
-		closeCh:  make(chan struct{}),
+		cfg:        cfg,
+		lookupFn:   lookupFn,
+		renewFn:    renewFn,
+		entries:    make(map[extentMRCacheKey]*LeaseInfo),
+		pendings:   make(map[extentMRCacheKey]*pendingLookup),
+		negEntries: make(map[extentMRCacheKey]time.Time),
+		closeCh:    make(chan struct{}),
 	}
 	c.wg.Add(1)
 	go c.renewLoop()
@@ -164,7 +188,10 @@ func newExtentMRCache(cfg extentMRCacheConfig, lookupFn extentMRLookupFunc, rene
 
 // Get returns a non-expired LeaseInfo for the key, fetching via
 // lookupFn on miss / expiry. Concurrent misses for the same key
-// share one lookup call (single-flight).
+// share one lookup call (single-flight). Negative results
+// (ErrExtentNotPhaseAEligible) are remembered for negEntryTTL so the
+// SDK doesn't hammer the lookup RPC for orphan extents — see the
+// negEntries doc on extentMRCache.
 func (c *extentMRCache) Get(addr string, pid, extentID uint64) (*LeaseInfo, error) {
 	key := extentMRCacheKey{addr, pid, extentID}
 	now := c.cfg.NowFn()
@@ -180,6 +207,18 @@ func (c *extentMRCache) Get(addr string, pid, extentID uint64) (*LeaseInfo, erro
 	}
 	// Stale entry → drop it and fall through to a fresh lookup.
 	delete(c.entries, key)
+
+	// Negative cache short-circuit: this extent already told us it
+	// can't be Phase A served. Skip the RPC entirely. Expired neg
+	// entries fall through and re-attempt the lookup (orphan might
+	// have been cleaned).
+	if exp, ok := c.negEntries[key]; ok {
+		if now.Before(exp) {
+			c.mu.Unlock()
+			return nil, ErrExtentNotPhaseAEligible
+		}
+		delete(c.negEntries, key)
+	}
 
 	if p, ok := c.pendings[key]; ok {
 		c.mu.Unlock()
@@ -204,6 +243,13 @@ func (c *extentMRCache) Get(addr string, pid, extentID uint64) (*LeaseInfo, erro
 		return nil, ErrExtentMRCacheClosed
 	}
 	if err != nil {
+		// Record the "ineligible" verdict so the next Get for this
+		// key bypasses the RPC for negEntryTTL. Other errors (timeout
+		// etc.) are NOT cached — they may be transient and the caller
+		// should re-attempt on the next read.
+		if errors.Is(err, ErrExtentNotPhaseAEligible) {
+			c.negEntries[key] = c.cfg.NowFn().Add(negEntryTTL)
+		}
 		p.err = err
 		return nil, err
 	}
@@ -219,6 +265,10 @@ func (c *extentMRCache) Invalidate(addr string, pid, extentID uint64) {
 	key := extentMRCacheKey{addr, pid, extentID}
 	c.mu.Lock()
 	delete(c.entries, key)
+	// Also clear any negative-cache entry so an operator-triggered
+	// invalidation (e.g. after orphan cleanup) doesn't keep the SDK
+	// stuck on the two-sided fallback path until negEntryTTL expires.
+	delete(c.negEntries, key)
 	c.mu.Unlock()
 }
 
