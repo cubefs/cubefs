@@ -15,12 +15,25 @@
 package meta
 
 import (
+	"container/list"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+// newTestDirtyInodeCacheNoBg returns a dirtyInodeCache without the background
+// eviction goroutine (avoids goroutine leaks in unit tests).
+func newTestDirtyInodeCacheNoBg(exp time.Duration, maxElements int) *dirtyInodeCache {
+	return &dirtyInodeCache{
+		cache:       make(map[uint64]*list.Element),
+		lruList:     list.New(),
+		expiration:  exp,
+		maxElements: maxElements,
+	}
+}
 
 // TestDirtyInodeCacheMark verifies that a marked inode is reported as dirty.
 func TestDirtyInodeCacheMark(t *testing.T) {
@@ -167,4 +180,95 @@ func TestDirtyInodeCacheNearReadCondition(t *testing.T) {
 
 	// Empty batch → no nearRead suppression
 	assert.False(t, checkDirty([]uint64{}), "empty batch should allow nearRead")
+}
+
+// TestDirtyInodeCacheForegroundEvictRemovesTail verifies mark() when at capacity
+// runs foreground evict (at least dirtyInodeEvictMin tail entries) even if not expired.
+func TestDirtyInodeCacheForegroundEvictRemovesTail(t *testing.T) {
+	const maxElements = 20
+	dc := newTestDirtyInodeCacheNoBg(1*time.Hour, maxElements)
+
+	for i := uint64(1); i <= maxElements; i++ {
+		dc.mark(i)
+	}
+	for i := uint64(1); i <= maxElements; i++ {
+		assert.True(t, dc.isDirty(i), "inode %d should be dirty before overflow", i)
+	}
+
+	dc.mark(maxElements + 1)
+
+	for i := uint64(1); i <= 10; i++ {
+		assert.False(t, dc.isDirty(i), "inode %d should be evicted from LRU tail by foreground evict", i)
+	}
+	for i := uint64(11); i <= maxElements+1; i++ {
+		assert.True(t, dc.isDirty(i), "inode %d should remain after overflow mark", i)
+	}
+}
+
+// TestDirtyInodeCacheIsDirtyLazyEvictOnExpiry verifies expired entries are removed from cache on isDirty.
+func TestDirtyInodeCacheIsDirtyLazyEvictOnExpiry(t *testing.T) {
+	dc := newTestDirtyInodeCacheNoBg(1*time.Second, 1000)
+	var ino uint64 = 555
+	dc.mark(ino)
+	assert.True(t, dc.isDirty(ino))
+
+	time.Sleep(4 * time.Second)
+	assert.False(t, dc.isDirty(ino), "first isDirty should report false and lazy-evict")
+	assert.False(t, dc.isDirty(ino), "second isDirty should still be false")
+}
+
+// TestDirtyInodeCacheEvictBackgroundRemovesExpiredTail exercises evict(false) on expired entries.
+func TestDirtyInodeCacheEvictBackgroundRemovesExpiredTail(t *testing.T) {
+	dc := newTestDirtyInodeCacheNoBg(1*time.Second, 1000)
+	dc.mark(101)
+	dc.mark(102)
+	time.Sleep(4 * time.Second)
+
+	dc.Lock()
+	dc.evict(false)
+	remaining := dc.lruList.Len()
+	dc.Unlock()
+
+	require.Equal(t, 0, remaining)
+	assert.False(t, dc.isDirty(101))
+	assert.False(t, dc.isDirty(102))
+}
+
+// TestDirtyInodeCacheEvictBackgroundStopsOnNonExpiredTail verifies evict(false) does not remove fresh tail.
+func TestDirtyInodeCacheEvictBackgroundStopsOnNonExpiredTail(t *testing.T) {
+	dc := newTestDirtyInodeCacheNoBg(1*time.Hour, 1000)
+	dc.mark(201)
+	dc.mark(202)
+
+	dc.Lock()
+	dc.evict(false)
+	remaining := dc.lruList.Len()
+	dc.Unlock()
+
+	require.Equal(t, 2, remaining)
+	assert.True(t, dc.isDirty(201))
+	assert.True(t, dc.isDirty(202))
+}
+
+// TestDirtyInodeCacheEvictForegroundEmptyList verifies evict(true) on empty list is a no-op.
+func TestDirtyInodeCacheEvictForegroundEmptyList(t *testing.T) {
+	dc := newTestDirtyInodeCacheNoBg(DirtyInodeTTL, 10)
+	dc.Lock()
+	dc.evict(true)
+	dc.Unlock()
+	assert.Equal(t, 0, dc.lruList.Len())
+}
+
+// TestDirtyInodeCacheRemarkMovesInodeToFront avoids losing inode when re-marked before overflow.
+func TestDirtyInodeCacheRemarkMovesInodeToFront(t *testing.T) {
+	const maxElements = 15
+	dc := newTestDirtyInodeCacheNoBg(1*time.Hour, maxElements)
+	for i := uint64(1); i <= maxElements; i++ {
+		dc.mark(i)
+	}
+	dc.mark(5)
+	dc.mark(maxElements + 1)
+
+	assert.True(t, dc.isDirty(5), "re-marked inode 5 should still be present after overflow")
+	assert.False(t, dc.isDirty(1), "oldest tail should be evicted")
 }

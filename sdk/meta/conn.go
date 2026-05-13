@@ -79,7 +79,14 @@ func (mw *MetaWrapper) sendToMetaPartitionLeader(mp *MetaPartition, req *proto.P
 	if sendTimeLimit > MinRetryTime*1000 {
 		delta = (sendTimeLimit*2/SendRetryLimit - SendRetryInterval) / SendRetryLimit // ms
 	}
-	log.LogDebugf("mw.metaSendTimeout: %v s, sendTimeLimit: %v ms, delta: %v ms, req %v", mw.metaSendTimeout, sendTimeLimit, delta, req)
+
+	var reqIno uint64
+	if len(dirtyIno) > 0 {
+		reqIno = dirtyIno[0]
+	}
+
+	log.LogDebugf("mw.metaSendTimeout: %v s, sendTimeLimit: %v ms, delta: %v ms, req %v, ino(%d)",
+		mw.metaSendTimeout, sendTimeLimit, delta, req, reqIno)
 
 	req.ExtentType |= proto.PacketProtocolVersionFlag
 
@@ -97,7 +104,7 @@ func (mw *MetaWrapper) sendToMetaPartitionLeader(mp *MetaPartition, req *proto.P
 		}
 
 		if inoDirty {
-			log.LogDebugf("sendToMetaPartitionLeader: skip nearRead for dirty inode(%v), req(%v)", dirtyIno[0], req.ReqID)
+			log.LogDebugf("sendToMetaPartitionLeader: skip nearRead for dirty inode(%v), req(%v)", reqIno, req.ReqID)
 		} else {
 			nearHosts := mp.SortHostsByPingElapsed(mw)
 			if len(nearHosts) > 0 {
@@ -107,7 +114,8 @@ func (mw *MetaWrapper) sendToMetaPartitionLeader(mp *MetaPartition, req *proto.P
 				req.Arg = make([]byte, req.ArgLen)
 				req.Arg[0] = proto.NearReadFlag
 			}
-			log.LogDebugf("sendToMetaPartitionLeader: mp(%v) nearHosts(%v) curAddr(%v), req(%v)", mp, nearHosts, curAddr, req.ReqID)
+			log.LogDebugf("sendToMetaPartitionLeader: mp(%v) nearHosts(%v) curAddr(%v), req(%v), ino(%d)",
+				mp, nearHosts, curAddr, req.ReqID, reqIno)
 		}
 	}
 

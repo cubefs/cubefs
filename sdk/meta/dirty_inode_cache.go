@@ -25,7 +25,7 @@ import (
 
 const (
 	DirtyInodeTTL             = 5 * time.Second
-	MaxDirtyInodeCache        = 10000
+	MaxDirtyInodeCache        = 100000
 	dirtyInodeEvictMin        = 10
 	dirtyInodeEvictMax        = 1000
 	dirtyInodeBgEvictInterval = 2 * time.Minute
@@ -78,6 +78,9 @@ func (dc *dirtyInodeCache) mark(ino uint64) {
 	}
 	element := dc.lruList.PushFront(entry)
 	dc.cache[ino] = element
+	if log.EnableDebug() {
+		log.LogDebugf("dirtyInodeCache: mark ino(%v), expiry(%v), len(%d)", ino, entry.expiry, dc.lruList.Len())
+	}
 	dc.Unlock()
 }
 
@@ -100,6 +103,9 @@ func (dc *dirtyInodeCache) isDirty(ino uint64) bool {
 			if timeutil.GetCurrentTimeUnix() > el.Value.(*dirtyInodeEntry).expiry {
 				dc.lruList.Remove(el)
 				delete(dc.cache, ino)
+				if log.EnableDebug() {
+					log.LogDebugf("dirtyInodeCache: evict ino(%v),len(%d)", ino, dc.lruList.Len())
+				}
 			}
 		}
 		dc.Unlock()
@@ -123,6 +129,9 @@ func (dc *dirtyInodeCache) evict(foreground bool) {
 		}
 		dc.lruList.Remove(element)
 		delete(dc.cache, entry.ino)
+		if log.EnableDebug() {
+			log.LogDebugf("dirtyInodeCache: evict ino(%v), expiry(%v)", entry.ino, entry.expiry)
+		}
 	}
 
 	if foreground {
@@ -140,6 +149,9 @@ func (dc *dirtyInodeCache) evict(foreground bool) {
 		}
 		dc.lruList.Remove(element)
 		delete(dc.cache, entry.ino)
+		if log.EnableDebug() {
+			log.LogDebugf("dirtyInodeCache: evict ino(%v),expiry(%v)", entry.ino, entry.expiry)
+		}
 	}
 }
 
@@ -150,7 +162,7 @@ func (dc *dirtyInodeCache) backgroundEviction() {
 		start := time.Now()
 		dc.Lock()
 		dc.evict(false)
-		dc.Unlock()
 		log.LogDebugf("dirtyInodeCache: bg evict done, remaining(%d), cost(%v)", dc.lruList.Len(), time.Since(start))
+		dc.Unlock()
 	}
 }

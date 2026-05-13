@@ -3278,7 +3278,8 @@ func (mw *MetaWrapper) RenewalForbiddenMigration(inode uint64) error {
 }
 
 func (mw *MetaWrapper) UpdateExtentKeyAfterMigration(inode uint64, storageType uint32, objExtentKeys []proto.ObjExtentKey,
-	poolId uint8, leaseExpire uint64, delayDelMinute uint64, fullPath string, generation uint64,
+	poolId uint8, leaseExpire uint64, delayDelMinute uint64, fullPath string,
+	generation uint64,
 ) error {
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {

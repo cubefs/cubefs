@@ -14,36 +14,17 @@ import (
 
 // Covers sdk/meta/api.go UpdateExtentKeyAfterMigration (generation arg) and sdk/meta/operation.go request construction (Generation field).
 func TestUpdateExtentKeyAfterMigrationCarriesGenerationToRequest(t *testing.T) {
-	proto.InitBufferPool(int64(32768))
-
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	defer ln.Close()
-
-	addr := ln.Addr().String()
 	reqCh := make(chan *proto.UpdateExtentKeyAfterMigrationRequest, 1)
-	errCh := make(chan error, 1)
-	done := make(chan struct{})
 
-	go func() {
-		defer close(done)
-		conn, err := ln.Accept()
-		if err != nil {
-			errCh <- err
-			return
-		}
-		defer conn.Close()
-
+	addr, cleanup := startMockMetaPacketListener(t, func(conn net.Conn) error {
 		pkt := proto.NewPacket()
-		if err = pkt.ReadFromConnWithVer(conn, proto.ReadDeadlineTime); err != nil {
-			errCh <- err
-			return
+		if err := pkt.ReadFromConnWithVer(conn, proto.ReadDeadlineTime); err != nil {
+			return err
 		}
 
 		var req proto.UpdateExtentKeyAfterMigrationRequest
-		if err = json.Unmarshal(pkt.Data, &req); err != nil {
-			errCh <- err
-			return
+		if err := json.Unmarshal(pkt.Data, &req); err != nil {
+			return err
 		}
 		reqCh <- &req
 
@@ -52,20 +33,19 @@ func TestUpdateExtentKeyAfterMigrationCarriesGenerationToRequest(t *testing.T) {
 		resp.Opcode = pkt.Opcode
 		resp.PartitionID = pkt.PartitionID
 		resp.ResultCode = proto.OpOk
-		if err = resp.WriteToConn(conn); err != nil {
-			errCh <- err
-		}
-	}()
+		return resp.WriteToConn(conn)
+	})
+	t.Cleanup(cleanup)
 
 	mw := &MetaWrapper{
 		volname:           "test-vol",
-		metaSendTimeout:   1,
+		metaSendTimeout:   30,
 		conns:             util.NewConnectPool(),
 		partitions:        make(map[uint64]*MetaPartition),
 		ranges:            btree.New(32),
 		EnableTransaction: 0,
 	}
-	defer mw.conns.Close()
+	t.Cleanup(func() { mw.conns.Close() })
 
 	mp := &MetaPartition{
 		PartitionID: 11,
@@ -81,7 +61,7 @@ func TestUpdateExtentKeyAfterMigrationCarriesGenerationToRequest(t *testing.T) {
 		generation = uint64(12345)
 	)
 
-	err = mw.UpdateExtentKeyAfterMigration(
+	err := mw.UpdateExtentKeyAfterMigration(
 		inode,
 		proto.StorageClass_Replica_HDD,
 		nil,
@@ -98,17 +78,39 @@ func TestUpdateExtentKeyAfterMigrationCarriesGenerationToRequest(t *testing.T) {
 		require.Equal(t, generation, req.Generation)
 		require.Equal(t, inode, req.Inode)
 		require.Equal(t, uint64(100), req.LeaseExpire)
-	case err = <-errCh:
-		require.NoError(t, err)
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting migration request")
 	}
+}
+
+// Covers operation.go lookup passing parentID into sendToMetaPartition for dirty-inode near-read suppression.
+func TestLookupSkipsNearReadWhenParentInodeDirty(t *testing.T) {
+	chLeader := make(chan *proto.Packet, 1)
+	addr, cleanup := startMockMetaPacketListener(t, mockLookupOKHandler(chLeader))
+	t.Cleanup(cleanup)
+
+	mw := newConnTestMetaWrapper()
+	t.Cleanup(func() { mw.conns.Close() })
+
+	const parentID = uint64(441229642)
+	mw.dirtyInodes.mark(parentID)
+
+	mp := &MetaPartition{
+		PartitionID: 6006,
+		LeaderAddr:  addr,
+		Members:     []string{addr},
+	}
+
+	status, ino, mode, err := mw.lookup(mp, parentID, "entry", 0, false)
+	require.NoError(t, err)
+	require.Equal(t, statusOK, status)
+	require.Equal(t, uint64(4242), ino)
+	require.Equal(t, uint32(0o644), mode)
 
 	select {
-	case err = <-errCh:
-		require.NoError(t, err)
-	case <-done:
+	case got := <-chLeader:
+		require.Equal(t, uint32(0), got.ArgLen, "lookup with dirty parent should not use near-read flag")
 	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting mock meta server exit")
+		t.Fatal("timed out waiting for lookup request on leader")
 	}
 }
