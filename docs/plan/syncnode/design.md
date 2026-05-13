@@ -23,6 +23,7 @@
 | D8 | Master 是**现有 CubeFS Master**（与 datanode/metanode/lcnode 共用），不引入新 master 集群 | §2 / §6.0 |
 | D9 | 限流四层（per-task / per-rule / per-node / per-backend），实际速率 = min(四层) | §12.4 |
 | D10 | 多 syncnode 并发同一任务（fan-out）：P1 文件级 sharding，P2 字节范围 sharding | §6.4 |
+| D11 | 支持"跳过 CubeFS 中间层"对偶 W4 / W6（GPFS↔ 对象存储直传），无新代码——`kind: local` ↔ `kind: s3` 的双向配置即可 | §1.2.1 / §1.2.4 |
 
 ---
 
@@ -56,7 +57,7 @@
 
 **syncnode 是这三层之间唯一的"搬运工"**，由规则 + HTTP API 驱动。
 
-### 1.2 五个典型工作流（P0 都要覆盖）
+### 1.2 六个典型工作流（P0 都要覆盖）
 
 | 编号 | 流向 | 触发 | 用例 |
 |---|---|---|---|
@@ -65,8 +66,11 @@
 | **W3** | BOS/TOS → CubeFS | 显式 API | 反向加载旧模型给 eval / A/B 测试 / 回滚 |
 | **W4** | **GPFS → BOS/TOS（直传，跳过 CubeFS）** | 定时 + 显式 API + **cfs-sync CLI**（ad-hoc）| 见 §1.2.1 |
 | **W5** | 外部数据集（BOS/TOS / GPFS）→ CubeFS | 显式 API | 准备训练数据集；让 eval 集群读取 |
+| **W6** | **BOS/TOS → GPFS（反向直传，跳过 CubeFS）** | 显式 API + **cfs-sync CLI**（ad-hoc）| 见 §1.2.4 |
 
-**注**：有些场景 CubeFS 性能够用就不上 GPFS——比如部分 eval 任务直接读 CubeFS 而无需先去 GPFS。这种情况 syncnode 只参与 W2/W3 流，W1/W4 不会发生。
+**注**：有些场景 CubeFS 性能够用就不上 GPFS——比如部分 eval 任务直接读 CubeFS 而无需先去 GPFS。这种情况 syncnode 只参与 W2/W3 流，W1/W4/W6 不会发生。
+
+**W4 / W6 是对偶**：W4 是 hot→cold 直传（GPFS→对象存储），W6 是 cold→hot 反向直传（对象存储→GPFS）。两者都"跳过 CubeFS 中间层"，使用场景互补。
 
 #### 1.2.1 W4 详解：跳过 CubeFS 中间层
 
@@ -125,6 +129,84 @@ cfs-sync CLI **完全不依赖 CubeFS 集群**，可以在任何能挂 GPFS + re
 | 训练流水线集成 | **syncnode HTTP API**（流程化，可状态查询）|
 
 **两条路径共用底层 storage adapter**（`tool/cfs-sync/storage/`），行为对等：传同样的数据、同样的 md5 校验、同样的 multipart 上传——只是触发方式和监控生态不同。
+
+#### 1.2.4 W6 详解：BOS/TOS → GPFS 反向直传
+
+W4 的对偶：**数据从对象存储直接落到训练用的 GPFS，跳过 CubeFS 中间层**。
+
+**典型用例**：
+
+- **训练前预热大数据集到 GPFS**——比如 imagenet-21k、LAION-5B 这种 TB 级训练数据，从 BOS/TOS 直接拉到 GPFS 给训练进程读，不需要先进 CubeFS 再走第二跳
+- **模型加载到训练 GPU**——从 BOS 上的 pretrained 模型库直接 load 到 GPFS，让训练框架的高吞吐 I/O 路径就能直接读
+- **跨集群训练数据迁移**——A 集群的训练产物归到 BOS，B 集群训练前从 BOS 直接拉到 B 的 GPFS，CubeFS 中间层没必要
+- **任务期临时数据集**——一次性训练用的数据，跑完即弃，没必要持久化到 CubeFS
+
+**跳过 CubeFS 的好处**：
+
+- **省一次传输**：W3+W1 反向（BOS→CubeFS→GPFS）= 数据被传两次；W6 = 一次直接到 hot 层
+- **省 CubeFS 容量**：一次性 / 短期数据本来就不需要驻留中间层
+- **省时间**：训练前数据准备阶段直接拉到训练能读的最高性能存储，少一段等待
+- **bandwidth 走最直接的路径**：对象存储 → 计算节点宿主，不绕开
+
+**两种实现路径（与 W4 完全对偶）**：
+
+**路径 A：syncnode 规则**
+
+```json
+{
+  "id": "w6-dataset-to-gpfs",
+  "type": "load",
+  "src": { "kind": "s3", "bucket": "datasets-cold", "prefix": "imagenet-21k/" },
+  "dst": {
+    "kind": "local",
+    "path": "/mnt/gpfs/train-data/imagenet-21k/",
+    "bufferSizeKiB": 16384,
+    "concurrency": 8,
+    "fadviseSequential": true
+  },
+  "downloadStrategy": "temp_rename",
+  "bandwidthLimitMBps": 800
+}
+```
+
+**路径 B：cfs-sync CLI**
+
+```bash
+# 训练流水线启动前手动拉取
+cfs-sync sync s3://datasets-cold/imagenet-21k/ /mnt/gpfs/train-data/imagenet-21k/ \
+    --include "*.tar,*.json,*.txt"        \
+    --buffer-size-kib 16384               \
+    --concurrency 8
+```
+
+**何时用 W6 vs W3+W1**：
+
+| 数据特性 | 推荐 |
+|---|---|
+| 训练专用，不需要 eval 访问 | **W6**（直传，省一次拷贝）|
+| 训练 + eval 都需要 | **W3+W1**（先落 CubeFS 给 eval，再促到 GPFS 给训练）|
+| 一次性 / 短期使用 | **W6**（不污染 CubeFS）|
+| 长期保留 + 多团队复用 | **W3+W1**（CubeFS 当共享层）|
+| 数据规模 > CubeFS 单卷容量 | **W6**（CubeFS 装不下）|
+
+#### 1.2.5 W4 + W6 = 完整的"跳过中间层"对偶
+
+```
+              GPFS  ←─── W6 (BOS→GPFS 直传) ───  BOS/TOS
+                 │                                   │
+                 └─── W4 (GPFS→BOS 直传) ──────────→ │
+
+                 [CubeFS 不参与这两条 path]
+```
+
+两条 path 共享相同的实现：
+
+- 同一个 syncnode 服务
+- 同一对 backend (`local` ↔ `s3`)
+- 同一套规则配置 schema
+- 同一份 cfs-sync CLI 工具
+
+P0 实现完成后**自动得到 W4 + W6**——它们就是 `kind: local` ↔ `kind: s3` 的双向 sync/load 配置，没有特殊代码。
 
 ### 1.3 目标（P0）
 
@@ -583,6 +665,23 @@ POSIX 后端覆盖普通本地盘与宿主挂载的并行 FS 两种场景。差�
       "src": { "kind": "s3", "bucket": "datasets", "prefix": "imagenet-v2/" },
       "dst": { "kind": "cfs", "vol": "datasets-vol", "path": "/imagenet-v2/" },
       "downloadStrategy": "temp_rename"
+    },
+
+    // ────── W6: BOS/TOS → GPFS（反向直传，跳过 CubeFS）──────
+    // 训练数据直接落到 GPFS 给训练进程读，不经过 CubeFS warm 层
+    {
+      "id": "w6-dataset-to-gpfs",
+      "type": "load",
+      "src": { "kind": "s3", "bucket": "datasets-cold", "prefix": "imagenet-21k/" },
+      "dst": {
+        "kind": "local",
+        "path": "/mnt/gpfs/train-data/imagenet-21k/",
+        "bufferSizeKiB": 16384,
+        "concurrency": 8,
+        "fadviseSequential": true
+      },
+      "downloadStrategy": "temp_rename",
+      "bandwidthLimitMBps": 800
     },
 
     // ────── 完整性巡检：CubeFS ↔ BOS 对账 ──────
@@ -2096,4 +2195,4 @@ cubefs_master_syncnode_count{state}                                             
 
 ## 17. Last Updated
 
-`2026-05-13` — initial consolidated spec for SDD-based development.
+`2026-05-13` — initial consolidated spec for SDD-based development. W6 (BOS/TOS → GPFS 反向直传) added as the dual of W4; no new code needed since `kind: local` ↔ `kind: s3` configurations already cover it via the universal Backend abstraction.
