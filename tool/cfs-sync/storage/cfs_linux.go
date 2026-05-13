@@ -291,7 +291,20 @@ func (c *CFSStorage) Get(_ context.Context, key string, off, size int64) (io.Rea
 		size = fileSize - off
 	}
 
-	return &cfsReader{ec: c.ec, ino: ino, off: off, size: size, storageClass: c.storageClass}, nil
+	// Single-Streamer single-goroutine reads cap around 330 MB/s
+	// regardless of NIC speed: the SDK ExtentReader sends one 128 KiB
+	// packet, waits for the reply, sends the next — so a single 4 MiB
+	// SDK read = 32 sequential RTTs. The prefetch reader breaks that
+	// floor by running N goroutines, each driving a separate TCP conn
+	// from the SDK pool, fetching consecutive chunks in parallel and
+	// re-ordering on the consumer side.
+	ec := c.ec
+	storageClass := c.storageClass
+	fetch := func(p []byte, fetchOff int64) (int, error) {
+		return ec.Read(ino, p, int(fetchOff), len(p), storageClass, false)
+	}
+	pr := newPrefetchReader(fetch, off, size, c.cfg.resolvedChunkSize(), c.cfg.resolvedPrefetch())
+	return &cfsReader{pr: pr, ec: c.ec, ino: ino}, nil
 }
 
 func (c *CFSStorage) Put(ctx context.Context, key string, r io.Reader, size int64) error {
@@ -432,36 +445,25 @@ func splitPath(p string) (string, string) {
 	return dir, p[idx+1:]
 }
 
-// cfsReader implements io.ReadCloser for a CubeFS file extent stream.
+// cfsReader implements io.ReadCloser for a CubeFS file via prefetchReader.
+// Close ALWAYS waits for prefetch workers to exit before calling
+// ec.CloseStream(ino), so no in-flight ec.Read race with stream teardown.
 type cfsReader struct {
-	ec           *stream.ExtentClient
-	ino          uint64
-	off          int64
-	size         int64
-	read         int64
-	storageClass uint32
+	pr  *prefetchReader
+	ec  *stream.ExtentClient
+	ino uint64
 }
 
 func (r *cfsReader) Read(p []byte) (int, error) {
-	if r.read >= r.size {
-		return 0, io.EOF
-	}
-	toRead := int64(len(p))
-	if r.read+toRead > r.size {
-		toRead = r.size - r.read
-		p = p[:toRead]
-	}
-	n, err := r.ec.Read(r.ino, p, int(r.off+r.read), len(p), r.storageClass, false)
-	r.read += int64(n)
-	if err != nil && err != io.EOF {
-		return n, err
-	}
-	if n == 0 {
-		return 0, io.EOF
-	}
-	return n, nil
+	return r.pr.Read(p)
 }
 
 func (r *cfsReader) Close() error {
-	return r.ec.CloseStream(r.ino)
+	// Must close prefetch first — workers call ec.Read, and calling
+	// CloseStream while a worker is mid-read could race on Streamer state.
+	err := r.pr.Close()
+	if cerr := r.ec.CloseStream(r.ino); cerr != nil && err == nil {
+		err = cerr
+	}
+	return err
 }

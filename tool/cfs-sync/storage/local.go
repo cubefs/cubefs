@@ -122,6 +122,15 @@ func (l *LocalStorage) Put(ctx context.Context, key string, r io.Reader, size in
 	return l.PutWithMtime(ctx, key, r, size, time.Time{})
 }
 
+// localPutBufSize is the buffer size used by PutWithMtime's explicit copy
+// loop. The default io.Copy path here would call (*os.File).ReadFrom, which
+// falls back to a 32 KiB buffer when the source is not a *os.File (cfsReader
+// never is). 32 KiB defeats batching in SDK reads: cfs → local sync ends up
+// calling ec.Read 32 KiB at a time, one TCP round-trip per call. A 4 MiB
+// buffer makes each Read amortise over ~32× more bytes and lines up with
+// the cfsReader prefetch chunk size used elsewhere.
+const localPutBufSize = 4 * 1024 * 1024
+
 func (l *LocalStorage) PutWithMtime(_ context.Context, key string, r io.Reader, _ int64, mtime time.Time) error {
 	dst := l.fullPath(key)
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
@@ -131,7 +140,7 @@ func (l *LocalStorage) PutWithMtime(_ context.Context, key string, r io.Reader, 
 	if err != nil {
 		return err
 	}
-	_, err = io.Copy(f, r)
+	err = copyWithBuffer(f, r, localPutBufSize)
 	if cerr := f.Close(); cerr != nil && err == nil {
 		err = cerr
 	}
@@ -142,6 +151,28 @@ func (l *LocalStorage) PutWithMtime(_ context.Context, key string, r io.Reader, 
 		_ = os.Chtimes(dst, mtime, mtime)
 	}
 	return nil
+}
+
+// copyWithBuffer is io.Copy with a guaranteed buffer size. Plain io.Copy
+// (and io.CopyBuffer) honour ReaderFrom on the destination, which on
+// *os.File ignores any caller-supplied buffer and uses its own 32 KiB.
+// We bypass that by calling Read/Write directly.
+func copyWithBuffer(dst io.Writer, src io.Reader, bufSize int) error {
+	buf := make([]byte, bufSize)
+	for {
+		n, rerr := src.Read(buf)
+		if n > 0 {
+			if _, werr := dst.Write(buf[:n]); werr != nil {
+				return werr
+			}
+		}
+		if rerr == io.EOF {
+			return nil
+		}
+		if rerr != nil {
+			return rerr
+		}
+	}
 }
 
 func (l *LocalStorage) Delete(_ context.Context, key string) error {

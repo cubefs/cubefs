@@ -3,10 +3,12 @@ package storage
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestLocalStorage_List_Empty(t *testing.T) {
@@ -243,4 +245,201 @@ func equalSlices(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// recordingReader wraps a bytes.Reader and remembers every Read call size.
+// Used to assert PutWithMtime requests 4 MiB chunks, not the io.Copy default
+// (32 KiB via *os.File.ReadFrom → genericReadFrom).
+type recordingReader struct {
+	r        *bytes.Reader
+	callSize []int
+}
+
+func (rr *recordingReader) Read(p []byte) (int, error) {
+	rr.callSize = append(rr.callSize, len(p))
+	return rr.r.Read(p)
+}
+
+// largestCall returns the largest Read length recorded. EOF can shrink the
+// final call, but all interior calls should be the full buffer.
+func (rr *recordingReader) largestCall() int {
+	max := 0
+	for _, c := range rr.callSize {
+		if c > max {
+			max = c
+		}
+	}
+	return max
+}
+
+func TestLocalStorage_PutWithMtime_Uses4MiBBuffer(t *testing.T) {
+	dir := t.TempDir()
+	s, _ := NewLocal(dir)
+
+	// 16 MiB of deterministic content — at least 4 full 4 MiB Read calls.
+	content := make([]byte, 16*1024*1024)
+	for i := range content {
+		content[i] = byte(i)
+	}
+
+	rr := &recordingReader{r: bytes.NewReader(content)}
+	if err := s.PutWithMtime(context.Background(), "big.bin", rr, int64(len(content)), time.Time{}); err != nil {
+		t.Fatalf("PutWithMtime: %v", err)
+	}
+
+	// Confirm on-disk bytes match (correctness invariant on top of the
+	// buffer-size optimisation — must never regress).
+	got, err := os.ReadFile(filepath.Join(dir, "big.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, content) {
+		t.Fatalf("on-disk content mismatch: len=%d want=%d", len(got), len(content))
+	}
+
+	// The optimisation lives in PutWithMtime's copy loop: caller-facing
+	// Read should be invoked with the full buffer size (4 MiB).
+	if largest := rr.largestCall(); largest != localPutBufSize {
+		t.Errorf("largest Read call = %d, want %d (the 4 MiB optimisation regressed)",
+			largest, localPutBufSize)
+	}
+
+	// At 16 MiB content / 4 MiB chunks we expect 4 full reads + 1 EOF read.
+	// Don't pin exactly — buffer changes shouldn't break the test — but make
+	// sure we didn't fall back to the old 32 KiB path which would produce
+	// hundreds of calls.
+	if n := len(rr.callSize); n > 16 {
+		t.Errorf("too many Read calls (%d); 4 MiB buffer should keep this small", n)
+	}
+}
+
+// failingReader returns sentinel error after returning n bytes.
+type failingReader struct {
+	data []byte
+	pos  int
+	fail error
+	at   int
+}
+
+func (fr *failingReader) Read(p []byte) (int, error) {
+	if fr.pos >= fr.at {
+		return 0, fr.fail
+	}
+	n := copy(p, fr.data[fr.pos:fr.at])
+	fr.pos += n
+	return n, nil
+}
+
+// failingWriter returns sentinel error after accepting n bytes.
+type failingWriter struct {
+	written int
+	limit   int
+	fail    error
+}
+
+func (fw *failingWriter) Write(p []byte) (int, error) {
+	if fw.written >= fw.limit {
+		return 0, fw.fail
+	}
+	allow := fw.limit - fw.written
+	if allow > len(p) {
+		allow = len(p)
+	}
+	fw.written += allow
+	if allow < len(p) {
+		return allow, fw.fail
+	}
+	return allow, nil
+}
+
+func TestCopyWithBuffer_RoundTrip(t *testing.T) {
+	src := bytes.Repeat([]byte("abcdefgh"), 1024*1024) // 8 MiB
+	var dst bytes.Buffer
+	if err := copyWithBuffer(&dst, bytes.NewReader(src), 4*1024*1024); err != nil {
+		t.Fatalf("copyWithBuffer: %v", err)
+	}
+	if !bytes.Equal(dst.Bytes(), src) {
+		t.Fatalf("dst != src (lens %d vs %d)", dst.Len(), len(src))
+	}
+}
+
+func TestCopyWithBuffer_SmallerThanBuffer(t *testing.T) {
+	// Source much smaller than buffer — single read returns everything,
+	// then EOF on the next read.
+	src := []byte("short")
+	var dst bytes.Buffer
+	if err := copyWithBuffer(&dst, bytes.NewReader(src), 4*1024*1024); err != nil {
+		t.Fatalf("copyWithBuffer: %v", err)
+	}
+	if !bytes.Equal(dst.Bytes(), src) {
+		t.Fatalf("dst %q != src %q", dst.String(), src)
+	}
+}
+
+func TestCopyWithBuffer_PropagatesReadError(t *testing.T) {
+	sentinel := errors.New("read boom")
+	fr := &failingReader{data: []byte("12345"), at: 5, fail: sentinel}
+	err := copyWithBuffer(io.Discard, fr, 1024)
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("err = %v, want %v", err, sentinel)
+	}
+}
+
+func TestCopyWithBuffer_PropagatesWriteError(t *testing.T) {
+	sentinel := errors.New("write boom")
+	src := bytes.NewReader(bytes.Repeat([]byte("x"), 10000))
+	fw := &failingWriter{limit: 100, fail: sentinel}
+	err := copyWithBuffer(fw, src, 4096)
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("err = %v, want %v", err, sentinel)
+	}
+}
+
+func TestCopyWithBuffer_ReadReturnsDataPlusEOF(t *testing.T) {
+	// Some readers return (n, io.EOF) in one call. Must commit the bytes
+	// before returning success.
+	r := &dataPlusEOFReader{data: []byte("final-bytes")}
+	var dst bytes.Buffer
+	if err := copyWithBuffer(&dst, r, 4096); err != nil {
+		t.Fatalf("copyWithBuffer: %v", err)
+	}
+	if dst.String() != "final-bytes" {
+		t.Fatalf("dst = %q, want %q (bytes from a (n, io.EOF) Read were dropped)",
+			dst.String(), "final-bytes")
+	}
+}
+
+type dataPlusEOFReader struct {
+	data []byte
+	done bool
+}
+
+func (d *dataPlusEOFReader) Read(p []byte) (int, error) {
+	if d.done {
+		return 0, io.EOF
+	}
+	n := copy(p, d.data)
+	d.done = true
+	return n, io.EOF
+}
+
+// Smoke: PutWithMtime forwards Write errors. Use a fake source that yields
+// content and write target on disk under a restricted dir — actually easier
+// to just verify the success path here, since PutWithMtime delegates the
+// guts to copyWithBuffer (covered above).
+func TestLocalStorage_PutWithMtime_NewDirsCreated(t *testing.T) {
+	dir := t.TempDir()
+	s, _ := NewLocal(dir)
+
+	if err := s.PutWithMtime(context.Background(), "a/b/c/file.bin",
+		bytes.NewReader([]byte("payload")), 7, time.Time{}); err != nil {
+		t.Fatalf("PutWithMtime: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "a", "b", "c", "file.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "payload" {
+		t.Fatalf("got %q", got)
+	}
 }
