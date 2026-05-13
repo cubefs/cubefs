@@ -43,6 +43,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/remotecache/flashgroupmanager"
 	"github.com/cubefs/cubefs/remotecache/flashnode"
+	"github.com/cubefs/cubefs/syncnode"
 	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
@@ -78,6 +79,7 @@ const (
 	RoleLifeCycle         = "lcnode"
 	RoleFlash             = "flashnode"
 	RoleFlashGroupManager = "flashgroupmanager"
+	RoleSync              = "sync"
 )
 
 const (
@@ -90,6 +92,7 @@ const (
 	ModuleLifeCycle         = "lcnode"
 	ModuleFlash             = "flashNode"
 	ModuleFlashGroupManager = "flashGroupManager"
+	ModuleSync              = "sync"
 )
 
 const (
@@ -231,6 +234,9 @@ func main() {
 	case RoleFlashGroupManager:
 		server = flashgroupmanager.NewFlashGroupManager()
 		module = ModuleFlashGroupManager
+	case RoleSync:
+		server = syncnode.NewServer()
+		module = ModuleSync
 	default:
 		err = errors.NewErrorf("Fatal: role mismatch: %s", role)
 		fmt.Println(err)
