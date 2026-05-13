@@ -40,15 +40,6 @@ func main() {
 		os.Exit(2)
 	}
 
-	// Load ~/.cfs-cli.json once at startup so we can initialise the
-	// RDMA pool (process-global) before any subcommand builds its
-	// ExtentClient. When the file is missing or rdmaEnable is false
-	// this is a silent no-op; existing TCP-only setups need no config
-	// change.
-	if cfg, err := loadCLIConfig(); err == nil {
-		initRDMAFromConfig(cfg)
-	}
-
 	sub := os.Args[1]
 	args := os.Args[2:]
 

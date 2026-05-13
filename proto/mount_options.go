@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/auth"
 	"github.com/cubefs/cubefs/util/config"
 )
@@ -101,32 +100,6 @@ const (
 	MinimumNlinkReadDir
 	InodeLruLimit
 	FuseServeThreads
-	// rdma
-	EnableRDMA
-	RDMANumSlots
-	RDMASlotSize
-	// rdma adaptive poll (P2)
-	RDMABusySpinCount
-	RDMAYieldCount
-	RDMASleepThresholdUs
-	// rdma path selection (P6)
-	RDMAMinPayloadBytes
-	// rdma port translation: peer's RDMA listen port = data port + shift.
-	RDMAPortShift
-	// rdma per-peer max conns (parallel QPs). More conns → more
-	// cross-extent parallelism, more pinned memory per peer.
-	RDMAMaxConns
-	// rdma Phase A (one-sided RDMA Read) tunables. ReadSlotCount /
-	// ReadSlotSize size the per-conn scratch pool used by RDMA Reads;
-	// independent from RDMANumSlots / RDMASlotSize which serve the
-	// two-sided send/recv path. OneSidedReadDisabled is an operator
-	// kill switch that skips the Phase A entry entirely without a
-	// rebuild — set to 1 to roll back to pure two-sided RDMA.
-	RDMAReadSlotCount
-	RDMAReadSlotSize
-	RDMAOneSidedReadDisabled
-	RDMAReadTimeoutMs
-	RDMAReadPrefetchDepth
 	MaxMountOption
 )
 
@@ -236,42 +209,6 @@ func InitMountOptions(opts []MountOption) {
 	opts[MinimumNlinkReadDir] = MountOption{"minimumNlinkReadDir", "the minimum Nlink value of the directory that actively triggers the ReadDir operation", "", int64(10000)}
 	opts[InodeLruLimit] = MountOption{"inodeLruLimit", "capacity for inode lru", "", int64(10000000)}
 	opts[FuseServeThreads] = MountOption{"fuseServeThreads", "Fuse Serve Threads", "", int64(0)}
-	opts[EnableRDMA] = MountOption{"rdmaEnable", "Enable RDMA data path", "", false}
-	opts[RDMANumSlots] = MountOption{"rdmaNumSlots", "Number of RDMA slots per connection", "", int64(256)}
-	opts[RDMASlotSize] = MountOption{"rdmaSlotSize", "Size of each RDMA slot in bytes", "", int64(util.BlockSize + util.PageSize)} // 132 KB; mirrors util/rdma.DefaultSlotSize (literal kept here to avoid an import cycle through util/rdma → proto)
-	// P2 adaptive poll knobs. Defaults match rdma.DefaultPollConfig; users
-	// can override per-mount when CPU profile or latency target demands.
-	opts[RDMABusySpinCount] = MountOption{"rdmaBusySpinCount", "Phase-1 max iterations before yielding", "", int64(200)}
-	opts[RDMAYieldCount] = MountOption{"rdmaYieldCount", "Phase-2 max Gosched iterations before sleeping", "", int64(1000)}
-	opts[RDMASleepThresholdUs] = MountOption{"rdmaSleepThresholdUs", "Phase-2 max wall-clock microseconds before sleeping on comp_channel", "", int64(50)}
-	// P6: writes / reads smaller than this threshold skip RDMA and use
-	// TCP. Default 4 KB matches the spec — below this size the two-WR
-	// RDMA round trip costs more than the TCP path's syscall overhead.
-	opts[RDMAMinPayloadBytes] = MountOption{"rdmaMinPayloadBytes", "Skip RDMA path when payload size is below this threshold", "", int64(4096)}
-	opts[RDMAPortShift] = MountOption{"rdmaPortShift", "Add this to peer's data port to reach its RDMA listen port", "", int64(40)}
-	opts[RDMAMaxConns] = MountOption{"rdmaMaxConns", "Max parallel RDMA conns per peer (cross-extent parallelism)", "", int64(4)}
-	// Phase A (one-sided RDMA Read) tunables. ReadSlotCount /
-	// ReadSlotSize size the per-conn read scratch — independent from
-	// rdmaNumSlots / rdmaSlotSize which serve two-sided send/recv.
-	// Defaults: 64 slots × 4 MiB = 256 MiB scratch per Phase A conn,
-	// chosen so a 16 MiB object fits in 4 chunks (matches
-	// readPrefetchDepth=4 in the SDK).
-	opts[RDMAReadSlotCount] = MountOption{"rdmaReadSlotCount", "Phase A read scratch slot count per conn", "", int64(0)}
-	opts[RDMAReadSlotSize] = MountOption{"rdmaReadSlotSize", "Phase A read scratch slot size in bytes", "", int64(0)}
-	// Kill switch — set to 1 (true) to bypass Phase A and use only
-	// the two-sided RDMA path. Lets ops roll back from a one-sided
-	// regression without rebuilding.
-	opts[RDMAOneSidedReadDisabled] = MountOption{"rdmaOneSidedReadDisabled", "Disable Phase A one-sided RDMA Read (use two-sided only)", "", false}
-	// Per-WR Phase A RDMA Read timeout. 0 = default (1000 ms). Lower
-	// for read-heavy workloads on quiet fabrics where falling back
-	// fast beats waiting; raise if your fabric routinely spikes
-	// above the default.
-	opts[RDMAReadTimeoutMs] = MountOption{"rdmaReadTimeoutMs", "Phase A RDMA Read per-WR timeout in milliseconds", "", int64(0)}
-	// Per-object prefetch depth — how many chunks the SDK posts in
-	// parallel. 0 = SDK default (4). Higher pushes more in-flight
-	// WRs per object, useful when chunks are large (cfg.ReadSlotSize
-	// = 4 MiB) and a 4-deep prefetch under-uses the NIC.
-	opts[RDMAReadPrefetchDepth] = MountOption{"rdmaReadPrefetchDepth", "Phase A per-object read prefetch depth (in-flight chunks)", "", int64(0)}
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
 	}
@@ -464,22 +401,4 @@ type MountOptions struct {
 	InodeLruLimit         int64
 	FuseServeThreads      int64
 	MinReadAheadSize      int64
-
-	// rdma
-	EnableRDMA           bool
-	RDMANumSlots         int64
-	RDMASlotSize         int64
-	RDMABusySpinCount    int64
-	RDMAYieldCount       int64
-	RDMASleepThresholdUs int64
-	RDMAMinPayloadBytes  int64
-	RDMAPortShift        int64
-	RDMAMaxConns         int64
-	// Phase A (one-sided RDMA Read) tunables. Zero values fall back
-	// to defaults baked into util/rdma (currently 64 slots × 4 MiB).
-	RDMAReadSlotCount        int64
-	RDMAReadSlotSize         int64
-	RDMAOneSidedReadDisabled bool
-	RDMAReadTimeoutMs        int64
-	RDMAReadPrefetchDepth    int64
 }

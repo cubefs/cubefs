@@ -124,11 +124,10 @@ func (sc *StreamConn) String() string {
 
 // CurrAddr returns the currently selected target host for this StreamConn.
 // NewStreamConn picks this address based on the follower / NearRead /
-// LeaderAddr flags, so callers that route around the regular Send path
-// (e.g. the per-chunk RDMA fast path in ExtentReader) should consult
-// this rather than re-deriving the target from dp.Hosts[0] — those two
-// can differ after a leader election and would otherwise silently route
-// reads to a lagging follower.
+// LeaderAddr flags. Callers that route around the regular Send path
+// should consult this rather than re-deriving the target from
+// dp.Hosts[0] — those two can differ after a leader election and would
+// otherwise silently route reads to a lagging follower.
 func (sc *StreamConn) CurrAddr() string {
 	return sc.currAddr
 }
@@ -287,54 +286,6 @@ func (sc *StreamConn) readActiveHosts(dp *wrapper.DataPartition, req *Packet, ge
 }
 
 func (sc *StreamConn) sendToDataPartitionByAddr(req *Packet, getReply GetReplyFunc) (err error) {
-	// For reads via this dispatcher, recvPacketViaRDMA does a single
-	// round-trip whose response carries the FULL Data the caller
-	// asked for — it does NOT chunk internally like
-	// ExtentReader.readViaRDMA does. So the gate must check the
-	// actual single-shot transfer size, which for reads is req.Size
-	// (the requested data length). Writes are pre-chunked at
-	// BlockSize by the caller (doDirectWriteByAppend / doOverwrite)
-	// so their req.Size already fits a slot.
-	//
-	// Note: a 1 MB GET arriving here has req.Size=1048576 → gate
-	// records reason="large_payload" once and TCP path takes over.
-	// That's the source of the large_payload counter ObjectNode sees
-	// under s3bench 1 MB GET; the bytes are still served via TCP, no
-	// data loss, just a noisy counter. The ExtentReader path is the
-	// preferred entry for big reads — it chunks at ReadBlockSize.
-	if rdmaTryForSize(sc.currAddr, int(req.Size)) {
-		// sendPacketViaRDMA is the WRITE path; reads need
-		// recvPacketViaRDMA which extracts response Data and verifies
-		// CRC. Without this branch, every OpStreamFollowerRead /
-		// OpRead via this dispatcher hits the defensive "invoked with
-		// read opcode" check inside sendPacketViaRDMA and silently
-		// falls back to TCP — RDMA reads via this code path were
-		// effectively disabled and noisy.
-		if req.IsReadOperation() {
-			resp, rerr := recvPacketViaRDMA(sc.currAddr, req)
-			if rerr == nil && resp != nil {
-				// Mirror response onto req so the upstream getReply
-				// path sees the same fields it would from a TCP read.
-				req.ResultCode = resp.ResultCode
-				req.Size = resp.Size
-				req.Data = resp.Data
-				req.CRC = resp.CRC
-				req.ArgLen = resp.ArgLen
-				if resp.ArgLen > 0 {
-					req.Arg = resp.Arg
-				}
-				return nil
-			}
-			err = rerr
-			log.LogWarnf("sendToDataPartition: rdma read failed, addr(%v) reqPacket(%v) err(%v), fallthrough to TCP", sc.currAddr, req, err)
-		} else {
-			if err = sendPacketViaRDMA(sc.currAddr, req); err != nil {
-				log.LogWarnf("sendToDataPartition: rdma failed, addr(%v) reqPacket(%v) err(%v), fallthrough to TCP", sc.currAddr, req, err)
-			} else {
-				return
-			}
-		}
-	}
 	conn, err := StreamConnPool.GetConnect(sc.currAddr)
 	if err == nil {
 		log.LogDebugf("req opcode %v conn %v addr %v dp %v", req.Opcode, conn, sc.currAddr, sc.dp)

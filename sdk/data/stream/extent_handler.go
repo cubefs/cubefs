@@ -32,7 +32,6 @@ import (
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/cubefs/cubefs/util/rdma"
 	"github.com/cubefs/cubefs/util/stat"
 )
 
@@ -346,65 +345,6 @@ func (eh *ExtentHandler) sender() {
 
 			if log.EnableDebug() {
 				log.LogDebugf("ExtentHandler sender: extent allocated, eh(%v) dp(%v) extID(%v) packet(%v)", eh, eh.dp, eh.extID, packet.GetUniqueLogId())
-			}
-
-			// RDMA fast path: route the packet to the leader via SDK
-			// RDMA pool if it fits a slot. rdmaTryForSize is the gate
-			// (returns false when the pool isn't initialised, or when
-			// the packet is outside the small/large payload window).
-			// On RDMA success the reply is already in hand, so we
-			// process it inline and skip the TCP receiver path —
-			// inflight bookkeeping mirrors processReply's defer.
-			//
-			// On any RDMA failure we silently fall through to the
-			// existing TCP send below, so RDMA is purely additive:
-			// nothing breaks when RDMA is off or transient errors hit.
-			leaderAddr := eh.dp.LeaderAddr
-			if leaderAddr == "" && len(eh.dp.Hosts) > 0 {
-				leaderAddr = eh.dp.Hosts[0]
-			}
-			if leaderAddr != "" && rdmaTryForSize(leaderAddr, int(packet.Size)) {
-				rdmaStart := time.Now()
-				if reply, rdmaErr := rdmaRoundTrip(leaderAddr, packet); rdmaErr == nil {
-					// rdmaRoundTrip itself only records fallback metrics
-					// on failure paths (acquire_slot / write_packet /
-					// poll_response). Its two wrappers in rdma_client.go
-					// (sendPacketViaRDMA / recvPacketViaRDMA) call
-					// MetricsObserveRequest on the success path; since
-					// we bypass them and call the inner function
-					// directly, record success here so the
-					// cubefs_rdma_requests_total counter actually moves
-					// for ObjectNode / FUSE / cfs-sync write traffic.
-					rdma.MetricsObserveRequest(rdma.RoleClient, leaderAddr, time.Since(rdmaStart))
-					if reply.ResultCode != proto.OpOk {
-						// Server-rejected RDMA write — handleWriteReply
-						// will mark the packet for recovery, but log
-						// the rejection at the RDMA boundary so it's
-						// distinguishable from TCP rejects in the warn
-						// log. Includes ReqID for correlation with the
-						// DataNode-side error.
-						log.LogWarnf("ExtentHandler sender: RDMA server reject addr(%v) op=0x%x pid=%d ext=%d size=%d crc=%d reqId=%d rc=%d",
-							leaderAddr, packet.Opcode, packet.PartitionID, packet.ExtentID,
-							packet.Size, packet.CRC, packet.ReqID, reply.ResultCode)
-					}
-					status := eh.getStatus()
-					if status >= ExtentStatusError {
-						eh.discardPacket(packet)
-					} else if status >= ExtentStatusRecovery {
-						if rerr := eh.recoverPacket(packet); rerr != nil {
-							eh.discardPacket(packet)
-						}
-					} else {
-						eh.handleWriteReply(packet, &Packet{Packet: *reply})
-					}
-					if atomic.AddInt32(&eh.inflight, -1) <= 0 {
-						eh.empty <- struct{}{}
-					}
-					continue
-				} else {
-					log.LogWarnf("ExtentHandler sender: RDMA failed addr(%v) packet(%v) err(%v), falling back to TCP",
-						leaderAddr, packet, rdmaErr)
-				}
 			}
 
 			if err = packet.writeToConn(eh.conn); err != nil {

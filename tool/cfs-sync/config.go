@@ -11,27 +11,6 @@ import (
 type cliConfig struct {
 	MasterAddr []string `json:"masterAddr"`
 	Timeout    uint16   `json:"timeout"`
-
-	// RDMA client config (optional). Absent / RDMAEnable=false → SDK
-	// uses pure TCP exactly as before; existing deployments need no
-	// config change. Defaults below mirror FUSE mount options for
-	// consistency across client surfaces.
-	RDMAEnable           bool  `json:"rdmaEnable"`
-	RDMAPortShift        int64 `json:"rdmaPortShift"`
-	RDMANumSlots         int64 `json:"rdmaNumSlots"`
-	RDMASlotSize         int64 `json:"rdmaSlotSize"`
-	RDMAMaxConns         int64 `json:"rdmaMaxConns"`
-	RDMAMinPayloadBytes  int64 `json:"rdmaMinPayloadBytes"`
-	RDMABusySpinCount    int64 `json:"rdmaBusySpinCount"`
-	RDMAYieldCount       int64 `json:"rdmaYieldCount"`
-	RDMASleepThresholdUs int64 `json:"rdmaSleepThresholdUs"`
-	// Phase A (one-sided RDMA Read) — see proto/mount_options.go
-	// for default-value rationale.
-	RDMAReadSlotCount        int64 `json:"rdmaReadSlotCount"`
-	RDMAReadSlotSize         int64 `json:"rdmaReadSlotSize"`
-	RDMAOneSidedReadDisabled bool  `json:"rdmaOneSidedReadDisabled"`
-	RDMAReadTimeoutMs        int64 `json:"rdmaReadTimeoutMs"`
-	RDMAReadPrefetchDepth    int64 `json:"rdmaReadPrefetchDepth"`
 }
 
 func loadCLIConfig() (*cliConfig, error) {

@@ -41,7 +41,6 @@ import (
 	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/cubefs/cubefs/util/rdma"
 	"github.com/cubefs/cubefs/util/stat"
 	"github.com/cubefs/cubefs/util/ump"
 	"github.com/google/uuid"
@@ -282,36 +281,6 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	}
 	s.mw.VerReadSeq = s.ec.GetReadVer()
 
-	if opt.EnableRDMA {
-		poolCfg := rdma.RDMAPoolConfig{
-			NumSlots:             int(opt.RDMANumSlots),
-			SlotSize:             int(opt.RDMASlotSize),
-			MaxConns:             int(opt.RDMAMaxConns),
-			Role:                 rdma.RoleClient,
-			MinPayloadBytes:      int(opt.RDMAMinPayloadBytes),
-			RDMAPortShift:        int(opt.RDMAPortShift),
-			ReadSlotCount:        int(opt.RDMAReadSlotCount),
-			ReadSlotSize:         int(opt.RDMAReadSlotSize),
-			OneSidedReadDisabled: opt.RDMAOneSidedReadDisabled,
-			ReadTimeoutMs:        int(opt.RDMAReadTimeoutMs),
-			ReadPrefetchDepth:    int(opt.RDMAReadPrefetchDepth),
-			Poll: rdma.PollConfig{
-				BusySpinCount:    int(opt.RDMABusySpinCount),
-				YieldCount:       int(opt.RDMAYieldCount),
-				SleepThresholdUs: time.Duration(opt.RDMASleepThresholdUs) * time.Microsecond,
-			},
-		}
-		if rerr := stream.InitRDMAConnPool(poolCfg); rerr != nil {
-			log.LogWarnf("NewSuper: RDMA init failed, falling back to TCP: %v", rerr)
-		} else {
-			rdma.StartStatsLogger("FUSE")
-			stream.StartPhaseAStatsLogger("FUSE")
-			log.LogInfof("NewSuper: RDMA client pool initialized (numSlots=%d slotSize=%d maxConns=%d busy=%d yield=%d sleep=%dus portShift=%d). "+
-				"Periodic stats every 60s — grep 'RDMA stats[FUSE]'.",
-				opt.RDMANumSlots, opt.RDMASlotSize, opt.RDMAMaxConns,
-				opt.RDMABusySpinCount, opt.RDMAYieldCount, opt.RDMASleepThresholdUs, opt.RDMAPortShift)
-		}
-	}
 
 	needCreateBlobClient := false
 	if !proto.IsValidStorageClass(opt.VolStorageClass) {
