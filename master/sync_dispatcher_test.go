@@ -87,12 +87,75 @@ func TestDispatcher_ComputeLoadScore_HealthyNode(t *testing.T) {
 	now := time.Now()
 	sn := makeNode("10.0.0.1:17030", func(n *SyncNode) {
 		n.ReportTime = now
+		n.MaxConcurrentTasks = 8
 		n.RunningTasks = 4 // 4/8 = 0.5
 		n.CPUPercent = 50  // 0.5
 	})
 	got := computeLoadScore(sn, now)
 	// 0.4*0.5 + 0.3*0 + 0.2*0.5 + 0.1*0 = 0.30
 	want := 0.30
+	if math.Abs(got-want) > 1e-9 {
+		t.Fatalf("LoadScore = %v, want %v", got, want)
+	}
+}
+
+// TestDispatcher_ComputeLoadScore_FullFormula exercises all four inputs of
+// the §6.3.1 formula with non-zero divisors.
+func TestDispatcher_ComputeLoadScore_FullFormula(t *testing.T) {
+	now := time.Now()
+	sn := makeNode("10.0.0.1:17030", func(n *SyncNode) {
+		n.ReportTime = now
+		n.MaxConcurrentTasks = 10
+		n.RunningTasks = 5           // 5/10 = 0.5 → 0.4*0.5 = 0.20
+		n.BandwidthMBps = 60         // 60/120 = 0.5
+		n.BandwidthMBpsLimit = 120   //         → 0.3*0.5 = 0.15
+		n.CPUPercent = 80            // 0.8     → 0.2*0.8 = 0.16
+		n.LastTaskFailureRate = 0.40 //         → 0.1*0.4 = 0.04
+	})
+	got := computeLoadScore(sn, now)
+	want := 0.20 + 0.15 + 0.16 + 0.04
+	if math.Abs(got-want) > 1e-9 {
+		t.Fatalf("LoadScore = %v, want %v", got, want)
+	}
+}
+
+// TestDispatcher_ComputeLoadScore_ZeroDivisors confirms that when the
+// per-node concurrency / bandwidth ceilings are missing the affected
+// terms contribute 0 (legacy syncnode safe fallback).
+func TestDispatcher_ComputeLoadScore_ZeroDivisors(t *testing.T) {
+	now := time.Now()
+	sn := makeNode("10.0.0.1:17030", func(n *SyncNode) {
+		n.ReportTime = now
+		// MaxConcurrentTasks=0, BandwidthMBpsLimit=0 → capacity & bandwidth
+		// terms both 0.
+		n.RunningTasks = 4
+		n.BandwidthMBps = 500
+		n.CPUPercent = 50            // 0.2*0.5 = 0.10
+		n.LastTaskFailureRate = 0.20 // 0.1*0.2 = 0.02
+	})
+	got := computeLoadScore(sn, now)
+	want := 0.10 + 0.02
+	if math.Abs(got-want) > 1e-9 {
+		t.Fatalf("LoadScore = %v, want %v", got, want)
+	}
+}
+
+// TestDispatcher_ComputeLoadScore_Clamping verifies all four terms are
+// clamped to [0, 1] so overload / misreported metrics can't push the
+// score outside its design range.
+func TestDispatcher_ComputeLoadScore_Clamping(t *testing.T) {
+	now := time.Now()
+	sn := makeNode("10.0.0.1:17030", func(n *SyncNode) {
+		n.ReportTime = now
+		n.MaxConcurrentTasks = 4
+		n.RunningTasks = 20    // 5x over → capacity clamped to 1
+		n.BandwidthMBps = 1000 // 10x over → bandwidth clamped to 1
+		n.BandwidthMBpsLimit = 100
+		n.CPUPercent = 250          // > 100 → cpu clamped to 1
+		n.LastTaskFailureRate = 1.5 // > 1   → clamped to 1
+	})
+	got := computeLoadScore(sn, now)
+	want := 0.4 + 0.3 + 0.2 + 0.1 // all terms saturated at 1
 	if math.Abs(got-want) > 1e-9 {
 		t.Fatalf("LoadScore = %v, want %v", got, want)
 	}
@@ -145,9 +208,9 @@ func TestDispatcher_ComputeLoadScore_InactiveNode(t *testing.T) {
 func TestDispatcher_Candidates_SortedByScoreAsc(t *testing.T) {
 	now := time.Now()
 	src := newStubSource()
-	src.set("a:1", makeNode("a:1", func(n *SyncNode) { n.RunningTasks = 6; n.ReportTime = now })) // score 0.30
-	src.set("b:2", makeNode("b:2", func(n *SyncNode) { n.RunningTasks = 1; n.ReportTime = now })) // score 0.05
-	src.set("c:3", makeNode("c:3", func(n *SyncNode) { n.RunningTasks = 4; n.ReportTime = now })) // score 0.20
+	src.set("a:1", makeNode("a:1", func(n *SyncNode) { n.MaxConcurrentTasks = 8; n.RunningTasks = 6; n.ReportTime = now })) // score 0.30
+	src.set("b:2", makeNode("b:2", func(n *SyncNode) { n.MaxConcurrentTasks = 8; n.RunningTasks = 1; n.ReportTime = now })) // score 0.05
+	src.set("c:3", makeNode("c:3", func(n *SyncNode) { n.MaxConcurrentTasks = 8; n.RunningTasks = 4; n.ReportTime = now })) // score 0.20
 
 	d := newSyncDispatcherFromSource(src)
 	d.now = fixedNow(now)
@@ -209,8 +272,8 @@ func TestDispatcher_Candidates_SkipsStaleAndUnhealthy(t *testing.T) {
 func TestDispatcher_Dispatch_PicksLowestLoad(t *testing.T) {
 	now := time.Now()
 	src := newStubSource()
-	src.set("hot:1", makeNode("hot:1", func(n *SyncNode) { n.RunningTasks = 6; n.ReportTime = now }))
-	src.set("cold:2", makeNode("cold:2", func(n *SyncNode) { n.RunningTasks = 1; n.ReportTime = now }))
+	src.set("hot:1", makeNode("hot:1", func(n *SyncNode) { n.MaxConcurrentTasks = 8; n.RunningTasks = 6; n.ReportTime = now }))
+	src.set("cold:2", makeNode("cold:2", func(n *SyncNode) { n.MaxConcurrentTasks = 8; n.RunningTasks = 1; n.ReportTime = now }))
 
 	d := newSyncDispatcherFromSource(src)
 	d.now = fixedNow(now)
@@ -236,9 +299,9 @@ func TestDispatcher_Dispatch_PicksLowestLoad(t *testing.T) {
 func TestDispatcher_Dispatch_FallsBackOnNack(t *testing.T) {
 	now := time.Now()
 	src := newStubSource()
-	src.set("first:1", makeNode("first:1", func(n *SyncNode) { n.RunningTasks = 1; n.ReportTime = now }))   // 0.05
-	src.set("second:2", makeNode("second:2", func(n *SyncNode) { n.RunningTasks = 3; n.ReportTime = now })) // 0.15
-	src.set("third:3", makeNode("third:3", func(n *SyncNode) { n.RunningTasks = 5; n.ReportTime = now }))   // 0.25
+	src.set("first:1", makeNode("first:1", func(n *SyncNode) { n.MaxConcurrentTasks = 8; n.RunningTasks = 1; n.ReportTime = now }))   // 0.05
+	src.set("second:2", makeNode("second:2", func(n *SyncNode) { n.MaxConcurrentTasks = 8; n.RunningTasks = 3; n.ReportTime = now })) // 0.15
+	src.set("third:3", makeNode("third:3", func(n *SyncNode) { n.MaxConcurrentTasks = 8; n.RunningTasks = 5; n.ReportTime = now }))   // 0.25
 
 	d := newSyncDispatcherFromSource(src)
 	d.now = fixedNow(now)

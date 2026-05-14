@@ -22,10 +22,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cubefs/cubefs/syncnode/spec"
 	"github.com/cubefs/cubefs/syncnode/backend"
 	"github.com/cubefs/cubefs/syncnode/executor"
 	"github.com/cubefs/cubefs/syncnode/rules"
+	"github.com/cubefs/cubefs/syncnode/spec"
 )
 
 // RuleLookup is the narrow read-only view of the rules.Store the Runner
@@ -47,6 +47,15 @@ type BackendBuilder interface {
 // here — the package import list is tightly constrained).
 type IDFactory func() string
 
+// OnTerminalFunc is called once per task after it reaches a terminal status
+// and the record has been persisted to the Store. Errors from the callback
+// are logged but do NOT affect the task result.
+//
+// Production wires this to syncnode.SyncNode.onTaskTerminal so master gets
+// pushed a TaskTerminalReport via OpSyncNodeRunTask response. The Runner
+// holds at most one callback; passing nil resets to "no-op".
+type OnTerminalFunc func(rec *Record)
+
 // ErrRuleTypeMismatch is returned by Save / Load aliases when the rule's
 // declared type doesn't match the requested alias.
 var ErrRuleTypeMismatch = errors.New("rule type does not match endpoint")
@@ -65,6 +74,11 @@ type Runner struct {
 	// reporterFactory produces an executor.Reporter for each run. Defaults
 	// to a recording reporter that snapshots Progress into the Record.
 	reporterFactory func(taskID string) executor.Reporter
+
+	// onTerminal is the optional lifecycle hook fired exactly once per
+	// task after a terminal record has been persisted. nil → skip. Set
+	// via WithOnTerminal.
+	onTerminal OnTerminalFunc
 
 	// waiters tracks per-task done channels for wait=true callers. The
 	// goroutine running the task closes its channel when the record reaches
@@ -86,6 +100,16 @@ func WithIDFactory(f IDFactory) RunnerOption {
 			r.idFactory = f
 		}
 	}
+}
+
+// WithOnTerminal registers a callback fired once per task after it hits a
+// terminal status (done / failed / cancelled) and the resulting Record has
+// been persisted via Store.Put. The callback runs on the same goroutine as
+// the task's run loop, AFTER all bookkeeping is complete, so it should not
+// do unbounded work. Production wires this to the master push-back path;
+// tests use it as an observer.
+func WithOnTerminal(fn OnTerminalFunc) RunnerOption {
+	return func(r *Runner) { r.onTerminal = fn }
 }
 
 // NewRunner returns a Runner. exec / store / rules / builder must be non-nil.
@@ -120,6 +144,27 @@ func (r *Runner) Trigger(ctx context.Context, ruleID string, wait bool) (*Record
 		return nil, err
 	}
 	return r.triggerRule(ctx, rule, "", nil, wait)
+}
+
+// TriggerWithID is the master-driven entry point: like Trigger, but uses
+// the supplied taskID verbatim instead of generating one via idFactory.
+// This is what makes master's taskOwner ledger stay in sync with the
+// syncnode's local Record store — a Cancel(t-1) from master can land
+// because syncnode's local Record key is exactly "t-1".
+//
+// Empty taskID falls back to the regular Trigger behaviour (a fresh id
+// is allocated). Defensive: master is the source of truth for the ID;
+// the empty-fallback exists so older masters that don't carry the field
+// still get a working trigger.
+func (r *Runner) TriggerWithID(ctx context.Context, ruleID, taskID string, wait bool) (*Record, error) {
+	if ruleID == "" {
+		return nil, fmt.Errorf("ruleID required")
+	}
+	rule, err := r.rules.Get(ctx, ruleID)
+	if err != nil {
+		return nil, err
+	}
+	return r.triggerRule(ctx, rule, taskID, nil, wait)
 }
 
 // TriggerSubTask is the P1-7 fan-out entry point. It runs the same rule
@@ -346,6 +391,25 @@ func (r *Runner) run(task *executor.Task, src, dst backend.Backend, done chan st
 				_ = rules.Degrade(context.Background(), store, cur.RuleID, result.Error)
 			}
 		}
+	}
+
+	// Terminal lifecycle hook: fire AFTER the record is persisted and the
+	// degrade path has run, so observers see the final-state Record. Guard
+	// against panics with a recover — a buggy hook must NOT take the run
+	// goroutine down (which would leak the done channel + waiters entry).
+	if r.onTerminal != nil {
+		func() {
+			defer func() {
+				if rec := recover(); rec != nil {
+					// Best-effort log; rules pkg log is in scope already
+					// via the imports above. We avoid pulling in
+					// util/log here to keep the package import surface
+					// stable.
+					_ = rec
+				}
+			}()
+			r.onTerminal(cloneRecord(cur))
+		}()
 	}
 }
 

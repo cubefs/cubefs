@@ -36,8 +36,17 @@ type RuleConfig struct {
 	SampleStrategy     string          `json:"sampleStrategy"`
 	SampleRate         float64         `json:"sampleRate"`
 	BandwidthLimitMBps int             `json:"bandwidthLimitMBps"`
-	Parallelism        int             `json:"parallelism"`
-	ShardingStrategy   string          `json:"shardingStrategy"`
+	// AggregateBandwidthLimitMBps is the cluster-wide bandwidth ceiling
+	// for this rule, summed across every syncnode running it (design.md
+	// §12.4.1 + §4.2). The master quota calculator (P1-8) divides this
+	// cap across active nodes and pushes per-node slices on the
+	// heartbeat reply (RuleQuotas). 0 means "no cluster cap" — only the
+	// per-node BandwidthLimitMBps applies. The syncnode itself never
+	// reads this field; it lives in the rule store so master can fetch
+	// it during quota fan-out.
+	AggregateBandwidthLimitMBps int    `json:"aggregateBandwidthLimitMBps"`
+	Parallelism                 int    `json:"parallelism"`
+	ShardingStrategy            string `json:"shardingStrategy"`
 }
 
 // EndpointConfig describes one source or destination of a rule. The fields

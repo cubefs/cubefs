@@ -54,9 +54,32 @@ func (c *Cluster) handleSyncNodeTaskResponse(nodeAddr string, task *proto.AdminT
 		if err = c.handleSyncNodeHeartbeatResp(nodeAddr, resp); err != nil {
 			log.LogWarnf("sn handleSyncNodeHeartbeatResp failed: %v, err: %v", task.ToString(), err)
 		}
+	case proto.OpSyncNodeRunTask:
+		// Terminal-status push-back from the syncnode (Bug #3 fix). The
+		// run completed (done / failed / cancelled) on the owner; clear
+		// the dispatcher's ownership entry + the failover orchestrator's
+		// saved payload so the in-memory maps don't grow unbounded.
+		rep, derr := decodeTerminalReport(task)
+		if derr != nil {
+			log.LogWarnf("sn handleSyncNodeTaskResponse decode terminal: %v, err: %v", task.ToString(), derr)
+			return
+		}
+		if !isTerminalStatus(rep.Status) {
+			// Non-terminal status (e.g. progress beacon repurposing the
+			// same opcode in the future) — skip the release path.
+			log.LogDebugf("sn handleSyncNodeTaskResponse: non-terminal status %q for task %q, skipping release",
+				rep.Status, rep.TaskID)
+			return
+		}
+		if c.syncDispatcher != nil {
+			c.syncDispatcher.Release(rep.TaskID)
+		}
+		if c.syncFailover != nil {
+			c.syncFailover.Forget(rep.TaskID)
+		}
+		log.LogInfof("sn task %s terminal on %s: status=%s err=%s",
+			rep.TaskID, nodeAddr, rep.Status, rep.Error)
 	default:
-		// TODO(B-2): OpSyncNodeRunTask / OpSyncNodeCancelTask handled in
-		// later phases — log+ignore here keeps the wire path open.
 		log.LogInfof("sn handleSyncNodeTaskResponse: unknown opcode %v, ignored", task.OpCode)
 	}
 }
@@ -89,7 +112,25 @@ func (c *Cluster) handleSyncNodeHeartbeatResp(nodeAddr string, resp *proto.SyncN
 	sn.CPUPercent = resp.CPUPercent
 	sn.MemPercent = resp.MemPercent
 	sn.ReloadFailures = resp.ReloadFailures
+	sn.MaxConcurrentTasks = resp.MaxConcurrentTasks
+	sn.BandwidthMBpsLimit = resp.BandwidthMBpsLimit
+	sn.LastTaskFailureRate = resp.LastTaskFailureRate
 	sn.Unlock()
+
+	// FIX #4: ingest the syncnode's advertised per-rule
+	// AggregateBandwidthLimitMBps caps so the SyncQuotaCalculator has
+	// authoritative cluster ceilings. Operators set the same cap on every
+	// node's sync.json via SIGHUP reload; master takes the most-recent
+	// non-zero value as the truth. A zero value clears the cap (no cluster
+	// limit on that rule).
+	if c.syncQuota != nil {
+		for _, ad := range resp.Rules {
+			if ad.ID == "" {
+				continue
+			}
+			c.syncQuota.SetRuleLimit(ad.ID, float64(ad.AggregateBandwidthLimitMBps))
+		}
+	}
 
 	log.LogInfof("action[handleSyncNodeHeartbeatResp], syncNode[%v], running[%v], queued[%v], rules[%v], bolt[%v]",
 		nodeAddr, resp.RunningTasks, resp.QueuedTasks, resp.ScheduledRules, resp.BoltDBHealthy)
@@ -110,4 +151,46 @@ func decodeTaskResponse(task *proto.AdminTask, out interface{}) error {
 	}
 	task.Response = out
 	return nil
+}
+
+// decodeTerminalReport peels a TaskTerminalReport out of an
+// OpSyncNodeRunTask response envelope. The wire shape may arrive as a
+// typed *proto.TaskTerminalReport (direct decode) OR as
+// map[string]interface{} (post-RPC framework rehydration); we handle both
+// via the shared decodeTaskResponse round-trip.
+func decodeTerminalReport(task *proto.AdminTask) (*proto.TaskTerminalReport, error) {
+	if task == nil {
+		return nil, fmt.Errorf("nil admin task")
+	}
+	if task.Response == nil {
+		return nil, fmt.Errorf("admin task carries no Response payload")
+	}
+	if rep, ok := task.Response.(*proto.TaskTerminalReport); ok && rep != nil {
+		return rep, nil
+	}
+	rep := &proto.TaskTerminalReport{}
+	if err := decodeTaskResponse(task, rep); err != nil {
+		return nil, err
+	}
+	// Falls back to the task ID when the inner field is empty — the
+	// outer AdminTask.ID is set by the syncnode push-back path to the
+	// same value, so this preserves the dispatcher Release key even if
+	// a downstream message-shape change leaves rep.TaskID blank.
+	if rep.TaskID == "" {
+		rep.TaskID = task.ID
+	}
+	return rep, nil
+}
+
+// isTerminalStatus reports whether status string is one of the executor's
+// terminal sentinel values ("done" / "failed" / "cancelled"). Mirrors
+// syncnode/executor.Status string constants without taking a build-graph
+// dependency on the syncnode package from master.
+func isTerminalStatus(status string) bool {
+	switch status {
+	case "done", "failed", "cancelled":
+		return true
+	default:
+		return false
+	}
 }

@@ -195,6 +195,16 @@ func (api *NodeAPI) ResponseSyncNodeTask(task *proto.AdminTask) (err error) {
 	return api.mc.request(newRequest(post, proto.GetSyncNodeTaskResponse).Header(api.h).Body(task))
 }
 
+// GetSyncNodeQuota fetches the master-computed bandwidth quotas for one
+// syncnode. Called by the heartbeat goroutine every tick (P1-8 + P1-9).
+// Returns an empty SyncNodeQuotaReply with zero maps when master has no
+// quotas configured for this node — callers treat that as "unlimited".
+func (api *NodeAPI) GetSyncNodeQuota(addr string) (reply *proto.SyncNodeQuotaReply, err error) {
+	reply = &proto.SyncNodeQuotaReply{}
+	err = api.mc.requestWith(reply, newRequest(get, proto.GetSyncNodeQuota).Header(api.h).addParam("addr", addr))
+	return
+}
+
 func (api *NodeAPI) QueryDecommissionedDisks(addr string) (disks *proto.DecommissionedDisks, err error) {
 	disks = &proto.DecommissionedDisks{}
 	err = api.mc.requestWith(disks, newRequest(get, proto.QueryDisableDisk).Header(api.h).addParam("addr", addr))

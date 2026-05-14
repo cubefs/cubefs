@@ -199,10 +199,18 @@ type Cluster struct {
 	// syncQuota computes per-node bandwidth quotas (per-rule + per-backend)
 	// from cluster-wide caps and the live syncnode fleet (Phase P1-8 + P1-9).
 	// Compute() is called from checkSyncNodeHeartbeat so the per-node maps
-	// stay in lock-step with the heartbeat round. Quota wire-injection into
-	// the outgoing heartbeat task is gated on a future SDK reply-decode
-	// change — see TODO in checkSyncNodeHeartbeat.
+	// stay in lock-step with the heartbeat round. Quota delivery to
+	// syncnodes goes via the GetSyncNodeQuota HTTP endpoint
+	// (syncnode polls every heartbeat tick — see syncnode/master_client.go).
 	syncQuota *SyncQuotaCalculator
+
+	// syncFanout tracks parent → sub-task state for file-level fan-out
+	// dispatches (Phase P1-7). Promoted to a Cluster field so the parents
+	// map survives across HTTP requests: RecordProgress events from
+	// sub-tasks arrive over time and need the same instance that
+	// DispatchN created the parent on. Recover() rebuilds the map from
+	// the dispatcher's ownership ledger on master leader transition.
+	syncFanout *SyncFanout
 }
 
 type cTask struct {
@@ -507,6 +515,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.syncDispatcher = NewSyncDispatcher(c)
 	c.syncFailover = NewSyncFailover(c, c.syncDispatcher)
 	c.syncQuota = NewSyncQuotaCalculator(c)
+	c.syncFanout = NewSyncFanout(c.syncDispatcher)
 	return
 }
 

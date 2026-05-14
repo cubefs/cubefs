@@ -64,6 +64,13 @@ type SyncNode struct {
 	MemPercent     float64
 	ReloadFailures uint64
 
+	// Load-score inputs mirrored from the heartbeat snapshot (§6.3.1).
+	// Defaults are zero — preserves existing behavior when the syncnode
+	// is on the old version and doesn't populate these.
+	MaxConcurrentTasks  int
+	BandwidthMBpsLimit  float64
+	LastTaskFailureRate float64
+
 	sync.RWMutex
 }
 

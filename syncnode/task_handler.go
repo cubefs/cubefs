@@ -33,6 +33,7 @@ import (
 // full executor / backend stack into the handler suite.
 type runnerAPI interface {
 	Trigger(ctx context.Context, ruleID string, wait bool) (*tasks.Record, error)
+	TriggerWithID(ctx context.Context, ruleID, taskID string, wait bool) (*tasks.Record, error)
 	Cancel(ctx context.Context, taskID string) error
 }
 
@@ -230,6 +231,17 @@ func (h *TaskHandler) handleRunTask(ctx context.Context, p *proto.Packet) *proto
 		return okReply(p)
 	}
 
+	// Single-shard path. When the master provided a TaskID, honour it via
+	// TriggerWithID so the local Record key is identical to the master's
+	// taskOwner ledger entry — otherwise cancel / forget / failover all
+	// silently no-op because the local IDs would diverge. An empty TaskID
+	// (older pre-fix masters) falls back to the local idFactory.
+	if req.TaskID != "" {
+		if _, err := h.runner.TriggerWithID(context.Background(), req.RuleID, req.TaskID, false); err != nil {
+			return errorReply(p, fmt.Errorf("trigger rule %q taskID %q: %w", req.RuleID, req.TaskID, err))
+		}
+		return okReply(p)
+	}
 	if _, err := h.runner.Trigger(context.Background(), req.RuleID, false); err != nil {
 		return errorReply(p, fmt.Errorf("trigger rule %q: %w", req.RuleID, err))
 	}

@@ -15,7 +15,13 @@
 package syncnode
 
 import (
+	"context"
+	"math"
 	"testing"
+	"time"
+
+	"github.com/cubefs/cubefs/syncnode/executor"
+	"github.com/cubefs/cubefs/syncnode/tasks"
 )
 
 // TestSnapshot_ZeroSyncNode covers the safe-defaults branch when the
@@ -38,5 +44,139 @@ func TestSnapshot_ZeroSyncNode(t *testing.T) {
 	// assert non-negative since the test process startedAt is set in metrics.
 	if got.UptimeSeconds < 0 {
 		t.Errorf("UptimeSeconds = %d, want ≥ 0", got.UptimeSeconds)
+	}
+	// Load-score inputs default to zero on a bare node (no cfg, no
+	// taskStore). These must not panic and must report zero.
+	if got.MaxConcurrentTasks != 0 {
+		t.Errorf("MaxConcurrentTasks = %d, want 0 on bare SyncNode", got.MaxConcurrentTasks)
+	}
+	if got.BandwidthMBpsLimit != 0 {
+		t.Errorf("BandwidthMBpsLimit = %f, want 0 on bare SyncNode", got.BandwidthMBpsLimit)
+	}
+	if got.LastTaskFailureRate != 0 {
+		t.Errorf("LastTaskFailureRate = %f, want 0 on bare SyncNode", got.LastTaskFailureRate)
+	}
+}
+
+// TestSnapshot_LoadScoreInputsFromConfig verifies the concurrency caps
+// are read from s.cfg.Concurrency on the heartbeat hot path.
+func TestSnapshot_LoadScoreInputsFromConfig(t *testing.T) {
+	s := &SyncNode{
+		cfg: &SyncConfig{
+			Concurrency: ConcurrencyConfig{
+				MaxConcurrentTasks: 16,
+				BandwidthLimitMBps: 250,
+			},
+		},
+	}
+	got := s.Snapshot()
+	if got.MaxConcurrentTasks != 16 {
+		t.Errorf("MaxConcurrentTasks = %d, want 16", got.MaxConcurrentTasks)
+	}
+	if got.BandwidthMBpsLimit != 250 {
+		t.Errorf("BandwidthMBpsLimit = %f, want 250", got.BandwidthMBpsLimit)
+	}
+}
+
+// TestComputeRecentFailureRate_NilStore covers the early-return path
+// before the taskStore is wired up (startup race).
+func TestComputeRecentFailureRate_NilStore(t *testing.T) {
+	s := &SyncNode{}
+	if rate := s.computeRecentFailureRate(5 * time.Minute); rate != 0 {
+		t.Errorf("rate = %v, want 0 when taskStore is nil", rate)
+	}
+}
+
+// TestComputeRecentFailureRate covers the four shapes the dispatcher
+// cares about: empty store, all-success, mixed, and window-cutoff.
+func TestComputeRecentFailureRate(t *testing.T) {
+	tests := []struct {
+		name    string
+		records []*tasks.Record
+		window  time.Duration
+		want    float64
+	}{
+		{
+			name:    "empty store yields zero",
+			records: nil,
+			window:  5 * time.Minute,
+			want:    0,
+		},
+		{
+			name: "all-passing yields zero",
+			records: []*tasks.Record{
+				doneRecord("t1", executor.StatusDone, -1*time.Minute),
+				doneRecord("t2", executor.StatusDone, -2*time.Minute),
+				doneRecord("t3", executor.StatusDone, -3*time.Minute),
+			},
+			window: 5 * time.Minute,
+			want:   0,
+		},
+		{
+			name: "mixed inside window yields proportion",
+			records: []*tasks.Record{
+				doneRecord("t1", executor.StatusDone, -30*time.Second),
+				doneRecord("t2", executor.StatusFailed, -1*time.Minute),
+				doneRecord("t3", executor.StatusDone, -2*time.Minute),
+				doneRecord("t4", executor.StatusFailed, -3*time.Minute),
+				doneRecord("t5", executor.StatusFailed, -4*time.Minute),
+			},
+			window: 5 * time.Minute,
+			want:   3.0 / 5.0,
+		},
+		{
+			name: "records older than window are ignored",
+			records: []*tasks.Record{
+				doneRecord("t1", executor.StatusDone, -1*time.Minute),
+				doneRecord("t2", executor.StatusFailed, -10*time.Minute), // outside window
+			},
+			window: 5 * time.Minute,
+			want:   0, // only success inside window → 0/1 = 0
+		},
+		{
+			name: "in-flight records (zero DoneAt) are ignored",
+			records: []*tasks.Record{
+				{TaskID: "running1", Status: executor.StatusRunning},
+				doneRecord("t1", executor.StatusFailed, -1*time.Minute),
+			},
+			window: 5 * time.Minute,
+			want:   1.0, // 1 failed / 1 terminal inside window
+		},
+		{
+			name: "cancelled records count as non-failed",
+			records: []*tasks.Record{
+				doneRecord("t1", executor.StatusCancelled, -1*time.Minute),
+				doneRecord("t2", executor.StatusFailed, -2*time.Minute),
+			},
+			window: 5 * time.Minute,
+			want:   0.5,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			store := tasks.NewMemoryStore()
+			ctx := context.Background()
+			for _, r := range tc.records {
+				if err := store.Put(ctx, r); err != nil {
+					t.Fatalf("seed Put: %v", err)
+				}
+			}
+			s := &SyncNode{taskStore: store}
+			got := s.computeRecentFailureRate(tc.window)
+			if math.Abs(got-tc.want) > 1e-9 {
+				t.Fatalf("rate = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// doneRecord builds a terminal *tasks.Record with DoneAt = now+offset
+// (use a negative offset for past records). Helper for table-driven tests.
+func doneRecord(id string, status executor.Status, offset time.Duration) *tasks.Record {
+	return &tasks.Record{
+		TaskID:    id,
+		Status:    status,
+		StartedAt: time.Now().Add(offset - 1*time.Second),
+		DoneAt:    time.Now().Add(offset),
 	}
 }

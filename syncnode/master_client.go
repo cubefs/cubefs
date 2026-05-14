@@ -320,15 +320,13 @@ func (c *SyncMasterClient) heartbeatLoop(ctx context.Context) {
 }
 
 // sendHeartbeat pushes a heartbeat envelope to the master via the
-// ResponseSyncNodeTask path. The current SDK call discards the master's
-// reply body; once the SDK exposes a typed-reply variant we'll decode
-// SyncNodeHeartbeatResponse here and feed any RuleQuotas / BackendQuotas
-// into applyHeartbeatReply. Until then this is a single push.
-//
-// TODO(P1-8+9 wiring): swap ResponseSyncNodeTask for a variant that
-// returns the decoded *proto.SyncNodeHeartbeatResponse, then call
-// c.applyHeartbeatReply on it. Master's outgoing-task injection (in
-// cluster.go) is wired conditionally on the same TODO.
+// ResponseSyncNodeTask path, then pulls the master-computed bandwidth
+// quotas via the GetSyncNodeQuota SDK call and applies them locally
+// (P1-8 + P1-9 delivery). The two calls are split — the push uses an
+// AdminTask body so master's existing handleSyncNodeTaskResponse decodes
+// the snapshot, and the pull returns a typed JSON payload the SDK
+// auto-decodes. Pull failures are non-fatal: master may not have quotas
+// configured, or the network blip may resolve on the next tick.
 func (c *SyncMasterClient) sendHeartbeat(_ context.Context) error {
 	resp := c.buildHeartbeatPayload()
 	task := proto.NewAdminTask(proto.OpSyncNodeHeartbeat, c.LocalServerAddr(), nil)
@@ -336,7 +334,37 @@ func (c *SyncMasterClient) sendHeartbeat(_ context.Context) error {
 	if err := c.mc.NodeAPI().ResponseSyncNodeTask(task); err != nil {
 		return fmt.Errorf("response sync node task: %w", err)
 	}
+	// Pull-then-apply quotas. Independent of the heartbeat push so a
+	// quota-endpoint outage doesn't flap registered=false.
+	if c.rateLimits != nil {
+		if reply, qerr := c.mc.NodeAPI().GetSyncNodeQuota(c.LocalServerAddr()); qerr != nil {
+			log.LogWarnf("syncnode: pull quota: %v", qerr)
+		} else if reply != nil {
+			c.applyQuotaReply(reply)
+		}
+	}
 	return nil
+}
+
+// applyQuotaReply pushes the master-computed quota maps into the local
+// rate-limit registry. A nil registry or nil reply is a no-op. Empty /
+// missing entries on either map are tolerated; a zero MB/s value removes
+// the bucket (back to unlimited) — see Registry.SetRuleLimit /
+// SetBackendLimit. Exported for testability.
+func (c *SyncMasterClient) applyQuotaReply(reply *proto.SyncNodeQuotaReply) {
+	if c == nil || c.rateLimits == nil || reply == nil {
+		return
+	}
+	for ruleID, mbps := range reply.RuleQuotas {
+		c.rateLimits.SetRuleLimit(ruleID, int(mbps))
+	}
+	for keyStr, mbps := range reply.BackendQuotas {
+		k, ok := ratelimit.ParseBackendKey(keyStr)
+		if !ok {
+			continue
+		}
+		c.rateLimits.SetBackendLimit(k, int(mbps))
+	}
 }
 
 // applyHeartbeatReply pushes the master-computed quota maps from a

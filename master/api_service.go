@@ -8054,6 +8054,37 @@ func (m *Server) listSyncNodes(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(out))
 }
 
+// getSyncNodeQuota returns the master-computed bandwidth quotas for one
+// syncnode. The syncnode's heartbeat goroutine polls this every tick and
+// pushes the result into its local ratelimit.Registry (P1-8 + P1-9
+// delivery side). Missing addr → empty maps (treated as "unlimited").
+func (m *Server) getSyncNodeQuota(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.GetSyncNodeQuota))
+	var err error
+	defer func() {
+		doStatAndMetric(proto.GetSyncNodeQuota, metric, err, nil)
+	}()
+	addr := r.URL.Query().Get("addr")
+	if addr == "" {
+		err = fmt.Errorf("missing required query param: addr")
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	reply := &proto.SyncNodeQuotaReply{Addr: addr}
+	if snI, ok := m.cluster.syncNodes.Load(addr); ok {
+		sn := snI.(*SyncNode)
+		sn.RLock()
+		reply.NodeID = sn.ID
+		sn.RUnlock()
+	}
+	if m.cluster.syncQuota != nil {
+		nq := m.cluster.syncQuota.QuotasFor(addr)
+		reply.RuleQuotas = nq.Rules
+		reply.BackendQuotas = nq.Backends
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(reply))
+}
+
 // dispatchSyncTask is the master entry point that other services call to
 // ask master to fan-out a sync task. The request body is an AdminTask
 // envelope (task.ID + task.Request payload); master picks the
@@ -8111,7 +8142,14 @@ func (m *Server) dispatchSyncTask(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = json.Unmarshal(body, &hint)
 	if hint.ShardTotal > 1 {
-		fo := NewSyncFanout(m.cluster.syncDispatcher)
+		// FIX #7: use the Cluster's persistent SyncFanout so the parents
+		// map survives across HTTP requests — RecordProgress events from
+		// sub-tasks arrive after this handler returns and need the same
+		// instance that DispatchN registered the parent on.
+		fo := m.cluster.syncFanout
+		if fo == nil {
+			fo = NewSyncFanout(m.cluster.syncDispatcher) // defensive — should never trigger
+		}
 		// Extract ruleID for parent tracking; tolerate absence (the
 		// fanout only uses it for logging / future per-rule lookups).
 		var ruleHint struct {
@@ -8139,6 +8177,27 @@ func (m *Server) dispatchSyncTask(w http.ResponseWriter, r *http.Request) {
 			err = dispErr
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
+		}
+		// Bug #2 fix: stash the per-shard RunTask payload so the failover
+		// orchestrator can rebuild + redispatch it when a shard's owner
+		// dies. The dispatcher's failoverHook drives Remember-lookup via
+		// the same sub-task ID DispatchN allocated.
+		if m.cluster.syncFailover != nil {
+			for shard, addr := range owners {
+				subID := fmt.Sprintf("%s/%d", task.ID, shard)
+				shardPayload, cloneErr := jsonRoundTripFanoutCloner.CloneWithSubTask(task.Request, SubTaskInfo{
+					ParentTaskID: task.ID,
+					ShardIndex:   shard,
+					ShardTotal:   hint.ShardTotal,
+				})
+				if cloneErr != nil {
+					log.LogWarnf("syncFailover: clone shard %d for Remember: %v", shard, cloneErr)
+					continue
+				}
+				shardTask := proto.NewAdminTask(proto.OpSyncNodeRunTask, addr, shardPayload)
+				shardTask.ID = subID
+				m.cluster.syncFailover.Remember(subID, shardTask)
+			}
 		}
 		sendOkReply(w, r, newSuccessHTTPReply(map[string]interface{}{
 			"taskID":     task.ID,
@@ -8168,6 +8227,13 @@ func (m *Server) dispatchSyncTask(w http.ResponseWriter, r *http.Request) {
 		err = dispErr
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
+	}
+	// Bug #2 fix: stash the original RunTask payload so the failover
+	// orchestrator can rebuild + redispatch it on owner death. Without
+	// this Remember, the failover hook always logs "no saved payload"
+	// and zero failover actually happens.
+	if m.cluster.syncFailover != nil {
+		m.cluster.syncFailover.Remember(task.ID, &task)
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(map[string]interface{}{
 		"node":   addr,

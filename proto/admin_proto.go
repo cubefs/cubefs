@@ -254,6 +254,10 @@ const (
 	ListSyncNodes           = "/syncNode/list"
 	SyncNodeDispatch        = "/syncNode/dispatch" // Method: 'POST' — master picks a syncnode for the task and forwards OpSyncNodeRunTask
 	GetSyncNodeTaskResponse = "/syncNode/response" // Method: 'POST'
+	// GetSyncNodeQuota returns the per-node rule + backend bandwidth
+	// quotas computed by master's SyncQuotaCalculator. Syncnode polls
+	// this every heartbeat tick (P1-8 + P1-9). 'GET ?addr=<self-addr>'.
+	GetSyncNodeQuota = "/syncNode/getQuota"
 
 	QueryDisableDisk             = "/dataNode/queryDisableDisk"
 	QueryDecommissionSuccessDisk = "/dataNode/queryDecommissionSuccessDisk"
@@ -1076,6 +1080,67 @@ type SyncNodeHeartbeatResponse struct {
 	// On the syncnode side a zero value removes the bucket (unlimited).
 	RuleQuotas    map[string]float64 `json:"ruleQuotas,omitempty"`
 	BackendQuotas map[string]float64 `json:"backendQuotas,omitempty"`
+
+	// Load-score inputs (§6.3.1). Used by master.computeLoadScore so the
+	// full 4-term formula has real divisors instead of zero substitutions.
+	//   - MaxConcurrentTasks   : per-node concurrency ceiling from
+	//                            ConcurrencyConfig.MaxConcurrentTasks. 0
+	//                            means "treat as unlimited" → the capacity
+	//                            term contributes 0.
+	//   - BandwidthMBpsLimit   : per-node bandwidth ceiling in MB/s from
+	//                            ConcurrencyConfig.BandwidthLimitMBps. 0
+	//                            means "no local cap" → bandwidth term
+	//                            contributes 0 (avoids divide-by-zero).
+	//   - LastTaskFailureRate  : failed/total over the last 5 minutes of
+	//                            terminal task records, clamped to [0,1].
+	MaxConcurrentTasks  int     `json:"maxConcurrentTasks"`
+	BandwidthMBpsLimit  float64 `json:"bandwidthMBpsLimit"`
+	LastTaskFailureRate float64 `json:"lastTaskFailureRate"`
+
+	// Rules advertises the local rule store's per-rule
+	// AggregateBandwidthLimitMBps caps. Master's quota calculator (P1-8)
+	// reads this to know the cluster-wide ceiling per rule. Master takes
+	// the latest non-zero value across reporting nodes as the
+	// authoritative cap (operators set the same cap on every node's
+	// sync.json via SIGHUP reload). A zero entry means "no cap on this
+	// rule — fall back to per-node BandwidthLimitMBps only".
+	Rules []SyncRuleAdvert `json:"rules,omitempty"`
+}
+
+// SyncRuleAdvert is the per-rule advertisement piggy-backed on the
+// heartbeat response. Carries the bits master needs for quota math
+// without forcing master to fetch the full RuleConfig.
+type SyncRuleAdvert struct {
+	ID                          string `json:"id"`
+	AggregateBandwidthLimitMBps int    `json:"aggregateBandwidthLimitMBps"`
+}
+
+// SyncNodeQuotaReply is the response shape of GetSyncNodeQuota. The
+// syncnode's heartbeat goroutine polls this endpoint per tick (10s
+// default) and applies the resulting maps to ratelimit.Registry. This
+// is the wire mechanism for §12.4.1's layer-2 + layer-4 cross-node
+// quotas (P1-8 + P1-9 delivery side).
+type SyncNodeQuotaReply struct {
+	NodeID        uint64             `json:"nodeId"`
+	Addr          string             `json:"addr"`
+	RuleQuotas    map[string]float64 `json:"ruleQuotas,omitempty"`
+	BackendQuotas map[string]float64 `json:"backendQuotas,omitempty"`
+}
+
+// TaskTerminalReport is the syncnode → master push payload carried inside
+// an OpSyncNodeRunTask AdminTask.Response field when a task hits a terminal
+// status (done / failed / cancelled). The master decodes this in
+// handleSyncNodeTaskResponse to drive SyncDispatcher.Release +
+// SyncFailover.Forget so the ownership ledger and the saved-payload map
+// don't grow unbounded.
+//
+// Status is the executor.Status string ("done" / "failed" / "cancelled").
+// Error is populated when Status == "failed" so master can surface the
+// reason for ops dashboards / alerts.
+type TaskTerminalReport struct {
+	TaskID string `json:"taskId"`
+	Status string `json:"status"`
+	Error  string `json:"error,omitempty"`
 }
 
 type FlashNodeDiskCacheStat struct {

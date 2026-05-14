@@ -18,6 +18,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -351,3 +353,88 @@ var jsonRoundTripFanoutCloner PayloadCloner = PayloadClonerFunc(func(parent inte
 	out["subTask"] = info
 	return out, nil
 })
+
+// Recover rebuilds the in-memory parents map from the dispatcher's
+// ownership ledger after a master leader transition (FIX #7).
+//
+// The fan-out parents map lives in master process memory; a leader
+// election or master restart wipes it. Sub-tasks on syncnodes survive
+// because they're independent runs identified by `<parent>/<shard>` IDs
+// in the dispatcher's ownership ledger. Recover scans the ledger,
+// groups by parent ID, and reconstructs minimal parent state
+// (shardTotal = max(shardIndex)+1, subTasks = the surviving owner map).
+//
+// Lost on recovery:
+//   - ruleID (parent ID alone doesn't carry it) — set to "" and let
+//     callers fill it in if they re-trigger;
+//   - startedAt / progress history (no persistent store of these);
+//   - sub-tasks whose dispatcher record has already been Released
+//     (i.e. terminal sub-tasks pre-restart).
+//
+// Survives:
+//   - sub-task ownership (master can still send Cancel / receive
+//     terminal responses for them);
+//   - parent identification (IsParent works correctly so
+//     /admin/sync/task/get on the parent ID renders the parent shape);
+//   - new RecordProgress / Owners / Clear calls.
+//
+// Idempotent: Recover-on-empty-ledger is a no-op; re-running over the
+// same ledger doesn't duplicate state.
+//
+// Returns the number of parent records reconstructed.
+func (f *SyncFanout) Recover() int {
+	if f == nil || f.disp == nil {
+		return 0
+	}
+	ownerships := f.disp.AllOwnerships()
+	// Group sub-task IDs by parent prefix (split on the FIRST "/").
+	type shardInfo struct {
+		index int
+		owner string
+	}
+	grouped := make(map[string][]shardInfo)
+	for taskID, addr := range ownerships {
+		slash := strings.Index(taskID, "/")
+		if slash < 0 {
+			continue // not a sub-task
+		}
+		parentID := taskID[:slash]
+		idxStr := taskID[slash+1:]
+		idx, err := strconv.Atoi(idxStr)
+		if err != nil {
+			continue // sub-task ID without numeric shard suffix; skip
+		}
+		grouped[parentID] = append(grouped[parentID], shardInfo{idx, addr})
+	}
+	if len(grouped) == 0 {
+		return 0
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	recovered := 0
+	for parentID, shards := range grouped {
+		// Skip if we already have this parent (idempotency).
+		if _, exists := f.parents[parentID]; exists {
+			continue
+		}
+		maxIdx := -1
+		subTasks := make(map[int]string, len(shards))
+		for _, s := range shards {
+			subTasks[s.index] = s.owner
+			if s.index > maxIdx {
+				maxIdx = s.index
+			}
+		}
+		f.parents[parentID] = &parentTask{
+			parentTaskID: parentID,
+			ruleID:       "", // lost on recovery — caller can re-attach
+			shardTotal:   maxIdx + 1,
+			subTasks:     subTasks,
+			progress:     make(map[int]TaskProgress),
+			startedAt:    time.Now(), // approximate — we don't persist the true value
+			status:       "running",
+		}
+		recovered++
+	}
+	return recovered
+}

@@ -49,10 +49,9 @@ import (
 const dispatcherStaleness = 30 * time.Second
 
 // defaultMaxConcurrentTasks is the divisor used when the heartbeat
-// snapshot doesn't carry an explicit MaxConcurrentTasks (which it
-// currently doesn't — design.md §4.1 defaults a syncnode to 8 parallel
-// tasks). When the upstream proto adds the field, swap this for the
-// per-node value.
+// snapshot doesn't carry an explicit MaxConcurrentTasks (legacy syncnode
+// builds < this commit, or a syncnode whose config omits the field).
+// design.md §4.1 defaults a syncnode to 8 parallel tasks.
 const defaultMaxConcurrentTasks = 8
 
 // ErrNoCandidates is returned by Dispatch when no live syncnode is
@@ -137,13 +136,10 @@ func newSyncDispatcherFromSource(source syncDispatcherSource) *SyncDispatcher {
 //	     + 0.2*(CPUPercent / 100)
 //	     + 0.1*(LastTaskFailureRate)
 //
-// We only have RunningTasks, BandwidthMBps, CPUPercent, BoltDBHealthy
-// in the heartbeat snapshot. Where a divisor is unavailable we treat
-// utilization as 0 (the node is assumed under capacity); per
-// design.md §4.1 default we use 8 as the MaxConcurrentTasks divisor.
-// LastTaskFailureRate isn't exported on SyncNode yet — counted as 0
-// for now (TODO P1-4: thread failure-rate signal from
-// handleSyncNodeTaskResponse).
+// All four inputs come from the heartbeat snapshot now (P1 alignment).
+// Defensive zero-divisor handling: if MaxConcurrentTasks is missing the
+// node is treated as having unlimited capacity → capacity term contributes
+// 0; if BandwidthMBpsLimit is 0 the bandwidth term contributes 0.
 //
 // Returns +Inf when:
 //   - sn is nil
@@ -166,19 +162,30 @@ func computeLoadScore(sn *SyncNode, now time.Time) float64 {
 		return math.Inf(1)
 	}
 
+	// Capacity term: prefer the node-reported MaxConcurrentTasks; if
+	// missing (zero) treat as unlimited → 0 capacity utilization. The
+	// const default is reserved for the saturation gate in Candidates().
 	capacity := 0.0
-	if defaultMaxConcurrentTasks > 0 {
-		capacity = float64(sn.RunningTasks) / float64(defaultMaxConcurrentTasks)
+	if sn.MaxConcurrentTasks > 0 {
+		capacity = float64(sn.RunningTasks) / float64(sn.MaxConcurrentTasks)
 	}
 	if capacity > 1 {
 		capacity = 1
 	}
 
-	// Bandwidth: until the heartbeat carries a bandwidth limit, the
-	// snapshot field BandwidthMBps reports the *last-1m usage* in MBps.
-	// We can't form a ratio without a limit, so this term stays 0 until
-	// the upstream proto adds BandwidthMBpsLimit. TODO(P1-4).
+	// Bandwidth term: BandwidthMBps is last-1m egress, BandwidthMBpsLimit
+	// is the configured ceiling. Zero limit ⇒ no local cap ⇒ contribute 0
+	// (avoids divide-by-zero).
 	bandwidth := 0.0
+	if sn.BandwidthMBpsLimit > 0 {
+		bandwidth = sn.BandwidthMBps / sn.BandwidthMBpsLimit
+	}
+	if bandwidth < 0 {
+		bandwidth = 0
+	}
+	if bandwidth > 1 {
+		bandwidth = 1
+	}
 
 	cpu := sn.CPUPercent / 100.0
 	if cpu < 0 {
@@ -188,8 +195,13 @@ func computeLoadScore(sn *SyncNode, now time.Time) float64 {
 		cpu = 1
 	}
 
-	// LastTaskFailureRate not yet plumbed — treat as 0. TODO(P1-4).
-	failureRate := 0.0
+	failureRate := sn.LastTaskFailureRate
+	if failureRate < 0 {
+		failureRate = 0
+	}
+	if failureRate > 1 {
+		failureRate = 1
+	}
 
 	return 0.4*capacity + 0.3*bandwidth + 0.2*cpu + 0.1*failureRate
 }
@@ -240,6 +252,7 @@ func (d *SyncDispatcher) Candidates(staleThreshold time.Duration) []string {
 		rt := sn.ReportTime
 		bolt := sn.BoltDBHealthy
 		running := sn.RunningTasks
+		maxConc := sn.MaxConcurrentTasks
 		sn.RUnlock()
 
 		if !active {
@@ -251,7 +264,14 @@ func (d *SyncDispatcher) Candidates(staleThreshold time.Duration) []string {
 		if !bolt {
 			return true
 		}
-		if defaultMaxConcurrentTasks > 0 && running >= int64(defaultMaxConcurrentTasks) {
+		// Saturation gate: prefer the per-node ceiling when the heartbeat
+		// snapshot carries one; otherwise fall back to the cluster-wide
+		// default (legacy syncnode builds).
+		cap := maxConc
+		if cap <= 0 {
+			cap = defaultMaxConcurrentTasks
+		}
+		if cap > 0 && running >= int64(cap) {
 			return true
 		}
 		cands = append(cands, scored{
@@ -363,6 +383,21 @@ func (d *SyncDispatcher) TasksOwnedBy(addr string) []string {
 	out := make([]string, 0, len(owned))
 	for tid := range owned {
 		out = append(out, tid)
+	}
+	return out
+}
+
+// AllOwnerships returns a snapshot of the entire ownership ledger
+// (taskID → owner addr). Used by SyncFanout.Recover to rebuild
+// in-memory parent state after a master leader transition (FIX #7).
+// The returned map is a copy; callers may mutate it without affecting
+// the dispatcher.
+func (d *SyncDispatcher) AllOwnerships() map[string]string {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	out := make(map[string]string, len(d.taskOwner))
+	for k, v := range d.taskOwner {
+		out[k] = v
 	}
 	return out
 }

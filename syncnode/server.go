@@ -463,9 +463,38 @@ func (s *SyncNode) initExecutorAndRunner() error {
 	s.executor = executor.New(execOpts...)
 
 	builder := newBackendBuilder(s.backendPool, s.cfg)
-	s.runner = tasks.NewRunner(s.executor, s.taskStore, s.ruleStore, builder)
+	s.runner = tasks.NewRunner(s.executor, s.taskStore, s.ruleStore, builder,
+		tasks.WithOnTerminal(s.onTaskTerminal))
 	s.taskHandlers = tasks.NewHandlers(s.runner, s.taskStore)
 	return nil
+}
+
+// onTaskTerminal pushes a task lifecycle update to master via the
+// ResponseTask SDK path. Wired into the Runner via WithOnTerminal in
+// initExecutorAndRunner. Best-effort: any error logs + drops on the
+// floor — the master will eventually deduce terminal via heartbeat
+// timeout if it can't be reached now.
+//
+// Fixes Bug #3: syncnode → master terminal signalling. Without this,
+// master never learns when a task finishes and
+// syncFailover.payloads / syncDispatcher.taskOwner grow unbounded.
+func (s *SyncNode) onTaskTerminal(rec *tasks.Record) {
+	if s == nil || s.masterClient == nil || rec == nil {
+		return
+	}
+	report := &proto.TaskTerminalReport{
+		TaskID: rec.TaskID,
+		Status: string(rec.Status),
+		Error:  rec.Error,
+	}
+	task := &proto.AdminTask{
+		ID:       rec.TaskID,
+		OpCode:   proto.OpSyncNodeRunTask,
+		Response: report,
+	}
+	if err := s.masterClient.ResponseTask(task); err != nil {
+		log.LogWarnf("syncnode: push terminal %q: %v", rec.TaskID, err)
+	}
 }
 
 // bootstrapRulesFromConfig upserts every rule declared in sync.json into

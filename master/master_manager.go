@@ -295,6 +295,17 @@ func (m *Server) loadMetadata() {
 	}
 	log.LogInfo("action[loadSyncNodes] end")
 
+	// FIX #7: rebuild the fan-out parents map from the dispatcher's
+	// ownership ledger. After loadSyncNodes the syncnode table is
+	// populated, so any heartbeat-driven Dispatch records that arrive
+	// next will see the recovered parent state.
+	if m.cluster.syncFanout != nil {
+		recovered := m.cluster.syncFanout.Recover()
+		if recovered > 0 {
+			log.LogInfof("action[loadSyncNodes] recovered %d fan-out parent(s) from ownership ledger", recovered)
+		}
+	}
+
 	log.LogInfo("action[loadFlashManualTasks] begin")
 	if err = m.cluster.loadFlashManualTasks(); err != nil {
 		panic(err)

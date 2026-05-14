@@ -24,10 +24,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cubefs/cubefs/syncnode/spec"
 	"github.com/cubefs/cubefs/syncnode/backend"
 	"github.com/cubefs/cubefs/syncnode/executor"
 	"github.com/cubefs/cubefs/syncnode/rules"
+	"github.com/cubefs/cubefs/syncnode/spec"
 )
 
 // emptyBackend lists nothing and returns ErrKeyNotFound for every fetch.
@@ -51,7 +51,7 @@ func (b *emptyBackend) Head(ctx context.Context, k string) (int64, string, time.
 func (b *emptyBackend) Put(ctx context.Context, k string, body io.Reader, sz int64, opts backend.PutOptions) (string, error) {
 	return "", nil
 }
-func (b *emptyBackend) Delete(ctx context.Context, k string) error    { return nil }
+func (b *emptyBackend) Delete(ctx context.Context, k string) error     { return nil }
 func (b *emptyBackend) Rename(ctx context.Context, o, nk string) error { return nil }
 func (b *emptyBackend) Capabilities() backend.Caps                     { return backend.Caps{} }
 func (b *emptyBackend) Close() error                                   { b.closed.Store(true); return nil }
@@ -466,6 +466,122 @@ func TestRunner_WithIDFactoryOverride(t *testing.T) {
 	}
 	if rec.TaskID != "fixed-1" {
 		t.Errorf("TaskID = %q, want fixed-1", rec.TaskID)
+	}
+}
+
+// TestRunner_TriggerWithIDHonoursSuppliedID confirms master can pin the
+// taskID on a trigger so the syncnode's local Record key stays in sync
+// with master's taskOwner ledger (Bug #1 fix).
+func TestRunner_TriggerWithIDHonoursSuppliedID(t *testing.T) {
+	r, lookup, _, store := newRunnerHarness(t, func(*spec.EndpointConfig) (backend.Backend, error) {
+		return &emptyBackend{}, nil
+	})
+	lookup.put(newSyncRule("rule1"))
+
+	rec, err := r.TriggerWithID(context.Background(), "rule1", "master-t-42", true)
+	if err != nil {
+		t.Fatalf("TriggerWithID: %v", err)
+	}
+	if rec.TaskID != "master-t-42" {
+		t.Fatalf("TaskID = %q, want %q", rec.TaskID, "master-t-42")
+	}
+	// The persisted Record must use the same key — otherwise master's
+	// Cancel(master-t-42) lookup misses.
+	persisted, err := store.Get(context.Background(), "master-t-42")
+	if err != nil {
+		t.Fatalf("store.Get: %v", err)
+	}
+	if persisted.TaskID != "master-t-42" {
+		t.Fatalf("persisted TaskID = %q, want %q", persisted.TaskID, "master-t-42")
+	}
+}
+
+// TestRunner_TriggerWithIDEmptyFallsBack confirms an empty taskID falls
+// back to idFactory — defensive path for older masters that don't carry
+// the field yet.
+func TestRunner_TriggerWithIDEmptyFallsBack(t *testing.T) {
+	r, lookup, _, _ := newRunnerHarness(t, func(*spec.EndpointConfig) (backend.Backend, error) {
+		return &emptyBackend{}, nil
+	})
+	lookup.put(newSyncRule("rule1"))
+
+	rec, err := r.TriggerWithID(context.Background(), "rule1", "", true)
+	if err != nil {
+		t.Fatalf("TriggerWithID: %v", err)
+	}
+	if rec.TaskID == "" {
+		t.Fatal("TaskID is empty, want auto-generated id")
+	}
+}
+
+// TestRunner_OnTerminalFiresOncePerTask is the wire test for Bug #3: master
+// learns of terminal status by way of this callback (which the server-side
+// pushes back via OpSyncNodeRunTask response). Must fire exactly once per
+// task with the final-state record.
+func TestRunner_OnTerminalFiresOncePerTask(t *testing.T) {
+	exec := executor.New()
+	t.Cleanup(func() { _ = exec.Close() })
+	store := NewMemoryStore()
+	t.Cleanup(func() { _ = store.Close() })
+	lookup := newStubRuleLookup()
+	lookup.put(newSyncRule("rule1"))
+	builder := &stubBackendBuilder{factory: func(*spec.EndpointConfig) (backend.Backend, error) {
+		return &emptyBackend{}, nil
+	}}
+
+	var (
+		mu       sync.Mutex
+		seenRecs []*Record
+	)
+	cb := func(rec *Record) {
+		mu.Lock()
+		defer mu.Unlock()
+		seenRecs = append(seenRecs, rec)
+	}
+
+	r := NewRunner(exec, store, lookup, builder, WithOnTerminal(cb))
+	rec, err := r.Trigger(context.Background(), "rule1", true)
+	if err != nil {
+		t.Fatalf("Trigger: %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(seenRecs) != 1 {
+		t.Fatalf("onTerminal fired %d times, want 1", len(seenRecs))
+	}
+	got := seenRecs[0]
+	if got.TaskID != rec.TaskID {
+		t.Fatalf("callback TaskID = %q, want %q", got.TaskID, rec.TaskID)
+	}
+	if got.Status != executor.StatusDone {
+		t.Fatalf("callback Status = %q, want done", got.Status)
+	}
+}
+
+// TestRunner_OnTerminalPanicDoesNotKillRunGoroutine wires a buggy callback
+// that panics; the run goroutine must survive (otherwise it would leak the
+// done channel and any wait=true caller would hang forever).
+func TestRunner_OnTerminalPanicDoesNotKillRunGoroutine(t *testing.T) {
+	exec := executor.New()
+	t.Cleanup(func() { _ = exec.Close() })
+	store := NewMemoryStore()
+	t.Cleanup(func() { _ = store.Close() })
+	lookup := newStubRuleLookup()
+	lookup.put(newSyncRule("rule1"))
+	builder := &stubBackendBuilder{factory: func(*spec.EndpointConfig) (backend.Backend, error) {
+		return &emptyBackend{}, nil
+	}}
+
+	r := NewRunner(exec, store, lookup, builder, WithOnTerminal(func(*Record) {
+		panic("intentional test panic")
+	}))
+	rec, err := r.Trigger(context.Background(), "rule1", true)
+	if err != nil {
+		t.Fatalf("Trigger: %v", err)
+	}
+	if rec.Status != executor.StatusDone {
+		t.Fatalf("Status = %q, want done — task should have completed despite panic", rec.Status)
 	}
 }
 

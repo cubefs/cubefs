@@ -511,3 +511,112 @@ func TestSyncFanout_DispatchN_TwiceForSameParentRefreshes(t *testing.T) {
 		t.Errorf("BytesDone = %d, want 1000 (progress preserved across re-dispatch)", agg.BytesDone)
 	}
 }
+
+// -----------------------------------------------------------------------
+// FIX #7: Recover tests — fan-out parents rebuild from dispatcher ledger
+// -----------------------------------------------------------------------
+
+func TestSyncFanout_Recover_Empty(t *testing.T) {
+	fo, _, _ := fanoutHarness(t, 2)
+	if n := fo.Recover(); n != 0 {
+		t.Errorf("Recover on empty ledger returned %d, want 0", n)
+	}
+}
+
+func TestSyncFanout_Recover_RebuildsParents(t *testing.T) {
+	fo, disp, _ := fanoutHarness(t, 4)
+
+	// Simulate that a previous master leader dispatched two parent tasks
+	// (each split into 3 shards) and the dispatcher's ownership ledger
+	// survives. The fanout's parents map is empty (fresh master).
+	parents := map[string][]int{
+		"job-1": {0, 1, 2},
+		"job-2": {0, 1, 2},
+	}
+	for parentID, shards := range parents {
+		for _, idx := range shards {
+			taskID := fmt.Sprintf("%s/%d", parentID, idx)
+			_, err := disp.Dispatch(taskID, func(addr string) error { return nil }, 0)
+			if err != nil {
+				t.Fatalf("seed dispatch %s: %v", taskID, err)
+			}
+		}
+	}
+
+	// Drop the fanout's parents map (simulate fresh in-memory state on
+	// leader transition).
+	fo.mu.Lock()
+	fo.parents = map[string]*parentTask{}
+	fo.mu.Unlock()
+
+	recovered := fo.Recover()
+	if recovered != 2 {
+		t.Errorf("Recover returned %d, want 2", recovered)
+	}
+	for parentID := range parents {
+		if !fo.IsParent(parentID) {
+			t.Errorf("IsParent(%q) = false after Recover", parentID)
+		}
+		owners := fo.Owners(parentID)
+		if len(owners) != 3 {
+			t.Errorf("parent %q: %d owners, want 3", parentID, len(owners))
+		}
+	}
+}
+
+func TestSyncFanout_Recover_Idempotent(t *testing.T) {
+	fo, disp, _ := fanoutHarness(t, 2)
+	for _, idx := range []int{0, 1} {
+		_, _ = disp.Dispatch(fmt.Sprintf("p/%d", idx), func(addr string) error { return nil }, 0)
+	}
+	first := fo.Recover()
+	second := fo.Recover()
+	if first != 1 {
+		t.Errorf("first Recover = %d, want 1", first)
+	}
+	if second != 0 {
+		t.Errorf("second Recover = %d, want 0 (idempotent)", second)
+	}
+}
+
+func TestSyncFanout_Recover_SkipsNonShardKeys(t *testing.T) {
+	fo, disp, _ := fanoutHarness(t, 2)
+	// Single-shard tasks (no "/" in ID) and tasks with non-numeric
+	// shard suffix MUST be skipped by Recover.
+	for _, tid := range []string{"single-task", "weird/notanumber", "p2/1"} {
+		_, _ = disp.Dispatch(tid, func(addr string) error { return nil }, 0)
+	}
+	recovered := fo.Recover()
+	if recovered != 1 {
+		t.Errorf("Recover = %d, want 1 (only p2)", recovered)
+	}
+	if !fo.IsParent("p2") {
+		t.Errorf("p2 should be a parent")
+	}
+	if fo.IsParent("single-task") || fo.IsParent("weird") {
+		t.Errorf("non-shard tasks should not become parents")
+	}
+}
+
+// -----------------------------------------------------------------------
+// Dispatcher: AllOwnerships snapshot
+// -----------------------------------------------------------------------
+
+func TestDispatcher_AllOwnerships_Snapshot(t *testing.T) {
+	_, disp, _ := fanoutHarness(t, 3)
+	for i := 0; i < 4; i++ {
+		_, err := disp.Dispatch(fmt.Sprintf("t-%d", i), func(addr string) error { return nil }, 0)
+		if err != nil {
+			t.Fatalf("dispatch %d: %v", i, err)
+		}
+	}
+	snap := disp.AllOwnerships()
+	if len(snap) != 4 {
+		t.Errorf("AllOwnerships = %d entries, want 4", len(snap))
+	}
+	// Mutating the snapshot must NOT affect the dispatcher.
+	snap["bogus"] = "node-0"
+	if disp.OwnerOf("bogus") != "" {
+		t.Errorf("AllOwnerships should return a copy; dispatcher mutated")
+	}
+}

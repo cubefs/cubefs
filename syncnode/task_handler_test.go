@@ -38,28 +38,36 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-
 // stubRunner is a hand-rolled stand-in for *tasks.Runner. Records every
 // Trigger / Cancel call so tests can assert on call ordering and arguments.
 type stubRunner struct {
 	mu sync.Mutex
 
-	triggerCalls []triggerCall
-	cancelCalls  []cancelCall
+	triggerCalls       []triggerCall
+	triggerWithIDCalls []triggerWithIDCall
+	cancelCalls        []cancelCall
 
-	// triggerErr is returned by Trigger when set; nil → success.
+	// triggerErr is returned by Trigger / TriggerWithID when set; nil →
+	// success.
 	triggerErr error
 	// cancelErr is returned by Cancel when set; nil → success.
 	cancelErr error
 
 	// triggerCount / cancelCount are atomic so concurrent tests can poll
 	// without grabbing mu.
-	triggerCount atomic.Uint64
-	cancelCount  atomic.Uint64
+	triggerCount       atomic.Uint64
+	triggerWithIDCount atomic.Uint64
+	cancelCount        atomic.Uint64
 }
 
 type triggerCall struct {
 	ruleID string
+	wait   bool
+}
+
+type triggerWithIDCall struct {
+	ruleID string
+	taskID string
 	wait   bool
 }
 
@@ -77,6 +85,22 @@ func (s *stubRunner) Trigger(ctx context.Context, ruleID string, wait bool) (*ta
 		return nil, err
 	}
 	return &tasks.Record{TaskID: "t-stub-" + ruleID, RuleID: ruleID}, nil
+}
+
+func (s *stubRunner) TriggerWithID(ctx context.Context, ruleID, taskID string, wait bool) (*tasks.Record, error) {
+	s.mu.Lock()
+	s.triggerWithIDCalls = append(s.triggerWithIDCalls, triggerWithIDCall{ruleID: ruleID, taskID: taskID, wait: wait})
+	err := s.triggerErr
+	s.mu.Unlock()
+	s.triggerWithIDCount.Add(1)
+	if err != nil {
+		return nil, err
+	}
+	id := taskID
+	if id == "" {
+		id = "t-stub-" + ruleID
+	}
+	return &tasks.Record{TaskID: id, RuleID: ruleID}, nil
 }
 
 func (s *stubRunner) Cancel(ctx context.Context, taskID string) error {
@@ -212,6 +236,34 @@ func TestHandleRunTask_HappyPath(t *testing.T) {
 	runner.mu.Unlock()
 	if gotCall.ruleID != "rule-a" || gotCall.wait {
 		t.Fatalf("trigger call = %+v, want {ruleID=rule-a, wait=false}", gotCall)
+	}
+}
+
+// TestHandleRunTask_WithTaskID confirms that a master-supplied TaskID is
+// routed through TriggerWithID so the local Record key matches master's
+// taskOwner ledger entry. This is the wire fix for the "Cancel(t-1)
+// silently no-ops" bug.
+func TestHandleRunTask_WithTaskID(t *testing.T) {
+	runner := &stubRunner{}
+	h := newTaskHandler(runner, nil)
+	p := newRunPacket(t, RunTaskRequest{RuleID: "rule-a", TaskID: "t-master-7"}, 101)
+
+	reply := h.HandlePacket(context.Background(), p)
+
+	if reply.ResultCode != proto.OpOk {
+		t.Fatalf("ResultCode = %x, want OpOk; body=%q", reply.ResultCode, reply.Data)
+	}
+	if runner.triggerWithIDCount.Load() != 1 {
+		t.Fatalf("triggerWithID count = %d, want 1", runner.triggerWithIDCount.Load())
+	}
+	if runner.triggerCount.Load() != 0 {
+		t.Fatalf("trigger count = %d, want 0 (TaskID present, should route through TriggerWithID)", runner.triggerCount.Load())
+	}
+	runner.mu.Lock()
+	got := runner.triggerWithIDCalls[0]
+	runner.mu.Unlock()
+	if got.ruleID != "rule-a" || got.taskID != "t-master-7" || got.wait {
+		t.Fatalf("triggerWithID call = %+v, want {ruleID=rule-a, taskID=t-master-7, wait=false}", got)
 	}
 }
 
