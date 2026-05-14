@@ -34,11 +34,12 @@ WORK_Q="$TEST_DATA_DIR/$RID_Q"
 cleanup_func_32() {
   delete_rule_silent "$RID_LONG"
   delete_rule_silent "$RID_Q"
-  rm -rf "$WORK_LONG" "$WORK_Q"
+  sn_rm -rf "$WORK_LONG" "$WORK_Q"
 }
 trap_cleanup cleanup_func_32
 
-mkdir -p "$WORK_LONG" "$WORK_Q"
+sn_mkdir "$WORK_LONG"
+sn_mkdir "$WORK_Q"
 # 80 MiB of work in the long rule, 4 MiB in the queued one. With a
 # bandwidth limit of 10 MB/s the long rule takes ~8 s — plenty of room
 # to trigger + cancel the second.

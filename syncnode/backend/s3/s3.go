@@ -28,6 +28,7 @@ package s3
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -94,6 +95,11 @@ type Config struct {
 	// PartSizeMiB: chunk size for multipart upload. Default 16. S3
 	// minimum is 5 MiB.
 	PartSizeMiB int
+
+	// InsecureSkipVerify disables TLS certificate verification. Only
+	// use in dev/test environments where the S3 endpoint's CA is not
+	// trusted (e.g. containers without a ca-certificates bundle).
+	InsecureSkipVerify bool
 }
 
 // validate checks required fields and applies defaults. Returns
@@ -178,6 +184,13 @@ func New(cfg interface{}) (backend.Backend, error) {
 		func(o *awss3.Options) {
 			o.BaseEndpoint = aws.String(c.Endpoint)
 			o.UsePathStyle = c.UsePathStyle
+			if c.InsecureSkipVerify {
+				o.HTTPClient = &http.Client{
+					Transport: &http.Transport{
+						TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
+					},
+				}
+			}
 		},
 	}
 	client := awss3.NewFromConfig(awsCfg, clientOpts...)

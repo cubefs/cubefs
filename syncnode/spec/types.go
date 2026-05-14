@@ -67,6 +67,9 @@ type EndpointConfig struct {
 	// When set, these take precedence over the global s3Defaults in sync.json.
 	AccessKeyEnv string `json:"accessKeyEnv"`
 	SecretKeyEnv string `json:"secretKeyEnv"`
+	// InsecureSkipTLS disables TLS certificate verification for s3 endpoints.
+	// Use only in dev/test environments without a proper CA cert bundle.
+	InsecureSkipTLS bool `json:"insecureSkipTLS"`
 	// local fields (any host-mounted POSIX path)
 	BufferSizeKiB     int  `json:"bufferSizeKiB"`
 	Concurrency       int  `json:"concurrency"`

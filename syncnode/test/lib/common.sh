@@ -32,7 +32,7 @@ require_env_base() {
     log_err "source env.sh first (copy from env.example.sh)"
     exit 2
   fi
-  mkdir -p "$TEST_DATA_DIR"
+  sn_mkdir "$TEST_DATA_DIR"
 }
 
 require_env_for() {
@@ -75,16 +75,77 @@ unique_id() {
   echo "it-$1-$$-$(date +%s%N | tail -c 7)"
 }
 
-# random_payload <path> <megabytes> — generate a deterministic-content
-# file of the given size. md5 is repeatable across re-runs if needed
-# (we use /dev/urandom for size, not content, so md5 differs each run).
-random_payload() {
-  local out="$1" sz="$2"
-  dd if=/dev/urandom of="$out" bs=1M count="$sz" status=none
+# ---------------------------------------------------------------------------
+# Remote file-op helpers.
+#
+# When SYNCNODE_POD is non-empty, file operations are routed through
+# kubectl exec on that pod. This is necessary when the test runner
+# (laptop) and the syncnode pod do not share a filesystem (e.g. a
+# remote k3d cluster). Set SYNCNODE_POD="auto" to auto-discover the
+# pod; otherwise set it to the exact pod name.
+# ---------------------------------------------------------------------------
+
+# _sn_pod — resolve the pod name, caching in _SN_POD_CACHE.
+_SN_POD_CACHE=""
+_sn_pod() {
+  if [ -z "$_SN_POD_CACHE" ]; then
+    if [ "${SYNCNODE_POD:-}" = "auto" ]; then
+      _SN_POD_CACHE=$(kubectl get pod \
+        -n "${SYNCNODE_NAMESPACE:-storage-cfs}" \
+        -l app=cubefs-syncnode \
+        -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+      [ -n "$_SN_POD_CACHE" ] || { log_err "could not find syncnode pod"; exit 2; }
+    else
+      _SN_POD_CACHE="${SYNCNODE_POD}"
+    fi
+  fi
+  echo "$_SN_POD_CACHE"
 }
 
+# _sn_exec <cmd...> — run a command inside the syncnode pod (or locally).
+_sn_exec() {
+  if [ -n "${SYNCNODE_POD:-}" ]; then
+    kubectl exec "$(_sn_pod)" \
+      -n "${SYNCNODE_NAMESPACE:-storage-cfs}" -- "$@"
+  else
+    "$@"
+  fi
+}
+
+# sn_mkdir <path> — create directory (locally or in pod).
+sn_mkdir() { _sn_exec mkdir -p "$@"; }
+
+# sn_rm <flags...> <path...> — remove files/dirs (locally or in pod).
+sn_rm() { _sn_exec rm "$@"; }
+
+# sn_write_line <content> <path> — write a single line to a file.
+sn_write_line() {
+  local content="$1" path="$2"
+  if [ -n "${SYNCNODE_POD:-}" ]; then
+    kubectl exec "$(_sn_pod)" \
+      -n "${SYNCNODE_NAMESPACE:-storage-cfs}" \
+      -- sh -c "printf '%s\n' \"\$1\" > \"\$2\"" -- "$content" "$path"
+  else
+    printf '%s\n' "$content" > "$path"
+  fi
+}
+
+# random_payload <path> <megabytes> — generate a random file.
+# When SYNCNODE_POD is set, the file is created inside the pod.
+random_payload() {
+  local out="$1" sz="$2"
+  _sn_exec dd if=/dev/urandom of="$out" bs=1M count="$sz" status=none
+}
+
+# md5_of <path> — MD5 of a file (locally or in pod).
 md5_of() {
-  $MD5_BIN < "$1" | awk '{print $1}'
+  if [ -n "${SYNCNODE_POD:-}" ]; then
+    kubectl exec "$(_sn_pod)" \
+      -n "${SYNCNODE_NAMESPACE:-storage-cfs}" \
+      -- md5sum "$1" | awk '{print $1}'
+  else
+    $MD5_BIN < "$1" | awk '{print $1}'
+  fi
 }
 
 # wait_for <pred-fn> <timeout-sec> <description>

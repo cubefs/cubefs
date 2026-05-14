@@ -94,12 +94,13 @@ func (b *backendBuilder) Build(_ context.Context, ep *spec.EndpointConfig) (back
 			Region:   region,
 			Bucket:   ep.Bucket,
 		}, &s3.Config{
-			Endpoint:     endpoint,
-			Region:       region,
-			Bucket:       ep.Bucket,
-			AccessKeyEnv: accessKeyEnv,
-			SecretKeyEnv: secretKeyEnv,
-			StorageClass: storageClass,
+			Endpoint:           endpoint,
+			Region:             region,
+			Bucket:             ep.Bucket,
+			AccessKeyEnv:       accessKeyEnv,
+			SecretKeyEnv:       secretKeyEnv,
+			StorageClass:       storageClass,
+			InsecureSkipVerify: ep.InsecureSkipTLS,
 		})
 	case "local":
 		bufKiB := ep.BufferSizeKiB

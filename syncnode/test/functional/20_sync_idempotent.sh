@@ -17,12 +17,12 @@ FILE_MB=1
 
 cleanup_func_20() {
   delete_rule_silent "$RID"
-  rm -rf "$WORK"
+  sn_rm -rf "$WORK"
 }
 trap_cleanup cleanup_func_20
 
 # ---- Seed source ----
-mkdir -p "$WORK"
+sn_mkdir "$WORK"
 for i in $(seq 1 "$N_FILES"); do
   random_payload "$WORK/f-$i.bin" "$FILE_MB"
 done

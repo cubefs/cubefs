@@ -15,13 +15,13 @@ PREFIX="it/$RID/"
 
 cleanup_func_23() {
   delete_rule_silent "$RID"
-  rm -rf "$WORK"
+  sn_rm -rf "$WORK"
 }
 trap_cleanup cleanup_func_23
 
-mkdir -p "$WORK"
+sn_mkdir "$WORK"
 for n in 1000 2000 3000 4000 5000 6000 7000; do
-  echo "step-$n" > "$WORK/model-step-$n.pt"
+  sn_write_line "step-$n" "$WORK/model-step-$n.pt"
 done
 log_ok "seeded 7 model-step files"
 
@@ -47,7 +47,7 @@ trap_cleanup trap_cleanup_more
 # Filter source to only files step-3000 and up to match dst expectations.
 # Easier path: just count files on dst by removing the oldest 2 from src
 # and asserting the check returns no missing_dst.
-rm -f "$WORK/model-step-1000.pt" "$WORK/model-step-2000.pt"
+sn_rm -f "$WORK/model-step-1000.pt" "$WORK/model-step-2000.pt"
 
 res2=$(trigger_and_wait "$check_rid")
 mism=$(echo "$res2" | jq '.data.mismatches // [] | length')
@@ -61,7 +61,7 @@ log_ok "keepLast=5 confirmed (no mismatches after removing 2 oldest)"
 # Negative side: re-trigger sync with a broken source.
 # Easiest forcing function: delete the entire $WORK; sync src list will
 # fail. Existing dst stays intact. Run a check to verify.
-rm -rf "$WORK"
+sn_rm -rf "$WORK"
 log_warn "removed src dir to force sync failure"
 
 bad=$(trigger_and_wait "$RID")
@@ -69,9 +69,9 @@ bad=$(trigger_and_wait "$RID")
 # any of these is acceptable as long as retention DIDN'T fire. We test
 # that by re-creating the src dir + checking dst is still 5 files
 # (anything fewer means retention ran on a failed sync).
-mkdir -p "$WORK"
+sn_mkdir "$WORK"
 for n in 3000 4000 5000 6000 7000; do
-  echo "step-$n" > "$WORK/model-step-$n.pt"
+  sn_write_line "step-$n" "$WORK/model-step-$n.pt"
 done
 res3=$(trigger_and_wait "$check_rid")
 mism3=$(echo "$res3" | jq '.data.mismatches // [] | length')
