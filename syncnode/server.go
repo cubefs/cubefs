@@ -477,10 +477,9 @@ func (s *SyncNode) initStateStore() error {
 	if err := os.MkdirAll(s.cfg.DataDir, 0o755); err != nil {
 		return fmt.Errorf("mkdir dataDir %q: %w", s.cfg.DataDir, err)
 	}
-	dbPath := filepath.Join(s.cfg.DataDir, "syncnode.db")
-	db, err := bolt.Open(dbPath)
+	db, err := bolt.Open(s.cfg.DataDir)
 	if err != nil {
-		return fmt.Errorf("open bolt %q: %w", dbPath, err)
+		return fmt.Errorf("open bolt %q: %w", s.cfg.DataDir, err)
 	}
 	if hErr := db.Health(); hErr != nil {
 		_ = db.Close()
