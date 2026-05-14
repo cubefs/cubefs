@@ -232,7 +232,7 @@ func TestPool_CloseReleasesBackends(t *testing.T) {
 func TestPoolKey_String(t *testing.T) {
 	k := PoolKey{Kind: "s3", Endpoint: "https://s3.amazonaws.com", Region: "us-east-1"}
 	s := k.String()
-	if s != "s3|https://s3.amazonaws.com|us-east-1" {
+	if s != "s3|https://s3.amazonaws.com|us-east-1|" {
 		t.Errorf("String = %q", s)
 	}
 }

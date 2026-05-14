@@ -16,6 +16,7 @@ package syncnode
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -260,3 +261,123 @@ func TestHandleReload_HTTP(t *testing.T) {
 var _ interface {
 	Get(ctx context.Context, id string) (*rules.Rule, error)
 } = (rules.Store)(nil)
+
+// -----------------------------------------------------------------------
+// FIX D — atomicity + cfg pointer freshness
+// -----------------------------------------------------------------------
+
+// failOnRuleIDStore wraps a real rules.Store and injects Create/Update
+// failures for a specific ruleID. Used to drive rollback paths in tests.
+type failOnRuleIDStore struct {
+	rules.Store
+	failID string
+}
+
+func (f *failOnRuleIDStore) Create(ctx context.Context, r *rules.Rule) error {
+	if r != nil && r.Config.ID == f.failID {
+		return fmt.Errorf("injected create failure for %q", r.Config.ID)
+	}
+	return f.Store.Create(ctx, r)
+}
+
+func (f *failOnRuleIDStore) Update(ctx context.Context, r *rules.Rule) error {
+	if r != nil && r.Config.ID == f.failID {
+		return fmt.Errorf("injected update failure for %q", r.Config.ID)
+	}
+	return f.Store.Update(ctx, r)
+}
+
+// TestApplyBootstrapRules_PartialFailureRollsBack confirms that if any
+// rule mid-loop fails to apply, the rules already applied this round
+// are reverted to their pre-reload state.
+func TestApplyBootstrapRules_PartialFailureRollsBack(t *testing.T) {
+	// Start with rule "keep" already in the store; reload tries to upsert
+	// ["keep", "newA", "boom"] where "boom" is injected to fail.
+	original := `{
+		"role": "sync",
+		"masterAddr": "m:1",
+		"dataDir": "/tmp/x",
+		"posix": {"allowedRoots": ["/tmp"]},
+		"rules": [
+			{"id":"keep","type":"sync",
+			 "src":{"kind":"local","path":"/tmp/keep-src"},
+			 "dst":{"kind":"s3","bucket":"bk","prefix":"k"},
+			 "afterCopy":"keep","downloadStrategy":"temp_rename","onMismatch":"alert"}
+		]
+	}`
+	s := newReloadTestSyncNode(t, original)
+	// Wrap the store with a failing-on-"boom" injector.
+	s.ruleStore = &failOnRuleIDStore{Store: s.ruleStore, failID: "boom"}
+
+	// New config: same "keep" rule, plus a new "newA", plus "boom" which
+	// will fail mid-apply.
+	updated := `{
+		"role": "sync",
+		"masterAddr": "m:1",
+		"dataDir": "/tmp/x",
+		"posix": {"allowedRoots": ["/tmp"]},
+		"rules": [
+			{"id":"keep","type":"sync",
+			 "src":{"kind":"local","path":"/tmp/keep-src-NEW"},
+			 "dst":{"kind":"s3","bucket":"bk","prefix":"k2"},
+			 "afterCopy":"keep","downloadStrategy":"temp_rename","onMismatch":"alert"},
+			{"id":"newA","type":"sync",
+			 "src":{"kind":"local","path":"/tmp/a"},
+			 "dst":{"kind":"s3","bucket":"bk","prefix":"a"},
+			 "afterCopy":"keep","downloadStrategy":"temp_rename","onMismatch":"alert"},
+			{"id":"boom","type":"sync",
+			 "src":{"kind":"local","path":"/tmp/boom"},
+			 "dst":{"kind":"s3","bucket":"bk","prefix":"boom"},
+			 "afterCopy":"keep","downloadStrategy":"temp_rename","onMismatch":"alert"}
+		]
+	}`
+	if err := os.WriteFile(s.cfgPath, []byte(updated), 0o644); err != nil {
+		t.Fatalf("rewrite cfg: %v", err)
+	}
+	if err := s.reload(context.Background()); err == nil {
+		t.Fatal("reload should fail when 'boom' Create errors")
+	}
+	// Rollback verification: store should look like the original — "keep"
+	// is unchanged (NOT updated to "/tmp/keep-src-NEW"), "newA" is absent.
+	stored, _ := s.ruleStore.List(context.Background())
+	if len(stored) != 1 || stored[0].ID() != "keep" {
+		t.Fatalf("rollback failed: got %d rules, want 1 ('keep'); %+v", len(stored), stored)
+	}
+	keep, _ := s.ruleStore.Get(context.Background(), "keep")
+	if keep == nil || keep.Config.Src.Path != "/tmp/keep-src" {
+		t.Errorf("keep rule was not rolled back: src=%q want /tmp/keep-src",
+			keep.Config.Src.Path)
+	}
+}
+
+// TestCurrentConfig_ReturnsLiveCfg ensures backendBuilder reads through
+// to the up-to-date config after a reload.
+func TestCurrentConfig_ReturnsLiveCfg(t *testing.T) {
+	original := `{
+		"role": "sync",
+		"masterAddr": "addr-1:1",
+		"dataDir": "/tmp/x",
+		"rules": []
+	}`
+	s := newReloadTestSyncNode(t, original)
+	if got := s.currentConfig().MasterAddr; got != "addr-1:1" {
+		t.Errorf("pre-reload masterAddr = %q, want addr-1:1", got)
+	}
+
+	// Swap config to a new masterAddr.
+	updated := `{
+		"role": "sync",
+		"masterAddr": "addr-2:1",
+		"dataDir": "/tmp/x",
+		"rules": []
+	}`
+	if err := os.WriteFile(s.cfgPath, []byte(updated), 0o644); err != nil {
+		t.Fatalf("rewrite cfg: %v", err)
+	}
+	if err := s.reload(context.Background()); err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if got := s.currentConfig().MasterAddr; got != "addr-2:1" {
+		t.Errorf("post-reload masterAddr = %q, want addr-2:1 (cfg pointer stale)", got)
+	}
+}

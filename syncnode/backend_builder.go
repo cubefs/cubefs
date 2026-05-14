@@ -32,60 +32,82 @@ import (
 // Defaults from SyncConfig (s3Defaults, posix.allowedRoots, masterAddr) are
 // applied here so individual EndpointConfigs in a rule can stay terse — see
 // design.md §10.6 (Backend abstraction).
+//
+// FIX D — cfg pointer freshness: the builder MUST NOT cache pointers into
+// the SyncNode's current *SyncConfig at construction time. A SIGHUP reload
+// swaps s.cfg atomically; sub-pointers like &cfg.S3Defaults become stale.
+// Instead the builder holds a cfgProvider that returns the live config on
+// every Build call, with the read taken under SyncNode.cfgMu so reload
+// can't race a half-swap into a Build.
 type backendBuilder struct {
-	pool       *backend.Pool
-	s3Defaults *S3DefaultsConfig
-	posix      *PosixConfig
-	masterAddr string // comma-separated; mirrored to cfs.Config.Masters
+	pool   *backend.Pool
+	cfgFn  func() *SyncConfig // returns the live SyncConfig under cfgMu
 }
 
-func newBackendBuilder(pool *backend.Pool, cfg *SyncConfig) *backendBuilder {
-	return &backendBuilder{
-		pool:       pool,
-		s3Defaults: &cfg.S3Defaults,
-		posix:      &cfg.Posix,
-		masterAddr: cfg.MasterAddr,
-	}
+// newBackendBuilder takes a closure that returns the live config rather
+// than caching pointers; cfgFn is invoked on every Build call so reload
+// always wins. cfgFn may return nil during early shutdown — the Build
+// path defensively treats nil as "no defaults".
+func newBackendBuilder(pool *backend.Pool, cfgFn func() *SyncConfig) *backendBuilder {
+	return &backendBuilder{pool: pool, cfgFn: cfgFn}
 }
 
 // Build returns a Backend for ep. The Pool caches per (kind, endpoint,
-// region) tuple so multiple rules pointing at the same anchor share one
-// HTTP/2 connection pool + credential refresher.
+// region, bucket) tuple so multiple rules pointing at the same anchor
+// share one HTTP/2 connection pool + credential refresher, while rules
+// targeting different buckets (s3) or volumes (cfs) get distinct
+// Backend instances — the concrete wrappers bake bucket/volume into
+// their state at construction time.
 func (b *backendBuilder) Build(_ context.Context, ep *spec.EndpointConfig) (backend.Backend, error) {
 	if ep == nil {
 		return nil, fmt.Errorf("backendBuilder: nil EndpointConfig")
 	}
+	// FIX D: read the LIVE config every call so SIGHUP-driven changes to
+	// masterAddr / s3Defaults / posix take effect for the next Build.
+	// Snapshot values into locals so the rest of the function is
+	// race-free even if cfgFn returns a pointer the caller mutates next.
+	cfg := b.cfgFn()
+	var s3Defaults S3DefaultsConfig
+	var posix PosixConfig
+	var masterAddr string
+	if cfg != nil {
+		s3Defaults = cfg.S3Defaults
+		posix = cfg.Posix
+		masterAddr = cfg.MasterAddr
+	}
+
 	switch ep.Kind {
 	case "cfs":
-		return b.pool.Acquire(backend.PoolKey{Kind: "cfs"}, &cfs.Config{
-			Masters: splitMasters(b.masterAddr),
+		return b.pool.Acquire(backend.PoolKey{Kind: "cfs", Bucket: ep.Vol}, &cfs.Config{
+			Masters: splitMasters(masterAddr),
 			Volume:  ep.Vol,
 		})
 	case "s3":
-		endpoint := firstNonEmpty(ep.Endpoint, b.s3Defaults.Endpoint)
-		region := firstNonEmpty(ep.Region, b.s3Defaults.Region)
-		storageClass := firstNonEmpty(ep.StorageClass, b.s3Defaults.StorageClass)
+		endpoint := firstNonEmpty(ep.Endpoint, s3Defaults.Endpoint)
+		region := firstNonEmpty(ep.Region, s3Defaults.Region)
+		storageClass := firstNonEmpty(ep.StorageClass, s3Defaults.StorageClass)
 		return b.pool.Acquire(backend.PoolKey{
 			Kind:     "s3",
 			Endpoint: endpoint,
 			Region:   region,
+			Bucket:   ep.Bucket,
 		}, &s3.Config{
 			Endpoint:     endpoint,
 			Region:       region,
 			Bucket:       ep.Bucket,
-			AccessKeyEnv: b.s3Defaults.AccessKeyEnv,
-			SecretKeyEnv: b.s3Defaults.SecretKeyEnv,
+			AccessKeyEnv: s3Defaults.AccessKeyEnv,
+			SecretKeyEnv: s3Defaults.SecretKeyEnv,
 			StorageClass: storageClass,
 		})
 	case "local":
 		bufKiB := ep.BufferSizeKiB
 		if bufKiB == 0 {
-			bufKiB = b.posix.DefaultBufferSizeKiB
+			bufKiB = posix.DefaultBufferSizeKiB
 		}
 		return b.pool.Acquire(backend.PoolKey{Kind: "local"}, &local.Config{
-			AllowedRoots:         b.posix.AllowedRoots,
+			AllowedRoots:         posix.AllowedRoots,
 			DefaultBufferSizeKiB: bufKiB,
-			MaxDirDepth:          b.posix.MaxDirDepth,
+			MaxDirDepth:          posix.MaxDirDepth,
 		})
 	default:
 		return nil, fmt.Errorf("backendBuilder: unknown kind %q", ep.Kind)

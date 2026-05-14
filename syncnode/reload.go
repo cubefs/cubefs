@@ -145,33 +145,93 @@ func (s *SyncNode) validateMergedRules(ctx context.Context, newCfg *SyncConfig) 
 	return nil
 }
 
+// bootstrapSnapshot records the pre-mutation state of a rule about to be
+// upserted by applyBootstrapRules. Used for atomic-rollback on partial
+// failure (FIX D).
+type bootstrapSnapshot struct {
+	id   string
+	prev *rules.Rule // nil = didn't exist before
+}
+
 // applyBootstrapRules upserts every rule from newCfg.Rules into the store —
 // Create if absent, Update if already present (preserving runtime state).
 // Called only after validateMergedRules returns nil so we know the resulting
 // store contents are conflict-free.
+//
+// FIX D — atomicity: snapshot every rule that we'll mutate BEFORE touching
+// the store; if any operation mid-way fails, replay the snapshot to roll
+// back partial state. This is best-effort: a Create may be irreversible if
+// the rollback Delete also fails (we log but proceed). The point is that
+// operators see a coherent state in the common path — either the entire
+// new bootstrap set landed, or none of it did.
 func (s *SyncNode) applyBootstrapRules(ctx context.Context, newCfg *SyncConfig) error {
+	// Phase 1: snapshot.
+	snapshots := make([]bootstrapSnapshot, 0, len(newCfg.Rules))
 	for i := range newCfg.Rules {
 		cfg := newCfg.Rules[i]
 		existing, err := s.ruleStore.Get(ctx, cfg.ID)
 		if err != nil && !errors.Is(err, rules.ErrRuleNotFound) {
-			return fmt.Errorf("get %q: %w", cfg.ID, err)
+			return fmt.Errorf("snapshot get %q: %w", cfg.ID, err)
 		}
-		if existing == nil {
-			if err := s.ruleStore.Create(ctx, rules.NewRule(cfg)); err != nil {
-				return fmt.Errorf("create %q: %w", cfg.ID, err)
+		entry := bootstrapSnapshot{id: cfg.ID}
+		if existing != nil {
+			// Deep-ish copy: Config is a value type, runtime fields are
+			// scalars. RuleConfig has slice fields (Filter.Include/Exclude)
+			// — copy those too so a later mutation of `existing` doesn't
+			// poison the snapshot.
+			cp := *existing
+			cp.Config = existing.Config
+			cp.Config.Filter.Include = append([]string(nil), existing.Config.Filter.Include...)
+			cp.Config.Filter.Exclude = append([]string(nil), existing.Config.Filter.Exclude...)
+			entry.prev = &cp
+		}
+		snapshots = append(snapshots, entry)
+	}
+
+	// Phase 2: apply. On any failure, roll back via the snapshots.
+	applied := 0
+	for i := range newCfg.Rules {
+		cfg := newCfg.Rules[i]
+		snap := snapshots[i]
+		var opErr error
+		if snap.prev == nil {
+			opErr = s.ruleStore.Create(ctx, rules.NewRule(cfg))
+		} else {
+			updated := *snap.prev
+			updated.Config = cfg
+			updated.UpdatedAt = time.Now()
+			opErr = s.ruleStore.Update(ctx, &updated)
+		}
+		if opErr != nil {
+			// Roll back everything applied so far.
+			s.rollbackBootstrap(ctx, snapshots[:applied])
+			return fmt.Errorf("apply %q (rolled back %d prior): %w", cfg.ID, applied, opErr)
+		}
+		applied++
+	}
+	return nil
+}
+
+// rollbackBootstrap restores the snapshotted state for the rules in
+// `snapshots` (in reverse order so dependency direction is consistent
+// with the apply path). Failures are logged but don't abort the rollback
+// loop — best-effort recovery; operators may still need to inspect the
+// store afterwards if a rollback step itself errored.
+func (s *SyncNode) rollbackBootstrap(ctx context.Context, snapshots []bootstrapSnapshot) {
+	for i := len(snapshots) - 1; i >= 0; i-- {
+		snap := snapshots[i]
+		if snap.prev == nil {
+			// We had created this rule freshly during apply — undo with Delete.
+			if err := s.ruleStore.Delete(ctx, snap.id); err != nil && !errors.Is(err, rules.ErrRuleNotFound) {
+				log.LogWarnf("reload rollback: delete %q: %v", snap.id, err)
 			}
 			continue
 		}
-		// Replace config but keep runtime state (CreatedAt / State /
-		// LastRun*). Update mirrors what the HTTP /update endpoint does.
-		updated := *existing
-		updated.Config = cfg
-		updated.UpdatedAt = time.Now()
-		if err := s.ruleStore.Update(ctx, &updated); err != nil {
-			return fmt.Errorf("update %q: %w", cfg.ID, err)
+		// We had updated this rule; restore the prior shape.
+		if err := s.ruleStore.Update(ctx, snap.prev); err != nil {
+			log.LogWarnf("reload rollback: restore %q: %v", snap.id, err)
 		}
 	}
-	return nil
 }
 
 // handleReload exposes reload as an HTTP endpoint. POST returns 200 OK on

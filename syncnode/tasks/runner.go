@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/syncnode/backend"
@@ -60,6 +61,20 @@ type OnTerminalFunc func(rec *Record)
 // declared type doesn't match the requested alias.
 var ErrRuleTypeMismatch = errors.New("rule type does not match endpoint")
 
+// ErrQueueFull is returned by Trigger / Retry when the concurrency cap is
+// reached AND the queue is full (or queueing is disabled). Operators
+// observing this in /admin/sync/task/list see a Record with Status=failed
+// and Error="runner: task queue full" — that is the contract.
+var ErrQueueFull = errors.New("runner: task queue full")
+
+// Concurrency-gate defaults (FIX C). Zero means "unlimited", which
+// preserves pre-fix behavior for callers (and tests) that do not opt in
+// via WithMaxConcurrent / WithQueueSize.
+const (
+	defaultMaxConcurrent = 0
+	defaultQueueSize     = 0
+)
+
 // Runner owns the executor and dispatches Runs in response to HTTP triggers.
 // One Runner per process. Safe for concurrent use.
 type Runner struct {
@@ -88,6 +103,25 @@ type Runner struct {
 
 	// idSeq feeds the default ID factory (monotonic per Runner).
 	idSeq uint64
+
+	// Concurrency gate (FIX C). Both default to 0 → unlimited (preserves
+	// pre-fix behavior for tests that don't opt in). When maxConcurrent > 0
+	// the Runner enforces an in-flight cap; when maxQueue > 0 over-cap
+	// triggers are admitted to a bounded waiting queue instead of being
+	// rejected outright.
+	maxConcurrent int
+	maxQueue      int
+
+	// slots is a buffered chan acting as a counting semaphore. len(slots)
+	// == currently-running tasks; cap == maxConcurrent. nil when
+	// maxConcurrent == 0 (unlimited).
+	slots chan struct{}
+
+	// queueLen counts admitted-but-not-yet-running tasks. Updated when a
+	// trigger lands on the bounded queue path; decremented when the waiter
+	// goroutine successfully claims a slot. Exposed via QueueLen for
+	// diagnostics (heartbeat snapshot).
+	queueLen atomic.Int64
 }
 
 // RunnerOption configures a Runner.
@@ -112,20 +146,50 @@ func WithOnTerminal(fn OnTerminalFunc) RunnerOption {
 	return func(r *Runner) { r.onTerminal = fn }
 }
 
+// WithMaxConcurrent caps the number of tasks the Runner will run
+// simultaneously. n <= 0 disables the cap (unlimited, pre-fix behavior).
+// Wired from cfg.Concurrency.MaxConcurrentTasks in initExecutorAndRunner.
+func WithMaxConcurrent(n int) RunnerOption {
+	return func(r *Runner) {
+		if n > 0 {
+			r.maxConcurrent = n
+		}
+	}
+}
+
+// WithQueueSize caps the number of tasks that may wait for a slot once
+// the concurrency cap is reached. n <= 0 (the default) means fail-fast:
+// over-cap triggers immediately return ErrQueueFull instead of blocking.
+// Wired from cfg.Concurrency.MaxQueueSize in initExecutorAndRunner.
+func WithQueueSize(n int) RunnerOption {
+	return func(r *Runner) {
+		if n > 0 {
+			r.maxQueue = n
+		}
+	}
+}
+
 // NewRunner returns a Runner. exec / store / rules / builder must be non-nil.
 // Callers own exec and store lifecycles; the Runner does not Close them.
 func NewRunner(exec *executor.Executor, store Store, ruleLookup RuleLookup, b BackendBuilder, opts ...RunnerOption) *Runner {
 	r := &Runner{
-		exec:    exec,
-		store:   store,
-		rules:   ruleLookup,
-		builder: b,
-		waiters: make(map[string]chan struct{}),
+		exec:          exec,
+		store:         store,
+		rules:         ruleLookup,
+		builder:       b,
+		waiters:       make(map[string]chan struct{}),
+		maxConcurrent: defaultMaxConcurrent,
+		maxQueue:      defaultQueueSize,
 	}
 	r.idFactory = r.defaultIDFactory
 	r.reporterFactory = func(string) executor.Reporter { return executor.NoopReporter{} }
 	for _, o := range opts {
 		o(r)
+	}
+	// Build the counting-semaphore AFTER options have been applied so the
+	// cap reflects WithMaxConcurrent. nil channel = unlimited.
+	if r.maxConcurrent > 0 {
+		r.slots = make(chan struct{}, r.maxConcurrent)
 	}
 	return r
 }
@@ -315,6 +379,34 @@ func (r *Runner) triggerRule(ctx context.Context, rule *rules.Rule, newID string
 		task.ShardTotal = shard.total
 	}
 
+	// Concurrency gate (FIX C). Decide on admission BEFORE persisting a
+	// running Record so we don't claim "running" for a task we end up
+	// rejecting with ErrQueueFull.
+	admitted, queued := r.tryAdmit()
+	if !admitted && !queued {
+		// Cap reached + queue full (or queueing disabled). Persist a
+		// failed Record so operators see the rejection in
+		// /admin/sync/task/list, then close backends + return.
+		rec := &Record{
+			TaskID:    task.ID,
+			RuleID:    rule.Config.ID,
+			Type:      task.Type,
+			Status:    executor.StatusFailed,
+			StartedAt: time.Now(),
+			DoneAt:    time.Now(),
+			Error:     ErrQueueFull.Error(),
+		}
+		_ = r.store.Put(ctx, rec)
+		_ = src.Close()
+		_ = dst.Close()
+		return cloneRecord(rec), ErrQueueFull
+	}
+
+	// Admitted (either directly or via the queue). Persist the initial
+	// Record. Queued tasks still report Status=running because they will
+	// transition to running as soon as a slot frees; operators care about
+	// "is this work going to happen" — we expose the queue depth
+	// separately via QueueLen for the heartbeat snapshot.
 	rec := &Record{
 		TaskID:    task.ID,
 		RuleID:    rule.Config.ID,
@@ -323,6 +415,13 @@ func (r *Runner) triggerRule(ctx context.Context, rule *rules.Rule, newID string
 		StartedAt: time.Now(),
 	}
 	if err := r.store.Put(ctx, rec); err != nil {
+		// Persist failed — release the slot we just acquired (or
+		// decrement queueLen if queued) before unwinding.
+		if admitted {
+			r.release()
+		} else if queued {
+			r.queueLen.Add(-1)
+		}
 		_ = src.Close()
 		_ = dst.Close()
 		return nil, fmt.Errorf("persist record: %w", err)
@@ -336,7 +435,13 @@ func (r *Runner) triggerRule(ctx context.Context, rule *rules.Rule, newID string
 	// Run in a fresh background context so an HTTP-client disconnect (which
 	// cancels ctx) does NOT cancel an in-flight task. Cancellation is
 	// explicit via Runner.Cancel.
-	go r.run(task, src, dst, done)
+	if admitted {
+		go r.run(task, src, dst, done)
+	} else {
+		// Queued: spawn a waiter that blocks until a slot frees, then
+		// runs. Decrement queueLen as soon as we own the slot.
+		go r.runAfterWait(task, src, dst, done)
+	}
 
 	if !wait {
 		return cloneRecord(rec), nil
@@ -348,6 +453,11 @@ func (r *Runner) triggerRule(ctx context.Context, rule *rules.Rule, newID string
 // done channel for any waiters.
 func (r *Runner) run(task *executor.Task, src, dst backend.Backend, done chan struct{}) {
 	defer func() {
+		// Release the concurrency slot FIRST so a queued task can claim
+		// it before we close the done channel (avoids a brief gap where
+		// the cap is under-utilised while the next waiter still blocks
+		// in slots <-).
+		r.release()
 		_ = src.Close()
 		_ = dst.Close()
 		r.mu.Lock()
@@ -413,7 +523,97 @@ func (r *Runner) run(task *executor.Task, src, dst backend.Backend, done chan st
 	}
 }
 
-// waitForRecord blocks until the task's done channel fires or ctx is done.
+// runAfterWait is the queued-task variant of run. It blocks until the
+// counting-semaphore yields a slot, decrements queueLen, then delegates
+// to run for the actual work. Spawned by triggerRule when the cap is
+// reached but the queue has room.
+//
+// SAFETY: r.slots is guaranteed non-nil here because runAfterWait is only
+// ever spawned when tryAdmit returned (false, true), which itself
+// requires r.maxConcurrent > 0 (i.e. r.slots != nil). Blocks forever if
+// no slot ever frees — that is the same behavior as a Trigger blocked
+// on a finite-cap worker pool elsewhere in the codebase.
+func (r *Runner) runAfterWait(task *executor.Task, src, dst backend.Backend, done chan struct{}) {
+	// Block until a slot frees. No ctx wired in here because the queued
+	// goroutine outlives the request context that admitted it (same
+	// rationale as the background ctx in run() — operator Cancel is the
+	// explicit interrupt path).
+	r.slots <- struct{}{}
+	r.queueLen.Add(-1)
+	r.run(task, src, dst, done)
+}
+
+// tryAdmit attempts to admit a task to either the running set or the
+// bounded queue. Returns (admitted, queued):
+//
+//   - (true, false):  slot acquired; caller spawns run() immediately.
+//   - (false, true):  queued; caller spawns runAfterWait().
+//   - (false, false): cap + queue full; caller returns ErrQueueFull.
+//
+// When r.slots is nil (unlimited mode, the default) this always returns
+// (true, false) — pre-fix behavior is preserved verbatim.
+func (r *Runner) tryAdmit() (admitted, queued bool) {
+	if r.slots == nil {
+		return true, false
+	}
+	select {
+	case r.slots <- struct{}{}:
+		return true, false
+	default:
+	}
+	if r.maxQueue <= 0 {
+		return false, false
+	}
+	// Atomically bump queueLen iff it is below cap. We use a CAS-style
+	// loop on the atomic to avoid the read-then-add race where two
+	// concurrent rejectees could both observe queueLen=maxQueue-1 and
+	// both succeed.
+	for {
+		cur := r.queueLen.Load()
+		if int(cur) >= r.maxQueue {
+			return false, false
+		}
+		if r.queueLen.CompareAndSwap(cur, cur+1) {
+			return false, true
+		}
+	}
+}
+
+// release frees one concurrency slot. Safe to call when r.slots is nil
+// (unlimited mode) — becomes a no-op.
+func (r *Runner) release() {
+	if r.slots == nil {
+		return
+	}
+	select {
+	case <-r.slots:
+	default:
+		// Slot already drained — should not happen if tryAdmit/release
+		// are balanced, but defensive against a future caller that
+		// double-releases.
+	}
+}
+
+// RunningCount returns the number of tasks currently holding a
+// concurrency slot. Returns 0 when the cap is disabled (slots == nil) —
+// callers that want the true in-flight count in unlimited mode should
+// use executor.RunningCount() instead, since the Runner has no
+// independent view of how many goroutines it has spawned.
+func (r *Runner) RunningCount() int {
+	if r.slots == nil {
+		return 0
+	}
+	return len(r.slots)
+}
+
+// QueueLen returns the number of tasks currently waiting for a slot.
+// Exposed for the heartbeat snapshot — master uses it as one input to
+// the load-score so an overloaded node sheds new triggers earlier.
+func (r *Runner) QueueLen() int {
+	return int(r.queueLen.Load())
+}
+
+
 // On ctx cancellation the task keeps running; only explicit Runner.Cancel
 // stops it.
 func (r *Runner) waitForRecord(ctx context.Context, taskID string, done <-chan struct{}) (*Record, error) {

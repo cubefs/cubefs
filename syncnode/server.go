@@ -282,6 +282,16 @@ func doShutdown(srv common.Server) {
 
 // parseConfig loads the raw config.Config into a typed SyncConfig and runs
 // validateConfig. On failure the returned error includes ConfigError code +
+// currentConfig returns the live *SyncConfig under cfgMu so callers that
+// need to read masterAddr / s3Defaults / posix / concurrency get whatever
+// the most recent SIGHUP reload landed. nil during the brief startup
+// window before parseConfig fires.
+func (s *SyncNode) currentConfig() *SyncConfig {
+	s.cfgMu.RLock()
+	defer s.cfgMu.RUnlock()
+	return s.cfg
+}
+
 // field for operators / tests. Records cfg.FilePath into s.cfgPath so reload
 // can re-read the same file.
 func (s *SyncNode) parseConfig(cfg *config.Config) error {
@@ -430,7 +440,11 @@ func (s *SyncNode) initStateStore() error {
 		log.LogWarnf("syncnode crash recovery: marked %d task(s) interrupted", interrupted)
 	}
 	s.boltDB = db
-	s.ruleStore = db.RuleStore()
+	// Wrap the persisted rule store in a NotifyStore so every CRUD /
+	// auto-degrade lands at the scheduler within milliseconds. The
+	// OnChange callback is wired later in initSchedulerAndTTL (chicken-
+	// and-egg: the scheduler doesn't exist yet).
+	s.ruleStore = rules.NewNotifyStore(db.RuleStore(), nil)
 	s.taskStore = db.TaskStore()
 	s.inProgress = db.InProgress()
 	s.ruleHandlers = rules.NewHandlers(s.ruleStore)
@@ -462,9 +476,26 @@ func (s *SyncNode) initExecutorAndRunner() error {
 	}
 	s.executor = executor.New(execOpts...)
 
-	builder := newBackendBuilder(s.backendPool, s.cfg)
-	s.runner = tasks.NewRunner(s.executor, s.taskStore, s.ruleStore, builder,
-		tasks.WithOnTerminal(s.onTaskTerminal))
+	// FIX D: pass a cfg-provider closure rather than the current pointer
+	// so SIGHUP reload's atomic cfg swap takes effect for the next
+	// Backend construction. The closure reads under cfgMu so a half-swap
+	// can't race a Build.
+	builder := newBackendBuilder(s.backendPool, s.currentConfig)
+	runnerOpts := []tasks.RunnerOption{
+		tasks.WithOnTerminal(s.onTaskTerminal),
+	}
+	// Wire the concurrency-gate options from cfg.Concurrency. Both fields
+	// already exist (master reads them for the load score); this is the
+	// first place the syncnode itself enforces them. A zero value keeps
+	// the prior unlimited behavior so existing operators with empty caps
+	// see no change.
+	if n := s.cfg.Concurrency.MaxConcurrentTasks; n > 0 {
+		runnerOpts = append(runnerOpts, tasks.WithMaxConcurrent(n))
+	}
+	if n := s.cfg.Concurrency.MaxQueueSize; n > 0 {
+		runnerOpts = append(runnerOpts, tasks.WithQueueSize(n))
+	}
+	s.runner = tasks.NewRunner(s.executor, s.taskStore, s.ruleStore, builder, runnerOpts...)
 	s.taskHandlers = tasks.NewHandlers(s.runner, s.taskStore)
 	return nil
 }
@@ -546,11 +577,18 @@ func (s *SyncNode) validateRuleConflicts() error {
 // initSchedulerAndTTL builds the cron scheduler + the TTL Runner and
 // arms both. ApplyRules is called once after Start with the current store
 // snapshot; subsequent rule changes (HTTP create/update/delete/pause/resume,
-// SIGHUP reload) re-call ApplyRules via the reload path.
+// SIGHUP reload, G-3 auto-degrade) re-call ApplyRules via the NotifyStore
+// callback wired below.
 func (s *SyncNode) initSchedulerAndTTL() error {
 	s.scheduler = scheduler.New(s.ruleStore, s.runner)
 	if err := s.scheduler.Start(context.Background()); err != nil {
 		return fmt.Errorf("start scheduler: %w", err)
+	}
+	// Now that s.scheduler is non-nil, wire the NotifyStore callback so
+	// every mutating Store op (HTTP CRUD, Degrade, applyBootstrapRules)
+	// pushes the fresh rule set to the scheduler synchronously.
+	if ns, ok := s.ruleStore.(*rules.NotifyStore); ok {
+		ns.SetOnChange(s.applyRulesToScheduler)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -569,6 +607,34 @@ func (s *SyncNode) initSchedulerAndTTL() error {
 		return fmt.Errorf("start ttl runner: %w", err)
 	}
 	return nil
+}
+
+// applyRulesToScheduler refetches the rule list and pushes it to the
+// scheduler. Called via the NotifyStore wrapper after every successful
+// CRUD / SetState mutation (HTTP admin API, SIGHUP-reload bootstrap
+// upsert, G-3 auto-degrade). The actual diff (add / remove / re-parse
+// cron) lives in scheduler.ApplyRules; this helper only handles the
+// list-and-forward.
+//
+// Errors are logged + dropped: the underlying mutation has already
+// committed by the time we get here, so the only correct response to a
+// List or ApplyRules error is to wait for the next mutation / SIGHUP /
+// restart to retry. We log loudly so operators see the divergence in
+// their log stream.
+func (s *SyncNode) applyRulesToScheduler() {
+	if s.scheduler == nil || s.ruleStore == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	rs, err := s.ruleStore.List(ctx)
+	if err != nil {
+		log.LogWarnf("syncnode: applyRulesToScheduler list: %v", err)
+		return
+	}
+	if err := s.scheduler.ApplyRules(rs); err != nil {
+		log.LogWarnf("syncnode: applyRulesToScheduler apply: %v", err)
+	}
 }
 
 // installSIGHUPHandler arms a goroutine that calls reload on every SIGHUP.

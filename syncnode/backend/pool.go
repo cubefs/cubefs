@@ -19,21 +19,28 @@ import (
 	"sync"
 )
 
-// PoolKey identifies a logical Backend "client" — the same (kind, endpoint,
-// region) triple maps to the same shared instance so we don't waste
-// HTTP/2 connection pools or credential refreshers across rules.
+// PoolKey identifies a unique Backend client instance. The triple
+// (Kind, Endpoint, Region) defines the "where to connect"; the
+// Bucket field disambiguates per-bucket (s3) / per-volume (cfs)
+// instances because the concrete Backend wrappers bake the bucket /
+// volume into their state at construction time.
 //
-// For backends without endpoint/region (e.g. cfs), Endpoint / Region are
-// empty strings — every cfs vol may share a single client (further
-// scoping by vol happens inside the cfs adapter).
+// Without Bucket in the key, two rules pointing at the same s3
+// endpoint+region but different buckets would share one *s3.Backend
+// whose bucket was set from whichever rule constructed it first —
+// the second rule's reads/writes would silently hit the wrong
+// bucket. Same hazard for cfs volume. See pool_test.go.
+//
+// For backends without per-bucket identity (e.g. local), Bucket is "".
 type PoolKey struct {
 	Kind     string
 	Endpoint string // S3 endpoint URL; empty for cfs/local
 	Region   string // S3 region; empty for cfs/local
+	Bucket   string // S3 bucket OR cfs volume; empty for local
 }
 
 func (k PoolKey) String() string {
-	return fmt.Sprintf("%s|%s|%s", k.Kind, k.Endpoint, k.Region)
+	return fmt.Sprintf("%s|%s|%s|%s", k.Kind, k.Endpoint, k.Region, k.Bucket)
 }
 
 // Pool caches Backend instances by PoolKey. Concurrent callers requesting

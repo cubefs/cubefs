@@ -48,6 +48,12 @@ func (s *SyncNode) Snapshot() proto.SyncNodeHeartbeatResponse {
 	if s.executor != nil {
 		resp.RunningTasks = int64(s.executor.RunningCount())
 	}
+	// FIX C: surface the Runner's queued-task count so master's
+	// heartbeat-derived load + dashboards see a real number instead of
+	// the fixed zero we shipped before the concurrency gate.
+	if s.runner != nil {
+		resp.QueuedTasks = int64(s.runner.QueueLen())
+	}
 	if s.scheduler != nil {
 		resp.ScheduledRules = s.scheduler.RegisteredCount()
 	}

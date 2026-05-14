@@ -633,3 +633,447 @@ func waitForStatus(t *testing.T, store Store, taskID string, want executor.Statu
 	rec, _ := store.Get(context.Background(), taskID)
 	t.Fatalf("task %s never reached %q within %s; current=%+v", taskID, want, timeout, rec)
 }
+
+// gatedBackend is a controllable test backend: List signals it has
+// started by closing/sending on `started`, then blocks until `release`
+// is closed (or ctx is cancelled). Used to pin tasks in the "running"
+// state for concurrency-cap tests.
+type gatedBackend struct {
+	emptyBackend
+	started chan struct{}
+	release chan struct{}
+	// inFlight counts how many Lists are currently blocked between
+	// started and release. Atomic so concurrent test assertions are safe.
+	inFlight *atomic.Int32
+}
+
+func (b *gatedBackend) List(ctx context.Context, prefix string, recursive bool) (<-chan backend.Entry, error) {
+	ch := make(chan backend.Entry)
+	go func() {
+		// Mark started so the test can observe slot occupancy.
+		select {
+		case b.started <- struct{}{}:
+		default:
+		}
+		if b.inFlight != nil {
+			b.inFlight.Add(1)
+			defer b.inFlight.Add(-1)
+		}
+		// Block until release or ctx cancel. Either way the producer
+		// loop in runSync exits without enumerating any entries, so
+		// executor.Run returns StatusDone (empty listing) or
+		// StatusCancelled (ctx cancel) — both terminal.
+		select {
+		case <-b.release:
+		case <-ctx.Done():
+		}
+		close(ch)
+	}()
+	return ch, nil
+}
+
+// newGatedBackend constructs a gatedBackend with fresh channels. The
+// returned `release` channel — closing it lets every still-blocked List
+// finish, draining tasks held by this backend.
+func newGatedBackend(inFlight *atomic.Int32) (*gatedBackend, chan struct{}) {
+	rel := make(chan struct{})
+	return &gatedBackend{
+		started:  make(chan struct{}, 64),
+		release:  rel,
+		inFlight: inFlight,
+	}, rel
+}
+
+// TestRunner_MaxConcurrent_AdmitsUpToCap verifies cap=2 admits exactly
+// two tasks simultaneously while a third waits (or is rejected, depending
+// on queue size — here queue=0 so the third must error).
+func TestRunner_MaxConcurrent_AdmitsUpToCap(t *testing.T) {
+	exec := executor.New()
+	t.Cleanup(func() { _ = exec.Close() })
+	store := NewMemoryStore()
+	t.Cleanup(func() { _ = store.Close() })
+	lookup := newStubRuleLookup()
+	lookup.put(newSyncRule("rule1"))
+
+	var inFlight atomic.Int32
+	be, release := newGatedBackend(&inFlight)
+	t.Cleanup(func() {
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+	})
+	builder := &stubBackendBuilder{factory: func(*spec.EndpointConfig) (backend.Backend, error) {
+		return be, nil
+	}}
+	r := NewRunner(exec, store, lookup, builder, WithMaxConcurrent(2))
+
+	// Fire 2 tasks — both should be admitted and reach the running gate.
+	recs := make([]*Record, 0, 2)
+	for i := 0; i < 2; i++ {
+		rec, err := r.Trigger(context.Background(), "rule1", false)
+		if err != nil {
+			t.Fatalf("Trigger[%d]: %v", i, err)
+		}
+		recs = append(recs, rec)
+	}
+	// Wait until both Lists have entered the gate.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if inFlight.Load() == 2 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if got := inFlight.Load(); got != 2 {
+		t.Fatalf("inFlight = %d, want 2", got)
+	}
+	if got := r.RunningCount(); got != 2 {
+		t.Errorf("RunningCount = %d, want 2", got)
+	}
+	// Drain so the test exits cleanly (avoids racing executor.Close()
+	// against still-running goroutines).
+	close(release)
+	for _, rec := range recs {
+		waitForStatus(t, store, rec.TaskID, executor.StatusDone, 3*time.Second)
+	}
+}
+
+// TestRunner_MaxConcurrent_FailFastWhenFull verifies that with cap=1 and
+// queue=0 a second Trigger immediately returns ErrQueueFull AND the
+// rejected record is persisted as failed so operators see it in the
+// task list.
+func TestRunner_MaxConcurrent_FailFastWhenFull(t *testing.T) {
+	exec := executor.New()
+	t.Cleanup(func() { _ = exec.Close() })
+	store := NewMemoryStore()
+	t.Cleanup(func() { _ = store.Close() })
+	lookup := newStubRuleLookup()
+	lookup.put(newSyncRule("rule1"))
+
+	var inFlight atomic.Int32
+	be, release := newGatedBackend(&inFlight)
+	t.Cleanup(func() {
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+	})
+	builder := &stubBackendBuilder{factory: func(*spec.EndpointConfig) (backend.Backend, error) {
+		return be, nil
+	}}
+	r := NewRunner(exec, store, lookup, builder, WithMaxConcurrent(1))
+
+	first, err := r.Trigger(context.Background(), "rule1", false)
+	if err != nil {
+		t.Fatalf("first Trigger: %v", err)
+	}
+	// Wait until it occupies the slot.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if r.RunningCount() == 1 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	// Second trigger must fail-fast.
+	rec, err := r.Trigger(context.Background(), "rule1", false)
+	if !errors.Is(err, ErrQueueFull) {
+		t.Fatalf("err = %v, want ErrQueueFull", err)
+	}
+	if rec == nil || rec.Status != executor.StatusFailed {
+		t.Fatalf("rejected record Status = %q, want failed (rec=%+v)", rec.Status, rec)
+	}
+	// Persisted in the store so operators see it.
+	persisted, err := store.Get(context.Background(), rec.TaskID)
+	if err != nil {
+		t.Fatalf("rejected record not persisted: %v", err)
+	}
+	if persisted.Status != executor.StatusFailed || persisted.Error != ErrQueueFull.Error() {
+		t.Fatalf("persisted Record = %+v, want failed+queue-full error", persisted)
+	}
+
+	// Drain.
+	close(release)
+	waitForStatus(t, store, first.TaskID, executor.StatusDone, 2*time.Second)
+}
+
+// TestRunner_MaxConcurrent_QueueAdmitsThenRuns verifies the queueing path:
+// cap=1, queue=2 → 3 Triggers all admitted, only 1 running at a time,
+// rest drain in order.
+func TestRunner_MaxConcurrent_QueueAdmitsThenRuns(t *testing.T) {
+	exec := executor.New()
+	t.Cleanup(func() { _ = exec.Close() })
+	store := NewMemoryStore()
+	t.Cleanup(func() { _ = store.Close() })
+	lookup := newStubRuleLookup()
+	lookup.put(newSyncRule("rule1"))
+
+	var inFlight atomic.Int32
+	// Each call to Build returns a fresh gatedBackend so tasks can be
+	// released independently. We track them so the test can drain.
+	var (
+		buildMu  sync.Mutex
+		gates    []chan struct{}
+		gateUsed int
+	)
+	builder := &stubBackendBuilder{factory: func(*spec.EndpointConfig) (backend.Backend, error) {
+		buildMu.Lock()
+		defer buildMu.Unlock()
+		// Two Builds per Trigger (src + dst) — reuse the same gate per
+		// pair so the per-task release is one signal.
+		var be backend.Backend
+		if gateUsed%2 == 0 {
+			b, rel := newGatedBackend(&inFlight)
+			gates = append(gates, rel)
+			be = b
+		} else {
+			// Reuse the most-recent gate's backend so closing one
+			// release frees the whole task (src AND dst). Listing
+			// only runs on src in sync_task; dst's List would never
+			// be called.
+			b, _ := newGatedBackend(&inFlight)
+			be = b
+		}
+		gateUsed++
+		return be, nil
+	}}
+	r := NewRunner(exec, store, lookup, builder, WithMaxConcurrent(1), WithQueueSize(2))
+
+	recs := make([]*Record, 0, 3)
+	for i := 0; i < 3; i++ {
+		rec, err := r.Trigger(context.Background(), "rule1", false)
+		if err != nil {
+			t.Fatalf("Trigger[%d]: %v", i, err)
+		}
+		recs = append(recs, rec)
+	}
+	// Cap=1 → exactly one running at a time; QueueLen should be 2.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if r.RunningCount() == 1 && r.QueueLen() == 2 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if got, want := r.RunningCount(), 1; got != want {
+		t.Errorf("RunningCount = %d, want %d", got, want)
+	}
+	if got, want := r.QueueLen(), 2; got != want {
+		t.Errorf("QueueLen = %d, want %d", got, want)
+	}
+
+	// Drain: release tasks one at a time, in any order. Each released
+	// task lets the next queued one acquire the slot.
+	buildMu.Lock()
+	releases := append([]chan struct{}(nil), gates...)
+	buildMu.Unlock()
+	for _, rel := range releases {
+		close(rel)
+	}
+	// All 3 must reach done eventually.
+	for _, rec := range recs {
+		waitForStatus(t, store, rec.TaskID, executor.StatusDone, 3*time.Second)
+	}
+	if got := r.QueueLen(); got != 0 {
+		t.Errorf("final QueueLen = %d, want 0", got)
+	}
+}
+
+// TestRunner_MaxConcurrent_QueueFullReturnsErr verifies the third
+// trigger is rejected when cap=1 + queue=1 are both saturated.
+func TestRunner_MaxConcurrent_QueueFullReturnsErr(t *testing.T) {
+	exec := executor.New()
+	t.Cleanup(func() { _ = exec.Close() })
+	store := NewMemoryStore()
+	t.Cleanup(func() { _ = store.Close() })
+	lookup := newStubRuleLookup()
+	lookup.put(newSyncRule("rule1"))
+
+	var inFlight atomic.Int32
+	be, release := newGatedBackend(&inFlight)
+	t.Cleanup(func() {
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+	})
+	builder := &stubBackendBuilder{factory: func(*spec.EndpointConfig) (backend.Backend, error) {
+		return be, nil
+	}}
+	r := NewRunner(exec, store, lookup, builder, WithMaxConcurrent(1), WithQueueSize(1))
+
+	// First fills the slot.
+	first, err := r.Trigger(context.Background(), "rule1", false)
+	if err != nil {
+		t.Fatalf("Trigger[0]: %v", err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && r.RunningCount() != 1 {
+		time.Sleep(5 * time.Millisecond)
+	}
+	// Second fills the queue.
+	second, err := r.Trigger(context.Background(), "rule1", false)
+	if err != nil {
+		t.Fatalf("Trigger[1]: %v", err)
+	}
+	for time.Now().Before(deadline) && r.QueueLen() != 1 {
+		time.Sleep(5 * time.Millisecond)
+	}
+	// Third must be rejected.
+	rec, err := r.Trigger(context.Background(), "rule1", false)
+	if !errors.Is(err, ErrQueueFull) {
+		t.Fatalf("third err = %v, want ErrQueueFull", err)
+	}
+	if rec == nil || rec.Status != executor.StatusFailed {
+		t.Fatalf("rejected Status = %q, want failed", rec.Status)
+	}
+	// Drain admitted tasks so t.Cleanup doesn't race against
+	// still-running goroutines (executor.Close() nils the running map;
+	// a late Run call would panic).
+	close(release)
+	waitForStatus(t, store, first.TaskID, executor.StatusDone, 3*time.Second)
+	waitForStatus(t, store, second.TaskID, executor.StatusDone, 3*time.Second)
+}
+
+// TestRunner_MaxConcurrent_Unlimited_DefaultBehavior verifies the
+// no-options Runner preserves pre-fix unlimited semantics: 100
+// concurrent triggers all run (well, all complete) without any of them
+// returning ErrQueueFull.
+func TestRunner_MaxConcurrent_Unlimited_DefaultBehavior(t *testing.T) {
+	r, lookup, _, store := newRunnerHarness(t, func(*spec.EndpointConfig) (backend.Backend, error) {
+		return &emptyBackend{}, nil
+	})
+	lookup.put(newSyncRule("rule1"))
+
+	var wg sync.WaitGroup
+	const N = 100
+	for i := 0; i < N; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := r.Trigger(context.Background(), "rule1", true); err != nil {
+				t.Errorf("Trigger: %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+
+	got, _ := store.List(context.Background(), "")
+	if len(got) != N {
+		t.Errorf("records = %d, want %d", len(got), N)
+	}
+	// In unlimited mode RunningCount is intentionally 0 (slots == nil).
+	if r.RunningCount() != 0 {
+		t.Errorf("unlimited RunningCount = %d, want 0", r.RunningCount())
+	}
+}
+
+// TestRunner_MaxConcurrent_PanicReleasesSlot verifies the deferred
+// release in run() fires even when the executor panics, so the cap is
+// reclaimed and the next trigger can proceed.
+func TestRunner_MaxConcurrent_PanicReleasesSlot(t *testing.T) {
+	r, lookup, _, _ := newRunnerHarness(t, func(*spec.EndpointConfig) (backend.Backend, error) {
+		return &emptyBackend{}, nil
+	})
+	// Re-create runner with cap=1 — newRunnerHarness doesn't take options.
+	exec := r.exec
+	store2 := NewMemoryStore()
+	t.Cleanup(func() { _ = store2.Close() })
+	builder := &stubBackendBuilder{factory: func(*spec.EndpointConfig) (backend.Backend, error) {
+		return &emptyBackend{}, nil
+	}}
+	r2 := NewRunner(exec, store2, lookup, builder, WithMaxConcurrent(1),
+		WithOnTerminal(func(*Record) { panic("simulated terminal-hook panic") }))
+	lookup.put(newSyncRule("rule1"))
+
+	// First trigger: terminal hook panics; the recover in run() should
+	// keep the goroutine alive AND the deferred release should reclaim
+	// the slot. Wait for the task to terminate so the release has fired.
+	rec, err := r2.Trigger(context.Background(), "rule1", true)
+	if err != nil {
+		t.Fatalf("first Trigger: %v", err)
+	}
+	if rec.Status != executor.StatusDone {
+		t.Fatalf("first Status = %q, want done", rec.Status)
+	}
+	if r2.RunningCount() != 0 {
+		t.Fatalf("RunningCount after terminate = %d, want 0 (slot leaked)", r2.RunningCount())
+	}
+	// Second trigger must succeed — proves the slot was released.
+	rec2, err := r2.Trigger(context.Background(), "rule1", true)
+	if err != nil {
+		t.Fatalf("second Trigger: %v", err)
+	}
+	if rec2.Status != executor.StatusDone {
+		t.Fatalf("second Status = %q, want done", rec2.Status)
+	}
+
+	// Sanity: store2 has 2 records.
+	got, _ := store2.List(context.Background(), "")
+	if len(got) != 2 {
+		t.Errorf("records = %d, want 2", len(got))
+	}
+}
+
+// TestRunner_QueueLength_ExposedViaCount verifies QueueLen reports the
+// number of waiting tasks accurately, including under churn.
+func TestRunner_QueueLength_ExposedViaCount(t *testing.T) {
+	exec := executor.New()
+	t.Cleanup(func() { _ = exec.Close() })
+	store := NewMemoryStore()
+	t.Cleanup(func() { _ = store.Close() })
+	lookup := newStubRuleLookup()
+	lookup.put(newSyncRule("rule1"))
+
+	var inFlight atomic.Int32
+	be, release := newGatedBackend(&inFlight)
+	t.Cleanup(func() {
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+	})
+	builder := &stubBackendBuilder{factory: func(*spec.EndpointConfig) (backend.Backend, error) {
+		return be, nil
+	}}
+	r := NewRunner(exec, store, lookup, builder, WithMaxConcurrent(1), WithQueueSize(3))
+
+	if got := r.QueueLen(); got != 0 {
+		t.Errorf("initial QueueLen = %d, want 0", got)
+	}
+
+	// Fill slot + 2 queued.
+	recs := make([]*Record, 0, 3)
+	for i := 0; i < 3; i++ {
+		rec, err := r.Trigger(context.Background(), "rule1", false)
+		if err != nil {
+			t.Fatalf("Trigger[%d]: %v", i, err)
+		}
+		recs = append(recs, rec)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if r.QueueLen() == 2 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if got := r.QueueLen(); got != 2 {
+		t.Errorf("QueueLen with 2 waiters = %d, want 2", got)
+	}
+	close(release)
+	// Wait for all 3 to finish so executor.Close() in t.Cleanup doesn't
+	// race against still-running tasks.
+	for _, rec := range recs {
+		waitForStatus(t, store, rec.TaskID, executor.StatusDone, 3*time.Second)
+	}
+	if got := r.QueueLen(); got != 0 {
+		t.Errorf("final QueueLen = %d, want 0", got)
+	}
+}
