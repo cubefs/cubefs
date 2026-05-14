@@ -267,22 +267,25 @@ func (m *SyncRuleManager) dispatchRule(taskID string, rule *proto.SyncRule) erro
 }
 
 // dispatchPrefix routes the prefix-mode fan-out path. shardTotal is
-// min(len(prefixes), parallelism, candidate count). Each shard owns a
-// subset of the prefix list (bucketsForPrefix packs deterministically).
+// min(len(prefixes), parallelism). Each shard owns a subset of the
+// prefix list (bucketsForPrefix packs deterministically).
+//
+// Unlike hash-mode fan-out, prefix shards are NOT capped by candidate
+// count: the goal is data partitioning (each shard filters a disjoint
+// prefix subset), not load balancing. A single-node cluster runs all
+// shards on the same node sequentially via its queue — distinct task
+// records per prefix are still created and tracked independently.
 func (m *SyncRuleManager) dispatchPrefix(taskID string, rule *proto.SyncRule, payload *SyncRunTaskRequest, prefixes []string, parallelism int) error {
 	disp := m.cluster.syncDispatcher
 	cands := disp.Candidates(dispatcherStaleness)
 	if len(cands) == 0 {
 		return fmt.Errorf("rule %q: %w", rule.ID(), ErrNoCandidates)
 	}
-	// Cap parallelism by both the prefix count AND the candidate count.
-	// A bucket without a node is wasted; a node without a bucket is too.
+	// Cap shard count by prefix list length and parallelism; NOT by
+	// candidate count (multiple shards may share a single node).
 	limit := parallelism
 	if limit <= 0 || limit > len(prefixes) {
 		limit = len(prefixes)
-	}
-	if limit > len(cands) {
-		limit = len(cands)
 	}
 	buckets := bucketsForPrefix(prefixes, limit)
 	fo := m.cluster.syncFanout
