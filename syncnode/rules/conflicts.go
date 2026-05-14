@@ -86,10 +86,10 @@ func Validate(rules []*Rule) error {
 // Two endpoints with the same endpointKey live on the same backend
 // instance — they can therefore collide on path overlap.
 //
-//   - cfs   → "cfs:<vol>"            (Path is per-rule, see pathOf)
+//   - cfs   → "cfs:<vol>"              (Path is per-rule, see pathOf)
 //   - s3    → "s3:<endpoint>:<bucket>" (Prefix is per-rule, see pathOf)
-//   - local → "local:<clean(Path)>"  (local has no instance identity; the
-//     cleaned filesystem path itself IS the anchor)
+//   - local → "local:"                 (all local rules share one filesystem;
+//     Path is the per-rule field returned by pathOf)
 func endpointKey(ep *spec.EndpointConfig) string {
 	if ep == nil {
 		return ""
@@ -100,7 +100,7 @@ func endpointKey(ep *spec.EndpointConfig) string {
 	case "s3":
 		return "s3:" + ep.Endpoint + ":" + ep.Bucket
 	case "local":
-		return "local:" + filepath.Clean(ep.Path)
+		return "local:"
 	default:
 		return ep.Kind + ":"
 	}
@@ -111,7 +111,7 @@ func endpointKey(ep *spec.EndpointConfig) string {
 //
 //   - cfs   → ep.Path
 //   - s3    → ep.Prefix
-//   - local → "" (ep.Path is the anchor; encoded in endpointKey)
+//   - local → filepath.Clean(ep.Path) (path IS the per-rule differentiator)
 func pathOf(ep *spec.EndpointConfig) string {
 	if ep == nil {
 		return ""
@@ -121,6 +121,8 @@ func pathOf(ep *spec.EndpointConfig) string {
 		return ep.Path
 	case "s3":
 		return ep.Prefix
+	case "local":
+		return filepath.Clean(ep.Path)
 	default:
 		return ""
 	}

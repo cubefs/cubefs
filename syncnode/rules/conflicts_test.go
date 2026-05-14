@@ -153,8 +153,7 @@ func TestValidate_Duplicate(t *testing.T) {
 }
 
 func TestValidate_Duplicate_LocalEndpoint(t *testing.T) {
-	// local kind: ep.Path forms the endpoint anchor, pathOf is empty.
-	// Two rules with identical local anchors AND identical dst must dup.
+	// Two rules with identical local src path AND identical dst must be detected as duplicates.
 	rules := []*Rule{
 		mkRule("r1", localEP("/srv/data"), s3EP("https://s3", "b1", "p/")),
 		mkRule("r2", localEP("/srv/data"), s3EP("https://s3", "b1", "p/")),
@@ -203,6 +202,21 @@ func TestValidate_PrefixOverlap_TrailingSlashNormalised(t *testing.T) {
 		t.Fatalf("Code = %d, want %d", ce.Code, ErrCodePrefixOverlap)
 	}
 }
+
+func TestValidate_PrefixOverlap_LocalSrc(t *testing.T) {
+	// local-to-s3: /tmp/dir/ and /tmp/dir/sub/ share the same filesystem.
+	// The sub-path rule should be rejected as a prefix overlap (1015).
+	rules := []*Rule{
+		mkRule("r1", localEP("/tmp/dir/"), s3EP("https://s3", "b1", "out/")),
+		mkRule("r2", localEP("/tmp/dir/sub/"), s3EP("https://s3", "b1", "out/inner/")),
+	}
+	ce := asConflict(t, Validate(rules))
+	if ce.Code != ErrCodePrefixOverlap {
+		t.Fatalf("Code = %d, want %d (local src prefix overlap)", ce.Code, ErrCodePrefixOverlap)
+	}
+}
+
+
 
 func TestValidate_CycleSync(t *testing.T) {
 	// Classic ping-pong: cfs:v1:/x <-> s3:b/q
@@ -304,7 +318,7 @@ func TestEndpointKey(t *testing.T) {
 		{"s3 uses endpoint+bucket", s3EP("https://s3", "bA", "px/"), "s3:https://s3:bA"},
 		{"s3 different bucket → different key", s3EP("https://s3", "bB", "px/"), "s3:https://s3:bB"},
 		{"s3 different endpoint → different key", s3EP("https://other", "bA", "px/"), "s3:https://other:bA"},
-		{"local uses cleaned path", localEP("/srv/data/"), "local:/srv/data"},
+		{"local uses kind only (path is per-rule, see pathOf)", localEP("/srv/data/"), "local:"},
 		{"unknown kind falls back to kind:", spec.EndpointConfig{Kind: "weird"}, "weird:"},
 	}
 	for _, tc := range tests {
@@ -338,7 +352,7 @@ func TestPathOf(t *testing.T) {
 	}{
 		{"cfs returns Path", cfsEP("v1", "/a"), "/a"},
 		{"s3 returns Prefix", s3EP("https://s3", "b", "p/"), "p/"},
-		{"local returns empty (anchor is in key)", localEP("/srv/data"), ""},
+		{"local returns cleaned path (path is the per-rule differentiator)", localEP("/srv/data"), "/srv/data"},
 		{"unknown returns empty", spec.EndpointConfig{Kind: "weird", Path: "/x"}, ""},
 	}
 	for _, tc := range tests {
