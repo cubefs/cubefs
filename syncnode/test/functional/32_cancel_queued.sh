@@ -60,7 +60,7 @@ expect_code "$(create_rule "$long_body")" 0
 expect_code "$(create_rule "$queue_body")" 0
 
 # Trigger the long rule with wait=false so we get a record id back fast.
-t1=$(syncnode_post "/admin/sync/task/trigger?ruleID=$RID_LONG")
+t1=$(master_rule_trigger "$RID_LONG")
 expect_code "$t1" 0 "trigger long"
 TID_LONG=$(echo "$t1" | jq -r '.data.taskID')
 [ -n "$TID_LONG" ] || test_fail "no taskID for long rule"
@@ -79,7 +79,7 @@ wait_for wait_for_running 30 "long task to enter running state" || test_fail "lo
 # we test the queued branch by requiring a queue >= 1. If the deploy
 # doesn't support queueing, this test simply checks the immediate
 # "ErrQueueFull" rejection.
-t2=$(syncnode_post "/admin/sync/task/trigger?ruleID=$RID_Q")
+t2=$(master_rule_trigger "$RID_Q")
 code=$(echo "$t2" | jq -r '.code // 999')
 TID_Q=$(echo "$t2" | jq -r '.data.taskID // empty')
 
@@ -87,18 +87,18 @@ case "$code" in
   0)
     log_info "queued task admitted: $TID_Q"
     # Cancel it BEFORE the slot frees
-    c=$(syncnode_post "/admin/sync/task/cancel?id=$TID_Q")
+    c=$(master_task_cancel "$TID_Q")
     expect_code "$c" 0 "cancel queued"
     log_ok "cancel sent for queued task"
 
     # Free the slot by cancelling the long task. The queued one MUST
     # have already been marked cancelled — it must NOT start running.
-    syncnode_post "/admin/sync/task/cancel?id=$TID_LONG" >/dev/null
+    master_task_cancel "$TID_LONG" >/dev/null
 
     # Poll the queued task's record. Should be Status=cancelled and
     # progress.filesDone=0 (never started).
     wait_q_terminal() {
-      local r; r=$(syncnode_get "/admin/sync/task/get?id=$TID_Q")
+      local r; r=$(master_task_get "$TID_Q")
       local s; s=$(echo "$r" | jq -r '.data.status // empty')
       case "$s" in
         done|failed|cancelled) echo yes ;;
@@ -107,14 +107,14 @@ case "$code" in
     }
     wait_for wait_q_terminal 30 "queued task to reach terminal"
 
-    final=$(syncnode_get "/admin/sync/task/get?id=$TID_Q")
+    final=$(master_task_get "$TID_Q")
     assert_json_eq "$final" '.data.status' "cancelled"
     assert_json_eq "$final" '.data.progress.filesDone' "0" \
       "queued task must NOT have started running (Wave 3 Q1 regression)"
     ;;
   2007)
     log_info "deploy has queue disabled (ErrQueueFull / 429-like); skipping detailed assertions"
-    syncnode_post "/admin/sync/task/cancel?id=$TID_LONG" >/dev/null
+    master_task_cancel "$TID_LONG" >/dev/null
     ;;
   *)
     test_fail "unexpected response code $code for queued trigger"

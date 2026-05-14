@@ -272,9 +272,57 @@ func (m *Server) getSyncRule(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(rule))
 }
 
-// decodeSyncRuleBody reads a SyncRule out of the request body. Caps the
-// body at syncRuleBodyCap and uses DisallowUnknownFields so a typo
-// surfaces as a 400 rather than silently dropping data.
+// triggerSyncRule handles POST /syncRule/trigger?id=. Synchronously
+// fires the rule's dispatch path (same code path as the cron callback)
+// and returns the new taskID + owner mapping. Useful for ops scripts +
+// integration tests that don't want to wait for the cron tick.
+//
+// Idempotency: each call produces a fresh taskID; the underlying
+// SyncFanout / Dispatcher de-duplicate against the dispatcher's ledger
+// so concurrent triggers don't collide.
+func (m *Server) triggerSyncRule(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.SyncRuleTrigger))
+	var err error
+	defer func() { doStatAndMetric(proto.SyncRuleTrigger, metric, err, nil) }()
+
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		err = errors.New("missing id query param")
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	rule := m.cluster.syncRuleCache.Get(id)
+	if rule == nil {
+		err = syncRuleNotFound(id)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+	if rule.State != proto.SyncRuleStateActive {
+		err = fmt.Errorf("rule %q state=%q, refusing trigger", id, rule.State)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+	taskID := fmt.Sprintf("%s/%d", id, time.Now().UnixNano())
+	if derr := m.cluster.syncRuleMgr.dispatchRule(taskID, rule); derr != nil {
+		err = derr
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: derr.Error()})
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(map[string]string{
+		"ruleID": id,
+		"taskID": taskID,
+	}))
+}
+
+// decodeSyncRuleBody reads a SyncRuleConfig out of the request body
+// and wraps it into a fresh SyncRule with server-controlled fields
+// (state / timestamps / lastRun) zeroed. Cap + DisallowUnknownFields
+// keep the wire schema tight; the caller (create / update handlers)
+// then merges with any existing record before submit.
+//
+// The wire shape is the FLAT SyncRuleConfig (id, type, src, dst, ...)
+// — NOT the SyncRule wrapper. Operators + console don't need to know
+// about Config / State / timestamps; server owns those.
 func decodeSyncRuleBody(r *http.Request) (*proto.SyncRule, error) {
 	if r.Body == nil {
 		return nil, errors.New("empty request body")
@@ -285,13 +333,13 @@ func decodeSyncRuleBody(r *http.Request) (*proto.SyncRule, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read body: %w", err)
 	}
-	rule := &proto.SyncRule{}
+	cfg := &proto.SyncRuleConfig{}
 	dec := json.NewDecoder(strings.NewReader(string(body)))
 	dec.DisallowUnknownFields()
-	if err := dec.Decode(rule); err != nil {
+	if err := dec.Decode(cfg); err != nil {
 		return nil, fmt.Errorf("decode body: %w", err)
 	}
-	return rule, nil
+	return &proto.SyncRule{Config: *cfg}, nil
 }
 
 // validateSyncRuleShape performs cheap field-level checks before the

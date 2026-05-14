@@ -270,8 +270,9 @@ const (
 	SyncRuleDelete = "/syncRule/delete" // POST ?id=
 	SyncRulePause  = "/syncRule/pause"  // POST ?id=
 	SyncRuleResume = "/syncRule/resume" // POST ?id=
-	SyncRuleList   = "/syncRule/list"   // GET  [?state=active|paused|degraded]
-	SyncRuleGet    = "/syncRule/get"    // GET  ?id=
+	SyncRuleList    = "/syncRule/list"    // GET  [?state=active|paused|degraded]
+	SyncRuleGet     = "/syncRule/get"     // GET  ?id=
+	SyncRuleTrigger = "/syncRule/trigger" // POST ?id=  — synchronous fire (ops + tests)
 
 	// SyncTask observability + lifecycle. Master-side ledger answers
 	// list / get; cancel + retry hit the dispatch layer.

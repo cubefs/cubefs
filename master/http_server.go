@@ -544,6 +544,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.SyncRuleGet).
 		HandlerFunc(requireSyncAdminToken(m.getSyncRule))
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.SyncRuleTrigger).
+		HandlerFunc(requireSyncAdminToken(m.triggerSyncRule))
 
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.SyncTaskList).

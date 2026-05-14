@@ -540,6 +540,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.syncRuleCache = NewSyncRuleCache()
 	c.syncRuleMgr = NewSyncRuleManager(c)
 	c.syncTaskLedger = NewSyncTaskLedger(SyncTaskLedgerCap)
+	initSyncMetrics()
 	// SEC1: install the /syncNode/* admin token from master config
 	// (key "syncAdminToken"). Empty value = middleware passthrough,
 	// preserving zero-config dev/test behavior; operators opt in by

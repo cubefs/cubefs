@@ -37,12 +37,17 @@ RUN_VERBOSE=1 ./run.sh smoke
 
 ```
 SYNCNODE_HOST       # e.g. 10.0.1.10  (no port)
-SYNCNODE_HTTP_PORT  # e.g. 17911
+SYNCNODE_HTTP_PORT  # e.g. 17911 — used only by /admin/syncnode/{version,stat,reload}
+                    # P2-7: rule + task admin endpoints moved to MASTER.
 SYNCNODE_TCP_PORT   # e.g. 17910     (used by SEC2 cap test only)
 SYNCNODE_TOKEN      # adminToken from sync.json (empty = auth off)
 
-MASTER_HTTP         # e.g. http://10.0.1.1:17010
+MASTER_HTTP         # e.g. http://10.0.1.1:17010 — REQUIRED
+                    # P2-7 cutover: /syncRule/* and /syncTask/* live here.
 MASTER_TOKEN        # syncAdminToken from master.json (often same as syncnode)
+
+SYNCNODE_FLEET_SIZE # optional. When >1, tests can assert multi-node task
+                    # distribution (e.g. 35_prefix_sharding.sh).
 
 # For sync/load tests against S3-compatible backend
 S3_ENDPOINT         # e.g. http://minio:9000

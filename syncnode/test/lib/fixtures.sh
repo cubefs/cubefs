@@ -103,24 +103,41 @@ EOF
 }
 
 # Convenience: create a rule via the HTTP API, asserting success. Echoes
-# the rule body so callers can grab fields if needed.
+# the rule body so callers can grab fields if needed. P2-7: routes to
+# master /syncRule/create (the rule store moved off syncnode).
 create_rule() {
   local body="$1"
   local resp
-  resp=$(syncnode_post /admin/sync/rule/create "$body")
-  expect_code "$resp" 0 "rule/create"
+  resp=$(master_rule_create "$body")
+  expect_code "$resp" 0 "syncRule/create"
   echo "$resp"
 }
 
 delete_rule_silent() {
   local id="$1"
-  syncnode_post "/admin/sync/rule/delete?id=$id" >/dev/null 2>&1 || true
+  master_post "/syncRule/delete?id=$id" "" >/dev/null 2>&1 || true
 }
 
 # trigger_and_wait <ruleID> [timeout-sec]
-#   Hits /admin/sync/task/trigger?wait=true and waits for terminal.
-#   Echoes the final Record JSON. timeout defaults to $WAIT_TIMEOUT_SEC.
+#   P2-7: triggers via master /syncRule/trigger (synchronous fire) then
+#   polls /syncTask/get for the terminal status. The master returns the
+#   new taskID immediately; we poll until succeeded / failed / cancelled
+#   or the timeout fires. Echoes the final Record JSON.
 trigger_and_wait() {
   local id="$1" t="${2:-${WAIT_TIMEOUT_SEC:-120}}"
-  HTTP_MAX_TIME="$t" syncnode_post "/admin/sync/task/trigger?ruleID=$id&wait=true"
+  local fired taskID
+  fired=$(master_rule_trigger "$id")
+  if ! echo "$fired" | jq -e '.code == 0' >/dev/null; then
+    echo "$fired"
+    return 1
+  fi
+  taskID=$(echo "$fired" | jq -r '.data.taskID')
+  if [ -z "$taskID" ] || [ "$taskID" = "null" ]; then
+    log_err "trigger_and_wait: master /syncRule/trigger returned no taskID: $fired"
+    return 1
+  fi
+  if ! wait_for_task_terminal "$taskID" "$t"; then
+    return 1
+  fi
+  echo "$TASK_RECORD"
 }

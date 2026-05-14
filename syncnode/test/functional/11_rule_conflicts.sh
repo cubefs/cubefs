@@ -27,7 +27,7 @@ r1=$(cat <<EOF
   "afterCopy": "keep", "downloadStrategy": "temp_rename", "onMismatch": "alert" }
 EOF
 )
-expect_code "$(syncnode_post /admin/sync/rule/create "$r1")" 0
+expect_code "$(master_rule_create "$r1")" 0
 
 r2=$(cat <<EOF
 { "id": "$R2", "type": "sync",
@@ -36,7 +36,7 @@ r2=$(cat <<EOF
   "afterCopy": "keep", "downloadStrategy": "temp_rename", "onMismatch": "alert" }
 EOF
 )
-dup=$(syncnode_post /admin/sync/rule/create "$r2")
+dup=$(master_rule_create "$r2")
 expect_code "$dup" 1014 "duplicate src+dst rejection"
 log_ok "code 1014 fired for duplicate pair"
 
@@ -48,7 +48,7 @@ r3=$(cat <<EOF
   "afterCopy": "keep", "downloadStrategy": "temp_rename", "onMismatch": "alert" }
 EOF
 )
-ov=$(syncnode_post /admin/sync/rule/create "$r3")
+ov=$(master_rule_create "$r3")
 expect_code "$ov" 1015 "prefix overlap rejection"
 log_ok "code 1015 fired for prefix overlap"
 
@@ -67,7 +67,7 @@ fwd=$(cat <<EOF
   "afterCopy": "keep", "downloadStrategy": "temp_rename", "onMismatch": "alert" }
 EOF
 )
-expect_code "$(syncnode_post /admin/sync/rule/create "$fwd")" 0
+expect_code "$(master_rule_create "$fwd")" 0
 
 rev=$(cat <<EOF
 { "id": "$R5", "type": "sync",
@@ -76,7 +76,7 @@ rev=$(cat <<EOF
   "afterCopy": "keep", "downloadStrategy": "temp_rename", "onMismatch": "alert" }
 EOF
 )
-cyc=$(syncnode_post /admin/sync/rule/create "$rev")
+cyc=$(master_rule_create "$rev")
 expect_code "$cyc" 1016 "cycle sync rejection"
 log_ok "code 1016 fired for cycle sync"
 

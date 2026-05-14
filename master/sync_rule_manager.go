@@ -292,13 +292,16 @@ func (m *SyncRuleManager) dispatchPrefix(taskID string, rule *proto.SyncRule, pa
 	send := m.shardSendFn()
 	owners, err := fo.DispatchNWithPrefixBuckets(taskID, rule.ID(), payload, buckets, jsonRoundTripFanoutCloner, send, 3)
 	if err != nil {
+		recordSyncDispatchFail(rule.ID(), "prefix_dispatch_err")
 		return fmt.Errorf("DispatchNWithPrefixBuckets rule=%q: %w", rule.ID(), err)
 	}
 	m.cluster.recordTaskDispatch(taskID, rule, "", 0, len(buckets))
 	for shard, addr := range owners {
 		subID := fmt.Sprintf("%s/%d", taskID, shard)
 		m.cluster.recordTaskDispatch(subID, rule, addr, shard, len(buckets))
+		recordSyncShardDispatch(rule.ID())
 	}
+	recordSyncDispatchSuccess(rule.ID(), "prefix")
 	log.LogInfof("SyncRuleManager.dispatchPrefix rule=%q taskID=%q buckets=%d", rule.ID(), taskID, len(buckets))
 	return nil
 }
@@ -322,6 +325,7 @@ func (m *SyncRuleManager) dispatchHash(taskID string, rule *proto.SyncRule, payl
 		// /syncNode/tasks see it immediately. Terminal status arrives
 		// via /syncNode/response and re-Puts the record.
 		m.cluster.recordTaskDispatch(taskID, rule, addr, 0, 0)
+		recordSyncDispatchSuccess(rule.ID(), "hash")
 		log.LogInfof("SyncRuleManager.dispatchHash rule=%q taskID=%q owner=%s", rule.ID(), taskID, addr)
 		return nil
 	}
@@ -337,6 +341,7 @@ func (m *SyncRuleManager) dispatchHash(taskID string, rule *proto.SyncRule, payl
 	send := m.shardSendFn()
 	owners, err := fo.DispatchN(taskID, rule.ID(), shardTotal, payload, jsonRoundTripFanoutCloner, send, 3)
 	if err != nil {
+		recordSyncDispatchFail(rule.ID(), "dispatch_n_err")
 		return fmt.Errorf("DispatchN rule=%q: %w", rule.ID(), err)
 	}
 	// Ledger: record the parent (no owner) + one child per shard.
@@ -344,7 +349,9 @@ func (m *SyncRuleManager) dispatchHash(taskID string, rule *proto.SyncRule, payl
 	for shard, addr := range owners {
 		subID := fmt.Sprintf("%s/%d", taskID, shard)
 		m.cluster.recordTaskDispatch(subID, rule, addr, shard, shardTotal)
+		recordSyncShardDispatch(rule.ID())
 	}
+	recordSyncDispatchSuccess(rule.ID(), "hash")
 	log.LogInfof("SyncRuleManager.dispatchHash rule=%q taskID=%q fanout shardTotal=%d", rule.ID(), taskID, shardTotal)
 	return nil
 }

@@ -15,6 +15,8 @@ export FIXTURES_DIR="$TEST_ROOT/fixtures"
 source "$_TEST_LIB_DIR/log.sh"
 # shellcheck source=http.sh
 source "$_TEST_LIB_DIR/http.sh"
+# shellcheck source=master.sh
+source "$_TEST_LIB_DIR/master.sh"
 # shellcheck source=assert.sh
 source "$_TEST_LIB_DIR/assert.sh"
 # shellcheck source=fixtures.sh

@@ -168,6 +168,7 @@ func (m *Server) restoreSyncNode(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodePersistenceByRaft, Msg: rerr.Error()})
 		return
 	}
+	setSyncNodeStateGauge(addr, SyncNodeStateActive)
 	sendOkReply(w, r, newSuccessHTTPReply(map[string]interface{}{
 		"addr":  addr,
 		"state": SyncNodeStateActive,
@@ -223,6 +224,7 @@ func (m *Server) markSyncNodeDraining(sn *SyncNode) error {
 		sn.Unlock()
 		return err
 	}
+	setSyncNodeStateGauge(sn.Addr, SyncNodeStateDraining)
 	return nil
 }
 
@@ -251,5 +253,10 @@ func (m *Server) drainSyncNodeTasks(addr string) int {
 	if cancelled > 0 {
 		log.LogInfof("drainSyncNodeTasks: cancelled %d task(s) on %s", cancelled, addr)
 	}
+	result := "success"
+	if cancelled < len(active) {
+		result = "partial"
+	}
+	recordSyncDrainResult(addr, result)
 	return cancelled
 }

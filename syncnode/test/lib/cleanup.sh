@@ -7,10 +7,10 @@
 # (loaded by run.sh before calling into here)
 
 cleanup_all() {
-  log_info "scanning for stale it-* rules"
+  log_info "scanning for stale it-* rules (master)"
   local list
-  list=$(syncnode_get /admin/sync/rule/list)
-  expect_code "$list" 0 "rule/list during cleanup"
+  list=$(master_rule_list)
+  expect_code "$list" 0 "syncRule/list during cleanup"
   local ids
   ids=$(echo "$list" | jq -r '.data[]?.config.id // empty' | grep '^it-' || true)
   if [ -z "$ids" ]; then
