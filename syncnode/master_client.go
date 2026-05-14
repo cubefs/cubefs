@@ -379,28 +379,24 @@ func (c *SyncMasterClient) heartbeatLoop(ctx context.Context) {
 }
 
 // sendHeartbeat pushes a heartbeat envelope to the master via the
-// ResponseSyncNodeTask path, then pulls the master-computed bandwidth
-// quotas via the GetSyncNodeQuota SDK call and applies them locally
-// (P1-8 + P1-9 delivery). The two calls are split — the push uses an
-// AdminTask body so master's existing handleSyncNodeTaskResponse decodes
-// the snapshot, and the pull returns a typed JSON payload the SDK
-// auto-decodes. Pull failures are non-fatal: master may not have quotas
-// configured, or the network blip may resolve on the next tick.
+// ResponseSyncNodeTask path. The HTTP response body now carries the
+// master-computed bandwidth quotas inline (FIX P4 — replaces the
+// separate GET /syncNode/getQuota poll that used to add ~600 RPS of
+// fan-out traffic per 100 nodes). One round-trip per heartbeat tick
+// instead of two. Quota application failure is silently swallowed —
+// the registered=false re-arm path is reserved for the push leg.
 func (c *SyncMasterClient) sendHeartbeat(_ context.Context) error {
 	resp := c.buildHeartbeatPayload()
 	task := proto.NewAdminTask(proto.OpSyncNodeHeartbeat, c.LocalServerAddr(), nil)
 	task.Response = &resp
-	if err := c.mc.NodeAPI().ResponseSyncNodeTask(task); err != nil {
+	reply, err := c.mc.NodeAPI().ResponseSyncNodeTask(task)
+	if err != nil {
 		return fmt.Errorf("response sync node task: %w", err)
 	}
-	// Pull-then-apply quotas. Independent of the heartbeat push so a
-	// quota-endpoint outage doesn't flap registered=false.
-	if c.rateLimits != nil {
-		if reply, qerr := c.mc.NodeAPI().GetSyncNodeQuota(c.LocalServerAddr()); qerr != nil {
-			log.LogWarnf("syncnode: pull quota: %v", qerr)
-		} else if reply != nil {
-			c.applyQuotaReply(reply)
-		}
+	// Inline quota application. nil reply (master older than this commit)
+	// is tolerated — quotas just stay at whatever the previous tick set.
+	if c.rateLimits != nil && reply != nil {
+		c.applyQuotaReply(reply)
 	}
 	return nil
 }
@@ -410,19 +406,25 @@ func (c *SyncMasterClient) sendHeartbeat(_ context.Context) error {
 // missing entries on either map are tolerated; a zero MB/s value removes
 // the bucket (back to unlimited) — see Registry.SetRuleLimit /
 // SetBackendLimit. Exported for testability.
+//
+// SEC5: quota MB/s values are float64 on the wire because master computes
+// per-node shares as cluster_cap / N (commonly fractional). Earlier code
+// truncated via int() which under-enforced the total cluster cap by up to
+// N-1 MB/s. The registry setters now take float64, so we forward
+// untruncated.
 func (c *SyncMasterClient) applyQuotaReply(reply *proto.SyncNodeQuotaReply) {
 	if c == nil || c.rateLimits == nil || reply == nil {
 		return
 	}
 	for ruleID, mbps := range reply.RuleQuotas {
-		c.rateLimits.SetRuleLimit(ruleID, int(mbps))
+		c.rateLimits.SetRuleLimit(ruleID, mbps)
 	}
 	for keyStr, mbps := range reply.BackendQuotas {
 		k, ok := ratelimit.ParseBackendKey(keyStr)
 		if !ok {
 			continue
 		}
-		c.rateLimits.SetBackendLimit(k, int(mbps))
+		c.rateLimits.SetBackendLimit(k, mbps)
 	}
 }
 
@@ -435,12 +437,14 @@ func (c *SyncMasterClient) applyQuotaReply(reply *proto.SyncNodeQuotaReply) {
 //
 // Exported for testability; the production caller is sendHeartbeat once
 // the SDK reply-decode path lands (see the TODO there).
+//
+// SEC5: forwards float64 MB/s untruncated; see applyQuotaReply above.
 func (c *SyncMasterClient) applyHeartbeatReply(reply *proto.SyncNodeHeartbeatResponse) {
 	if c == nil || c.rateLimits == nil || reply == nil {
 		return
 	}
 	for ruleID, mbps := range reply.RuleQuotas {
-		c.rateLimits.SetRuleLimit(ruleID, int(mbps))
+		c.rateLimits.SetRuleLimit(ruleID, mbps)
 	}
 	for keyStr, mbps := range reply.BackendQuotas {
 		k, ok := ratelimit.ParseBackendKey(keyStr)
@@ -448,7 +452,7 @@ func (c *SyncMasterClient) applyHeartbeatReply(reply *proto.SyncNodeHeartbeatRes
 			log.LogWarnf("syncnode heartbeat: malformed backend key %q in reply", keyStr)
 			continue
 		}
-		c.rateLimits.SetBackendLimit(k, int(mbps))
+		c.rateLimits.SetBackendLimit(k, mbps)
 	}
 }
 
@@ -500,11 +504,15 @@ func sleepCtx(ctx context.Context, stopCh <-chan struct{}, d time.Duration) bool
 // ResponseSyncNodeTask. Thin wrapper around the SDK call so callers (in
 // particular task_handler.go's lifecycle push-back path) don't reach into the
 // embedded master.MasterClient directly.
+//
+// The SDK now returns a *SyncNodeQuotaReply alongside any error; the
+// terminal-pushback path doesn't care about quotas (those land on the
+// heartbeat reply) so we discard the body.
 func (c *SyncMasterClient) ResponseTask(task *proto.AdminTask) error {
 	if c == nil || c.mc == nil {
 		return errors.New("syncnode master client: not initialised")
 	}
-	if err := c.mc.NodeAPI().ResponseSyncNodeTask(task); err != nil {
+	if _, err := c.mc.NodeAPI().ResponseSyncNodeTask(task); err != nil {
 		return fmt.Errorf("response sync node task: %w", err)
 	}
 	return nil

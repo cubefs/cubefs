@@ -101,11 +101,13 @@ func (r *Registry) NodeBucket() *Bucket {
 }
 
 // SetNodeLimit retunes the layer-3 bucket. mbps <= 0 disables limiting.
-// Useful for dynamic reconfiguration (P2-M).
+// Useful for dynamic reconfiguration (P2-M). Accepts int because the
+// node-wide cap is operator-configured (whole MB/s); the dynamic per-rule
+// / per-backend setters take float64 (see SetRuleLimit / SetBackendLimit).
 func (r *Registry) SetNodeLimit(mbps int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.nodeBucket.SetLimit(mbps)
+	r.nodeBucket.SetLimit(float64(mbps))
 }
 
 // SetBackendLimit installs or updates the per-backend bucket. mbps <= 0
@@ -113,7 +115,11 @@ func (r *Registry) SetNodeLimit(mbps int) {
 // callers skip the layer entirely (equivalent to unlimited for that key).
 // Existing Bucket instances are reused on update so in-flight transfers
 // retune dynamically rather than holding stale buckets.
-func (r *Registry) SetBackendLimit(k BackendKey, mbps int) {
+//
+// mbps is float64 because master computes per-node shares as
+// cluster_cap / N where N is the active-node count, which is commonly
+// fractional (SEC5).
+func (r *Registry) SetBackendLimit(k BackendKey, mbps float64) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if mbps <= 0 {
@@ -124,7 +130,9 @@ func (r *Registry) SetBackendLimit(k BackendKey, mbps int) {
 		b.SetLimit(mbps)
 		return
 	}
-	r.backend[k] = NewBucket(mbps)
+	b := &Bucket{}
+	b.setLimitLocked(mbps)
+	r.backend[k] = b
 }
 
 // BackendBucket returns the layer-4 bucket for k, or nil if no limit is
@@ -138,10 +146,10 @@ func (r *Registry) BackendBucket(k BackendKey) *Bucket {
 // Snapshot returns a copy of the current per-backend configuration for
 // diagnostics / tests. The returned map is independent of the Registry's
 // internal state.
-func (r *Registry) Snapshot() map[BackendKey]int {
+func (r *Registry) Snapshot() map[BackendKey]float64 {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	out := make(map[BackendKey]int, len(r.backend))
+	out := make(map[BackendKey]float64, len(r.backend))
 	for k, b := range r.backend {
 		out[k] = b.Mbps()
 	}
@@ -155,7 +163,11 @@ func (r *Registry) Snapshot() map[BackendKey]int {
 // retune dynamically rather than holding stale buckets. Same shape as
 // SetBackendLimit so master's quota-update path is symmetric across the
 // two layers (§12.4 / P1-8).
-func (r *Registry) SetRuleLimit(ruleID string, mbps int) {
+//
+// mbps is float64 because master computes per-node shares as
+// cluster_cap / N where N is the active-node count, which is commonly
+// fractional (SEC5).
+func (r *Registry) SetRuleLimit(ruleID string, mbps float64) {
 	if ruleID == "" {
 		return
 	}
@@ -169,7 +181,9 @@ func (r *Registry) SetRuleLimit(ruleID string, mbps int) {
 		b.SetLimit(mbps)
 		return
 	}
-	r.rule[ruleID] = NewBucket(mbps)
+	b := &Bucket{}
+	b.setLimitLocked(mbps)
+	r.rule[ruleID] = b
 }
 
 // RuleBucket returns the layer-2 bucket for ruleID, or nil if no limit is
@@ -186,10 +200,10 @@ func (r *Registry) RuleBucket(ruleID string) *Bucket {
 // RuleSnapshot returns a copy of the current per-rule configuration for
 // diagnostics / tests. The returned map is independent of the Registry's
 // internal state.
-func (r *Registry) RuleSnapshot() map[string]int {
+func (r *Registry) RuleSnapshot() map[string]float64 {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	out := make(map[string]int, len(r.rule))
+	out := make(map[string]float64, len(r.rule))
 	for k, b := range r.rule {
 		out[k] = b.Mbps()
 	}

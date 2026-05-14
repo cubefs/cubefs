@@ -8028,6 +8028,11 @@ func (m *Server) addSyncNode(w http.ResponseWriter, r *http.Request) {
 // plus the dispatcher load score (P1-1) so operators / external schedulers
 // can see relative pressure across the fleet without scraping individual
 // syncnode endpoints.
+//
+// P3 fix: scores are pulled via SyncDispatcher.LoadScoreAll() — one
+// pass over syncNodes — instead of LoadScore-per-node, which made the
+// endpoint O(N²) and unusable past ~1k syncnodes. The endpoint is now
+// O(N): single Range over syncNodes plus a map lookup per node.
 func (m *Server) listSyncNodes(w http.ResponseWriter, r *http.Request) {
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.ListSyncNodes))
 	var err error
@@ -8035,6 +8040,10 @@ func (m *Server) listSyncNodes(w http.ResponseWriter, r *http.Request) {
 		doStatAndMetric(proto.ListSyncNodes, metric, err, nil)
 	}()
 	out := make([]*proto.SyncNodeInfo, 0)
+	var scores map[string]float64
+	if m.cluster.syncDispatcher != nil {
+		scores = m.cluster.syncDispatcher.LoadScoreAll()
+	}
 	m.cluster.syncNodes.Range(func(_, v interface{}) bool {
 		sn := v.(*SyncNode)
 		sn.RLock()
@@ -8045,44 +8054,13 @@ func (m *Server) listSyncNodes(w http.ResponseWriter, r *http.Request) {
 			RegisteredAt: sn.ReportTime.Unix(),
 		}
 		sn.RUnlock()
-		if m.cluster.syncDispatcher != nil {
-			info.LoadScore = m.cluster.syncDispatcher.LoadScore(info.Addr)
+		if scores != nil {
+			info.LoadScore = scores[info.Addr]
 		}
 		out = append(out, info)
 		return true
 	})
 	sendOkReply(w, r, newSuccessHTTPReply(out))
-}
-
-// getSyncNodeQuota returns the master-computed bandwidth quotas for one
-// syncnode. The syncnode's heartbeat goroutine polls this every tick and
-// pushes the result into its local ratelimit.Registry (P1-8 + P1-9
-// delivery side). Missing addr → empty maps (treated as "unlimited").
-func (m *Server) getSyncNodeQuota(w http.ResponseWriter, r *http.Request) {
-	metric := exporter.NewTPCnt(apiToMetricsName(proto.GetSyncNodeQuota))
-	var err error
-	defer func() {
-		doStatAndMetric(proto.GetSyncNodeQuota, metric, err, nil)
-	}()
-	addr := r.URL.Query().Get("addr")
-	if addr == "" {
-		err = fmt.Errorf("missing required query param: addr")
-		sendErrReply(w, r, newErrHTTPReply(err))
-		return
-	}
-	reply := &proto.SyncNodeQuotaReply{Addr: addr}
-	if snI, ok := m.cluster.syncNodes.Load(addr); ok {
-		sn := snI.(*SyncNode)
-		sn.RLock()
-		reply.NodeID = sn.ID
-		sn.RUnlock()
-	}
-	if m.cluster.syncQuota != nil {
-		nq := m.cluster.syncQuota.QuotasFor(addr)
-		reply.RuleQuotas = nq.Rules
-		reply.BackendQuotas = nq.Backends
-	}
-	sendOkReply(w, r, newSuccessHTTPReply(reply))
 }
 
 // dispatchMaxBodyBytes caps the dispatchSyncTask request body. The
@@ -8269,6 +8247,60 @@ func (m *Server) handleLcNodeTaskResponse(w http.ResponseWriter, r *http.Request
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("%v", http.StatusOK)))
 	m.cluster.handleLcNodeTaskResponse(tr.OperatorAddr, tr)
+}
+
+// handleSyncNodeTaskResponse is the inbound endpoint for syncnode →
+// master push (heartbeats + task-terminal reports). Mirror of
+// handleLcNodeTaskResponse but with one enhancement: the HTTP response
+// body carries the master-computed bandwidth quotas for the reporting
+// node so syncnode can apply them inline (FIX P4 — replaces the
+// separate GET /syncNode/getQuota poll).
+//
+// Wire shape: master replies with newSuccessHTTPReply(*SyncNodeQuotaReply)
+// — SDK's ResponseSyncNodeTask decodes Data into the typed reply via
+// requestWith.
+//
+// FIX S7 (newly discovered): the route was NEVER WIRED in http_server.go
+// before this commit. handleSyncNodeTaskResponse was dead code. Master
+// never received heartbeats or terminal pushbacks — runtime gauges on
+// master/SyncNode struct stayed zero. Wiring + this endpoint together
+// close the loop.
+func (m *Server) handleSyncNodeTaskResponse(w http.ResponseWriter, r *http.Request) {
+	var (
+		tr  *proto.AdminTask
+		err error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.GetSyncNodeTaskResponse))
+	defer func() {
+		doStatAndMetric(proto.GetSyncNodeTaskResponse, metric, err, nil)
+	}()
+
+	tr, err = parseRequestToGetTaskResponse(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	// Drive state updates BEFORE building the reply so the load-score
+	// inputs (RunningTasks, BoltDBHealthy) are fresh for any subsequent
+	// dispatch decision. The reply body itself only needs quotas — those
+	// are computed from syncQuota.QuotasFor(addr), which Compute() refreshes
+	// on the heartbeat-tick goroutine independently.
+	m.cluster.handleSyncNodeTaskResponse(tr.OperatorAddr, tr)
+
+	reply := &proto.SyncNodeQuotaReply{Addr: tr.OperatorAddr}
+	if snI, ok := m.cluster.syncNodes.Load(tr.OperatorAddr); ok {
+		sn := snI.(*SyncNode)
+		sn.RLock()
+		reply.NodeID = sn.ID
+		sn.RUnlock()
+	}
+	if m.cluster.syncQuota != nil {
+		nq := m.cluster.syncQuota.QuotasFor(tr.OperatorAddr)
+		reply.RuleQuotas = nq.Rules
+		reply.BackendQuotas = nq.Backends
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(reply))
 }
 
 func (m *Server) SetBucketLifecycle(w http.ResponseWriter, r *http.Request) {

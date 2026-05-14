@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/syncnode/executor"
 	"github.com/cubefs/cubefs/syncnode/tasks"
 )
@@ -178,5 +179,79 @@ func doneRecord(id string, status executor.Status, offset time.Duration) *tasks.
 		Status:    status,
 		StartedAt: time.Now().Add(offset - 1*time.Second),
 		DoneAt:    time.Now().Add(offset),
+	}
+}
+
+// TestSnapshot_UsesCachedValues verifies Snapshot() serves the cached
+// failure rate + rules vector instead of doing a synchronous BoltDB scan.
+// Install a pre-populated snapshotCache directly on a bare *SyncNode and
+// confirm the returned response mirrors it exactly.
+func TestSnapshot_UsesCachedValues(t *testing.T) {
+	cache := &snapshotCache{}
+	cache.failureRate.Store(float64(0.42))
+	want := []proto.SyncRuleAdvert{
+		{ID: "rule-a", AggregateBandwidthLimitMBps: 100},
+		{ID: "rule-b", AggregateBandwidthLimitMBps: 0},
+	}
+	cache.rules.Store(&want)
+
+	s := &SyncNode{snapshotCache: cache}
+	got := s.Snapshot()
+
+	if math.Abs(got.LastTaskFailureRate-0.42) > 1e-9 {
+		t.Fatalf("LastTaskFailureRate = %v, want 0.42 (from cache)", got.LastTaskFailureRate)
+	}
+	if len(got.Rules) != len(want) {
+		t.Fatalf("Rules length = %d, want %d (from cache)", len(got.Rules), len(want))
+	}
+	for i := range want {
+		if got.Rules[i].ID != want[i].ID {
+			t.Errorf("Rules[%d].ID = %q, want %q", i, got.Rules[i].ID, want[i].ID)
+		}
+		if got.Rules[i].AggregateBandwidthLimitMBps != want[i].AggregateBandwidthLimitMBps {
+			t.Errorf("Rules[%d].Cap = %d, want %d",
+				i, got.Rules[i].AggregateBandwidthLimitMBps, want[i].AggregateBandwidthLimitMBps)
+		}
+	}
+}
+
+// TestSnapshot_CacheMissReturnsZero confirms that pre-cache / bare-
+// constructed *SyncNode (snapshotCache == nil) returns zero failure rate
+// and nil Rules without panicking. Preserves the safe-default semantics
+// the prior synchronous code path provided when stores were absent.
+func TestSnapshot_CacheMissReturnsZero(t *testing.T) {
+	s := &SyncNode{}
+	got := s.Snapshot()
+	if got.LastTaskFailureRate != 0 {
+		t.Errorf("LastTaskFailureRate = %v, want 0 when cache is nil", got.LastTaskFailureRate)
+	}
+	if got.Rules != nil {
+		t.Errorf("Rules = %v, want nil when cache is nil", got.Rules)
+	}
+}
+
+// TestRefreshSnapshotCache_WritesValues verifies the refresh helper does
+// the I/O against the underlying stores and lands the result in the
+// cache atomic. Confirms the "cache writer" half of the pattern (the
+// "cache reader" half is covered by TestSnapshot_UsesCachedValues).
+func TestRefreshSnapshotCache_WritesValues(t *testing.T) {
+	store := tasks.NewMemoryStore()
+	ctx := context.Background()
+	if err := store.Put(ctx, doneRecord("t1", executor.StatusFailed, -1*time.Minute)); err != nil {
+		t.Fatalf("seed Put: %v", err)
+	}
+	if err := store.Put(ctx, doneRecord("t2", executor.StatusDone, -2*time.Minute)); err != nil {
+		t.Fatalf("seed Put: %v", err)
+	}
+	s := &SyncNode{taskStore: store, snapshotCache: &snapshotCache{}}
+	s.refreshSnapshotCache()
+
+	resp := s.Snapshot()
+	if math.Abs(resp.LastTaskFailureRate-0.5) > 1e-9 {
+		t.Fatalf("after refresh LastTaskFailureRate = %v, want 0.5 (1 failed / 2 total)",
+			resp.LastTaskFailureRate)
+	}
+	if s.snapshotCache.updatedAt.Load() == 0 {
+		t.Error("updatedAt should be non-zero after refresh")
 	}
 }

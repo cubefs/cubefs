@@ -17,6 +17,7 @@ package master
 import (
 	"fmt"
 	"math"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -331,4 +332,146 @@ func TestSyncQuota_IsEmpty(t *testing.T) {
 	if nq.IsEmpty() {
 		t.Errorf("non-empty Rules said IsEmpty")
 	}
+}
+
+// -----------------------------------------------------------------------
+// P2 — perNode map reuse via generation counter
+// -----------------------------------------------------------------------
+
+// TestSyncQuotaCalculator_Compute_ReusesPerNodeMap is the P2 regression
+// guard: the inner Rules / Backends map instances must survive across
+// Compute() invocations when the active set is stable. Allocating fresh
+// maps every 10s tick for 100 nodes × 50 rules is 5000+ entries per tick
+// of avoidable GC churn.
+//
+// We compare reflect.ValueOf(map).Pointer() identities — equal pointers
+// prove "same backing map".
+func TestSyncQuotaCalculator_Compute_ReusesPerNodeMap(t *testing.T) {
+	t.Parallel()
+	src := newStubSource()
+	for _, addr := range []string{"n1", "n2", "n3"} {
+		src.set(addr, newActiveSyncNode(addr))
+	}
+	q := newQuotaCalc(src)
+	q.SetRuleLimit("ruleA", 300)
+	q.SetBackendLimit("s3|ep|r", 600)
+
+	// First compute populates the maps.
+	q.Compute()
+	first := make(map[string][2]uintptr, 3)
+	q.mu.RLock()
+	for _, addr := range []string{"n1", "n2", "n3"} {
+		nq := q.perNode[addr]
+		first[addr] = [2]uintptr{
+			reflect.ValueOf(nq.Rules).Pointer(),
+			reflect.ValueOf(nq.Backends).Pointer(),
+		}
+	}
+	q.mu.RUnlock()
+
+	// Second compute with the same active set must reuse the inner maps.
+	q.Compute()
+	q.mu.RLock()
+	for _, addr := range []string{"n1", "n2", "n3"} {
+		nq := q.perNode[addr]
+		got := [2]uintptr{
+			reflect.ValueOf(nq.Rules).Pointer(),
+			reflect.ValueOf(nq.Backends).Pointer(),
+		}
+		if got != first[addr] {
+			t.Errorf("%s: inner maps re-allocated across Compute() — "+
+				"want pointer reuse (P2). first=%v second=%v",
+				addr, first[addr], got)
+		}
+		// And the contents must still be correct.
+		if !approxEqual(nq.Rules["ruleA"], 100) {
+			t.Errorf("%s: Rules[ruleA] = %v, want 100", addr, nq.Rules["ruleA"])
+		}
+		if !approxEqual(nq.Backends["s3|ep|r"], 200) {
+			t.Errorf("%s: Backends[s3|ep|r] = %v, want 200", addr, nq.Backends["s3|ep|r"])
+		}
+	}
+	q.mu.RUnlock()
+}
+
+// TestSyncQuotaCalculator_Compute_DropsStaleNodes verifies the generation
+// sweep removes entries for nodes that left the active set between
+// compute invocations. We mark B / C inactive (rather than physically
+// removing them from the source) — collectActive treats both as "not
+// participating" so the sweep should drop their perNode entries either
+// way.
+func TestSyncQuotaCalculator_Compute_DropsStaleNodes(t *testing.T) {
+	t.Parallel()
+	src := newStubSource()
+	src.set("A", newActiveSyncNode("A"))
+	snB := newActiveSyncNode("B")
+	snC := newActiveSyncNode("C")
+	src.set("B", snB)
+	src.set("C", snC)
+	q := newQuotaCalc(src)
+	q.SetRuleLimit("r1", 300)
+	q.Compute()
+
+	// All three should be present.
+	for _, addr := range []string{"A", "B", "C"} {
+		if q.QuotasFor(addr).IsEmpty() {
+			t.Fatalf("pre-shrink: %s missing", addr)
+		}
+	}
+
+	// B + C leave the active set.
+	snB.IsActive = false
+	snC.IsActive = false
+	q.Compute()
+
+	if q.QuotasFor("A").IsEmpty() {
+		t.Errorf("A should still have quotas")
+	}
+	if !q.QuotasFor("B").IsEmpty() {
+		t.Errorf("B not swept: %#v", q.QuotasFor("B"))
+	}
+	if !q.QuotasFor("C").IsEmpty() {
+		t.Errorf("C not swept: %#v", q.QuotasFor("C"))
+	}
+
+	// Internal-state check: perNode should only carry A; perNodeGen
+	// should match.
+	q.mu.RLock()
+	if _, ok := q.perNode["B"]; ok {
+		t.Errorf("perNode still holds B")
+	}
+	if _, ok := q.perNodeGen["C"]; ok {
+		t.Errorf("perNodeGen still holds C")
+	}
+	q.mu.RUnlock()
+}
+
+// TestSyncQuotaCalculator_Compute_EmptyFleetSweepsAll verifies that when
+// every node leaves the active set, perNode is fully cleared by the
+// generation sweep (the pre-P2 implementation reassigned perNode to a
+// fresh map).
+func TestSyncQuotaCalculator_Compute_EmptyFleetSweepsAll(t *testing.T) {
+	t.Parallel()
+	src := newStubSource()
+	snA := newActiveSyncNode("A")
+	src.set("A", snA)
+	q := newQuotaCalc(src)
+	q.SetRuleLimit("r1", 100)
+	q.Compute()
+	if q.QuotasFor("A").IsEmpty() {
+		t.Fatalf("A missing pre-clear")
+	}
+	snA.IsActive = false
+	q.Compute()
+	if !q.QuotasFor("A").IsEmpty() {
+		t.Errorf("A not cleared after fleet emptied: %#v", q.QuotasFor("A"))
+	}
+	q.mu.RLock()
+	if len(q.perNode) != 0 {
+		t.Errorf("perNode len = %d, want 0", len(q.perNode))
+	}
+	if len(q.perNodeGen) != 0 {
+		t.Errorf("perNodeGen len = %d, want 0", len(q.perNodeGen))
+	}
+	q.mu.RUnlock()
 }

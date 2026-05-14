@@ -40,8 +40,8 @@ func TestBucket_Unlimited(t *testing.T) {
 	t.Parallel()
 	for _, mbps := range []int{0, -1, -1000} {
 		b := NewBucket(mbps)
-		if b.Mbps() != mbps {
-			t.Errorf("Mbps() = %d, want %d", b.Mbps(), mbps)
+		if b.Mbps() != float64(mbps) {
+			t.Errorf("Mbps() = %v, want %d", b.Mbps(), mbps)
 		}
 		// Large n must not block.
 		done := make(chan error, 1)
@@ -67,7 +67,7 @@ func TestBucket_RespectsRate(t *testing.T) {
 	t.Parallel()
 
 	const (
-		mbps    = 4               // 4 MB/s
+		mbps    = 4                // 4 MB/s
 		payload = 12 * 1024 * 1024 // 12 MB
 	)
 	// Expected wall clock = (payload - burst) / rate. Burst defaults to
@@ -100,8 +100,8 @@ func TestComposite_MinimumWins(t *testing.T) {
 	t.Parallel()
 
 	const payload = 8 * 1024 * 1024 // 8 MiB
-	fast := NewBucket(20)            // 20 MB/s
-	slow := NewBucket(2)             // 2 MB/s
+	fast := NewBucket(20)           // 20 MB/s
+	slow := NewBucket(2)            // 2 MB/s
 	c := NewComposite(fast, slow)
 	if len(c.Members()) != 2 {
 		t.Fatalf("Members = %d, want 2", len(c.Members()))

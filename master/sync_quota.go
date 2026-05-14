@@ -118,7 +118,22 @@ type SyncQuotaCalculator struct {
 	backendLimits map[string]float64
 
 	// perNode is the most-recent Compute() output, keyed by node addr.
+	// Reused across Compute() invocations (P2): a fresh map (and fresh
+	// inner Rules/Backends maps) every 10s tick for 100 nodes × 50 rules
+	// allocates 5000+ map entries per tick, producing avoidable GC churn.
+	// Compute now updates this map in place, clears inner maps via
+	// `delete`-loops (reusing backing storage), and sweeps stale entries
+	// using perNodeGen below.
 	perNode map[string]NodeQuotas
+
+	// gen is bumped once per Compute() call; perNodeGen stores the last
+	// gen each addr was touched at. Entries whose gen lags the current
+	// one fell out of the active set and are deleted at the tail of
+	// Compute. Using a counter rather than a "seen" set means the sweep
+	// is O(N) without per-call allocation. uint64 wraps in ~580 years at
+	// 1ns/tick — safe.
+	gen        uint64
+	perNodeGen map[string]uint64
 }
 
 // NewSyncQuotaCalculator constructs a calculator bound to the supplied
@@ -138,6 +153,7 @@ func newSyncQuotaCalculatorFromSource(src syncQuotaSource) *SyncQuotaCalculator 
 		ruleLimits:    make(map[string]float64),
 		backendLimits: make(map[string]float64),
 		perNode:       make(map[string]NodeQuotas),
+		perNodeGen:    make(map[string]uint64),
 	}
 }
 
@@ -183,39 +199,71 @@ func (q *SyncQuotaCalculator) SetBackendLimit(backendKey string, mbps float64) {
 //
 // Algorithm (equal division — see file header):
 //
-//   active = { sn ∈ syncNodes | sn.IsActive && now-sn.ReportTime <= staleness }
-//   N = |active|
-//   for each rule r with cap C_r:
-//     for each n ∈ active:
-//       perNode[n].Rules[r] = C_r / N
-//   (same for backends)
+//	active = { sn ∈ syncNodes | sn.IsActive && now-sn.ReportTime <= staleness }
+//	N = |active|
+//	for each rule r with cap C_r:
+//	  for each n ∈ active:
+//	    perNode[n].Rules[r] = C_r / N
+//	(same for backends)
+//
+// P2: perNode and its inner Rules/Backends maps are reused across calls.
+// Each tick we bump a generation counter, refresh entries for the active
+// set in place (clearing inner maps via delete-loops rather than
+// re-allocating), and sweep entries whose gen lags. For a 100-node × 50-
+// rule fleet this avoids 5000+ map allocations per 10s tick.
 func (q *SyncQuotaCalculator) Compute() {
 	// Collect active node addrs first (so we hold q.mu only briefly).
 	active := q.collectActive()
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	now := q.now()
-	if len(active) == 0 {
-		q.perNode = make(map[string]NodeQuotas)
-		return
-	}
-	n := float64(len(active))
-	out := make(map[string]NodeQuotas, len(active))
+
+	// Bump the generation. Empty-fleet still bumps so a stale perNode is
+	// cleared by the sweep below (every entry's gen will lag).
+	q.gen++
+	gen := q.gen
+
 	for _, addr := range active {
-		nq := NodeQuotas{
-			Rules:    make(map[string]float64, len(q.ruleLimits)),
-			Backends: make(map[string]float64, len(q.backendLimits)),
-			Updated:  now,
+		nq, exists := q.perNode[addr]
+		if !exists {
+			nq = NodeQuotas{
+				Rules:    make(map[string]float64, len(q.ruleLimits)),
+				Backends: make(map[string]float64, len(q.backendLimits)),
+			}
+		} else {
+			// Clear inner maps without re-allocating their backing
+			// storage. Go's compiler optimises range-delete on maps
+			// (https://go.dev/cl/110055) — this is the canonical idiom
+			// for "empty but keep capacity".
+			for k := range nq.Rules {
+				delete(nq.Rules, k)
+			}
+			for k := range nq.Backends {
+				delete(nq.Backends, k)
+			}
 		}
-		for ruleID, limit := range q.ruleLimits {
-			nq.Rules[ruleID] = limit / n
+		if len(active) > 0 {
+			n := float64(len(active))
+			for ruleID, limit := range q.ruleLimits {
+				nq.Rules[ruleID] = limit / n
+			}
+			for key, limit := range q.backendLimits {
+				nq.Backends[key] = limit / n
+			}
 		}
-		for key, limit := range q.backendLimits {
-			nq.Backends[key] = limit / n
-		}
-		out[addr] = nq
+		nq.Updated = now
+		q.perNode[addr] = nq
+		q.perNodeGen[addr] = gen
 	}
-	q.perNode = out
+
+	// Sweep entries that didn't get touched this generation — they
+	// either left the fleet, went inactive, or aged out via staleness.
+	for addr, g := range q.perNodeGen {
+		if g != gen {
+			delete(q.perNode, addr)
+			delete(q.perNodeGen, addr)
+		}
+	}
 }
 
 // QuotasFor returns the most-recent NodeQuotas snapshot for addr. Returns

@@ -98,6 +98,14 @@ type SyncNode struct {
 	scheduler *scheduler.Scheduler
 	ttlRunner *tasks.TTLRunner
 
+	// snapshotCache holds the heartbeat-input gauges that would otherwise
+	// require a BoltDB scan per Snapshot() call (computeRecentFailureRate
+	// + advertiseRules). Refreshed every snapshotCacheRefresh by a
+	// background goroutine started in doStart; Snapshot() does
+	// atomic-only reads on the hot path. nil before startSnapshotCacheLoop
+	// runs (Snapshot returns zero gauges in that window).
+	snapshotCache *snapshotCache
+
 	// HTTP handler bundles (Phase E-2 + E-3 + F-4).
 	ruleHandlers *rules.Handlers
 	taskHandlers *tasks.Handlers
@@ -187,6 +195,12 @@ func doStart(srv common.Server, cfg *config.Config) (err error) {
 	if err = s.initSchedulerAndTTL(); err != nil {
 		return fmt.Errorf("init scheduler / ttl: %w", err)
 	}
+
+	// Start the snapshot cache loop AFTER initStateStore (taskStore +
+	// ruleStore are wired) AND bootstrapRulesFromConfig (rules are
+	// seeded) so the immediate seed reads non-empty stores. Lifts the
+	// per-heartbeat BoltDB scan off the hot path.
+	s.startSnapshotCacheLoop()
 
 	// Phase B-3 + B-4 + P1-3: construct the master client BEFORE the TCP
 	// listener so the TaskHandler can carry it. Start() (which kicks off the

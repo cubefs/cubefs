@@ -398,3 +398,196 @@ func TestDispatchSyncTask_RejectsOversizedBody(t *testing.T) {
 		t.Errorf("expected body-size error, got: %s", string(body))
 	}
 }
+
+// -----------------------------------------------------------------------
+// S5 reconnect path tests — split-brain prevention on syncnode rejoin.
+//
+// The contract under test (handleSyncNodeHeartbeatResp + the private
+// cancelOrphanedTasksOnReconnect helper):
+//
+//  1. A heartbeat from a node that was already IsActive=true does NOT
+//     trigger a cancel fanout — happy-path stays O(1).
+//  2. A heartbeat from a node previously marked dead (IsActive=false)
+//     pushes OpSyncNodeCancelTask via that node's TaskManager for every
+//     task the dispatcher's ownership ledger has re-homed elsewhere.
+//  3. If the ledger is empty (no tasks to re-home), no cancels are sent
+//     and the reconnect logs at debug — never an error.
+// -----------------------------------------------------------------------
+
+// makeReconnectCluster wires a minimal *Cluster that exercises ONLY the
+// S5 reconnect path. The dispatcher is fed a stub source so we don't
+// need real syncnodes for LoadScore — we only call AllOwnerships().
+// The SyncNode entry under test gets a fresh TaskManager whose TaskMap
+// we inspect to verify the cancel fanout shape.
+func makeReconnectCluster(t *testing.T, addr string, wasActive bool) (*Cluster, *SyncNode, *SyncDispatcher) {
+	t.Helper()
+	src := newStubSource()
+	d := newSyncDispatcherFromSource(src)
+	c := &Cluster{Name: "test-cluster", syncDispatcher: d}
+	sn := newSyncNode(addr, c.Name)
+	sn.IsActive = wasActive
+	// We do NOT register sn in src.nodes — Dispatch would short-circuit
+	// to ErrNoCandidates and the test would need a richer harness. The
+	// reconnect path only needs the ledger contents + the SyncNode's
+	// TaskManager, both of which we manipulate directly below.
+	c.syncNodes.Store(addr, sn)
+	t.Cleanup(func() {
+		// Stop the AdminTaskManager goroutine spawned by newSyncNode.
+		sn.clean()
+	})
+	return c, sn, d
+}
+
+// seedOwnership pokes a (taskID, owner) pair directly into the dispatcher's
+// ledger so the test can pre-set the ownership graph without going through
+// Dispatch (which requires live candidates in the source).
+func seedOwnership(d *SyncDispatcher, taskID, owner string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.taskOwner[taskID] = owner
+	owned, ok := d.ownedByAddr[owner]
+	if !ok {
+		owned = make(map[string]struct{})
+		d.ownedByAddr[owner] = owned
+	}
+	owned[taskID] = struct{}{}
+}
+
+// countAddedTasks returns the number of entries currently in the
+// SyncNode TaskManager's TaskMap whose OpCode matches op. Reading
+// TaskMap requires the manager's RLock.
+func countAddedTasks(sn *SyncNode, op uint8) int {
+	sn.TaskManager.RLock()
+	defer sn.TaskManager.RUnlock()
+	n := 0
+	for _, t := range sn.TaskManager.TaskMap {
+		if t.OpCode == op {
+			n++
+		}
+	}
+	return n
+}
+
+// TestHandleHeartbeat_NormalActivePath: a heartbeat to an already-active
+// node MUST NOT trigger any cancel fanout. The S5 guard fires only on
+// the wasActive=false → IsActive=true transition.
+func TestHandleHeartbeat_NormalActivePath(t *testing.T) {
+	addr := "10.0.0.1:17030"
+	c, sn, d := makeReconnectCluster(t, addr, true /* wasActive */)
+
+	// Seed one task owned elsewhere — if the fanout fired by mistake,
+	// the TaskManager would gain an OpSyncNodeCancelTask entry.
+	seedOwnership(d, "task-elsewhere", "10.0.0.2:17030")
+
+	resp := &proto.SyncNodeHeartbeatResponse{
+		Status:        proto.TaskSucceeds,
+		BoltDBHealthy: true,
+	}
+	if err := c.handleSyncNodeHeartbeatResp(addr, resp); err != nil {
+		t.Fatalf("handleSyncNodeHeartbeatResp: %v", err)
+	}
+
+	if got := countAddedTasks(sn, proto.OpSyncNodeCancelTask); got != 0 {
+		t.Errorf("active-path heartbeat triggered %d cancel(s); want 0", got)
+	}
+	// Sanity: post-condition still IsActive=true.
+	sn.RLock()
+	active := sn.IsActive
+	sn.RUnlock()
+	if !active {
+		t.Errorf("IsActive = false after happy-path heartbeat")
+	}
+}
+
+// TestHandleHeartbeat_ReconnectFiresCancelFanout: a node previously
+// marked dead reconnects. The dispatcher has 3 tasks in the ledger —
+// 1 still owned by the reconnecting node and 2 re-homed elsewhere. The
+// reconnect path MUST push exactly 2 OpSyncNodeCancelTask entries to
+// the reconnecting node's TaskManager (cancels for the re-homed tasks
+// only — never for tasks still owned here).
+func TestHandleHeartbeat_ReconnectFiresCancelFanout(t *testing.T) {
+	addr := "10.0.0.1:17030"
+	c, sn, d := makeReconnectCluster(t, addr, false /* wasActive */)
+
+	// 1 still owned by addr (must NOT receive a cancel).
+	seedOwnership(d, "task-still-here", addr)
+	// 2 transferred to other addrs (each MUST receive a cancel pushed
+	// to addr's TaskManager).
+	seedOwnership(d, "task-moved-1", "10.0.0.2:17030")
+	seedOwnership(d, "task-moved-2", "10.0.0.3:17030")
+
+	resp := &proto.SyncNodeHeartbeatResponse{
+		Status:        proto.TaskSucceeds,
+		BoltDBHealthy: true,
+	}
+	if err := c.handleSyncNodeHeartbeatResp(addr, resp); err != nil {
+		t.Fatalf("handleSyncNodeHeartbeatResp: %v", err)
+	}
+
+	got := countAddedTasks(sn, proto.OpSyncNodeCancelTask)
+	if got != 2 {
+		t.Errorf("reconnect cancel-fanout pushed %d task(s); want 2", got)
+	}
+
+	// Verify the cancel task IDs target the re-homed tasks, NOT the
+	// task still owned by the reconnecting node. We inspect the
+	// AdminTask.Request payloads.
+	sn.TaskManager.RLock()
+	cancelledIDs := map[string]bool{}
+	for _, task := range sn.TaskManager.TaskMap {
+		if task.OpCode != proto.OpSyncNodeCancelTask {
+			continue
+		}
+		req, ok := task.Request.(map[string]interface{})
+		if !ok {
+			t.Errorf("cancel task %q Request = %T, want map[string]interface{}", task.ID, task.Request)
+			continue
+		}
+		id, _ := req["taskId"].(string)
+		cancelledIDs[id] = true
+	}
+	sn.TaskManager.RUnlock()
+
+	if cancelledIDs["task-still-here"] {
+		t.Errorf("cancel fanout incorrectly targeted task still owned by reconnecting node")
+	}
+	if !cancelledIDs["task-moved-1"] || !cancelledIDs["task-moved-2"] {
+		t.Errorf("cancel fanout missed re-homed task IDs; got: %v", cancelledIDs)
+	}
+
+	// Post-condition: IsActive flipped to true.
+	sn.RLock()
+	active := sn.IsActive
+	sn.RUnlock()
+	if !active {
+		t.Errorf("IsActive = false after successful reconnect heartbeat")
+	}
+}
+
+// TestHandleHeartbeat_ReconnectNoOwnerships: a node previously marked
+// dead reconnects but the dispatcher's ledger is empty (e.g. all its
+// former tasks already reported terminal and were Release()'d). The
+// reconnect path MUST send zero cancels and return cleanly.
+func TestHandleHeartbeat_ReconnectNoOwnerships(t *testing.T) {
+	addr := "10.0.0.1:17030"
+	c, sn, _ := makeReconnectCluster(t, addr, false /* wasActive */)
+	// No seedOwnership calls — ledger is empty.
+
+	resp := &proto.SyncNodeHeartbeatResponse{
+		Status:        proto.TaskSucceeds,
+		BoltDBHealthy: true,
+	}
+	if err := c.handleSyncNodeHeartbeatResp(addr, resp); err != nil {
+		t.Fatalf("handleSyncNodeHeartbeatResp: %v", err)
+	}
+
+	if got := countAddedTasks(sn, proto.OpSyncNodeCancelTask); got != 0 {
+		t.Errorf("empty-ledger reconnect pushed %d cancel(s); want 0", got)
+	}
+	sn.RLock()
+	active := sn.IsActive
+	sn.RUnlock()
+	if !active {
+		t.Errorf("IsActive = false after empty-ledger reconnect")
+	}
+}

@@ -679,6 +679,114 @@ func TestDispatcher_Concurrent_DispatchRelease(t *testing.T) {
 }
 
 // -----------------------------------------------------------------------
+// LoadScoreAll tests (P3: O(N) bulk read for /syncNode/list)
+// -----------------------------------------------------------------------
+
+// TestDispatcher_LoadScoreAll verifies the bulk-read returns one entry
+// per registered node and that each returned value matches what
+// LoadScore would yield for the same addr. Three nodes with distinct
+// load shapes exercise different terms of the formula.
+func TestDispatcher_LoadScoreAll(t *testing.T) {
+	now := time.Now()
+	src := newStubSource()
+	src.set("a:1", makeNode("a:1", func(n *SyncNode) {
+		n.ReportTime = now
+		n.MaxConcurrentTasks = 8
+		n.RunningTasks = 2
+	}))
+	src.set("b:2", makeNode("b:2", func(n *SyncNode) {
+		n.ReportTime = now
+		n.MaxConcurrentTasks = 8
+		n.RunningTasks = 4
+		n.BandwidthMBps = 80
+		n.BandwidthMBpsLimit = 200
+	}))
+	src.set("c:3", makeNode("c:3", func(n *SyncNode) {
+		n.ReportTime = now
+		n.MaxConcurrentTasks = 10
+		n.RunningTasks = 6
+		n.CPUPercent = 70
+		n.LastTaskFailureRate = 0.1
+	}))
+
+	d := newSyncDispatcherFromSource(src)
+	d.now = fixedNow(now)
+
+	all := d.LoadScoreAll()
+	if len(all) != 3 {
+		t.Fatalf("LoadScoreAll size = %d, want 3 (entries=%v)", len(all), all)
+	}
+	for _, addr := range []string{"a:1", "b:2", "c:3"} {
+		want := d.LoadScore(addr)
+		got, ok := all[addr]
+		if !ok {
+			t.Errorf("LoadScoreAll missing entry for %q", addr)
+			continue
+		}
+		if math.Abs(got-want) > 1e-9 {
+			t.Errorf("LoadScoreAll[%q] = %v, want %v (LoadScore)", addr, got, want)
+		}
+	}
+}
+
+// TestDispatcher_LoadScoreAll_EmptyFleet confirms zero registered nodes
+// yields an empty (non-nil) map. Empty map keeps caller code uniform —
+// they can do `scores[addr]` and get the zero value without a nil guard.
+func TestDispatcher_LoadScoreAll_EmptyFleet(t *testing.T) {
+	d := newSyncDispatcherFromSource(newStubSource())
+	d.now = fixedNow(time.Now())
+	all := d.LoadScoreAll()
+	if all == nil {
+		t.Fatalf("LoadScoreAll returned nil; want empty map")
+	}
+	if len(all) != 0 {
+		t.Fatalf("LoadScoreAll size = %d, want 0 (entries=%v)", len(all), all)
+	}
+}
+
+// TestDispatcher_LoadScoreAll_StaleAndUnhealthy verifies +Inf is emitted
+// for nodes that LoadScore would also reject (stale heartbeat, bolt-
+// unhealthy, inactive). Preserves the single-node contract for the bulk
+// path so /syncNode/list shows the same load values operators would see
+// from a per-addr query.
+func TestDispatcher_LoadScoreAll_StaleAndUnhealthy(t *testing.T) {
+	now := time.Now()
+	src := newStubSource()
+	src.set("alive:1", makeNode("alive:1", func(n *SyncNode) {
+		n.ReportTime = now
+		n.MaxConcurrentTasks = 8
+		n.RunningTasks = 2
+	}))
+	src.set("stale:2", makeNode("stale:2", func(n *SyncNode) {
+		n.ReportTime = now.Add(-2 * dispatcherStaleness)
+	}))
+	src.set("bolt:3", makeNode("bolt:3", func(n *SyncNode) {
+		n.ReportTime = now
+		n.BoltDBHealthy = false
+	}))
+	src.set("inactive:4", makeNode("inactive:4", func(n *SyncNode) {
+		n.ReportTime = now
+		n.IsActive = false
+	}))
+
+	d := newSyncDispatcherFromSource(src)
+	d.now = fixedNow(now)
+
+	all := d.LoadScoreAll()
+	if len(all) != 4 {
+		t.Fatalf("LoadScoreAll size = %d, want 4", len(all))
+	}
+	if math.IsInf(all["alive:1"], 1) {
+		t.Errorf("alive:1 score = +Inf; want finite")
+	}
+	for _, addr := range []string{"stale:2", "bolt:3", "inactive:4"} {
+		if !math.IsInf(all[addr], 1) {
+			t.Errorf("%s score = %v; want +Inf", addr, all[addr])
+		}
+	}
+}
+
+// -----------------------------------------------------------------------
 // helpers
 // -----------------------------------------------------------------------
 

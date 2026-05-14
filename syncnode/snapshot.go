@@ -16,6 +16,7 @@ package syncnode
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -24,10 +25,10 @@ import (
 )
 
 // failureRateScanTimeout caps the synchronous task-store scan that
-// computeRecentFailureRate performs on every heartbeat. The active task
-// list is small (capped by MaxConcurrentTasks + MaxQueueSize) so 1s is
-// generous; a slow store should degrade to "no recent data" rather than
-// stall the heartbeat goroutine.
+// computeRecentFailureRate performs. The active task list is small
+// (capped by MaxConcurrentTasks + MaxQueueSize) so 1s is generous; a
+// slow store should degrade to "no recent data" rather than stall the
+// refresh goroutine.
 const failureRateScanTimeout = 1 * time.Second
 
 // recentFailureWindow is the rolling window over which the load-score
@@ -36,10 +37,32 @@ const failureRateScanTimeout = 1 * time.Second
 // still surfacing a degraded node within roughly one heartbeat cycle.
 const recentFailureWindow = 5 * time.Minute
 
+// snapshotCacheRefresh is how often the background ticker re-scans the
+// task + rule stores to refresh the cached heartbeat-input gauges. The
+// heartbeat tick runs every 10s but two multi-millisecond BoltDB scans
+// per tick can compound under load — 30s is a comfortable upper bound
+// for failure-rate freshness (the master only uses it as an input to a
+// soft load score) and divorces the I/O from the hot path.
+const snapshotCacheRefresh = 30 * time.Second
+
+// snapshotCache holds the expensive heartbeat-input gauges computed on
+// a background ticker. Snapshot() reads atomic-protected fields with no
+// locking on the hot path. updatedAt is exposed for diagnostics only.
+type snapshotCache struct {
+	failureRate atomic.Value // float64; nil-load before first refresh
+	rules       atomic.Pointer[[]proto.SyncRuleAdvert]
+	updatedAt   atomic.Int64 // unix nanos of last successful refresh
+}
+
 // Snapshot satisfies HeartbeatSnapshotProvider. The MasterClient calls it
 // once per heartbeat tick — the implementation MUST be cheap (no I/O on
 // the hot path). Status / Result / NodeID / Addr / NodeVersion are filled
 // by the client; we only fill the dynamic gauges.
+//
+// Expensive inputs (LastTaskFailureRate, Rules) are served from
+// snapshotCache, which is refreshed every snapshotCacheRefresh by a
+// dedicated goroutine started in doStart. Pre-cache (e.g. unit tests
+// that construct a bare *SyncNode) returns zero values for those gauges.
 func (s *SyncNode) Snapshot() proto.SyncNodeHeartbeatResponse {
 	resp := proto.SyncNodeHeartbeatResponse{
 		UptimeSeconds:  int64(time.Since(startedAt).Seconds()),
@@ -70,22 +93,80 @@ func (s *SyncNode) Snapshot() proto.SyncNodeHeartbeatResponse {
 		resp.MaxConcurrentTasks = cfg.Concurrency.MaxConcurrentTasks
 		resp.BandwidthMBpsLimit = float64(cfg.Concurrency.BandwidthLimitMBps)
 	}
-	resp.LastTaskFailureRate = s.computeRecentFailureRate(recentFailureWindow)
 
-	// FIX #4: advertise the per-rule AggregateBandwidthLimitMBps so
-	// master's SyncQuotaCalculator can fan the cluster cap across active
-	// nodes (§12.4.1 / P1-8). Empty / 0-cap rules are still emitted with
-	// their ID so master can clear stale caps; the master side treats 0
-	// as "no cluster ceiling".
-	resp.Rules = s.advertiseRules()
+	// Cached gauges. Nil cache (pre-doStart / bare-construction tests)
+	// returns zero values — matches the prior synchronous-scan behaviour
+	// before any data was written.
+	if s.snapshotCache != nil {
+		if v := s.snapshotCache.failureRate.Load(); v != nil {
+			if fr, ok := v.(float64); ok {
+				resp.LastTaskFailureRate = fr
+			}
+		}
+		// FIX #4: advertise the per-rule AggregateBandwidthLimitMBps so
+		// master's SyncQuotaCalculator can fan the cluster cap across
+		// active nodes (§12.4.1 / P1-8). Empty / 0-cap rules are still
+		// emitted with their ID so master can clear stale caps.
+		if r := s.snapshotCache.rules.Load(); r != nil {
+			resp.Rules = *r
+		}
+	}
 
 	return resp
+}
+
+// startSnapshotCacheLoop fires every snapshotCacheRefresh seconds, scans
+// the task + rule stores, and writes the new values into the cache. The
+// first refresh happens immediately so Snapshot() doesn't return zero
+// values during the brief startup window between doStart and the first
+// tick. Started AFTER initStateStore + initExecutorAndRunner +
+// bootstrapRulesFromConfig so the stores it reads are wired and
+// populated; stopped by closing stopC.
+func (s *SyncNode) startSnapshotCacheLoop() {
+	if s.snapshotCache == nil {
+		s.snapshotCache = &snapshotCache{}
+	}
+	// Immediate seed so the first heartbeat after doStart returns real
+	// values instead of zeros.
+	s.refreshSnapshotCache()
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		t := time.NewTicker(snapshotCacheRefresh)
+		defer t.Stop()
+		for {
+			select {
+			case <-s.stopC:
+				return
+			case <-t.C:
+				s.refreshSnapshotCache()
+			}
+		}
+	}()
+}
+
+// refreshSnapshotCache performs the actual I/O — one task-store List for
+// the failure-rate gauge and one rule-store List for the advert vector —
+// and stores the results atomically. Errors during the scan degrade
+// gracefully: prior cached values stay in place (we only Store on
+// success-shaped output, but List returning err already maps to 0 /
+// empty inside the compute helpers).
+func (s *SyncNode) refreshSnapshotCache() {
+	if s.snapshotCache == nil {
+		return
+	}
+	fr := s.computeRecentFailureRate(recentFailureWindow)
+	s.snapshotCache.failureRate.Store(fr)
+	rs := s.advertiseRules()
+	s.snapshotCache.rules.Store(&rs)
+	s.snapshotCache.updatedAt.Store(time.Now().UnixNano())
 }
 
 // advertiseRules snapshots the (ID, AggregateBandwidthLimitMBps) pairs
 // for every active rule in the local store. Cheap — the rule list is
 // bounded and the store's List is in-memory or BoltDB-cached. Errors fall
-// back to an empty slice so the heartbeat still flies.
+// back to an empty slice so the heartbeat still flies. Called only from
+// the snapshot cache refresh loop post-fix (NOT from Snapshot directly).
 func (s *SyncNode) advertiseRules() []proto.SyncRuleAdvert {
 	if s.ruleStore == nil {
 		return nil
@@ -117,10 +198,8 @@ func (s *SyncNode) advertiseRules() []proto.SyncRuleAdvert {
 //   - the store errors (treated as "no signal");
 //   - no terminal records fall inside the window.
 //
-// Implementation is synchronous on the heartbeat hot path. The active
-// task list is bounded by ConcurrencyConfig + queue, so a List scan is
-// cheap; if profiling shows otherwise, this can move to a ticker-cached
-// gauge without changing the wire shape.
+// Called only from the snapshot cache refresh loop post-fix (NOT from
+// Snapshot directly).
 func (s *SyncNode) computeRecentFailureRate(window time.Duration) float64 {
 	if s.taskStore == nil {
 		return 0

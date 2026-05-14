@@ -51,20 +51,32 @@ type Limiter interface {
 // "unlimited" — WaitN returns nil immediately without consulting the
 // underlying rate.Limiter.
 //
+// The configured rate is stored as float64 because cluster-wide caps
+// distributed across N nodes (sync_quota.Compute) produce fractional MB/s
+// (e.g. 400 / 7 ≈ 57.14). Truncating to int under-enforced the total cap
+// by up to N-1 MB/s (SEC5). NewBucket accepts int for the static
+// constructor convenience used by server.go / executor.go; SetLimit takes
+// float64 since the dynamic-update path receives fractional values from
+// master.
+//
 // Bucket is safe for concurrent use.
 type Bucket struct {
 	mu   sync.Mutex
 	rl   *rate.Limiter // nil when unlimited
-	mbps int           // configured Mbps, kept for SetLimit / diagnostics
+	mbps float64       // configured Mbps, kept for SetLimit / diagnostics
 }
 
 // NewBucket constructs a token bucket capped at mbps megabytes per second.
 // mbps <= 0 is treated as unlimited; the returned Bucket is still valid and
 // its WaitN is a no-op. Burst defaults to max(1 second of bandwidth,
 // 4 MiB) so freshly minted buckets don't stall the first Read of a stream.
+//
+// Accepts int for backward compatibility with the static node-level
+// constructor at server boot. Dynamic / fractional retuning goes through
+// SetLimit which takes float64.
 func NewBucket(mbps int) *Bucket {
 	b := &Bucket{}
-	b.setLimitLocked(mbps)
+	b.setLimitLocked(float64(mbps))
 	return b
 }
 
@@ -73,19 +85,23 @@ func NewBucket(mbps int) *Bucket {
 // immediately). Safe for concurrent use; callers in flight on the old
 // limiter complete their wait against the old rate, future callers see the
 // new one.
-func (b *Bucket) SetLimit(mbps int) {
+//
+// Takes float64 because cross-node quotas (per-rule / per-backend) come
+// from master's equal-division of cluster caps and are commonly
+// fractional. See SEC5 in the design notes.
+func (b *Bucket) SetLimit(mbps float64) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.setLimitLocked(mbps)
 }
 
-func (b *Bucket) setLimitLocked(mbps int) {
+func (b *Bucket) setLimitLocked(mbps float64) {
 	b.mbps = mbps
 	if mbps <= 0 {
 		b.rl = nil
 		return
 	}
-	bytesPerSec := float64(mbps) * 1024 * 1024
+	bytesPerSec := mbps * 1024 * 1024
 	burst := int(bytesPerSec)
 	if burst < minBurstBytes {
 		burst = minBurstBytes
@@ -95,7 +111,7 @@ func (b *Bucket) setLimitLocked(mbps int) {
 
 // Mbps returns the configured rate (0 means unlimited). Exposed for
 // diagnostics / metrics; not used in the hot path.
-func (b *Bucket) Mbps() int {
+func (b *Bucket) Mbps() float64 {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.mbps

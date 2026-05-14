@@ -223,6 +223,27 @@ func (d *SyncDispatcher) LoadScore(addr string) float64 {
 	return computeLoadScore(found, d.now())
 }
 
+// LoadScoreAll returns the current load score per registered syncnode in
+// a single pass over c.syncNodes. Used by /syncNode/list to avoid the
+// O(N²) trap of calling LoadScore once per node — at 1000 nodes that
+// was ~1M map walks per request. The returned map is freshly allocated
+// (one entry per registered node); callers may mutate it freely.
+//
+// Returned values include +Inf for stale / inactive / bolt-unhealthy
+// nodes (same contract as single-node LoadScore). A single now()
+// snapshot is taken at the top so every score uses one wallclock
+// reference — small consistency win when the fleet straddles the
+// staleness boundary.
+func (d *SyncDispatcher) LoadScoreAll() map[string]float64 {
+	now := d.now()
+	out := make(map[string]float64)
+	d.source.rangeSyncNodes(func(addr string, sn *SyncNode) bool {
+		out[addr] = computeLoadScore(sn, now)
+		return true
+	})
+	return out
+}
+
 // Candidates returns the addrs of nodes eligible to receive a new task,
 // sorted ascending by load score. Ties within ±0.05 are broken by the
 // node's lastDispatchAt (older = better — produces round-robin behavior

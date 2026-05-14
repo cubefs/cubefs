@@ -100,6 +100,17 @@ func (c *Cluster) handleSyncNodeTaskResponse(nodeAddr string, task *proto.AdminT
 
 // handleSyncNodeHeartbeatResp updates the SyncNode runtime snapshot. Same
 // shape as Cluster.handleLcNodeHeartbeatResp.
+//
+// S5 fix: when a node previously marked inactive (because checkSyncNodeHeartbeat
+// observed a stale ReportTime and handleNodeDeath redispatched its tasks
+// elsewhere) heartbeats again, naively setting IsActive=true leaves the
+// reconnecting node running tasks it no longer owns — the dispatcher has
+// re-homed them. The same task then runs on TWO nodes in parallel. We
+// detect the wasActive=false → IsActive=true transition under SyncNode.Lock,
+// capture the addr, release the lock, then push OpSyncNodeCancelTask for
+// any task the dispatcher no longer maps to this addr. The cancel-fanout
+// runs O(N) over the ownership ledger ONLY on the rare reconnect path; the
+// happy heartbeat path stays O(1).
 func (c *Cluster) handleSyncNodeHeartbeatResp(nodeAddr string, resp *proto.SyncNodeHeartbeatResponse) (err error) {
 	log.LogDebugf("action[handleSyncNodeHeartbeatResp] clusterID[%v] receive syncNode[%v] heartbeat", c.Name, nodeAddr)
 	if resp.Status != proto.TaskSucceeds {
@@ -114,6 +125,7 @@ func (c *Cluster) handleSyncNodeHeartbeatResp(nodeAddr string, resp *proto.SyncN
 		return
 	}
 	sn.Lock()
+	wasActive := sn.IsActive
 	sn.IsActive = true
 	sn.ReportTime = time.Now()
 	sn.Version = resp.NodeVersion
@@ -129,7 +141,17 @@ func (c *Cluster) handleSyncNodeHeartbeatResp(nodeAddr string, resp *proto.SyncN
 	sn.MaxConcurrentTasks = resp.MaxConcurrentTasks
 	sn.BandwidthMBpsLimit = resp.BandwidthMBpsLimit
 	sn.LastTaskFailureRate = resp.LastTaskFailureRate
+	addr := sn.Addr
 	sn.Unlock()
+
+	// S5: reconnect path. Master had marked this node dead and reassigned
+	// its tasks. Send Cancel for anything we no longer own here so the
+	// reconnecting node stops the orphaned local runs. Runs OUTSIDE the
+	// SyncNode lock to respect the canonical lock ordering documented at
+	// checkSyncNodeHeartbeat (SyncNode → SyncDispatcher).
+	if !wasActive && c.syncDispatcher != nil {
+		c.cancelOrphanedTasksOnReconnect(addr)
+	}
 
 	// FIX #4: ingest the syncnode's advertised per-rule
 	// AggregateBandwidthLimitMBps caps so the SyncQuotaCalculator has
@@ -149,6 +171,64 @@ func (c *Cluster) handleSyncNodeHeartbeatResp(nodeAddr string, resp *proto.SyncN
 	log.LogInfof("action[handleSyncNodeHeartbeatResp], syncNode[%v], running[%v], queued[%v], rules[%v], bolt[%v]",
 		nodeAddr, resp.RunningTasks, resp.QueuedTasks, resp.ScheduledRules, resp.BoltDBHealthy)
 	return
+}
+
+// cancelOrphanedTasksOnReconnect detects tasks that the dispatcher's
+// ownership ledger no longer associates with addr and pushes
+// OpSyncNodeCancelTask to that node so it stops the local run. The
+// dispatcher tracks owners; tasks whose owner is no longer addr (the
+// dispatcher re-homed them to some other syncnode while addr was marked
+// dead) are "orphans" from master's view.
+//
+// Cost: O(N) over the entire ownership ledger. Called only on the rare
+// reconnect transition (wasActive=false → IsActive=true); never on the
+// happy heartbeat path.
+//
+// Limitation: master cannot enumerate exactly which tasks the syncnode
+// is actually running locally — the heartbeat snapshot reports a
+// RunningTasks COUNT, not a set of IDs. As a conservative fallback we
+// send Cancel for every taskID whose OwnerOf != addr (i.e. previously
+// owned here, now owned elsewhere). The syncnode's handleCancelTask is
+// a no-op for unknown taskIDs (Runner.Cancel doesn't error for missing
+// IDs), so the over-broadcast is safe.
+//
+// Payload shape: we use a map[string]interface{}{"taskId": <id>} literal
+// because syncnode.CancelTaskRequest lives in package syncnode and master
+// must not depend on it. syncnode/task_handler.go:decodeCancelRequest
+// round-trips the request body through JSON into the typed struct, so
+// the map literal decodes identically to a typed CancelTaskRequest.
+func (c *Cluster) cancelOrphanedTasksOnReconnect(addr string) {
+	if c.syncDispatcher == nil {
+		return
+	}
+	snI, ok := c.syncNodes.Load(addr)
+	if !ok {
+		return
+	}
+	sn, ok := snI.(*SyncNode)
+	if !ok || sn == nil || sn.TaskManager == nil {
+		return
+	}
+	ownerships := c.syncDispatcher.AllOwnerships()
+	if len(ownerships) == 0 {
+		log.LogDebugf("syncnode reconnect: %s rejoined with empty ownership ledger; no orphan-cancels needed", addr)
+		return
+	}
+	cancelled := 0
+	for taskID, owner := range ownerships {
+		if owner == addr {
+			continue
+		}
+		req := map[string]interface{}{"taskId": taskID}
+		task := proto.NewAdminTask(proto.OpSyncNodeCancelTask, addr, req)
+		sn.TaskManager.AddTask(task)
+		cancelled++
+	}
+	if cancelled > 0 {
+		log.LogWarnf("syncnode reconnect: pushed %d orphan-cancel(s) to %s", cancelled, addr)
+	} else {
+		log.LogDebugf("syncnode reconnect: %s rejoined with no orphaned tasks; ledger had %d owned elsewhere", addr, 0)
+	}
 }
 
 // decodeTaskResponse round-trips task.Response into the supplied typed

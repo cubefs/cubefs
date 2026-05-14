@@ -1069,18 +1069,57 @@ func (c *Cluster) checkLcNodeHeartbeat() {
 	}
 }
 
+// Sync-master lock ordering (lowest → highest, must acquire top-down):
+//
+//  1. Cluster.syncNodes      (sync.Map — no explicit lock needed)
+//  2. SyncNode.RWMutex       (per-node runtime fields)
+//  3. SyncDispatcher.mu      (ownership ledger; held briefly)
+//  4. SyncFailover.mu        (history ring + payload map)
+//
+// Code paths that touch multiple levels MUST acquire and release in this
+// order. checkSyncNodeHeartbeat reads SyncNode under RLock, releases,
+// then calls into the dispatcher / failover chain — it must NEVER hold
+// SyncNode's lock across a dispatcher call. The dispatcher's failover
+// hook fans out to sendFn → sn.TaskManager.AddTask, which would deadlock
+// or race against handleSyncNodeHeartbeatResp (also acquiring SyncNode.Lock)
+// if we entered the chain while still holding the source node's lock.
+//
 // checkSyncNodeHeartbeat ticks each registered SyncNode, marks stale nodes
 // inactive, and queues a fresh heartbeat AdminTask for live ones. Unlike
 // LcNode, syncnode entries are NOT auto-deregistered on liveness loss in
 // P0 — IsActive=false is enough; the operator decides when to evict.
+//
+// S4 fix: the previous shape read node.IsActive (unlocked) before and after
+// node.checkLiveness() — both reads raced against handleSyncNodeHeartbeatResp.
+// The current shape acquires SyncNode.RLock to snapshot the pre-flip state,
+// releases, calls checkLiveness (which takes Lock internally), then re-reads
+// post-flip state under RLock again — all SyncNode locks are released BEFORE
+// invoking c.syncDispatcher.handleNodeDeath so we respect the canonical
+// lock order and never hold SyncNode across the dispatcher / failover chain.
 func (c *Cluster) checkSyncNodeHeartbeat() {
 	tasks := make([]*proto.AdminTask, 0)
 	deadAddrs := make([]string, 0)
 	c.syncNodes.Range(func(addr, syncNode interface{}) bool {
 		node := syncNode.(*SyncNode)
+
+		// Snapshot pre-flip state under RLock (level 2). Released before
+		// any further work on this node.
+		node.RLock()
 		wasActive := node.IsActive
+		node.RUnlock()
+
+		// checkLiveness internally acquires SyncNode.Lock and may flip
+		// IsActive. We do NOT hold any SyncNode lock across this call.
 		node.checkLiveness()
-		if !node.IsActive {
+
+		// Re-read post-flip state under RLock. Released immediately so
+		// we never enter the dispatcher / failover chain while holding
+		// SyncNode's lock.
+		node.RLock()
+		nowActive := node.IsActive
+		node.RUnlock()
+
+		if !nowActive {
 			log.LogInfof("checkSyncNodeHeartbeat: syncnode(%v) is inactive", node.Addr)
 			if wasActive {
 				deadAddrs = append(deadAddrs, node.Addr)
@@ -1104,8 +1143,10 @@ func (c *Cluster) checkSyncNodeHeartbeat() {
 	}
 	c.addSyncNodeTasks(tasks)
 	// Tell the dispatcher about freshly-dead nodes so any task ownership
-	// it tracked for them is cleared. P1-4 will swap this for a true
-	// redispatch path.
+	// it tracked for them is cleared. NO SyncNode lock is held here —
+	// handleNodeDeath fires failoverHook → redispatch → sendFn →
+	// sn.TaskManager.AddTask on the OTHER (healthy) node, which would
+	// race against this loop if we still held the source node's lock.
 	if c.syncDispatcher != nil {
 		for _, addr := range deadAddrs {
 			c.syncDispatcher.handleNodeDeath(addr)

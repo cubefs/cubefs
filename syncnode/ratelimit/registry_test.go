@@ -29,13 +29,13 @@ func TestNewRegistry_NodeBucket(t *testing.T) {
 		t.Fatal("NodeBucket() returned nil")
 	}
 	if got := nb.Mbps(); got != 500 {
-		t.Errorf("Mbps = %d, want 500", got)
+		t.Errorf("Mbps = %v, want 500", got)
 	}
 
 	// Unlimited node.
 	r2 := NewRegistry(0)
 	if mbps := r2.NodeBucket().Mbps(); mbps != 0 {
-		t.Errorf("unlimited node Mbps = %d, want 0", mbps)
+		t.Errorf("unlimited node Mbps = %v, want 0", mbps)
 	}
 }
 
@@ -57,7 +57,7 @@ func TestRegistry_SetGetBackendLimit(t *testing.T) {
 		t.Fatal("BackendBucket nil after Set")
 	}
 	if mbps := b.Mbps(); mbps != 100 {
-		t.Errorf("Mbps = %d, want 100", mbps)
+		t.Errorf("Mbps = %v, want 100", mbps)
 	}
 
 	// Updating reuses the same Bucket instance (dynamic retune).
@@ -67,7 +67,7 @@ func TestRegistry_SetGetBackendLimit(t *testing.T) {
 		t.Errorf("SetBackendLimit allocated a new bucket; want reuse")
 	}
 	if mbps := b2.Mbps(); mbps != 250 {
-		t.Errorf("after update Mbps = %d, want 250", mbps)
+		t.Errorf("after update Mbps = %v, want 250", mbps)
 	}
 
 	// Removing.
@@ -84,7 +84,7 @@ func TestRegistry_SetNodeLimit(t *testing.T) {
 	nb := r.NodeBucket()
 	r.SetNodeLimit(750)
 	if mbps := nb.Mbps(); mbps != 750 {
-		t.Errorf("Mbps after SetNodeLimit = %d, want 750", mbps)
+		t.Errorf("Mbps after SetNodeLimit = %v, want 750", mbps)
 	}
 	// Negative disables.
 	r.SetNodeLimit(0)
@@ -131,7 +131,7 @@ func TestRegistry_Snapshot(t *testing.T) {
 	// Mutating the snapshot must not affect the registry.
 	snap[k1] = 999
 	if got := r.BackendBucket(k1).Mbps(); got != 50 {
-		t.Errorf("registry mutated via Snapshot: %d", got)
+		t.Errorf("registry mutated via Snapshot: %v", got)
 	}
 }
 
@@ -189,7 +189,7 @@ func TestRegistry_SetGetRuleLimit(t *testing.T) {
 		t.Fatal("RuleBucket nil after Set")
 	}
 	if mbps := b.Mbps(); mbps != 200 {
-		t.Errorf("Mbps = %d, want 200", mbps)
+		t.Errorf("Mbps = %v, want 200", mbps)
 	}
 
 	// Updating reuses the same Bucket instance so in-flight transfers
@@ -200,7 +200,7 @@ func TestRegistry_SetGetRuleLimit(t *testing.T) {
 		t.Errorf("SetRuleLimit allocated a new bucket; want reuse")
 	}
 	if mbps := b2.Mbps(); mbps != 400 {
-		t.Errorf("after update Mbps = %d, want 400", mbps)
+		t.Errorf("after update Mbps = %v, want 400", mbps)
 	}
 
 	// Removing.
@@ -246,7 +246,7 @@ func TestRegistry_RuleSnapshot(t *testing.T) {
 	}
 	snap["r1"] = 999
 	if got := r.RuleBucket("r1").Mbps(); got != 50 {
-		t.Errorf("registry mutated via RuleSnapshot: %d", got)
+		t.Errorf("registry mutated via RuleSnapshot: %v", got)
 	}
 }
 
@@ -260,12 +260,12 @@ func TestRegistry_ConcurrentRuleSetAndGet(t *testing.T) {
 	const iters = 200
 	for i, id := range ids {
 		id := id
-		mbps := (i + 1) * 10
+		mbps := float64((i + 1) * 10)
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
 			for j := 0; j < iters; j++ {
-				r.SetRuleLimit(id, mbps+j%5)
+				r.SetRuleLimit(id, mbps+float64(j%5))
 			}
 		}()
 		go func() {
@@ -293,12 +293,12 @@ func TestRegistry_ConcurrentSetAndGet(t *testing.T) {
 	const iters = 200
 	for i, k := range keys {
 		k := k
-		mbps := (i + 1) * 10
+		mbps := float64((i + 1) * 10)
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
 			for j := 0; j < iters; j++ {
-				r.SetBackendLimit(k, mbps+j%5)
+				r.SetBackendLimit(k, mbps+float64(j%5))
 			}
 		}()
 		go func() {

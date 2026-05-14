@@ -515,9 +515,11 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodPost).
 		Path(proto.SyncNodeDispatch).
 		HandlerFunc(requireSyncAdminToken(m.dispatchSyncTask))
-	router.NewRoute().Methods(http.MethodGet).
-		Path(proto.GetSyncNodeQuota).
-		HandlerFunc(requireSyncAdminToken(m.getSyncNodeQuota))
+	// /syncNode/getQuota route was removed in favour of the inline quota
+	// reply on /syncNode/response (FIX P4). The URL constant is retained
+	// in proto/admin_proto.go for one release as a deprecation grace
+	// window — clients on older builds get a 404, which surfaces a clean
+	// "upgrade syncnode" signal rather than a silent fall-through.
 
 	// node task response APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
@@ -529,6 +531,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.GetLcNodeTaskResponse).
 		HandlerFunc(m.handleLcNodeTaskResponse)
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.GetSyncNodeTaskResponse).
+		HandlerFunc(m.handleSyncNodeTaskResponse)
 
 	// meta partition management APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
