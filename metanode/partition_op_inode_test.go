@@ -16,12 +16,14 @@ package metanode
 
 import (
 	"encoding/json"
+	"fmt"
 	"math/rand"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/util"
+	raftstoremock "github.com/cubefs/cubefs/metanode/mocktest/raftstore"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/timeutil"
 	"github.com/golang/mock/gomock"
@@ -423,4 +425,103 @@ func TestOpAppendExtentWithAuditLogForMigration(t *testing.T) {
 	err := mp.ExtentAppendWithCheck(req, p, "127.0.0.1")
 	require.NoError(t, err)
 	require.EqualValues(t, proto.OpOk, p.ResultCode)
+}
+
+func TestUpdateInodeMetaSuccess(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mp := mockPartitionRaftForFsmInodeTest(t, ctrl, proto.StoreModeMem)
+	const ino = 30001
+	prepareInodeForFsmInodeTest(t, mp, ino)
+
+	pkt := &Packet{}
+	err := mp.UpdateInodeMeta(&proto.UpdateInodeMetaRequest{
+		Inode:       ino,
+		PartitionID: mp.config.PartitionId,
+	}, pkt)
+	require.NoError(t, err)
+	require.EqualValues(t, proto.OpOk, pkt.ResultCode)
+}
+
+func TestUpdateInodeMetaSuccess_Rocksdb(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mp := mockPartitionRaftForFsmInodeTest(t, ctrl, proto.StoreModeRocksDb)
+	const ino = 30002
+	prepareInodeForFsmInodeTest(t, mp, ino)
+	before, err := mp.inodeTree.Get(&Inode{Inode: ino})
+	require.NoError(t, err)
+	require.NotNil(t, before)
+
+	pkt := &Packet{}
+	err = mp.UpdateInodeMeta(&proto.UpdateInodeMetaRequest{
+		Inode:       ino,
+		PartitionID: mp.config.PartitionId,
+	}, pkt)
+	require.NoError(t, err)
+	require.EqualValues(t, proto.OpOk, pkt.ResultCode)
+
+	after, err := mp.inodeTree.Get(&Inode{Inode: ino})
+	require.NoError(t, err)
+	require.NotNil(t, after)
+	require.EqualValues(t, before.Generation+1, after.Generation)
+}
+
+func TestUpdateInodeMetaInodeNotExist(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mp := mockPartitionRaftForFsmInodeTest(t, ctrl, proto.StoreModeMem)
+
+	pkt := &Packet{}
+	err := mp.UpdateInodeMeta(&proto.UpdateInodeMetaRequest{
+		Inode:       99999,
+		PartitionID: mp.config.PartitionId,
+	}, pkt)
+	require.NoError(t, err)
+	require.EqualValues(t, proto.OpNotExistErr, pkt.ResultCode)
+}
+
+func TestUpdateInodeMetaMarkedDelete(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mp := mockPartitionRaftForFsmInodeTest(t, ctrl, proto.StoreModeMem)
+	const ino = 30003
+	prepareInodeForFsmInodeTest(t, mp, ino)
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	inode, err := mp.inodeTree.Get(&Inode{Inode: ino})
+	require.NoError(t, err)
+	require.NotNil(t, inode)
+	inode.Flag |= DeleteMarkFlag
+	err = mp.inodeTree.Update(handle, inode)
+	require.NoError(t, err)
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
+
+	pkt := &Packet{}
+	err = mp.UpdateInodeMeta(&proto.UpdateInodeMetaRequest{
+		Inode:       ino,
+		PartitionID: mp.config.PartitionId,
+	}, pkt)
+	require.NoError(t, err)
+	require.EqualValues(t, proto.OpNotExistErr, pkt.ResultCode)
+}
+
+func TestUpdateInodeMetaSubmitError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mp := newMpForFsmInodeTest(t, proto.StoreModeMem)
+	raft := raftstoremock.NewMockPartition(ctrl)
+	raft.EXPECT().Submit(gomock.Any()).Return(nil, fmt.Errorf("raft submit failed")).AnyTimes()
+	raft.EXPECT().IsRaftLeader().Return(true).AnyTimes()
+	raft.EXPECT().LeaderTerm().Return(uint64(1), uint64(1)).AnyTimes()
+	mp.raftPartition = raft
+
+	pkt := &Packet{}
+	err := mp.UpdateInodeMeta(&proto.UpdateInodeMetaRequest{
+		Inode:       1,
+		PartitionID: mp.config.PartitionId,
+	}, pkt)
+	require.Error(t, err)
+	require.EqualValues(t, proto.OpAgain, pkt.ResultCode)
 }

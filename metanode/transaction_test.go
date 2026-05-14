@@ -750,7 +750,7 @@ func TestCommitDentryTxDeleteSkipsParentNLink(t *testing.T) {
 	assert.Equal(t, uint32(5), parentAfter.NLink)
 }
 
-func TestCommitDentryParentShouldDeleteSkipsDecNLink(t *testing.T) {
+func TestCommitDentryParentShouldDeleteReturnsNotExist(t *testing.T) {
 	initMps(t, proto.StoreModeMem)
 	mp := mp1
 
@@ -767,7 +767,7 @@ func TestCommitDentryParentShouldDeleteSkipsDecNLink(t *testing.T) {
 	require.NoError(t, err)
 	status, err := txRsc.commitDentry(handle, rbDentry.txDentryInfo.TxID, rbDentry.txDentryInfo.ParentId, rbDentry.txDentryInfo.Name)
 	require.NoError(t, err)
-	require.Equal(t, proto.OpOk, status)
+	require.Equal(t, proto.OpNotExistErr, status)
 	err = txRsc.txRbDentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
 	require.NoError(t, err)
 
@@ -775,6 +775,10 @@ func TestCommitDentryParentShouldDeleteSkipsDecNLink(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, parentAfter)
 	assert.Equal(t, uint32(3), parentAfter.NLink)
+
+	rbAfter, err := txRsc.getTxRbDentry(pInodeNum, dentryName)
+	require.NoError(t, err)
+	assert.Nil(t, rbAfter)
 }
 
 func TestCommitDentryRbNotExist(t *testing.T) {
@@ -820,6 +824,32 @@ func TestCommitDentryParentNLinkLow(t *testing.T) {
 	require.NoError(t, err)
 	status, err := txRsc.commitDentry(handle, rbDentry.txDentryInfo.TxID, rbDentry.txDentryInfo.ParentId, rbDentry.txDentryInfo.Name)
 	require.NoError(t, err)
+	require.Equal(t, proto.OpNotExistErr, status)
+	err = txRsc.txRbDentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
+
+	parentAfter, err := mp.inodeTree.Get(NewInode(pInodeNum, 0))
+	require.NoError(t, err)
+	require.NotNil(t, parentAfter)
+	assert.Equal(t, uint32(2), parentAfter.NLink)
+}
+
+func TestCommitDentryParentNLinkAboveTwoDecNLink(t *testing.T) {
+	initMps(t, proto.StoreModeMem)
+	mp := mp1
+
+	parent := NewInode(pInodeNum, DirModeType)
+	parent.NLink = 4
+	parent.PoolId = proto.DefaultSSDPoolId
+	putInodeForTxTest(t, mp, parent)
+
+	rbDentry := mockDeleteTxDentry(mp, t)
+	txRsc := mp.txProcessor.txResource
+
+	handle, err := txRsc.txRbDentryTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	status, err := txRsc.commitDentry(handle, rbDentry.txDentryInfo.TxID, rbDentry.txDentryInfo.ParentId, rbDentry.txDentryInfo.Name)
+	require.NoError(t, err)
 	require.Equal(t, proto.OpOk, status)
 	err = txRsc.txRbDentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
 	require.NoError(t, err)
@@ -827,8 +857,82 @@ func TestCommitDentryParentNLinkLow(t *testing.T) {
 	parentAfter, err := mp.inodeTree.Get(NewInode(pInodeNum, 0))
 	require.NoError(t, err)
 	require.NotNil(t, parentAfter)
-	// Dir inode with NLink=2: DecNLink decrements twice (special case at NLink==2, then NLink>0)
-	assert.Equal(t, uint32(0), parentAfter.NLink)
+	assert.Equal(t, uint32(3), parentAfter.NLink)
+}
+
+func TestCommitDentryParentNLinkLow_Rocksdb(t *testing.T) {
+	initMps(t, proto.StoreModeRocksDb)
+	mp := mp1
+
+	parent := NewInode(pInodeNum, DirModeType)
+	parent.NLink = 2
+	parent.PoolId = proto.DefaultSSDPoolId
+	putInodeForTxTest(t, mp, parent)
+
+	rbDentry := mockDeleteTxDentry(mp, t)
+	txRsc := mp.txProcessor.txResource
+
+	handle, err := txRsc.txRbDentryTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	status, err := txRsc.commitDentry(handle, rbDentry.txDentryInfo.TxID, rbDentry.txDentryInfo.ParentId, rbDentry.txDentryInfo.Name)
+	require.NoError(t, err)
+	require.Equal(t, proto.OpNotExistErr, status)
+	err = txRsc.txRbDentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
+}
+
+func TestCommitDentryGetParentInodeError(t *testing.T) {
+	initMps(t, proto.StoreModeMem)
+	mp := mp1
+
+	parent := NewInode(pInodeNum, DirModeType)
+	parent.NLink = 4
+	parent.PoolId = proto.DefaultSSDPoolId
+	putInodeForTxTest(t, mp, parent)
+
+	rbDentry := mockDeleteTxDentry(mp, t)
+	txRsc := mp.txProcessor.txResource
+
+	base := mp.inodeTree
+	mp.inodeTree = &errInjectInodeTree{
+		InodeTree: base,
+		getErr:    fmt.Errorf("inode get failed"),
+	}
+	defer func() { mp.inodeTree = base }()
+
+	handle, err := txRsc.txRbDentryTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	status, _ := txRsc.commitDentry(handle, rbDentry.txDentryInfo.TxID, rbDentry.txDentryInfo.ParentId, rbDentry.txDentryInfo.Name)
+	require.Equal(t, proto.OpErr, status)
+	err = txRsc.txRbDentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
+}
+
+func TestCommitDentryUpdateParentInodeError(t *testing.T) {
+	initMps(t, proto.StoreModeMem)
+	mp := mp1
+
+	parent := NewInode(pInodeNum, DirModeType)
+	parent.NLink = 4
+	parent.PoolId = proto.DefaultSSDPoolId
+	putInodeForTxTest(t, mp, parent)
+
+	rbDentry := mockDeleteTxDentry(mp, t)
+	txRsc := mp.txProcessor.txResource
+
+	base := mp.inodeTree
+	mp.inodeTree = &errInjectInodeTree{
+		InodeTree: base,
+		updateErr: fmt.Errorf("inode update failed"),
+	}
+	defer func() { mp.inodeTree = base }()
+
+	handle, err := txRsc.txRbDentryTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	status, _ := txRsc.commitDentry(handle, rbDentry.txDentryInfo.TxID, rbDentry.txDentryInfo.ParentId, rbDentry.txDentryInfo.Name)
+	require.Equal(t, proto.OpErr, status)
+	err = txRsc.txRbDentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
 }
 
 func testTxTreeRollback(t *testing.T) {

@@ -1463,11 +1463,17 @@ func (mp *metaPartition) UpdateInodeMeta(req *proto.UpdateInodeMetaRequest, p *P
 	reqData, err := json.Marshal(req)
 	if err != nil {
 		log.LogErrorf("UpdateInodeMeta: marshal err(%v)", err)
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	_, err = mp.submit(opFSMUpdateInodeMeta, reqData)
+	resp, err := mp.submit(opFSMUpdateInodeMeta, reqData)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		return
+	}
+	msg := resp.(*InodeResponse)
+	if msg.Status != proto.OpOk {
+		p.PacketErrorWithBody(msg.Status, nil)
 		return
 	}
 	log.LogDebugf("action[UpdateInodeMeta] inode[%v] exit", req.Inode)

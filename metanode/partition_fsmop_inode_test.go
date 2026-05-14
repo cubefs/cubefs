@@ -15,6 +15,7 @@
 package metanode
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"testing"
@@ -456,4 +457,191 @@ func TestFsmUpdateExtentKeyAfterMigrationRejectsGenerationMismatch(t *testing.T)
 	param.Generation = 2
 	resp := mp.fsmUpdateExtentKeyAfterMigration(param)
 	require.EqualValues(t, proto.OpLeaseOccupiedByOthers, resp.Status)
+}
+
+func applyUpdateInodeMetaForTest(t *testing.T, mp *metaPartition, req *UpdateInodeMetaRequest, index uint64) (resp interface{}, err error) {
+	t.Helper()
+	data, err := json.Marshal(req)
+	require.NoError(t, err)
+	item := NewMetaItem(0, nil, data)
+	item.Op = opFSMUpdateInodeMeta
+	cmd, err := item.MarshalJson()
+	require.NoError(t, err)
+	return mp.Apply(cmd, index)
+}
+
+func testFsmUpdateInodeMetaSuccess(t *testing.T, mp *metaPartition) {
+	const ino = 20001
+	prepareInodeForFsmInodeTest(t, mp, ino)
+	before, err := mp.inodeTree.Get(&Inode{Inode: ino})
+	require.NoError(t, err)
+	require.NotNil(t, before)
+	genBefore := before.Generation
+
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	status := mp.fsmUpdateInodeMeta(handle, &UpdateInodeMetaRequest{
+		Inode:       ino,
+		PartitionID: mp.config.PartitionId,
+	})
+	require.EqualValues(t, proto.OpOk, status)
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
+
+	after, err := mp.inodeTree.Get(&Inode{Inode: ino})
+	require.NoError(t, err)
+	require.NotNil(t, after)
+	require.EqualValues(t, genBefore+1, after.Generation)
+}
+
+func TestFsmUpdateInodeMetaSuccess(t *testing.T) {
+	mp := newMpForFsmInodeTest(t, proto.StoreModeMem)
+	testFsmUpdateInodeMetaSuccess(t, mp)
+}
+
+func TestFsmUpdateInodeMetaSuccess_Rocksdb(t *testing.T) {
+	mp := newMpForFsmInodeTest(t, proto.StoreModeRocksDb)
+	testFsmUpdateInodeMetaSuccess(t, mp)
+}
+
+func testFsmUpdateInodeMetaInodeNotExist(t *testing.T, mp *metaPartition) {
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	status := mp.fsmUpdateInodeMeta(handle, &UpdateInodeMetaRequest{
+		Inode:       99999,
+		PartitionID: mp.config.PartitionId,
+	})
+	require.EqualValues(t, proto.OpNotExistErr, status)
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
+}
+
+func TestFsmUpdateInodeMetaInodeNotExist(t *testing.T) {
+	mp := newMpForFsmInodeTest(t, proto.StoreModeMem)
+	testFsmUpdateInodeMetaInodeNotExist(t, mp)
+}
+
+func TestFsmUpdateInodeMetaInodeNotExist_Rocksdb(t *testing.T) {
+	mp := newMpForFsmInodeTest(t, proto.StoreModeRocksDb)
+	testFsmUpdateInodeMetaInodeNotExist(t, mp)
+}
+
+func testFsmUpdateInodeMetaMarkedDelete(t *testing.T, mp *metaPartition) {
+	const ino = 20002
+	prepareInodeForFsmInodeTest(t, mp, ino)
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	inode, err := mp.inodeTree.Get(&Inode{Inode: ino})
+	require.NoError(t, err)
+	require.NotNil(t, inode)
+	inode.Flag |= DeleteMarkFlag
+	err = mp.inodeTree.Update(handle, inode)
+	require.NoError(t, err)
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
+
+	handle, err = mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	status := mp.fsmUpdateInodeMeta(handle, &UpdateInodeMetaRequest{
+		Inode:       ino,
+		PartitionID: mp.config.PartitionId,
+	})
+	require.EqualValues(t, proto.OpNotExistErr, status)
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
+}
+
+func TestFsmUpdateInodeMetaMarkedDelete(t *testing.T) {
+	mp := newMpForFsmInodeTest(t, proto.StoreModeMem)
+	testFsmUpdateInodeMetaMarkedDelete(t, mp)
+}
+
+func TestFsmUpdateInodeMetaApplyInodeNotExist(t *testing.T) {
+	mp := newMpForFsmInodeTest(t, proto.StoreModeMem)
+	resp, err := applyUpdateInodeMetaForTest(t, mp, &UpdateInodeMetaRequest{
+		Inode:       88888,
+		PartitionID: mp.config.PartitionId,
+	}, 1)
+	require.NoError(t, err)
+	msg, ok := resp.(*InodeResponse)
+	require.True(t, ok)
+	require.EqualValues(t, proto.OpNotExistErr, msg.Status)
+}
+
+func TestFsmUpdateInodeMetaApplySuccess(t *testing.T) {
+	mp := newMpForFsmInodeTest(t, proto.StoreModeMem)
+	const ino = 20003
+	prepareInodeForFsmInodeTest(t, mp, ino)
+
+	resp, err := applyUpdateInodeMetaForTest(t, mp, &UpdateInodeMetaRequest{
+		Inode:       ino,
+		PartitionID: mp.config.PartitionId,
+	}, 2)
+	require.NoError(t, err)
+	msg, ok := resp.(*InodeResponse)
+	require.True(t, ok)
+	require.EqualValues(t, proto.OpOk, msg.Status)
+}
+
+func TestFsmUpdateInodeMetaApplySuccess_Rocksdb(t *testing.T) {
+	mp := newMpForFsmInodeTest(t, proto.StoreModeRocksDb)
+	const ino = 20004
+	prepareInodeForFsmInodeTest(t, mp, ino)
+	before, err := mp.inodeTree.Get(&Inode{Inode: ino})
+	require.NoError(t, err)
+	require.NotNil(t, before)
+
+	resp, err := applyUpdateInodeMetaForTest(t, mp, &UpdateInodeMetaRequest{
+		Inode:       ino,
+		PartitionID: mp.config.PartitionId,
+	}, 2)
+	require.NoError(t, err)
+	msg, ok := resp.(*InodeResponse)
+	require.True(t, ok)
+	require.EqualValues(t, proto.OpOk, msg.Status)
+
+	after, err := mp.inodeTree.Get(&Inode{Inode: ino})
+	require.NoError(t, err)
+	require.NotNil(t, after)
+	require.EqualValues(t, before.Generation+1, after.Generation)
+}
+
+func TestFsmUpdateInodeMetaCopyGetError(t *testing.T) {
+	mp := newMpForFsmInodeTest(t, proto.StoreModeMem)
+	const ino = 20010
+	prepareInodeForFsmInodeTest(t, mp, ino)
+	base := mp.inodeTree
+	mp.inodeTree = &errInjectInodeTree{
+		InodeTree:  base,
+		copyGetErr: fmt.Errorf("copyget failed"),
+	}
+	defer func() { mp.inodeTree = base }()
+
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	status := mp.fsmUpdateInodeMeta(handle, &UpdateInodeMetaRequest{
+		Inode:       ino,
+		PartitionID: mp.config.PartitionId,
+	})
+	require.EqualValues(t, proto.OpErr, status)
+}
+
+func TestFsmUpdateInodeMetaUpdateError(t *testing.T) {
+	mp := newMpForFsmInodeTest(t, proto.StoreModeMem)
+	const ino = 20011
+	prepareInodeForFsmInodeTest(t, mp, ino)
+	base := mp.inodeTree
+	mp.inodeTree = &errInjectInodeTree{
+		InodeTree: base,
+		updateErr: fmt.Errorf("update failed"),
+	}
+	defer func() { mp.inodeTree = base }()
+
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	status := mp.fsmUpdateInodeMeta(handle, &UpdateInodeMetaRequest{
+		Inode:       ino,
+		PartitionID: mp.config.PartitionId,
+	})
+	require.EqualValues(t, proto.OpErr, status)
 }

@@ -1495,25 +1495,35 @@ func (mp *metaPartition) fsmSetMigrationExtentKeyDeleteImmediately(inoParam *Ino
 	return
 }
 
-func (mp *metaPartition) fsmUpdateInodeMeta(req *UpdateInodeMetaRequest) (err error) {
+func (mp *metaPartition) fsmUpdateInodeMeta(handle interface{}, req *UpdateInodeMetaRequest) (status uint8) {
+	status = proto.OpOk
 	log.LogDebugf("action[fsmUpdateInodeMeta] req %v", req)
 	ino := NewInode(req.Inode, 0)
 	i, err := mp.inodeTree.CopyGet(ino)
 	if err != nil {
+		status = proto.OpErr
+		log.LogErrorf("action[fsmUpdateInodeMeta] inode(%v) err: %v", req.Inode, err)
 		return
 	}
 	if i == nil {
-		err = fmt.Errorf("ino %v not exist", ino.Inode)
+		log.LogWarnf("action[fsmUpdateInodeMeta] inode(%v) not exist", req.Inode)
+		status = proto.OpNotExistErr
 		return
 	}
 	if i.ShouldDelete() {
-		err = fmt.Errorf("ino %v marked delete", ino.Inode)
+		log.LogWarnf("action[fsmUpdateInodeMeta] inode(%v) marked delete", req.Inode)
+		status = proto.OpNotExistErr
 		return
 	}
 
 	i.Lock()
-	defer i.Unlock()
 	i.Generation++
 	i.ModifyTime = ino.ModifyTime
+	i.Unlock()
+	if err = mp.inodeTree.Update(handle, i); err != nil {
+		status = proto.OpErr
+		log.LogErrorf("action[fsmUpdateInodeMeta] update inode(%v) err: %v", req.Inode, err)
+		return
+	}
 	return
 }

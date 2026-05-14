@@ -1796,20 +1796,22 @@ func (tr *TransactionResource) commitDentry(handle interface{}, txID string, pId
 			log.LogErrorf("commitDentry: get parent inode(%v) err: %v, txId %s", pId, err, txID)
 			return
 		}
+
 		if parentIno == nil {
 			log.LogErrorf("commitDentry: parent inode(%v) is nil, txId %s", pId, txID)
 			status = proto.OpNotExistErr
 			return
 		}
-		if parentIno != nil && !parentIno.ShouldDelete() {
 
-			if parentIno.NLink <= 2 {
-				log.LogErrorf("commitDentry: parent inode(%v) nlink is less than 2, txId %s", pId, txID)
-			}
+		if parentIno.ShouldDelete() || parentIno.NLink <= 2 {
+			log.LogErrorf("commitDentry: parent inode(%v) should delete or nlink is less than 2, txId %s, nlink %d, delete mark %v",
+				pId, txID, parentIno.NLink, parentIno.ShouldDelete())
+			status = proto.OpNotExistErr
+			return
+		}
 
-			if rbDentry.dentry.getSeqFiled() == 0 {
-				parentIno.DecNLink()
-			}
+		if rbDentry.dentry.getSeqFiled() == 0 {
+			parentIno.DecNLink()
 			parentIno.SetMtime()
 			if err = mp.inodeTree.Update(handle, parentIno); err != nil {
 				status = proto.OpErr

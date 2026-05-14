@@ -556,7 +556,9 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err != nil {
 			return
 		}
-		err = mp.fsmUpdateInodeMeta(req)
+		var status uint8
+		status = mp.fsmUpdateInodeMeta(dbWriteHandle, req)
+		resp = &InodeResponse{Status: status}
 	case opFSMSetFreeze:
 		req := &SetFreezeReq{}
 		if err = json.Unmarshal(msg.V, req); err != nil {
