@@ -173,13 +173,13 @@ const (
 // Progress holds an in-flight snapshot. All fields are written via atomic
 // helpers so Reporter implementations can read without locking.
 type Progress struct {
-	FilesTotal     int64
-	FilesDone      int64
-	FilesSkipped   int64
-	FilesFailed    int64
-	BytesTotal     int64
-	BytesDone      int64
-	ThroughputMBps float64
+	FilesTotal     int64   `json:"filesTotal"`
+	FilesDone      int64   `json:"filesDone"`
+	FilesSkipped   int64   `json:"filesSkipped"`
+	FilesFailed    int64   `json:"filesFailed"`
+	BytesTotal     int64   `json:"bytesTotal"`
+	BytesDone      int64   `json:"bytesDone"`
+	ThroughputMBps float64 `json:"throughputMBps"`
 }
 
 // Reporter receives progress callbacks during task execution. Implementers
