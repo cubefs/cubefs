@@ -77,9 +77,8 @@ func (s *SyncNode) Snapshot() proto.SyncNodeHeartbeatResponse {
 	if s.runner != nil {
 		resp.QueuedTasks = int64(s.runner.QueueLen())
 	}
-	if s.scheduler != nil {
-		resp.ScheduledRules = s.scheduler.RegisteredCount()
-	}
+	// P2-6: master is the cron authority; this node has no local
+	// scheduler. ScheduledRules stays at its zero value.
 	if s.boltDB != nil {
 		resp.BoltDBHealthy = s.boltDB.Health() == nil
 	}

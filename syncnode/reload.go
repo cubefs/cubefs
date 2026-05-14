@@ -83,24 +83,11 @@ func (s *SyncNode) reload(ctx context.Context) error {
 	s.cfg = newCfg
 	s.cfgMu.Unlock()
 
-	// Re-apply rules to the scheduler with the new set. Schedule changes
-	// (cron expression edits, pause/resume) take effect here.
-	if s.scheduler != nil {
-		stored, err := s.ruleStore.List(ctx)
-		if err != nil {
-			// Soft-fail: don't roll back the config swap (it's already
-			// validated and persisted); just log and return so operators
-			// see the error.
-			log.LogWarnf("reload: list rules after swap: %v", err)
-			return fmt.Errorf("post-swap list: %w", err)
-		}
-		if err := s.scheduler.ApplyRules(stored); err != nil {
-			// Partial: some rules registered, others were rejected by
-			// cron parse. Log; the scheduler already kept the good ones.
-			log.LogWarnf("reload: scheduler.ApplyRules partial: %v", err)
-		}
-	}
-	log.LogInfof("syncnode reload OK: %d bootstrap rules in config", len(newCfg.Rules))
+	// P2-6: local cron scheduler removed; master is the scheduler
+	// authority. Reload no longer re-applies rules to a local engine.
+	// Other cfg fields (concurrency, bandwidth, etc.) are picked up by
+	// the next backend Build / Runner spawn.
+	log.LogInfof("syncnode reload OK: %d bootstrap rules in config (ignored — master owns rule store)", len(newCfg.Rules))
 	return nil
 }
 

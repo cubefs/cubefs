@@ -38,7 +38,6 @@ import (
 	"github.com/cubefs/cubefs/syncnode/executor"
 	"github.com/cubefs/cubefs/syncnode/ratelimit"
 	"github.com/cubefs/cubefs/syncnode/rules"
-	"github.com/cubefs/cubefs/syncnode/scheduler"
 	"github.com/cubefs/cubefs/syncnode/tasks"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
@@ -94,8 +93,9 @@ type SyncNode struct {
 	// initExecutorAndRunner so it can wrap the runner.
 	taskHandler *TaskHandler
 
-	// Background loops (Phase F-1 + F-4).
-	scheduler *scheduler.Scheduler
+	// Background loops (Phase F-4). P2-6 deleted the local cron
+	// scheduler — master is now the authoritative scheduler. ttlRunner
+	// stays because terminal record purging is a local-bolt concern.
 	ttlRunner *tasks.TTLRunner
 
 	// snapshotCache holds the heartbeat-input gauges that would otherwise
@@ -106,9 +106,9 @@ type SyncNode struct {
 	// runs (Snapshot returns zero gauges in that window).
 	snapshotCache *snapshotCache
 
-	// HTTP handler bundles (Phase E-2 + E-3 + F-4).
-	ruleHandlers *rules.Handlers
-	taskHandlers *tasks.Handlers
+	// HTTP handler bundles. P2-6 removed the rule + task admin
+	// surfaces from syncnode; they live on master now. Only the
+	// /admin/syncnode/{version,stat,reload} endpoints stay.
 
 	// Signal handling for SIGHUP reload (Phase F-3).
 	sighupCh chan os.Signal
@@ -192,8 +192,8 @@ func doStart(srv common.Server, cfg *config.Config) (err error) {
 	if err = s.validateRuleConflicts(); err != nil {
 		return err
 	}
-	if err = s.initSchedulerAndTTL(); err != nil {
-		return fmt.Errorf("init scheduler / ttl: %w", err)
+	if err = s.initTTLRunner(); err != nil {
+		return fmt.Errorf("init ttl runner: %w", err)
 	}
 
 	// Start the snapshot cache loop AFTER initStateStore (taskStore +
@@ -270,10 +270,8 @@ func doShutdown(srv common.Server) {
 		_ = s.masterClient.Stop()
 	}
 	// Stop the periodic loops first so they don't try to use stores we're
-	// about to close.
-	if s.scheduler != nil {
-		_ = s.scheduler.Stop()
-	}
+	// about to close. P2-6: local cron scheduler removed; master is the
+	// scheduler authority. Only ttlRunner stays.
 	if s.ttlRunner != nil {
 		_ = s.ttlRunner.Stop()
 	}
@@ -439,13 +437,8 @@ func (s *SyncNode) startHTTPServer() error {
 	router.HandleFunc("/admin/syncnode/stat", api.ToHTTPHandler(s.handleStat, api.AuthMiddleware)).Methods(http.MethodGet)
 	router.HandleFunc("/admin/syncnode/reload", api.ToHTTPHandler(s.handleReload, api.AuthMiddleware)).Methods(http.MethodPost)
 
-	// Admin API subsystems register their own routes.
-	if s.ruleHandlers != nil {
-		s.ruleHandlers.Register(router)
-	}
-	if s.taskHandlers != nil {
-		s.taskHandlers.Register(router)
-	}
+	// P2-6: /admin/sync/rule/* and /admin/sync/task/* moved to master.
+	// Console + ops talk to master at /syncRule/* and /syncTask/*.
 
 	addr := ":" + s.cfg.HTTPListen
 	l, err := net.Listen("tcp", addr)
@@ -505,7 +498,7 @@ func (s *SyncNode) initStateStore() error {
 	s.ruleStore = rules.NewNotifyStore(db.RuleStore(), nil)
 	s.taskStore = db.TaskStore()
 	s.inProgress = db.InProgress()
-	s.ruleHandlers = rules.NewHandlers(s.ruleStore)
+	// P2-6: rule HTTP handlers removed; master owns the rule API.
 	return nil
 }
 
@@ -555,7 +548,7 @@ func (s *SyncNode) initExecutorAndRunner() error {
 		runnerOpts = append(runnerOpts, tasks.WithQueueSize(n))
 	}
 	s.runner = tasks.NewRunner(s.executor, s.taskStore, s.ruleStore, builder, runnerOpts...)
-	s.taskHandlers = tasks.NewHandlers(s.runner, s.taskStore)
+	// P2-6: task HTTP handlers removed; master owns the task API.
 	return nil
 }
 
@@ -633,34 +626,10 @@ func (s *SyncNode) validateRuleConflicts() error {
 	return nil
 }
 
-// initSchedulerAndTTL builds the cron scheduler + the TTL Runner and
-// arms both. ApplyRules is called once after Start with the current store
-// snapshot; subsequent rule changes (HTTP create/update/delete/pause/resume,
-// SIGHUP reload, G-3 auto-degrade) re-call ApplyRules via the NotifyStore
-// callback wired below.
-func (s *SyncNode) initSchedulerAndTTL() error {
-	s.scheduler = scheduler.New(s.ruleStore, s.runner)
-	if err := s.scheduler.Start(context.Background()); err != nil {
-		return fmt.Errorf("start scheduler: %w", err)
-	}
-	// Now that s.scheduler is non-nil, wire the NotifyStore callback so
-	// every mutating Store op (HTTP CRUD, Degrade, applyBootstrapRules)
-	// pushes the fresh rule set to the scheduler synchronously.
-	if ns, ok := s.ruleStore.(*rules.NotifyStore); ok {
-		ns.SetOnChange(s.applyRulesToScheduler)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	stored, err := s.ruleStore.List(ctx)
-	if err != nil {
-		return fmt.Errorf("list rules for scheduler: %w", err)
-	}
-	if err := s.scheduler.ApplyRules(stored); err != nil {
-		// Non-fatal: some rules had bad cron expressions. Already-good
-		// rules are armed; operators fix the bad ones via the API.
-		log.LogWarnf("syncnode: scheduler.ApplyRules partial: %v", err)
-	}
-
+// initTTLRunner builds the TTL Runner for terminal-record purging.
+// P2-6: deleted the local cron scheduler. Master is now the authoritative
+// scheduler; this routine only wires up the local TTL cleanup loop.
+func (s *SyncNode) initTTLRunner() error {
 	s.ttlRunner = tasks.NewTTLRunner(s.taskStore)
 	if err := s.ttlRunner.Start(context.Background()); err != nil {
 		return fmt.Errorf("start ttl runner: %w", err)
@@ -668,33 +637,10 @@ func (s *SyncNode) initSchedulerAndTTL() error {
 	return nil
 }
 
-// applyRulesToScheduler refetches the rule list and pushes it to the
-// scheduler. Called via the NotifyStore wrapper after every successful
-// CRUD / SetState mutation (HTTP admin API, SIGHUP-reload bootstrap
-// upsert, G-3 auto-degrade). The actual diff (add / remove / re-parse
-// cron) lives in scheduler.ApplyRules; this helper only handles the
-// list-and-forward.
-//
-// Errors are logged + dropped: the underlying mutation has already
-// committed by the time we get here, so the only correct response to a
-// List or ApplyRules error is to wait for the next mutation / SIGHUP /
-// restart to retry. We log loudly so operators see the divergence in
-// their log stream.
-func (s *SyncNode) applyRulesToScheduler() {
-	if s.scheduler == nil || s.ruleStore == nil {
-		return
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	rs, err := s.ruleStore.List(ctx)
-	if err != nil {
-		log.LogWarnf("syncnode: applyRulesToScheduler list: %v", err)
-		return
-	}
-	if err := s.scheduler.ApplyRules(rs); err != nil {
-		log.LogWarnf("syncnode: applyRulesToScheduler apply: %v", err)
-	}
-}
+// applyRulesToScheduler is retained as a no-op stub so the few callsites
+// that haven't been deleted (SIGHUP reload + bootstrap) compile without
+// edits. Master is the scheduler authority post P2-6.
+func (s *SyncNode) applyRulesToScheduler() {}
 
 // installSIGHUPHandler arms a goroutine that calls reload on every SIGHUP.
 // Reload failures are logged and reflected in reloadFailuresTotal but do
@@ -745,9 +691,9 @@ func (s *SyncNode) handleStat(r *http.Request) (interface{}, error) {
 		"concurrentTasks":     concurrentTasks.Load(),
 		"reloadFailuresTotal": reloadFailuresTotal.Load(),
 	}
-	if s.scheduler != nil {
-		out["scheduledRules"] = s.scheduler.RegisteredCount()
-	}
+	// P2-6: scheduledRules always 0 — master is the cron authority.
+	// Field kept on the wire so console doesn't see a schema break.
+	out["scheduledRules"] = 0
 	if s.executor != nil {
 		out["runningTasks"] = s.executor.RunningCount()
 	}
