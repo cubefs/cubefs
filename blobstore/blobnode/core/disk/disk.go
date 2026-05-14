@@ -280,6 +280,9 @@ type DiskStorage struct {
 
 	// io pools
 	ioPools map[bnapi.IOType]bncom.IoPool
+
+	// compact metrics for this disk instance
+	compactMetrics *compactMetrics
 }
 
 func (ds *DiskStorage) IsRegister() bool {
@@ -1133,6 +1136,25 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 	if err = ds.fillDiskUsage(ctx); err != nil {
 		span.Errorf("Failed fill disk usage, err:%v", err)
 		return nil, err
+	}
+
+	// initialize compact metrics and wire hooks
+	ds.compactMetrics = newCompactMetrics(ds)
+	ds.Conf.CompactHooks = core.CompactHooks{
+		OnCopyShard: func(bytes int64) {
+			ds.compactMetrics.copyBytes.Add(float64(bytes))
+			ds.compactMetrics.copyShards.Inc()
+		},
+		OnReplicaWrite: func(bytes int64) {
+			ds.compactMetrics.replicaBytes.Add(float64(bytes))
+			ds.compactMetrics.replicaCnt.Inc()
+		},
+		OnReplicaStgActive: func() {
+			ds.compactMetrics.replicaStg.Inc()
+		},
+		OnReplicaStgInactive: func() {
+			ds.compactMetrics.replicaStg.Dec()
+		},
 	}
 
 	// background loop
