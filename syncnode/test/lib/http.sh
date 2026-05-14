@@ -61,7 +61,7 @@ _curl_with_retry() {
 syncnode_get() {
   local path="$1"
   local args=(); while IFS= read -r line; do args+=("$line"); done < <(_curl_auth_header syncnode)
-  _curl_with_retry -X GET "${args[@]}" "$(SYNCNODE_BASE)$path"
+  _curl_with_retry -X GET ${args[@]+"${args[@]}"} "$(SYNCNODE_BASE)$path"
   echo "$HTTP_BODY"
 }
 
@@ -70,10 +70,10 @@ syncnode_post() {
   local path="$1" body="${2:-}"
   local args=(); while IFS= read -r line; do args+=("$line"); done < <(_curl_auth_header syncnode)
   if [ -n "$body" ]; then
-    _curl_with_retry -X POST "${args[@]}" -H 'Content-Type: application/json' --data "$body" \
+    _curl_with_retry -X POST ${args[@]+"${args[@]}"} -H 'Content-Type: application/json' --data "$body" \
       "$(SYNCNODE_BASE)$path"
   else
-    _curl_with_retry -X POST "${args[@]}" "$(SYNCNODE_BASE)$path"
+    _curl_with_retry -X POST ${args[@]+"${args[@]}"} "$(SYNCNODE_BASE)$path"
   fi
   echo "$HTTP_BODY"
 }
@@ -82,17 +82,17 @@ syncnode_post() {
 master_get() {
   local path="$1"
   local args=(); while IFS= read -r line; do args+=("$line"); done < <(_curl_auth_header master)
-  _curl_with_retry -X GET "${args[@]}" "$(MASTER_BASE)$path"
+  _curl_with_retry -X GET ${args[@]+"${args[@]}"} "$(MASTER_BASE)$path"
   echo "$HTTP_BODY"
 }
 master_post() {
   local path="$1" body="${2:-}"
   local args=(); while IFS= read -r line; do args+=("$line"); done < <(_curl_auth_header master)
   if [ -n "$body" ]; then
-    _curl_with_retry -X POST "${args[@]}" -H 'Content-Type: application/json' --data "$body" \
+    _curl_with_retry -X POST ${args[@]+"${args[@]}"} -H 'Content-Type: application/json' --data "$body" \
       "$(MASTER_BASE)$path"
   else
-    _curl_with_retry -X POST "${args[@]}" "$(MASTER_BASE)$path"
+    _curl_with_retry -X POST ${args[@]+"${args[@]}"} "$(MASTER_BASE)$path"
   fi
   echo "$HTTP_BODY"
 }
