@@ -211,6 +211,13 @@ type Cluster struct {
 	// DispatchN created the parent on. Recover() rebuilds the map from
 	// the dispatcher's ownership ledger on master leader transition.
 	syncFanout *SyncFanout
+
+	// syncRuleCache is the master's in-memory view of every persisted
+	// sync rule (P2). Reads (admin handlers, scheduler) are lock-free
+	// against this cache; writes go through c.syncAddSyncRule (raft) and
+	// then update the cache. Reset on leader switch by master_manager's
+	// loadMetadata.
+	syncRuleCache *SyncRuleCache
 }
 
 type cTask struct {
@@ -6004,6 +6011,13 @@ func (c *Cluster) syncDeleteSyncNode(sn *SyncNode) (err error) {
 	return c.syncPutSyncNodeInfo(opSyncDeleteSyncNode, sn)
 }
 
+// syncUpdateSyncNode raft-replicates an Update op for the SyncNode's
+// state (P2). Used by the decommission / drain / restore admin endpoints
+// so the State field survives leader switch.
+func (c *Cluster) syncUpdateSyncNode(sn *SyncNode) (err error) {
+	return c.syncPutSyncNodeInfo(opSyncUpdateSyncNode, sn)
+}
+
 func (c *Cluster) syncPutSyncNodeInfo(opType uint32, sn *SyncNode) (err error) {
 	metadata := new(RaftCmd)
 	metadata.Op = opType
@@ -6035,8 +6049,14 @@ func (c *Cluster) loadSyncNodes() (err error) {
 		}
 		sn := newSyncNode(snv.Addr, c.Name)
 		sn.ID = snv.ID
+		// Pre-P2 records have no State field; default to active.
+		if snv.State == "" {
+			sn.State = SyncNodeStateActive
+		} else {
+			sn.State = snv.State
+		}
 		c.syncNodes.Store(sn.Addr, sn)
-		log.LogInfof("action[loadSyncNodes], store syncNode[%v], id[%v]", sn.Addr, sn.ID)
+		log.LogInfof("action[loadSyncNodes], store syncNode[%v], id[%v], state[%v]", sn.Addr, sn.ID, sn.State)
 	}
 	return
 }

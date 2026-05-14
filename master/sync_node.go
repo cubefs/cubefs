@@ -28,15 +28,31 @@ import (
 // const.go untouched (Phase B-2 minimal-diff constraint). The opcodes use
 // values outside the range registered in const.go's init() dedup set.
 //
-// TODO(B-2): Once Phase B-3/B-4 lands the full FSM apply path for syncnode
-// delete/update, move these into master/const.go alongside opSyncAddLcNode
-// and add them to the metadata_fsm.go delete-batch switch.
+// 0x82 (opSyncUpdateSyncNode) lands here under the P2 refactor — it
+// raft-persists the SyncNodeState (active/draining) so leader changes
+// don't lose the decommission/drain operator action.
 const (
 	syncNodeAcronym = "sn"
 	syncNodePrefix  = keySeparator + syncNodeAcronym + keySeparator
 
 	opSyncAddSyncNode    uint32 = 0x80
 	opSyncDeleteSyncNode uint32 = 0x81
+	opSyncUpdateSyncNode uint32 = 0x82
+)
+
+// SyncNodeState enumerates the lifecycle states of a syncnode from the
+// cluster's perspective. The dispatcher filters candidates by State ==
+// SyncNodeStateActive, so draining nodes stop receiving new task dispatch.
+type SyncNodeState string
+
+const (
+	// SyncNodeStateActive: node accepts new task dispatch (default).
+	SyncNodeStateActive SyncNodeState = "active"
+	// SyncNodeStateDraining: node no longer receives new dispatch; an
+	// operator-initiated drain (force=false) waits for active tasks to
+	// terminate naturally; force=true cancels + redispatches them via
+	// SyncFailover.
+	SyncNodeStateDraining SyncNodeState = "draining"
 )
 
 // SyncNode is master's view of one syncnode service. Mirror of LcNode but
@@ -49,6 +65,11 @@ type SyncNode struct {
 	IsActive      bool
 	ReportTime    time.Time
 	TaskManager   *AdminTaskManager
+
+	// State is the operator-controlled lifecycle stage (P2). Persisted via
+	// raft as part of syncNodeValue; default is SyncNodeStateActive.
+	// SyncDispatcher.Candidates() skips nodes in SyncNodeStateDraining.
+	State SyncNodeState
 
 	// Latest heartbeat snapshot. Updated under sync.RWMutex each heartbeat
 	// round. P0 just exposes raw counts; load score arithmetic is on
@@ -78,6 +99,7 @@ func newSyncNode(addr, clusterID string) *SyncNode {
 	sn := new(SyncNode)
 	sn.Addr = addr
 	sn.IsActive = true
+	sn.State = SyncNodeStateActive
 	sn.ReportTime = time.Now()
 	sn.TaskManager = newAdminTaskManager(sn.Addr, clusterID)
 	return sn
@@ -123,15 +145,18 @@ func syncNodeNotFound(addr string) (err error) {
 }
 
 // syncNodeValue is the raft-replicated identity record. Mirrors lcNodeValue.
-// Only ID + Addr are persisted — runtime fields are rebuilt from heartbeats.
+// State joins ID + Addr as the persisted runtime status (P2) so operator
+// drains survive leader switch.
 type syncNodeValue struct {
-	ID   uint64
-	Addr string
+	ID    uint64
+	Addr  string
+	State SyncNodeState
 }
 
 func newSyncNodeValue(sn *SyncNode) *syncNodeValue {
 	return &syncNodeValue{
-		ID:   sn.ID,
-		Addr: sn.Addr,
+		ID:    sn.ID,
+		Addr:  sn.Addr,
+		State: sn.State,
 	}
 }

@@ -295,6 +295,16 @@ func (m *Server) loadMetadata() {
 	}
 	log.LogInfo("action[loadSyncNodes] end")
 
+	// P2: master owns the sync rule store. loadSyncRules rebuilds the
+	// in-memory rule cache from rocksdb on every cold start AND on every
+	// leader switch (loadMetadata is called from handleLeaderChange).
+	log.LogInfo("action[loadSyncRules] begin")
+	m.cluster.syncRuleCache = NewSyncRuleCache()
+	if err = m.cluster.loadSyncRules(); err != nil {
+		panic(err)
+	}
+	log.LogInfof("action[loadSyncRules] end, loaded %d rule(s)", m.cluster.syncRuleCache.Len())
+
 	// FIX #7: rebuild the fan-out parents map from the dispatcher's
 	// ownership ledger. After loadSyncNodes the syncnode table is
 	// populated, so any heartbeat-driven Dispatch records that arrive
