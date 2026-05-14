@@ -42,7 +42,6 @@ import (
 	"github.com/cubefs/cubefs/syncnode/tasks"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/gorilla/mux"
 )
@@ -173,9 +172,9 @@ func doStart(srv common.Server, cfg *config.Config) (err error) {
 	initMetrics()
 	startMetricsLoop(s.stopC)
 
-	// Exporter registration with consul / Prometheus pull endpoint.
-	exporter.Init(ModuleName, cfg)
-	exporter.RegistConsul("", ModuleName, cfg)
+	// Note: exporter.Init and exporter.RegistConsul are called by cmd/cmd.go
+	// before server.Start(); calling them again here would double-register
+	// /metrics on http.DefaultServeMux and panic under Go 1.22+ strict mux.
 
 	// Phase F: BoltDB + executor + runner + scheduler + TTL. Order is
 	// important: state store first (so we can recover interrupted tasks
