@@ -8061,7 +8061,14 @@ func (m *Server) listSyncNodes(w http.ResponseWriter, r *http.Request) {
 // On nack/failure the dispatcher retries with the next-best candidate
 // up to 3 times (P1-2 acceptance criterion).
 //
-// Response: { "node": "<addr>", "taskID": "<id>" }
+// P1-7: when the request body carries a top-level "parallelism" > 1
+// (alongside the AdminTask envelope), master fans the work out to
+// parallelism distinct nodes via SyncFanout instead of single-Dispatch.
+// The shard descriptor is injected into each shard's RunTaskRequest
+// payload as the "subTask" field that the syncnode side already decodes.
+//
+// Response (single dispatch): { "node": "<addr>", "taskID": "<id>" }
+// Response (fan-out):         { "owners": {"0":"<addr>", ...}, "taskID": "<id>", "shardTotal": N }
 func (m *Server) dispatchSyncTask(w http.ResponseWriter, r *http.Request) {
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.SyncNodeDispatch))
 	var err error
@@ -8087,6 +8094,57 @@ func (m *Server) dispatchSyncTask(w http.ResponseWriter, r *http.Request) {
 	if m.cluster.syncDispatcher == nil {
 		err = fmt.Errorf("syncDispatcher not initialised")
 		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	// P1-7 fan-out detection: the request body MAY include a top-level
+	// "shardTotal" int alongside the AdminTask. When > 1, route through
+	// SyncFanout.DispatchN so master spreads the parent task across N
+	// syncnodes. Older callers that don't set the field stay on the
+	// single-Dispatch path.
+	//
+	// We re-decode the body into a tiny side struct rather than reaching
+	// into task.Request (which is interface{}); this keeps the existing
+	// AdminTask shape unchanged.
+	var hint struct {
+		ShardTotal int `json:"shardTotal"`
+	}
+	_ = json.Unmarshal(body, &hint)
+	if hint.ShardTotal > 1 {
+		fo := NewSyncFanout(m.cluster.syncDispatcher)
+		// Extract ruleID for parent tracking; tolerate absence (the
+		// fanout only uses it for logging / future per-rule lookups).
+		var ruleHint struct {
+			Request struct {
+				RuleID string `json:"ruleId"`
+			} `json:"Request"`
+		}
+		_ = json.Unmarshal(body, &ruleHint)
+		send := func(addr string, _ int, payload interface{}) error {
+			value, ok := m.cluster.syncNodes.Load(addr)
+			if !ok {
+				return fmt.Errorf("syncnode %s not registered", addr)
+			}
+			sn, ok := value.(*SyncNode)
+			if !ok || sn == nil {
+				return fmt.Errorf("syncnode %s entry invalid", addr)
+			}
+			runTask := proto.NewAdminTask(proto.OpSyncNodeRunTask, addr, payload)
+			sn.TaskManager.AddTask(runTask)
+			return nil
+		}
+		owners, dispErr := fo.DispatchN(task.ID, ruleHint.Request.RuleID, hint.ShardTotal,
+			task.Request, jsonRoundTripFanoutCloner, send, 3)
+		if dispErr != nil {
+			err = dispErr
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+		sendOkReply(w, r, newSuccessHTTPReply(map[string]interface{}{
+			"taskID":     task.ID,
+			"shardTotal": hint.ShardTotal,
+			"owners":     owners,
+		}))
 		return
 	}
 

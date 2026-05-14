@@ -36,6 +36,16 @@ type runnerAPI interface {
 	Cancel(ctx context.Context, taskID string) error
 }
 
+// subTaskRunner is the optional P1-7 fan-out hook. Production *tasks.Runner
+// satisfies it; the test stub implements only runnerAPI. handleRunTask does
+// a type assertion at dispatch time so the legacy path keeps working when
+// the embedded runner doesn't support sub-tasks (the request is then
+// rejected with a clear error).
+type subTaskRunner interface {
+	TriggerSubTask(ctx context.Context, ruleID, parentTaskID string,
+		shardIndex, shardTotal int, wait bool) (*tasks.Record, error)
+}
+
 // masterResponder is the slim contract TaskHandler needs from SyncMasterClient
 // to push task lifecycle envelopes back to master. Tests inject a stub.
 type masterResponder interface {
@@ -195,13 +205,31 @@ func (h *TaskHandler) handleRunTask(ctx context.Context, p *proto.Packet) *proto
 		return errorReply(p, errors.New("missing ruleID in RunTaskRequest"))
 	}
 
-	// TODO(P1-7): when SubTask != nil, route through Runner.TriggerSubTask
-	// (introduced by P1-7) with req.SubTask.ShardIndex / ShardTotal instead
-	// of the rule-level Trigger below.
-
 	// Use a fresh background context: the inbound packet's ctx represents
 	// "stop reading more packets on this connection" — it must NOT cancel
 	// the spawned task. Cancellation is explicit via OpSyncNodeCancelTask.
+	//
+	// P1-7: when SubTask is set the master has split the rule into a
+	// shard fan-out; route through TriggerSubTask so the executor.Task
+	// gets the ShardIndex / ShardTotal that scope the producer loop. We
+	// access TriggerSubTask via the optional subTaskRunner interface so
+	// the legacy stub-only runnerAPI keeps compiling.
+	if req.SubTask != nil {
+		sr, ok := h.runner.(subTaskRunner)
+		if !ok {
+			return errorReply(p, fmt.Errorf(
+				"sub-task dispatch unsupported by runner: rule=%q parent=%q shard=%d/%d",
+				req.RuleID, req.SubTask.ParentTaskID, req.SubTask.ShardIndex, req.SubTask.ShardTotal))
+		}
+		if _, err := sr.TriggerSubTask(context.Background(),
+			req.RuleID, req.SubTask.ParentTaskID,
+			req.SubTask.ShardIndex, req.SubTask.ShardTotal, false); err != nil {
+			return errorReply(p, fmt.Errorf("trigger sub-task %q shard %d/%d: %w",
+				req.RuleID, req.SubTask.ShardIndex, req.SubTask.ShardTotal, err))
+		}
+		return okReply(p)
+	}
+
 	if _, err := h.runner.Trigger(context.Background(), req.RuleID, false); err != nil {
 		return errorReply(p, fmt.Errorf("trigger rule %q: %w", req.RuleID, err))
 	}

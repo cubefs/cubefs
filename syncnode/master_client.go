@@ -25,6 +25,7 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/syncnode/ratelimit"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -70,6 +71,13 @@ type SyncMasterClient struct {
 	// Optional runtime stats injector. nil → minimal heartbeat payload.
 	snapshotProvider HeartbeatSnapshotProvider
 
+	// Optional rate-limit registry. When non-nil, every heartbeat reply
+	// carrying RuleQuotas / BackendQuotas drives SetRuleLimit /
+	// SetBackendLimit on the registry (§12.4 / P1-8 + P1-9). nil → reply
+	// quotas are ignored (used by older tests that don't care about
+	// rate-limit plumbing).
+	rateLimits *ratelimit.Registry
+
 	// Identity, lazily filled by register() on first success. Accessed via
 	// atomic / mutex to allow safe concurrent reads from handlers.
 	nodeID     atomic.Uint64
@@ -114,6 +122,16 @@ func WithRegisterBackoff(d time.Duration) MasterOption {
 // payload (NodeID + Addr).
 func WithSnapshotProvider(p HeartbeatSnapshotProvider) MasterOption {
 	return func(c *SyncMasterClient) { c.snapshotProvider = p }
+}
+
+// WithRateLimitRegistry installs the bandwidth-limit registry the client
+// updates from heartbeat replies. Master computes per-node rule / backend
+// quotas (sync_quota.go) and pushes them down via the reply; the client
+// applies them through SetRuleLimit / SetBackendLimit on the registry
+// (§12.4 / P1-8 + P1-9). Optional — without it the reply is parsed but
+// no buckets are retuned.
+func WithRateLimitRegistry(reg *ratelimit.Registry) MasterOption {
+	return func(c *SyncMasterClient) { c.rateLimits = reg }
 }
 
 // NewSyncMasterClient constructs the client. masterAddr is the comma-
@@ -302,8 +320,15 @@ func (c *SyncMasterClient) heartbeatLoop(ctx context.Context) {
 }
 
 // sendHeartbeat pushes a heartbeat envelope to the master via the
-// ResponseSyncNodeTask path. The reply is unused for now — task dispatch
-// over heartbeat lands in P1.
+// ResponseSyncNodeTask path. The current SDK call discards the master's
+// reply body; once the SDK exposes a typed-reply variant we'll decode
+// SyncNodeHeartbeatResponse here and feed any RuleQuotas / BackendQuotas
+// into applyHeartbeatReply. Until then this is a single push.
+//
+// TODO(P1-8+9 wiring): swap ResponseSyncNodeTask for a variant that
+// returns the decoded *proto.SyncNodeHeartbeatResponse, then call
+// c.applyHeartbeatReply on it. Master's outgoing-task injection (in
+// cluster.go) is wired conditionally on the same TODO.
 func (c *SyncMasterClient) sendHeartbeat(_ context.Context) error {
 	resp := c.buildHeartbeatPayload()
 	task := proto.NewAdminTask(proto.OpSyncNodeHeartbeat, c.LocalServerAddr(), nil)
@@ -312,6 +337,32 @@ func (c *SyncMasterClient) sendHeartbeat(_ context.Context) error {
 		return fmt.Errorf("response sync node task: %w", err)
 	}
 	return nil
+}
+
+// applyHeartbeatReply pushes the master-computed quota maps from a
+// heartbeat reply into the local rate-limit registry. A nil registry or
+// nil reply is a no-op so older callers / tests that don't care about
+// rate-limit plumbing keep working. Empty / missing entries on either map
+// are tolerated; a zero MB/s value removes the bucket (back to unlimited)
+// — see Registry.SetRuleLimit / SetBackendLimit.
+//
+// Exported for testability; the production caller is sendHeartbeat once
+// the SDK reply-decode path lands (see the TODO there).
+func (c *SyncMasterClient) applyHeartbeatReply(reply *proto.SyncNodeHeartbeatResponse) {
+	if c == nil || c.rateLimits == nil || reply == nil {
+		return
+	}
+	for ruleID, mbps := range reply.RuleQuotas {
+		c.rateLimits.SetRuleLimit(ruleID, int(mbps))
+	}
+	for keyStr, mbps := range reply.BackendQuotas {
+		k, ok := ratelimit.ParseBackendKey(keyStr)
+		if !ok {
+			log.LogWarnf("syncnode heartbeat: malformed backend key %q in reply", keyStr)
+			continue
+		}
+		c.rateLimits.SetBackendLimit(k, int(mbps))
+	}
 }
 
 // buildHeartbeatPayload assembles the SyncNodeHeartbeatResponse for the

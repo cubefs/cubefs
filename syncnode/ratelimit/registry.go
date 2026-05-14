@@ -16,6 +16,7 @@ package ratelimit
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 )
 
@@ -35,10 +36,33 @@ func (k BackendKey) String() string {
 	return fmt.Sprintf("%s|%s|%s", k.Kind, k.Endpoint, k.Region)
 }
 
+// ParseBackendKey is the inverse of BackendKey.String(). Returns ok=false
+// on a malformed input (anything other than exactly three "|"-separated
+// fields). Master ships keys in this format via the heartbeat-reply
+// BackendQuotas map; the syncnode master client uses ParseBackendKey to
+// decode them before pushing into the Registry (§12.4 / P1-9).
+func ParseBackendKey(s string) (BackendKey, bool) {
+	parts := strings.SplitN(s, "|", 3)
+	if len(parts) != 3 {
+		return BackendKey{}, false
+	}
+	if parts[0] == "" {
+		return BackendKey{}, false
+	}
+	return BackendKey{Kind: parts[0], Endpoint: parts[1], Region: parts[2]}, true
+}
+
 // Registry holds the node-level (layer 3) bucket and per-backend (layer 4,
 // node-local) buckets. One Registry is created per syncnode process and
 // injected into the executor via WithRateLimitRegistry. Per-task (layer 1)
 // buckets are constructed on demand at transfer start, not stored here.
+//
+// P1-8 added per-rule (layer 2) buckets keyed by rule.ID. Master computes
+// the per-node share of the cluster-wide rule cap and ships it to each
+// syncnode via the heartbeat reply; the syncnode calls SetRuleLimit to
+// install / retune the bucket. RuleBucket returns nil when no quota is
+// configured so callers skip the layer (preserves the unthrottled fast
+// path).
 //
 // Registry is safe for concurrent use.
 type Registry struct {
@@ -52,6 +76,11 @@ type Registry struct {
 	// Absent keys mean "no per-backend cap"; callers should treat a nil
 	// return from BackendBucket as "skip this layer".
 	backend map[BackendKey]*Bucket
+
+	// rule holds layer-2 buckets keyed by rule.ID. Absent keys mean "no
+	// per-rule cap"; callers should treat a nil return from RuleBucket
+	// as "skip this layer".
+	rule map[string]*Bucket
 }
 
 // NewRegistry returns a Registry with the node-level bucket pre-installed.
@@ -60,6 +89,7 @@ func NewRegistry(nodeMBps int) *Registry {
 	return &Registry{
 		nodeBucket: NewBucket(nodeMBps),
 		backend:    make(map[BackendKey]*Bucket),
+		rule:       make(map[string]*Bucket),
 	}
 }
 
@@ -113,6 +143,54 @@ func (r *Registry) Snapshot() map[BackendKey]int {
 	defer r.mu.Unlock()
 	out := make(map[BackendKey]int, len(r.backend))
 	for k, b := range r.backend {
+		out[k] = b.Mbps()
+	}
+	return out
+}
+
+// SetRuleLimit installs or updates the per-rule (layer 2) bucket. mbps <= 0
+// removes the entry — subsequent RuleBucket calls return nil and callers
+// skip the layer entirely (equivalent to unlimited for that rule).
+// Existing Bucket instances are reused on update so in-flight transfers
+// retune dynamically rather than holding stale buckets. Same shape as
+// SetBackendLimit so master's quota-update path is symmetric across the
+// two layers (§12.4 / P1-8).
+func (r *Registry) SetRuleLimit(ruleID string, mbps int) {
+	if ruleID == "" {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if mbps <= 0 {
+		delete(r.rule, ruleID)
+		return
+	}
+	if b, ok := r.rule[ruleID]; ok {
+		b.SetLimit(mbps)
+		return
+	}
+	r.rule[ruleID] = NewBucket(mbps)
+}
+
+// RuleBucket returns the layer-2 bucket for ruleID, or nil if no limit is
+// configured. Callers treat nil as "skip this layer".
+func (r *Registry) RuleBucket(ruleID string) *Bucket {
+	if ruleID == "" {
+		return nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.rule[ruleID]
+}
+
+// RuleSnapshot returns a copy of the current per-rule configuration for
+// diagnostics / tests. The returned map is independent of the Registry's
+// internal state.
+func (r *Registry) RuleSnapshot() map[string]int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make(map[string]int, len(r.rule))
+	for k, b := range r.rule {
 		out[k] = b.Mbps()
 	}
 	return out

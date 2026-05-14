@@ -119,6 +119,19 @@ type Task struct {
 	// (Multi-node fan-out is at a higher layer; this is single-node
 	// parallelism only.) 0 → use Executor.opts.transfersPerTask default.
 	Parallelism int
+
+	// ShardIndex / ShardTotal: cross-node fan-out shard descriptor (§9 P1-7).
+	// When ShardTotal > 1 the producer loops in sync_task.go / load_task.go
+	// skip every entry whose hashed key does not map to ShardIndex. Both
+	// fields default to 0 / 0 which disables sharding and preserves the
+	// pre-P1-7 single-node behaviour (every entry kept).
+	//
+	// ShardIndex must satisfy 0 <= ShardIndex < ShardTotal. The math is
+	// implemented in shard.go (ShouldKeep / shardKey). The split is
+	// deterministic so a re-dispatched sub-task on a new owner reproduces
+	// exactly the same subset.
+	ShardIndex int
+	ShardTotal int
 }
 
 // Result reports the terminal outcome of a Task run.
@@ -437,13 +450,16 @@ func snapshotProgress(p *Progress, startedAt time.Time) Progress {
 }
 
 // buildTransferLimiter composes the per-transfer bandwidth limiter from
-// the task (layer 1), node (layer 3) and per-backend (layer 4) buckets.
-// Returns nil if no layer is configured — callers should treat nil as
-// "skip wrapping" so the unthrottled fast path stays branch-free.
+// the task (layer 1), rule (layer 2), node (layer 3) and per-backend
+// (layer 4) buckets. Returns nil if no layer is configured — callers
+// should treat nil as "skip wrapping" so the unthrottled fast path stays
+// branch-free.
 //
 // Both src and dst contribute layer-4 buckets; in the common case where
-// neither has a configured backend cap, this still folds the task + node
-// layers into the same Composite.
+// neither has a configured backend cap, this still folds the task / rule
+// / node layers into the same Composite. Layer 2 (per-rule) is only added
+// when t.RuleID is non-empty AND master has installed a quota for it
+// (heartbeat-reply driven; see master_client.go's sendHeartbeat).
 func (e *Executor) buildTransferLimiter(t *Task) ratelimit.Limiter {
 	if t == nil {
 		return nil
@@ -453,6 +469,13 @@ func (e *Executor) buildTransferLimiter(t *Task) ratelimit.Limiter {
 		layers = append(layers, ratelimit.NewBucket(t.BandwidthLimitMBps))
 	}
 	if reg := e.opts.rateLimits; reg != nil {
+		// Layer 2 (per-rule). t.RuleID may be empty for ad-hoc tasks; the
+		// bucket is absent until master ships a quota for this rule.
+		if t.RuleID != "" {
+			if rb := reg.RuleBucket(t.RuleID); rb != nil {
+				layers = append(layers, rb)
+			}
+		}
 		if nb := reg.NodeBucket(); nb != nil {
 			layers = append(layers, nb)
 		}

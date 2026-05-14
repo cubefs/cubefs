@@ -194,7 +194,8 @@ func doStart(srv common.Server, cfg *config.Config) (err error) {
 	// after the HTTP admin surface is up, so the syncnode is fully ready to
 	// service requests before it announces itself to master.
 	s.masterClient = NewSyncMasterClient(s.cfg.MasterAddr, s.cfg.Listen,
-		WithSnapshotProvider(s))
+		WithSnapshotProvider(s),
+		WithRateLimitRegistry(s.rateLimits))
 	s.taskHandler = NewTaskHandler(s.runner, s.masterClient)
 
 	// TCP server for master-dispatched task packets (Phase P1-3). Must be

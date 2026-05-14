@@ -127,6 +127,14 @@ func (e *Executor) runSync(ctx context.Context, t *Task, r Reporter, p *Progress
 				if entry.IsDir {
 					continue
 				}
+				// P1-7 sharding: drop entries that don't map to our
+				// shard BEFORE counting them. The other N-1 sub-tasks
+				// will count their share, so the parent's aggregate
+				// FilesTotal across all shards equals the un-sharded
+				// total. Default ShardTotal=0 keeps every entry.
+				if t.ShardTotal > 0 && !ShouldKeep(entry.Key, t.ShardIndex, t.ShardTotal) {
+					continue
+				}
 				atomic.AddInt64(&p.FilesTotal, 1)
 				atomic.AddInt64(&p.BytesTotal, entry.Size)
 				if !t.Filter.Match(entry, now) {

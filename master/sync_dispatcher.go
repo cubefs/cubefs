@@ -94,6 +94,21 @@ type SyncDispatcher struct {
 
 	// now is the wallclock function; tests override it.
 	now func() time.Time
+
+	// failoverHook is invoked once per owned task when the owner dies
+	// (see handleNodeDeath). Production injects a closure that
+	// re-dispatches via Dispatch(); tests inject a counter / error-
+	// injecting stub. nil → no-op (a released task stays released).
+	// Guarded by mu.
+	failoverHook func(taskID string) error
+}
+
+// WithFailoverHook installs the failover orchestrator. Safe to call at
+// any time; invocation is serialized via the dispatcher's lock.
+func (d *SyncDispatcher) WithFailoverHook(h func(taskID string) error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.failoverHook = h
 }
 
 // NewSyncDispatcher constructs a dispatcher bound to the supplied
@@ -352,16 +367,17 @@ func (d *SyncDispatcher) TasksOwnedBy(addr string) []string {
 	return out
 }
 
-// handleNodeDeath releases every task previously assigned to addr.
+// handleNodeDeath releases every task previously assigned to addr and,
+// when a failover hook is installed, invokes it once per released task
+// to trigger re-dispatch to a fresh candidate.
 //
-// P1-1/P1-2 only requires that the ownership map drops the dead node
-// so dispatch math stays consistent. P1-4 will replace this with an
-// interrupt-and-redispatch flow; we keep the hook in place so the
-// failover agent can swap the body without touching call sites.
+// The hook signature is intentionally narrow (just the taskID): the
+// orchestrator (sync_failover.go) is responsible for remembering the
+// original task payload and picking a new owner via Dispatch().
 //
-// TODO(P1-4): instead of releasing, redispatch each released task to
-// the next-best candidate (must coordinate with the syncnode-side TTL
-// cleanup so the same logical task doesn't run on two nodes).
+// Hook errors are logged but never abort the loop — a single failed
+// re-dispatch must not block the rest of the dying node's tasks from
+// being re-homed.
 func (d *SyncDispatcher) handleNodeDeath(addr string) {
 	d.mu.Lock()
 	owned := d.ownedByAddr[addr]
@@ -372,10 +388,22 @@ func (d *SyncDispatcher) handleNodeDeath(addr string) {
 		delete(d.taskOwner, tid)
 		released = append(released, tid)
 	}
+	hook := d.failoverHook
 	d.mu.Unlock()
-	if len(released) > 0 {
-		log.LogWarnf("syncdispatcher: handleNodeDeath(%s) released %d in-flight tasks: %v",
-			addr, len(released), released)
+
+	if len(released) == 0 {
+		return
+	}
+	log.LogWarnf("syncdispatcher: handleNodeDeath(%s) released %d in-flight tasks: %v",
+		addr, len(released), released)
+
+	if hook == nil {
+		return
+	}
+	for _, taskID := range released {
+		if err := hook(taskID); err != nil {
+			log.LogWarnf("syncdispatcher: failover hook for task %q returned error: %v", taskID, err)
+		}
 	}
 }
 

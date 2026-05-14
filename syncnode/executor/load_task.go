@@ -129,6 +129,12 @@ func (e *Executor) runLoad(ctx context.Context, t *Task, r Reporter, p *Progress
 				if entry.IsDir {
 					continue
 				}
+				// P1-7 sharding: filter to this shard's subset before
+				// counting / dispatching to workers. Default
+				// ShardTotal=0 disables sharding (every entry kept).
+				if t.ShardTotal > 0 && !ShouldKeep(entry.Key, t.ShardIndex, t.ShardTotal) {
+					continue
+				}
 				if !t.Filter.Match(entry, now) {
 					continue
 				}

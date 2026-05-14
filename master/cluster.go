@@ -190,6 +190,19 @@ type Cluster struct {
 	// syncDispatcher is the master-side syncnode scheduler (Phase P1).
 	// Passive reader of syncNodes — see sync_dispatcher.go.
 	syncDispatcher *SyncDispatcher
+
+	// syncFailover orchestrates redispatch of in-flight syncnode tasks
+	// when their owning node dies (Phase P1-4). Wires its hook into
+	// syncDispatcher at construction; see sync_failover.go.
+	syncFailover *SyncFailover
+
+	// syncQuota computes per-node bandwidth quotas (per-rule + per-backend)
+	// from cluster-wide caps and the live syncnode fleet (Phase P1-8 + P1-9).
+	// Compute() is called from checkSyncNodeHeartbeat so the per-node maps
+	// stay in lock-step with the heartbeat round. Quota wire-injection into
+	// the outgoing heartbeat task is gated on a future SDK reply-decode
+	// change — see TODO in checkSyncNodeHeartbeat.
+	syncQuota *SyncQuotaCalculator
 }
 
 type cTask struct {
@@ -492,6 +505,8 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.PlanRun = false
 	c.flashManMgr = newFlashManualTaskManager(c)
 	c.syncDispatcher = NewSyncDispatcher(c)
+	c.syncFailover = NewSyncFailover(c, c.syncDispatcher)
+	c.syncQuota = NewSyncQuotaCalculator(c)
 	return
 }
 
@@ -1054,9 +1069,20 @@ func (c *Cluster) checkSyncNodeHeartbeat() {
 			return true
 		}
 		task := node.createHeartbeatTask(c.masterAddr())
+		// TODO(P1-8+9 wiring): once createHeartbeatTask exposes a
+		// quota-injection hook (or once the SDK adds a typed-reply path
+		// for ResponseSyncNodeTask) attach c.syncQuota.QuotasFor(node.Addr)
+		// to the outgoing AdminTask's response body. The math + Registry
+		// plumbing on the syncnode side is already in place — only the
+		// on-wire glue remains. See docs/plan/syncnode/design.md §12.4.2.
 		tasks = append(tasks, task)
 		return true
 	})
+	// Refresh per-node quota snapshots so the next tick can inject them
+	// (and so /admin/sync/quota inspection endpoints return fresh data).
+	if c.syncQuota != nil {
+		c.syncQuota.Compute()
+	}
 	c.addSyncNodeTasks(tasks)
 	// Tell the dispatcher about freshly-dead nodes so any task ownership
 	// it tracked for them is cleared. P1-4 will swap this for a true

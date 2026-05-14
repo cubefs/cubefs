@@ -390,6 +390,141 @@ func TestDispatcher_HandleNodeDeath_ReleasesAllOwned(t *testing.T) {
 }
 
 // -----------------------------------------------------------------------
+// P1-4: failover hook plumbing
+// -----------------------------------------------------------------------
+
+// TestDispatcher_HandleNodeDeath_NoHookIsNoop verifies that handleNodeDeath
+// without a hook just releases ownership — no panic, no work, callers
+// see an empty owned set.
+func TestDispatcher_HandleNodeDeath_NoHookIsNoop(t *testing.T) {
+	now := time.Now()
+	src := newStubSource()
+	src.set("dying:1", makeNode("dying:1", func(n *SyncNode) { n.ReportTime = now }))
+
+	d := newSyncDispatcherFromSource(src)
+	d.now = fixedNow(now)
+	if _, err := d.Dispatch("t1", func(a string) error { return nil }, 3); err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+
+	// No hook installed — must not panic.
+	d.handleNodeDeath("dying:1")
+
+	if d.OwnerOf("t1") != "" {
+		t.Fatalf("OwnerOf(t1) post-death = %q, want empty", d.OwnerOf("t1"))
+	}
+	if owned := d.TasksOwnedBy("dying:1"); len(owned) != 0 {
+		t.Fatalf("TasksOwnedBy = %v, want empty", owned)
+	}
+}
+
+// TestDispatcher_HandleNodeDeath_HookCalledOncePerTask installs a counter
+// and confirms every previously-owned task triggers the hook exactly once.
+func TestDispatcher_HandleNodeDeath_HookCalledOncePerTask(t *testing.T) {
+	now := time.Now()
+	src := newStubSource()
+	src.set("dying:1", makeNode("dying:1", func(n *SyncNode) { n.ReportTime = now }))
+
+	d := newSyncDispatcherFromSource(src)
+	d.now = fixedNow(now)
+
+	for _, tid := range []string{"t1", "t2", "t3"} {
+		if _, err := d.Dispatch(tid, func(a string) error { return nil }, 3); err != nil {
+			t.Fatalf("dispatch %s: %v", tid, err)
+		}
+	}
+
+	var (
+		mu   sync.Mutex
+		seen = map[string]int{}
+	)
+	d.WithFailoverHook(func(taskID string) error {
+		mu.Lock()
+		seen[taskID]++
+		mu.Unlock()
+		return nil
+	})
+
+	d.handleNodeDeath("dying:1")
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(seen) != 3 {
+		t.Fatalf("hook calls seen for %d task(s), want 3 (got %v)", len(seen), seen)
+	}
+	for _, tid := range []string{"t1", "t2", "t3"} {
+		if seen[tid] != 1 {
+			t.Fatalf("hook for %q called %d times, want 1", tid, seen[tid])
+		}
+	}
+}
+
+// TestDispatcher_HandleNodeDeath_HookErrorsDoNotAbortLoop installs a hook
+// that returns an error for the first task it sees; the dispatcher must
+// still call it for the remaining tasks.
+func TestDispatcher_HandleNodeDeath_HookErrorsDoNotAbortLoop(t *testing.T) {
+	now := time.Now()
+	src := newStubSource()
+	src.set("dying:1", makeNode("dying:1", func(n *SyncNode) { n.ReportTime = now }))
+
+	d := newSyncDispatcherFromSource(src)
+	d.now = fixedNow(now)
+
+	tasks := []string{"t1", "t2", "t3", "t4"}
+	for _, tid := range tasks {
+		if _, err := d.Dispatch(tid, func(a string) error { return nil }, 3); err != nil {
+			t.Fatalf("dispatch %s: %v", tid, err)
+		}
+	}
+
+	var (
+		mu    sync.Mutex
+		calls int
+	)
+	d.WithFailoverHook(func(taskID string) error {
+		mu.Lock()
+		calls++
+		mu.Unlock()
+		return errors.New("simulated redispatch failure")
+	})
+
+	d.handleNodeDeath("dying:1")
+
+	mu.Lock()
+	defer mu.Unlock()
+	if calls != len(tasks) {
+		t.Fatalf("hook calls = %d, want %d (loop aborted prematurely)", calls, len(tasks))
+	}
+}
+
+// TestDispatcher_WithFailoverHook_Replaces verifies a second install
+// overrides the first — only the most recent hook fires on subsequent
+// deaths.
+func TestDispatcher_WithFailoverHook_Replaces(t *testing.T) {
+	now := time.Now()
+	src := newStubSource()
+	src.set("dying:1", makeNode("dying:1", func(n *SyncNode) { n.ReportTime = now }))
+
+	d := newSyncDispatcherFromSource(src)
+	d.now = fixedNow(now)
+	if _, err := d.Dispatch("t1", func(a string) error { return nil }, 3); err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+
+	var firstCalls, secondCalls int32
+	d.WithFailoverHook(func(_ string) error { atomic.AddInt32(&firstCalls, 1); return nil })
+	d.WithFailoverHook(func(_ string) error { atomic.AddInt32(&secondCalls, 1); return nil })
+
+	d.handleNodeDeath("dying:1")
+	if atomic.LoadInt32(&firstCalls) != 0 {
+		t.Fatalf("first hook should have been replaced, calls = %d", atomic.LoadInt32(&firstCalls))
+	}
+	if atomic.LoadInt32(&secondCalls) != 1 {
+		t.Fatalf("second hook calls = %d, want 1", atomic.LoadInt32(&secondCalls))
+	}
+}
+
+// -----------------------------------------------------------------------
 // P1-2 acceptance: distribution std-dev ≤ 30% of mean across 3 nodes
 // for 10 sequential dispatches.
 // -----------------------------------------------------------------------

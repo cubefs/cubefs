@@ -119,7 +119,48 @@ func (r *Runner) Trigger(ctx context.Context, ruleID string, wait bool) (*Record
 	if err != nil {
 		return nil, err
 	}
-	return r.triggerRule(ctx, rule, "", wait)
+	return r.triggerRule(ctx, rule, "", nil, wait)
+}
+
+// TriggerSubTask is the P1-7 fan-out entry point. It runs the same rule
+// the regular Trigger would, but pins the executor.Task to a single
+// shard of an N-way split: only entries whose key hashes to shardIndex
+// are processed; the other N-1 are silently skipped by the producer
+// loop in sync_task.go / load_task.go.
+//
+// Identity wiring:
+//   - task.ID becomes "<parentTaskID>/<shardIndex>" so master can pair
+//     responses back to the parent and a redispatched sub-task on a new
+//     owner keeps the same id.
+//   - rec.RuleID points at the rule (same as Trigger) so retries /
+//     auto-fix /degrade pathways keep working unchanged.
+//
+// Returns a fresh Record like Trigger. shardTotal <= 1 is treated as
+// "no sharding" — the run is identical to a regular Trigger, but the
+// caller still gets the parent-prefixed task id back so accounting is
+// consistent.
+func (r *Runner) TriggerSubTask(ctx context.Context, ruleID, parentTaskID string,
+	shardIndex, shardTotal int, wait bool,
+) (*Record, error) {
+	if ruleID == "" {
+		return nil, fmt.Errorf("ruleID required")
+	}
+	if parentTaskID == "" {
+		return nil, fmt.Errorf("parentTaskID required")
+	}
+	if shardTotal < 0 {
+		return nil, fmt.Errorf("invalid shardTotal: %d", shardTotal)
+	}
+	if shardTotal > 0 && (shardIndex < 0 || shardIndex >= shardTotal) {
+		return nil, fmt.Errorf("shardIndex %d out of range [0,%d)", shardIndex, shardTotal)
+	}
+	rule, err := r.rules.Get(ctx, ruleID)
+	if err != nil {
+		return nil, err
+	}
+	subID := fmt.Sprintf("%s/%d", parentTaskID, shardIndex)
+	shard := &shardOverride{index: shardIndex, total: shardTotal}
+	return r.triggerRule(ctx, rule, subID, shard, wait)
 }
 
 // TriggerAs is a typed alias for Trigger: it asserts that the rule's
@@ -133,7 +174,7 @@ func (r *Runner) TriggerAs(ctx context.Context, ruleID string, wantType executor
 	if executor.TaskType(rule.Config.Type) != wantType {
 		return nil, fmt.Errorf("%w: want %q, got %q", ErrRuleTypeMismatch, wantType, rule.Config.Type)
 	}
-	return r.triggerRule(ctx, rule, "", wait)
+	return r.triggerRule(ctx, rule, "", nil, wait)
 }
 
 // Cancel signals the executor to stop the named task. Returns
@@ -192,12 +233,24 @@ func (r *Runner) Retry(ctx context.Context, taskID string) (*Record, error) {
 		return nil, err
 	}
 	newID := nextRetryID(old.TaskID)
-	return r.triggerRule(ctx, rule, newID, false)
+	return r.triggerRule(ctx, rule, newID, nil, false)
 }
 
-// triggerRule is the shared core for Trigger / TriggerAs / Retry. If newID
-// is empty, a fresh id is allocated by r.idFactory.
-func (r *Runner) triggerRule(ctx context.Context, rule *rules.Rule, newID string, wait bool) (*Record, error) {
+// shardOverride carries the (index, total) shard descriptor through
+// triggerRule so the same constructor handles both regular Trigger and
+// the P1-7 fan-out path. nil means "no override".
+type shardOverride struct {
+	index int
+	total int
+}
+
+// triggerRule is the shared core for Trigger / TriggerAs / Retry /
+// TriggerSubTask. If newID is empty, a fresh id is allocated by
+// r.idFactory. If shard != nil and shard.total > 0, the constructed
+// executor.Task is pinned to that shard (see executor.ShouldKeep).
+func (r *Runner) triggerRule(ctx context.Context, rule *rules.Rule, newID string,
+	shard *shardOverride, wait bool,
+) (*Record, error) {
 	src, err := r.builder.Build(ctx, &rule.Config.Src)
 	if err != nil {
 		return nil, fmt.Errorf("build src backend: %w", err)
@@ -212,6 +265,10 @@ func (r *Runner) triggerRule(ctx context.Context, rule *rules.Rule, newID string
 		newID = r.idFactory()
 	}
 	task := buildTask(rule, src, dst, newID)
+	if shard != nil && shard.total > 0 {
+		task.ShardIndex = shard.index
+		task.ShardTotal = shard.total
+	}
 
 	rec := &Record{
 		TaskID:    task.ID,

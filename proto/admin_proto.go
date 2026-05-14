@@ -1060,6 +1060,22 @@ type SyncNodeHeartbeatResponse struct {
 	MemPercent     float64 `json:"memPercent"`
 	ReloadFailures uint64  `json:"reloadFailures"`
 	NodeVersion    string  `json:"version"`
+
+	// RuleQuotas / BackendQuotas are master → syncnode quota assignments
+	// piggy-backed on the heartbeat reply (§12.4 / P1-8 + P1-9). Values are
+	// MB/s ceilings the syncnode should apply locally via
+	// ratelimit.Registry.SetRuleLimit / SetBackendLimit.
+	//
+	//   - RuleQuotas    : keyed by rule.ID; value = per-node MB/s for that
+	//                     rule (cluster cap divided across active nodes).
+	//   - BackendQuotas : keyed by BackendKey.String() format
+	//                     ("kind|endpoint|region"); value = per-node MB/s
+	//                     for that backend.
+	//
+	// A zero / missing entry means "no cluster quota for this rule/backend".
+	// On the syncnode side a zero value removes the bucket (unlimited).
+	RuleQuotas    map[string]float64 `json:"ruleQuotas,omitempty"`
+	BackendQuotas map[string]float64 `json:"backendQuotas,omitempty"`
 }
 
 type FlashNodeDiskCacheStat struct {
