@@ -176,8 +176,8 @@ func TestValidateConfig_FullExample(t *testing.T) {
 	// regression where the documented example no longer validates.
 	raw := `{
   "role": "sync",
-  "listen": "17710",
-  "httpListen": "17711",
+  "listen": "17910",
+  "httpListen": "17911",
   "masterAddr": "10.0.0.1:17010,10.0.0.2:17010",
   "logDir": "/cfs/log/syncnode",
   "logLevel": "info",

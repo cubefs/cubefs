@@ -37,8 +37,8 @@ RUN_VERBOSE=1 ./run.sh smoke
 
 ```
 SYNCNODE_HOST       # e.g. 10.0.1.10  (no port)
-SYNCNODE_HTTP_PORT  # e.g. 17720
-SYNCNODE_TCP_PORT   # e.g. 17710     (used by SEC2 cap test only)
+SYNCNODE_HTTP_PORT  # e.g. 17911
+SYNCNODE_TCP_PORT   # e.g. 17910     (used by SEC2 cap test only)
 SYNCNODE_TOKEN      # adminToken from sync.json (empty = auth off)
 
 MASTER_HTTP         # e.g. http://10.0.1.1:17010

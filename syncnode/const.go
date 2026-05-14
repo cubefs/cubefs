@@ -49,10 +49,20 @@ const (
 )
 
 // Default values.
+//
+// Port allocation: 17910 / 17911 / 17912.
+//   - 17910 listen        (master-dispatched task TCP)
+//   - 17911 httpListen    (admin API HTTP)
+//   - 17912 exporterPort  (Prometheus /metrics)
+//
+// The previous 17710 / 17711 / 17712 range collided with metanode's
+// default TCP port on shared deployments; moved to the 1791x block so a
+// single host can run metanode + syncnode side-by-side without explicit
+// port overrides in sync.json.
 const (
-	defaultListen             = "17710"
-	defaultHTTPListen         = "17711"
-	defaultExporterPort       = 17712
+	defaultListen             = "17910"
+	defaultHTTPListen         = "17911"
+	defaultExporterPort       = 17912
 	defaultMaxConcurrentTasks = 8
 	defaultTransfersPerTask   = 4
 	defaultBandwidthLimitMBps = 0 // 0 = unlimited

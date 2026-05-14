@@ -417,14 +417,14 @@ cfs-server -c /etc/cubefs/sync.json
 ```json
 {
   "role": "sync",
-  "listen": "17710",
-  "httpListen": "17711",
+  "listen": "17910",
+  "httpListen": "17911",
   "masterAddr": "10.0.0.1:17010,10.0.0.2:17010",
   "logDir": "/cfs/log/syncnode",
   "logLevel": "info",
   "dataDir": "/cfs/data/syncnode",
   "warnLogDir": "/cfs/log/syncnode/warn",
-  "exporterPort": 17712,
+  "exporterPort": 17912,
   ...
 }
 ```
@@ -555,8 +555,8 @@ POSIX 后端覆盖普通本地盘与宿主挂载的并行 FS 两种场景。差�
 ```json
 {
   "role": "syncnode",
-  "listen": "17710",
-  "httpListen": "17711",
+  "listen": "17910",
+  "httpListen": "17911",
   "masterAddr": "10.0.0.1:17010,10.0.0.2:17010",
   "logDir": "/cfs/log/syncnode",
   "logLevel": "info",
@@ -1360,7 +1360,7 @@ P0 按 8 个阶段（Phase A-H）串行交付。每个子项含**可验收标准
 |---|---|---|---|
 | A-1 | `cmd/cmd.go` 加 RoleSync=`"sync"` 派发 + syncnode 包骨架（`server.go`、`NewServer()`、Start/Shutdown/Sync 三方法）| 2 天 | `cfs-server -c sync.json` 启动成功；进程不退出；`/admin/syncnode/version` 返回非空 JSON |
 | A-2 | 配置加载 + 完整 schema 校验（rule、posix、s3Defaults、concurrency 全部字段）| 2 天 | 写 8 个 negative 测试（cron 非法 / kind 非法 / path 不在 allowedRoots / S3 endpoint 缺 / retention pattern 没 `{N}` / minSize 单位错 / 必填缺失 / 类型错），每个返回**特定错误码 + 错误信息**；正面测试加载 design.md §4.1 完整示例无错 |
-| A-3 | exporter 独立端口 + util/exporter 注册 + 节点级 gauge 上报 | 1 天 | `curl http://addr:17712/metrics` 返回 Prometheus 文本格式；包含 `cubefs_syncnode_up`、`uptime_seconds`、`concurrent_tasks` 三个 gauge |
+| A-3 | exporter 独立端口 + util/exporter 注册 + 节点级 gauge 上报 | 1 天 | `curl http://addr:17912/metrics` 返回 Prometheus 文本格式；包含 `cubefs_syncnode_up`、`uptime_seconds`、`concurrent_tasks` 三个 gauge |
 
 #### Phase B — Master 协议 + 节点注册（6 天）
 
@@ -2034,7 +2034,7 @@ P0 不交付多实例（P1 才有），但 P0 测试要验证**单节点的天�
 启动日志会输出：
 
 ```
-exporter registered: cubefs_syncnode, scrape http://10.0.0.10:17712/metrics
+exporter registered: cubefs_syncnode, scrape http://10.0.0.10:17912/metrics
 ```
 
 ### 12.2 指标分层

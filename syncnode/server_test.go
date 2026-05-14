@@ -36,7 +36,7 @@ func TestNewServer(t *testing.T) {
 // (without going through the full Start path that would need a real config
 // + master). AC for A-1: endpoint returns non-empty JSON with role.
 func TestHandleVersion(t *testing.T) {
-	s := &SyncNode{localServerAddr: "127.0.0.1:17710"}
+	s := &SyncNode{localServerAddr: "127.0.0.1:17910"}
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/syncnode/version", nil)
 	payload, err := s.handleVersion(req)

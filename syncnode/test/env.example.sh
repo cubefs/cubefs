@@ -5,8 +5,8 @@
 
 # ---- syncnode under test ----
 export SYNCNODE_HOST="127.0.0.1"
-export SYNCNODE_HTTP_PORT="17720"
-export SYNCNODE_TCP_PORT="17710"
+export SYNCNODE_HTTP_PORT="17911"
+export SYNCNODE_TCP_PORT="17910"
 # adminToken from sync.json. Empty disables auth (matches dev / pre-fix
 # behaviour) — production should be set.
 export SYNCNODE_TOKEN=""

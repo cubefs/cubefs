@@ -193,7 +193,7 @@ func TestStart_RegisterSucceedsFast(t *testing.T) {
 	fm := newFakeMaster(t)
 	defer fm.Close()
 
-	c := NewSyncMasterClient(fm.Addr(), "17710", shortOpts()...)
+	c := NewSyncMasterClient(fm.Addr(), "17910", shortOpts()...)
 	if err := c.Start(context.Background()); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -205,8 +205,8 @@ func TestStart_RegisterSucceedsFast(t *testing.T) {
 	if got := c.NodeID(); got != 42 {
 		t.Errorf("NodeID = %d, want 42", got)
 	}
-	if got := c.LocalServerAddr(); got != "127.0.0.1:17710" {
-		t.Errorf("LocalServerAddr = %q, want 127.0.0.1:17710", got)
+	if got := c.LocalServerAddr(); got != "127.0.0.1:17910" {
+		t.Errorf("LocalServerAddr = %q, want 127.0.0.1:17910", got)
 	}
 	if got := c.ClusterID(); got != "test-cluster" {
 		t.Errorf("ClusterID = %q, want test-cluster", got)
@@ -219,7 +219,7 @@ func TestStop_Idempotent(t *testing.T) {
 	fm := newFakeMaster(t)
 	defer fm.Close()
 
-	c := NewSyncMasterClient(fm.Addr(), "17710", shortOpts()...)
+	c := NewSyncMasterClient(fm.Addr(), "17910", shortOpts()...)
 	_ = c.Start(context.Background())
 	waitFor(500*time.Millisecond, c.IsRegistered)
 
@@ -237,7 +237,7 @@ func TestStart_Idempotent(t *testing.T) {
 	fm := newFakeMaster(t)
 	defer fm.Close()
 
-	c := NewSyncMasterClient(fm.Addr(), "17710", shortOpts()...)
+	c := NewSyncMasterClient(fm.Addr(), "17910", shortOpts()...)
 	if err := c.Start(context.Background()); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -259,7 +259,7 @@ func TestRegister_RetriesAfterTransient500(t *testing.T) {
 	fm.addNodeFailUntil = 3
 	fm.mu.Unlock()
 
-	c := NewSyncMasterClient(fm.Addr(), "17710", shortOpts()...)
+	c := NewSyncMasterClient(fm.Addr(), "17910", shortOpts()...)
 	_ = c.Start(context.Background())
 	defer c.Stop()
 
@@ -276,7 +276,7 @@ func TestRegister_RetriesAfterTransient500(t *testing.T) {
 // must not panic and Stop must return cleanly.
 func TestRegister_MasterFullyDown(t *testing.T) {
 	// 127.0.0.1:1 is the well-known "nothing listens here" sink port.
-	c := NewSyncMasterClient("127.0.0.1:1", "17710", shortOpts()...)
+	c := NewSyncMasterClient("127.0.0.1:1", "17910", shortOpts()...)
 	_ = c.Start(context.Background())
 	time.Sleep(300 * time.Millisecond) // a few retry rounds
 
@@ -294,7 +294,7 @@ func TestHeartbeat_TicksAfterRegister(t *testing.T) {
 	fm := newFakeMaster(t)
 	defer fm.Close()
 
-	c := NewSyncMasterClient(fm.Addr(), "17710",
+	c := NewSyncMasterClient(fm.Addr(), "17910",
 		WithHeartbeatInterval(30*time.Millisecond),
 		WithRegisterBackoff(20*time.Millisecond),
 	)
@@ -316,7 +316,7 @@ func TestHeartbeat_FailureFlipsRegistered(t *testing.T) {
 	fm := newFakeMaster(t)
 	defer fm.Close()
 
-	c := NewSyncMasterClient(fm.Addr(), "17710",
+	c := NewSyncMasterClient(fm.Addr(), "17910",
 		WithHeartbeatInterval(20*time.Millisecond),
 		WithRegisterBackoff(20*time.Millisecond),
 	)
@@ -366,7 +366,7 @@ func TestHeartbeat_NoProviderStillSends(t *testing.T) {
 	fm := newFakeMaster(t)
 	defer fm.Close()
 
-	c := NewSyncMasterClient(fm.Addr(), "17710",
+	c := NewSyncMasterClient(fm.Addr(), "17910",
 		WithHeartbeatInterval(30*time.Millisecond),
 		WithRegisterBackoff(20*time.Millisecond),
 		// deliberately no WithSnapshotProvider
@@ -392,7 +392,7 @@ func TestHeartbeat_ProviderInjected(t *testing.T) {
 		RunningTasks:  3,
 		BoltDBHealthy: true,
 	}}
-	c := NewSyncMasterClient(fm.Addr(), "17710",
+	c := NewSyncMasterClient(fm.Addr(), "17910",
 		WithSnapshotProvider(provider),
 		WithRegisterBackoff(20*time.Millisecond),
 	)
@@ -420,7 +420,7 @@ func TestRegister_InvalidIPFromMaster(t *testing.T) {
 	fm.clusterIP = "not-an-ip" // first response invalid
 	fm.mu.Unlock()
 
-	c := NewSyncMasterClient(fm.Addr(), "17710", shortOpts()...)
+	c := NewSyncMasterClient(fm.Addr(), "17910", shortOpts()...)
 	_ = c.Start(context.Background())
 	defer c.Stop()
 
@@ -489,7 +489,7 @@ func equalSlice(a, b []string) bool {
 
 // TestStop_BeforeStart ensures Stop on an unstarted client is a no-op.
 func TestStop_BeforeStart(t *testing.T) {
-	c := NewSyncMasterClient("127.0.0.1:1", "17710")
+	c := NewSyncMasterClient("127.0.0.1:1", "17910")
 	if err := c.Stop(); err != nil {
 		t.Fatalf("Stop before Start: %v", err)
 	}
@@ -517,7 +517,7 @@ func TestContextCancellation(t *testing.T) {
 	fm := newFakeMaster(t)
 	defer fm.Close()
 	ctx, cancel := context.WithCancel(context.Background())
-	c := NewSyncMasterClient(fm.Addr(), "17710", shortOpts()...)
+	c := NewSyncMasterClient(fm.Addr(), "17910", shortOpts()...)
 	_ = c.Start(ctx)
 	waitFor(500*time.Millisecond, c.IsRegistered)
 	cancel()
@@ -556,7 +556,7 @@ func TestRegister_MasterReturnsZeroID(t *testing.T) {
 		}
 	})
 
-	c := NewSyncMasterClient(fm.Addr(), "17710", shortOpts()...)
+	c := NewSyncMasterClient(fm.Addr(), "17910", shortOpts()...)
 	_ = c.Start(context.Background())
 	defer c.Stop()
 
@@ -590,7 +590,7 @@ func TestFakeMasterListenerCanRebind(t *testing.T) {
 		_ = conn.Close()
 	}
 
-	c := NewSyncMasterClient(addr, "17710", shortOpts()...)
+	c := NewSyncMasterClient(addr, "17910", shortOpts()...)
 	_ = c.Start(context.Background())
 	time.Sleep(150 * time.Millisecond)
 	if c.IsRegistered() {
