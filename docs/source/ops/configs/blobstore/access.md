@@ -68,6 +68,7 @@ Access configuration is based on the [public configuration](./base.md), and the 
 | volume_punish_threshold  | Volume punish threshold                        | No, default is 10                                                                      |
 | volume_punish_interval_s | Volume punish interval seconds                 | No, default is 600                                                                     |
 | clustermgr_client_config | Clustermgr RPC configuration                   | Refer to the RPC configuration example [rpc](./rpc.md)                                 |
+| cluster_choose_alg       | When multiple clusters exist and `assign_cluster_id` is not set: `available` (weighted by writable space, default), `roundrobin`, or `random`. | No, default `available` when empty or omitted |
 
 ## Configuration Example
 
