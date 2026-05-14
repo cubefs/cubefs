@@ -1,0 +1,7 @@
+# Local env override created by copying env.example.sh.
+# Holds operator-specific tokens / cluster addresses — never commit.
+env.sh
+
+# Test artefacts written by run.sh (logs, response captures, temp BoltDB copies).
+artifacts/
+*.log
