@@ -81,9 +81,38 @@ func (f *fakeStore) UpdateLastRun(ctx context.Context, id string, last LastRunSu
 // the call is synchronous), so an atomic.Int64 is sufficient.
 type counter struct{ n atomic.Int64 }
 
-func (c *counter) inc()         { c.n.Add(1) }
-func (c *counter) load() int64  { return c.n.Load() }
-func (c *counter) reset()       { c.n.Store(0) }
+func (c *counter) inc()        { c.n.Add(1) }
+func (c *counter) load() int64 { return c.n.Load() }
+func (c *counter) reset()      { c.n.Store(0) }
+
+// waitForCounterAtLeast polls the counter and returns once it reaches
+// `want` or the deadline expires. Used by the S6-async tests where
+// the worker runs on its own goroutine — every assert on "fire
+// happened" needs to allow the worker to drain. Returns the value
+// actually observed.
+func waitForCounterAtLeast(t *testing.T, c *counter, want int64, d time.Duration) int64 {
+	t.Helper()
+	deadline := time.Now().Add(d)
+	for time.Now().Before(deadline) {
+		if got := c.load(); got >= want {
+			return got
+		}
+		time.Sleep(time.Millisecond)
+	}
+	return c.load()
+}
+
+// quiesceWorker gives the async worker a chance to drain any pending
+// fire before the test asserts. Used in failure-path tests that want
+// to prove "no fire ever happens" — we can't prove a negative, but we
+// can wait long enough that any in-flight fire would have completed.
+func quiesceWorker(t *testing.T) {
+	t.Helper()
+	// 25ms is a generous lower bound: the worker invokeOnChange path
+	// runs in microseconds on a healthy host, so anything that hasn't
+	// fired by now would have starvation issues unrelated to the test.
+	time.Sleep(25 * time.Millisecond)
+}
 
 // TestNotifyStore_FireMatrix is the table-driven core: each row runs
 // a single mutating method against a freshly-wrapped store and asserts
@@ -209,11 +238,22 @@ func TestNotifyStore_FireMatrix(t *testing.T) {
 			inner := tc.setup()
 			var c counter
 			n := NewNotifyStore(inner, c.inc)
+			t.Cleanup(func() { _ = n.Close() })
 			err := tc.mutate(n)
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("err: got %v wantErr=%v", err, tc.wantErr)
 			}
-			if got := c.load(); got != tc.wantFireInc {
+			// S6: fire is async — wait briefly for the worker to drain
+			// when we expect a fire; for "no fire" cases, quiesce so any
+			// stray dispatch would have run by the assertion.
+			var got int64
+			if tc.wantFireInc > 0 {
+				got = waitForCounterAtLeast(t, &c, tc.wantFireInc, time.Second)
+			} else {
+				quiesceWorker(t)
+				got = c.load()
+			}
+			if got != tc.wantFireInc {
 				t.Fatalf("fire counter: got %d want %d", got, tc.wantFireInc)
 			}
 		})
@@ -222,27 +262,29 @@ func TestNotifyStore_FireMatrix(t *testing.T) {
 
 // TestNotifyStore_SetOnChange verifies the callback can be swapped
 // after construction (the production wiring needs this because the
-// scheduler is built after the store).
+// scheduler is built after the store). S6: each fire is async, so
+// we wait for the counter to advance before swapping.
 func TestNotifyStore_SetOnChange(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	inner := newFakeStore()
 	var a, b counter
 	n := NewNotifyStore(inner, a.inc)
+	t.Cleanup(func() { _ = n.Close() })
 
 	if err := n.Create(ctx, newTestRule("r1")); err != nil {
 		t.Fatalf("Create r1: %v", err)
 	}
-	if a.load() != 1 || b.load() != 0 {
-		t.Fatalf("after Create r1: a=%d b=%d", a.load(), b.load())
+	if got := waitForCounterAtLeast(t, &a, 1, time.Second); got != 1 || b.load() != 0 {
+		t.Fatalf("after Create r1: a=%d b=%d", got, b.load())
 	}
 
 	n.SetOnChange(b.inc)
 	if err := n.Create(ctx, newTestRule("r2")); err != nil {
 		t.Fatalf("Create r2: %v", err)
 	}
-	if a.load() != 1 || b.load() != 1 {
-		t.Fatalf("after SetOnChange + Create r2: a=%d b=%d", a.load(), b.load())
+	if got := waitForCounterAtLeast(t, &b, 1, time.Second); got != 1 || a.load() != 1 {
+		t.Fatalf("after SetOnChange + Create r2: a=%d b=%d", a.load(), got)
 	}
 
 	// Nil callback must be tolerated (no-op).
@@ -250,6 +292,7 @@ func TestNotifyStore_SetOnChange(t *testing.T) {
 	if err := n.Create(ctx, newTestRule("r3")); err != nil {
 		t.Fatalf("Create r3: %v", err)
 	}
+	quiesceWorker(t)
 	if a.load() != 1 || b.load() != 1 {
 		t.Fatalf("after nil callback: a=%d b=%d", a.load(), b.load())
 	}
@@ -261,18 +304,24 @@ func TestNotifyStore_NilOnChange(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	n := NewNotifyStore(newFakeStore(), nil)
+	t.Cleanup(func() { _ = n.Close() })
 	if err := n.Create(ctx, newTestRule("r1")); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
+	// Allow the worker to handle the fire (no-op) before returning.
+	quiesceWorker(t)
 }
 
 // TestNotifyStore_LastFiredAt confirms timestamp advances on every
-// successful fire and stays put on failure.
+// successful fire and stays put on failure. S6: stamping happens
+// inside the worker, so we wait via waitForCounter on a side counter.
 func TestNotifyStore_LastFiredAt(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	inner := newFakeStore()
-	n := NewNotifyStore(inner, func() {})
+	var c counter
+	n := NewNotifyStore(inner, c.inc)
+	t.Cleanup(func() { _ = n.Close() })
 
 	if !n.LastFiredAt().IsZero() {
 		t.Fatalf("expected zero LastFiredAt pre-fire, got %v", n.LastFiredAt())
@@ -280,6 +329,7 @@ func TestNotifyStore_LastFiredAt(t *testing.T) {
 	if err := n.Create(ctx, newTestRule("r1")); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
+	waitForCounterAtLeast(t, &c, 1, time.Second)
 	first := n.LastFiredAt()
 	if first.IsZero() {
 		t.Fatalf("LastFiredAt did not advance on Create")
@@ -288,6 +338,7 @@ func TestNotifyStore_LastFiredAt(t *testing.T) {
 	// Failed mutation should not advance.
 	inner.createErr = errors.New("boom")
 	_ = n.Create(ctx, newTestRule("r1")) // err ignored, store programmed to fail
+	quiesceWorker(t)
 	if got := n.LastFiredAt(); !got.Equal(first) {
 		t.Fatalf("LastFiredAt advanced on failed Create: first=%v got=%v", first, got)
 	}
@@ -300,6 +351,7 @@ func TestNotifyStore_LastFiredAt(t *testing.T) {
 	if err := n.Create(ctx, newTestRule("r2")); err != nil {
 		t.Fatalf("Create r2: %v", err)
 	}
+	waitForCounterAtLeast(t, &c, 2, time.Second)
 	if !n.LastFiredAt().After(first) {
 		t.Fatalf("LastFiredAt did not advance after second success: first=%v now=%v", first, n.LastFiredAt())
 	}
@@ -307,18 +359,22 @@ func TestNotifyStore_LastFiredAt(t *testing.T) {
 
 // TestNotifyStore_CallbackPanic verifies a panicking callback does not
 // corrupt the wrapper or the underlying store; subsequent operations
-// keep working.
+// keep working AND the worker survives. S6: panic recovery happens
+// inside the worker goroutine.
 func TestNotifyStore_CallbackPanic(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	inner := newFakeStore()
 	n := NewNotifyStore(inner, func() { panic("intentional") })
+	t.Cleanup(func() { _ = n.Close() })
 
 	// Mutation succeeds even though the callback panics; recover()
-	// inside fire() swallows it.
+	// inside the worker swallows it.
 	if err := n.Create(ctx, newTestRule("r1")); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
+	// Give the worker time to invoke + recover from the panic.
+	quiesceWorker(t)
 	got, err := n.Get(ctx, "r1")
 	if err != nil {
 		t.Fatalf("Get after panicking callback: %v", err)
@@ -327,28 +383,30 @@ func TestNotifyStore_CallbackPanic(t *testing.T) {
 		t.Fatalf("Get returned wrong id: %s", got.ID())
 	}
 
-	// Swap to a sane callback and confirm the wrapper still fires.
+	// Swap to a sane callback and confirm the wrapper still fires —
+	// proves the worker survived the panic.
 	var c counter
 	n.SetOnChange(c.inc)
 	if err := n.Create(ctx, newTestRule("r2")); err != nil {
 		t.Fatalf("Create r2: %v", err)
 	}
-	if c.load() != 1 {
-		t.Fatalf("fire after recover: got %d want 1", c.load())
+	if got := waitForCounterAtLeast(t, &c, 1, time.Second); got != 1 {
+		t.Fatalf("fire after recover: got %d want 1", got)
 	}
 }
 
 // TestNotifyStore_ConcurrentCreateAndSetOnChange exercises the
 // callback swap path under -race. The point is that SetOnChange does
-// not race with the read-and-invoke inside fire(); whichever callback
-// is installed at fire-time runs and no goroutine observes a torn
-// pointer.
+// not race with the read-and-invoke inside the worker. S6: with async
+// dispatch + collapsing, totalFires may be less than the number of
+// successful mutations — we just assert "at least one fire" landed.
 func TestNotifyStore_ConcurrentCreateAndSetOnChange(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	inner := newFakeStore()
 	var c1, c2 counter
 	n := NewNotifyStore(inner, c1.inc)
+	t.Cleanup(func() { _ = n.Close() })
 
 	const N = 200
 	var wg sync.WaitGroup
@@ -378,9 +436,16 @@ func TestNotifyStore_ConcurrentCreateAndSetOnChange(t *testing.T) {
 
 	wg.Wait()
 
-	// Sanity: every successful mutation hit exactly one of the two
-	// counters (we can't assert which because of the race window, but
-	// the total must equal the number of successful mutations).
+	// Drain any final pending fire — S6 worker may have one fire still
+	// queued after the writer/mutator goroutines exit.
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if c1.load()+c2.load() > 0 {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+
 	totalFires := c1.load() + c2.load()
 	if totalFires == 0 {
 		t.Fatalf("no fires observed under concurrent load")
@@ -396,6 +461,7 @@ func TestNotifyStore_WrapsListAndGet(t *testing.T) {
 	inner := newFakeStore()
 	var c counter
 	n := NewNotifyStore(inner, c.inc)
+	t.Cleanup(func() { _ = n.Close() })
 
 	if err := n.Create(ctx, newTestRule("r1")); err != nil {
 		t.Fatalf("Create: %v", err)
@@ -403,6 +469,10 @@ func TestNotifyStore_WrapsListAndGet(t *testing.T) {
 	if err := n.Create(ctx, newTestRule("r2")); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
+	// Wait for the worker to consume any pending fires before resetting,
+	// so we know the post-reset count truly captures read-side fires.
+	waitForCounterAtLeast(t, &c, 1, time.Second)
+	quiesceWorker(t)
 	c.reset()
 
 	got, err := n.Get(ctx, "r1")
@@ -413,7 +483,147 @@ func TestNotifyStore_WrapsListAndGet(t *testing.T) {
 	if err != nil || len(list) != 2 {
 		t.Fatalf("List: len=%d err=%v", len(list), err)
 	}
+	quiesceWorker(t)
 	if c.load() != 0 {
 		t.Fatalf("read methods triggered fire: %d", c.load())
 	}
+}
+
+// TestNotifyStore_AsyncDispatch_CollapsesBursts (S6) verifies that a
+// burst of mutations does NOT produce one onChange per mutation —
+// the single-slot channel collapses bursts so the scheduler sees
+// snapshots, not edit logs. We block the callback on a release
+// channel so the first fire pins the worker while N more mutations
+// queue; after release we expect the counter to be strictly less
+// than the total mutation count.
+func TestNotifyStore_AsyncDispatch_CollapsesBursts(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	inner := newFakeStore()
+
+	var fires counter
+	release := make(chan struct{})
+	cb := func() {
+		// First invocation blocks until release closes; subsequent ones
+		// run instantly. This guarantees a burst window during which
+		// fire() calls collapse.
+		<-release
+		fires.inc()
+	}
+	n := NewNotifyStore(inner, cb)
+	closed := false
+	t.Cleanup(func() {
+		// Unblock any worker still parked on release before Close so it
+		// can drain. Idempotent against close() panics.
+		if !closed {
+			close(release)
+			closed = true
+		}
+		_ = n.Close()
+	})
+
+	// First mutation parks the worker on <-release.
+	if err := n.Create(ctx, newTestRule("r0")); err != nil {
+		t.Fatalf("Create r0: %v", err)
+	}
+	// Give the worker time to pick up the first fire and block on
+	// release. Without this, the burst might be fully consumed if the
+	// scheduler is unusually fast.
+	time.Sleep(10 * time.Millisecond)
+
+	const burst = 50
+	for i := 1; i <= burst; i++ {
+		// Delete + recreate to make every fire path-success — the inner
+		// memory store rejects Create of an existing id.
+		_ = n.Delete(ctx, "r0")
+		_ = n.Create(ctx, newTestRule("r0"))
+	}
+
+	// Release the worker; it will drain whatever's in the channel.
+	close(release)
+	closed = true
+
+	// Wait for the worker to settle. We expect SIGNIFICANTLY fewer
+	// fires than the total mutation count — the single-slot channel
+	// collapses bursts down to at most "the one currently being run +
+	// at most one queued".
+	waitForCounterAtLeast(t, &fires, 1, time.Second)
+	// Sleep a beat to make sure no late fires sneak in after we read.
+	quiesceWorker(t)
+
+	got := fires.load()
+	totalMutations := int64(1 + 2*burst) // initial Create + (Delete+Create) per iter
+
+	if got < 1 {
+		t.Fatalf("expected at least one fire, got %d", got)
+	}
+	if got >= totalMutations {
+		t.Fatalf("expected fires < mutations (collapse), got %d >= %d", got, totalMutations)
+	}
+}
+
+// TestNotifyStore_Close_StopsWorker verifies Close() shuts the worker
+// down and that subsequent fires are no-ops. Run with -race to catch
+// any post-close worker activity.
+func TestNotifyStore_Close_StopsWorker(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	inner := newFakeStore()
+	var c counter
+	n := NewNotifyStore(inner, c.inc)
+
+	if err := n.Create(ctx, newTestRule("r1")); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	waitForCounterAtLeast(t, &c, 1, time.Second)
+
+	// Close the wrapper. This blocks until the worker has exited.
+	if err := n.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	// Second Close must be idempotent — exercising stopOnce.
+	if err := n.Close(); err != nil {
+		t.Fatalf("Close (idempotent): %v", err)
+	}
+
+	// Post-close fire() must be a no-op (the worker is gone). We can't
+	// call any mutating method through the wrapper because Close
+	// closed the inner Store, but a direct fire() should not panic.
+	before := c.load()
+	n.fire()
+	quiesceWorker(t)
+	if got := c.load(); got != before {
+		t.Fatalf("fire after Close advanced counter: before=%d after=%d", before, got)
+	}
+}
+
+// TestNotifyStore_RaceCreateClose stresses Close concurrent with
+// in-flight Create calls. Run with -race; success is "no panic, no
+// data race report, worker terminates within the deadline".
+func TestNotifyStore_RaceCreateClose(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	inner := newFakeStore()
+	var c counter
+	n := NewNotifyStore(inner, c.inc)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 200; i++ {
+			_ = n.Create(ctx, newTestRule("r"))
+			_ = n.Delete(ctx, "r")
+		}
+	}()
+
+	// Give the writer a head start so Close races against in-flight
+	// mutations rather than landing on a quiescent store.
+	time.Sleep(2 * time.Millisecond)
+	if err := n.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	wg.Wait()
 }

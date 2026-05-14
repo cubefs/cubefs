@@ -92,6 +92,19 @@ type SyncMasterClient struct {
 	wg     sync.WaitGroup
 	once   sync.Once // guards Start so a double-call is a no-op
 	closed atomic.Bool
+
+	// lifecycleMu serialises Stop ↔ goroutine spawn so a respawn from
+	// heartbeatLoop can never wg.Add(1) after Stop has begun draining
+	// (FIX S1 — wg.Add after Wait is UB; in practice → panic on
+	// negative-counter wg.Done).
+	lifecycleMu sync.Mutex
+
+	// registerRunning is the single-flight guard preventing heartbeatLoop
+	// from spawning a fresh registerLoop while one is already retrying
+	// (FIX S3 — a flapping master used to leak concurrent register
+	// goroutines, each hammering AddSyncNode and racing on ID
+	// allocation).
+	registerRunning atomic.Bool
 }
 
 // MasterOption follows the functional-options convention used elsewhere in
@@ -162,7 +175,16 @@ func (c *SyncMasterClient) Start(ctx context.Context) error {
 	}
 	started := false
 	c.once.Do(func() {
+		c.lifecycleMu.Lock()
+		defer c.lifecycleMu.Unlock()
+		if c.closed.Load() {
+			return // already stopped before Start fired
+		}
 		c.wg.Add(2)
+		// FIX S3: claim the registerRunning slot for the inaugural
+		// registerLoop. registerLoop's defer releases it; heartbeatLoop
+		// won't spawn a parallel one while we hold the claim.
+		c.registerRunning.Store(true)
 		go c.registerLoop(ctx)
 		go c.heartbeatLoop(ctx)
 		started = true
@@ -175,16 +197,42 @@ func (c *SyncMasterClient) Start(ctx context.Context) error {
 
 // Stop signals the goroutines to exit and blocks until they do. Safe to
 // call multiple times; subsequent calls are no-ops.
+//
+// FIX S1: holds lifecycleMu across the closed.CAS + close(stopCh) so
+// concurrent spawnRegisterLoop attempts cannot wg.Add after Wait begins.
 func (c *SyncMasterClient) Stop() error {
 	if c == nil {
 		return nil
 	}
-	if !c.closed.CompareAndSwap(false, true) {
+	c.lifecycleMu.Lock()
+	swapped := c.closed.CompareAndSwap(false, true)
+	if swapped {
+		close(c.stopCh)
+	}
+	c.lifecycleMu.Unlock()
+	if !swapped {
 		return nil
 	}
-	close(c.stopCh)
 	c.wg.Wait()
 	return nil
+}
+
+// spawnRegisterLoop is the safe respawn path used by heartbeatLoop after
+// heartbeatFailureThreshold consecutive failures. Atomically rejects when
+// (a) Stop has fired (no wg.Add after Wait) or (b) a registerLoop is
+// already running. Returns true if a goroutine was actually spawned.
+func (c *SyncMasterClient) spawnRegisterLoop(ctx context.Context) bool {
+	c.lifecycleMu.Lock()
+	defer c.lifecycleMu.Unlock()
+	if c.closed.Load() {
+		return false
+	}
+	if !c.registerRunning.CompareAndSwap(false, true) {
+		return false
+	}
+	c.wg.Add(1)
+	go c.registerLoop(ctx)
+	return true
 }
 
 // NodeID returns the master-allocated node id. Zero until first register
@@ -216,6 +264,11 @@ func (c *SyncMasterClient) ClusterID() string {
 // threshold by heartbeatLoop.
 func (c *SyncMasterClient) registerLoop(ctx context.Context) {
 	defer c.wg.Done()
+	// FIX S3: release the single-flight claim so a future heartbeat
+	// failure can spawn another registerLoop. Production calls this from
+	// Start (first time) and spawnRegisterLoop (subsequent re-arms);
+	// both paths Store(true) before goroutine start.
+	defer c.registerRunning.Store(false)
 	backoff := c.registerBackoff
 	if backoff <= 0 {
 		backoff = defaultRegisterBackoff
@@ -309,8 +362,14 @@ func (c *SyncMasterClient) heartbeatLoop(ctx context.Context) {
 				log.LogWarnf("syncnode lost master after %d failed heartbeats; re-registering",
 					consecutiveFailures)
 				c.registered.Store(false)
-				c.wg.Add(1)
-				go c.registerLoop(ctx)
+				// FIX S1 + S3: spawnRegisterLoop atomically refuses to
+				// wg.Add(1) when Stop has begun, and refuses to spawn a
+				// second registerLoop while one is already retrying.
+				// Either outcome is fine here — the next tick will check
+				// IsRegistered again and re-arm if still down.
+				if !c.spawnRegisterLoop(ctx) {
+					log.LogDebugf("syncnode re-register skipped: closed or already running")
+				}
 				consecutiveFailures = 0
 			}
 			continue

@@ -60,8 +60,24 @@ const (
 	defaultBufferSizeKiB      = 4096
 	defaultLogLevel           = "info"
 
-	heartbeatInterval         = 10 // seconds
-	metricsRefreshInterval    = 10 // seconds
+	heartbeatInterval      = 10 // seconds
+	metricsRefreshInterval = 10 // seconds
+)
+
+// SEC2: TCP listener guard defaults. Exported so unit tests / operators
+// running stripped-down configs can override at boot time.
+//
+//   - DefaultTCPMaxConnections bounds the in-flight HandleConn goroutines.
+//     New accepts beyond the cap are rejected with an immediate Close so the
+//     master sees a clear failure rather than a queued goroutine that may
+//     never get to read.
+//   - DefaultTCPReadIdleTimeout caps how long the listener will block on a
+//     ReadFromConnWithVer before tearing down the connection. Replaces the
+//     old proto.NoReadDeadlineTime path which let a stalled client pin one
+//     goroutine + one FD per accept.
+const (
+	DefaultTCPMaxConnections  = 256
+	DefaultTCPReadIdleTimeout = 60 // seconds
 )
 
 // Allowed enum values for rule fields.

@@ -292,8 +292,14 @@ const (
 	// graphql api for header
 	HeadAuthorized  = "Authorization"
 	ParamAuthorized = "_authorization"
-	UserKey         = ContextUserKey("_user_key")
-	UserInfoKey     = ContextUserKey("_user_info_key")
+	// AuthorizationHeader is an alias for the standard Authorization
+	// header used by the /syncNode/* admin token middleware. Bearer
+	// scheme is preferred; X-Sync-Token is a fallback for callers
+	// that can't easily set Authorization.
+	AuthorizationHeader = "Authorization"
+	SyncTokenHeader     = "X-Sync-Token"
+	UserKey             = ContextUserKey("_user_key")
+	UserInfoKey         = ContextUserKey("_user_info_key")
 	// quota
 	QuotaCreate = "/quota/create"
 	QuotaUpdate = "/quota/update"

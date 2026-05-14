@@ -22,6 +22,7 @@ import (
 	"io"
 	"net"
 	"sync/atomic"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/syncnode/tasks"
@@ -95,17 +96,39 @@ type TaskHandler struct {
 	runner       runnerAPI
 	masterClient masterResponder
 
+	// SEC2: per-read deadline applied inside HandleConn. Stored as
+	// time.Duration so callers can wire it from SyncConfig.TCP. Zero
+	// or negative falls back to DefaultTCPReadIdleTimeout seconds at
+	// read time (see resolvedReadIdleTimeout). Replaces the previous
+	// proto.NoReadDeadlineTime read which let one idle conn pin one
+	// goroutine + one FD indefinitely.
+	readIdleTimeout time.Duration
+
 	// Counters exposed via the existing /admin/syncnode/stat surface in a
 	// future patch; reading them in tests is enough for now.
 	runTaskTotal    atomic.Uint64
 	cancelTaskTotal atomic.Uint64
 }
 
+// TaskHandlerOption configures optional TaskHandler behaviour. See
+// WithReadIdleTimeout.
+type TaskHandlerOption func(*TaskHandler)
+
+// WithReadIdleTimeout sets the per-packet read deadline applied inside
+// HandleConn. d <= 0 falls back to DefaultTCPReadIdleTimeout seconds.
+func WithReadIdleTimeout(d time.Duration) TaskHandlerOption {
+	return func(h *TaskHandler) { h.readIdleTimeout = d }
+}
+
 // NewTaskHandler constructs a TaskHandler. runner must be non-nil; mc may be
 // nil if the master client has not been built yet (HandleConn / HandlePacket
 // tolerate a nil responder and skip the lifecycle push-back).
-func NewTaskHandler(runner *tasks.Runner, mc *SyncMasterClient) *TaskHandler {
-	return newTaskHandler(runner, mc)
+func NewTaskHandler(runner *tasks.Runner, mc *SyncMasterClient, opts ...TaskHandlerOption) *TaskHandler {
+	h := newTaskHandler(runner, mc)
+	for _, opt := range opts {
+		opt(h)
+	}
+	return h
 }
 
 // newTaskHandler is the test-friendly constructor accepting the narrow
@@ -144,9 +167,32 @@ func (h *TaskHandler) RunTaskTotal() uint64 { return h.runTaskTotal.Load() }
 // CancelTaskTotal returns the lifetime count of OpSyncNodeCancelTask packets.
 func (h *TaskHandler) CancelTaskTotal() uint64 { return h.cancelTaskTotal.Load() }
 
+// resolvedReadIdleTimeoutSec returns the configured per-read deadline in
+// SECONDS for proto.ReadFromConnWithVer (which takes seconds, not a
+// time.Duration). A zero or negative h.readIdleTimeout falls back to
+// DefaultTCPReadIdleTimeout. Anything sub-second is clamped to 1s — the
+// proto API has 1s granularity and we don't want a fractional config
+// value to silently turn into "no deadline".
+func (h *TaskHandler) resolvedReadIdleTimeoutSec() int {
+	if h.readIdleTimeout <= 0 {
+		return DefaultTCPReadIdleTimeout
+	}
+	sec := int(h.readIdleTimeout / time.Second)
+	if sec < 1 {
+		return 1
+	}
+	return sec
+}
+
 // HandleConn drains one connection: reads packets in a loop, dispatches each,
 // and writes the ack/nack back. Returns when the conn closes, an unrecoverable
 // read error occurs, or ctx is cancelled.
+//
+// SEC2: each packet read is bounded by readIdleTimeout (default 60s). An
+// idle conn that doesn't send a packet within the window is torn down so
+// the per-conn goroutine + FD don't leak under a flood scenario. Previous
+// code used proto.NoReadDeadlineTime which let any client pin resources
+// indefinitely.
 //
 // The connection is always closed before HandleConn returns.
 func (h *TaskHandler) HandleConn(ctx context.Context, conn net.Conn) {
@@ -156,6 +202,7 @@ func (h *TaskHandler) HandleConn(ctx context.Context, conn net.Conn) {
 		_ = tcp.SetNoDelay(true)
 	}
 	remote := conn.RemoteAddr().String()
+	timeoutSec := h.resolvedReadIdleTimeoutSec()
 	for {
 		select {
 		case <-ctx.Done():
@@ -163,7 +210,11 @@ func (h *TaskHandler) HandleConn(ctx context.Context, conn net.Conn) {
 		default:
 		}
 		p := &proto.Packet{}
-		if err := p.ReadFromConnWithVer(conn, proto.NoReadDeadlineTime); err != nil {
+		if err := p.ReadFromConnWithVer(conn, timeoutSec); err != nil {
+			if isTimeoutErr(err) {
+				log.LogDebugf("task_handler: idle read timeout from %s after %ds — closing", remote, timeoutSec)
+				return
+			}
 			if !errors.Is(err, io.EOF) {
 				log.LogWarnf("task_handler: read from %s: %v", remote, err)
 			}
@@ -175,6 +226,19 @@ func (h *TaskHandler) HandleConn(ctx context.Context, conn net.Conn) {
 			return
 		}
 	}
+}
+
+// isTimeoutErr is the net.Error-style timeout check used by HandleConn to
+// distinguish "read deadline expired" from a real read failure. The proto
+// read path wraps the underlying net.OpError; net.Error.Timeout walks
+// through the wrap chain so a direct type assertion on the underlying
+// error works.
+func isTimeoutErr(err error) bool {
+	var nerr net.Error
+	if errors.As(err, &nerr) {
+		return nerr.Timeout()
+	}
+	return false
 }
 
 // HandlePacket processes one packet and returns the ack/nack to send back.

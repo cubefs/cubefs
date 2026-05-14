@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cubefs/cubefs/syncnode/spec"
 )
@@ -37,10 +38,18 @@ type SyncConfig struct {
 	DataDir      string            `json:"dataDir"`
 	WarnLogDir   string            `json:"warnLogDir"`
 	ExporterPort int               `json:"exporterPort"`
+	// SEC4: shared-token gate for the HTTP admin surface. Empty disables
+	// auth (preserves pre-fix behaviour for tests + dev). Production
+	// operators should set this; rotation requires a restart.
+	AdminToken   string            `json:"adminToken"`
 	S3Defaults   S3DefaultsConfig  `json:"s3Defaults"`
 	Posix        PosixConfig       `json:"posix"`
 	Concurrency  ConcurrencyConfig `json:"concurrency"`
-	Rules        []RuleConfig      `json:"rules"`
+	// SEC2: bounds the master-dispatched task listener. Zero values
+	// fall back to DefaultTCPMaxConnections / DefaultTCPReadIdleTimeout
+	// in applyDefaults.
+	TCP   TCPConfig    `json:"tcp"`
+	Rules []RuleConfig `json:"rules"`
 }
 
 type S3DefaultsConfig struct {
@@ -62,6 +71,49 @@ type ConcurrencyConfig struct {
 	MaxQueueSize       int `json:"maxQueueSize"`
 	TransfersPerTask   int `json:"transfersPerTask"`
 	BandwidthLimitMBps int `json:"bandwidthLimitMBps"`
+}
+
+// TCPConfig bounds the master-dispatched task listener. Defaults are sane
+// for a single-master deployment; bump for higher throughput.
+type TCPConfig struct {
+	// MaxConnections is the in-flight connection cap on the TCP listener.
+	// New connections beyond this are accepted then immediately closed
+	// (so master sees a fast TCP RST rather than a hung accept). Zero or
+	// negative means "use the default" (DefaultTCPMaxConnections).
+	MaxConnections int `json:"maxConnections"`
+	// ReadIdleTimeout is the deadline applied to each packet read on the
+	// listener. Idle connections that don't send a packet within this
+	// window are dropped. Accepts Go duration strings ("60s", "1m") OR
+	// bare numeric seconds. Empty / zero falls back to
+	// DefaultTCPReadIdleTimeout.
+	ReadIdleTimeout string `json:"readIdleTimeout"`
+}
+
+// ResolvedReadIdleTimeout returns the parsed ReadIdleTimeout, or
+// DefaultTCPReadIdleTimeout seconds when the field is empty / malformed.
+// We tolerate malformed input at boot rather than refusing to start —
+// the listener can always run; an operator-supplied bad value just
+// falls back to the safe default and is logged by the caller.
+func (c TCPConfig) ResolvedReadIdleTimeout() time.Duration {
+	if c.ReadIdleTimeout == "" {
+		return time.Duration(DefaultTCPReadIdleTimeout) * time.Second
+	}
+	if d, err := time.ParseDuration(c.ReadIdleTimeout); err == nil && d > 0 {
+		return d
+	}
+	if n, err := strconv.Atoi(c.ReadIdleTimeout); err == nil && n > 0 {
+		return time.Duration(n) * time.Second
+	}
+	return time.Duration(DefaultTCPReadIdleTimeout) * time.Second
+}
+
+// ResolvedMaxConnections returns MaxConnections clamped to a positive
+// integer; zero / negative inputs fall back to DefaultTCPMaxConnections.
+func (c TCPConfig) ResolvedMaxConnections() int {
+	if c.MaxConnections > 0 {
+		return c.MaxConnections
+	}
+	return DefaultTCPMaxConnections
 }
 
 // Wire types are aliased from syncnode/spec. The alias lets subpackages
@@ -116,6 +168,15 @@ func applyDefaults(cfg *SyncConfig) {
 	}
 	if cfg.Posix.DefaultBufferSizeKiB == 0 {
 		cfg.Posix.DefaultBufferSizeKiB = defaultBufferSizeKiB
+	}
+	// SEC2: TCP bounds. Resolved* helpers already fall back at read time;
+	// we materialise them into the cfg so /admin/syncnode/stat shows the
+	// values operators are running against.
+	if cfg.TCP.MaxConnections <= 0 {
+		cfg.TCP.MaxConnections = DefaultTCPMaxConnections
+	}
+	if cfg.TCP.ReadIdleTimeout == "" {
+		cfg.TCP.ReadIdleTimeout = fmt.Sprintf("%ds", DefaultTCPReadIdleTimeout)
 	}
 }
 

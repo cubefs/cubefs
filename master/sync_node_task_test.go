@@ -15,7 +15,11 @@
 package master
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/cubefs/cubefs/proto"
@@ -225,5 +229,172 @@ func TestHandleSyncNodeTaskResponse_TerminalReleasesAndForgets(t *testing.T) {
 	last := recent[len(recent)-1]
 	if last.Err == "" {
 		t.Errorf("Recent()[last].Err = empty, want missing-payload signal")
+	}
+}
+
+// TestHandleTerminalResponse_LastShardClearsParent exercises the Bug S2
+// cleanup path: register a parent via DispatchN with 2 shards, then drive
+// the same MarkShardTerminal + Clear sequence the OpSyncNodeRunTask
+// branch of handleSyncNodeTaskResponse runs. The first shard's terminal
+// must NOT clear the parent; the second must.
+func TestHandleTerminalResponse_LastShardClearsParent(t *testing.T) {
+	fo, disp, _ := fanoutHarness(t, 2)
+	send := func(string, int, interface{}) error { return nil }
+	if _, err := fo.DispatchN("p1", "r1", 2,
+		map[string]interface{}{}, jsonRoundTripFanoutCloner, send, 3); err != nil {
+		t.Fatalf("DispatchN: %v", err)
+	}
+	// Wire a failover orchestrator just to validate the Forget step in
+	// the same shape as production. Not required for the cleanup
+	// assertion itself.
+	cluster := newStubFailoverCluster("node-0", "node-1")
+	f := newSyncFailoverFromSource(cluster, disp)
+	f.Remember("p1/0", runTaskPayload("p1/0", "node-0"))
+	f.Remember("p1/1", runTaskPayload("p1/1", "node-1"))
+
+	// Drive shard 0 terminal — mirrors handleSyncNodeTaskResponse.
+	terminate := func(subID string) {
+		t.Helper()
+		disp.Release(subID)
+		f.Forget(subID)
+		parent, shard, isShard := splitSubTaskID(subID)
+		if !isShard {
+			t.Fatalf("splitSubTaskID(%q) returned isShard=false", subID)
+		}
+		if allDone, exists := fo.MarkShardTerminal(parent, shard); exists && allDone {
+			fo.Clear(parent)
+		}
+	}
+
+	terminate("p1/0")
+	if !fo.IsParent("p1") {
+		t.Fatalf("parent p1 cleared after only 1/2 shards terminal")
+	}
+
+	terminate("p1/1")
+	if fo.IsParent("p1") {
+		t.Errorf("parent p1 still present after all shards terminal — leak")
+	}
+}
+
+// TestRequireSyncAdminToken_PassThroughWhenEmpty: with no token
+// configured, the middleware is a pass-through (preserves the existing
+// open default for tests and dev).
+func TestRequireSyncAdminToken_PassThroughWhenEmpty(t *testing.T) {
+	SetSyncAdminToken("")
+	called := false
+	h := requireSyncAdminToken(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	})
+	req := httptest.NewRequest(http.MethodGet, "/syncNode/list", nil)
+	rec := httptest.NewRecorder()
+	h(rec, req)
+	if !called {
+		t.Errorf("handler not invoked when token unset")
+	}
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", rec.Code)
+	}
+}
+
+// TestRequireSyncAdminToken_RejectsMissingHeader: with a token
+// configured, requests without Authorization / X-Sync-Token are 401.
+func TestRequireSyncAdminToken_RejectsMissingHeader(t *testing.T) {
+	SetSyncAdminToken("secret-token")
+	defer SetSyncAdminToken("")
+	called := false
+	h := requireSyncAdminToken(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+	})
+	req := httptest.NewRequest(http.MethodPost, "/syncNode/dispatch", nil)
+	rec := httptest.NewRecorder()
+	h(rec, req)
+	if called {
+		t.Errorf("handler invoked despite missing token")
+	}
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", rec.Code)
+	}
+}
+
+// TestRequireSyncAdminToken_AcceptsBearerToken: correct Bearer header
+// passes the gate.
+func TestRequireSyncAdminToken_AcceptsBearerToken(t *testing.T) {
+	SetSyncAdminToken("secret-token")
+	defer SetSyncAdminToken("")
+	called := false
+	h := requireSyncAdminToken(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	})
+	req := httptest.NewRequest(http.MethodPost, "/syncNode/dispatch", nil)
+	req.Header.Set("Authorization", "Bearer secret-token")
+	rec := httptest.NewRecorder()
+	h(rec, req)
+	if !called {
+		t.Errorf("handler not invoked with correct bearer")
+	}
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", rec.Code)
+	}
+}
+
+// TestRequireSyncAdminToken_AcceptsXSyncTokenHeader: X-Sync-Token
+// fallback works when Authorization is absent.
+func TestRequireSyncAdminToken_AcceptsXSyncTokenHeader(t *testing.T) {
+	SetSyncAdminToken("secret-token")
+	defer SetSyncAdminToken("")
+	h := requireSyncAdminToken(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	req := httptest.NewRequest(http.MethodGet, "/syncNode/list", nil)
+	req.Header.Set("X-Sync-Token", "secret-token")
+	rec := httptest.NewRecorder()
+	h(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", rec.Code)
+	}
+}
+
+// TestRequireSyncAdminToken_RejectsWrongToken: a mismatched token is
+// rejected even when the header is present.
+func TestRequireSyncAdminToken_RejectsWrongToken(t *testing.T) {
+	SetSyncAdminToken("secret-token")
+	defer SetSyncAdminToken("")
+	h := requireSyncAdminToken(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("handler invoked with wrong token")
+	})
+	req := httptest.NewRequest(http.MethodPost, "/syncNode/dispatch", nil)
+	req.Header.Set("Authorization", "Bearer wrong-token")
+	rec := httptest.NewRecorder()
+	h(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", rec.Code)
+	}
+}
+
+// TestDispatchSyncTask_RejectsOversizedBody verifies SEC3: a request
+// body larger than dispatchMaxBodyBytes returns an error before any
+// handler logic fires. We invoke the handler directly so we don't have
+// to start a real master (rocksdb is unavailable on macOS test boxes).
+func TestDispatchSyncTask_RejectsOversizedBody(t *testing.T) {
+	huge := bytes.Repeat([]byte("a"), dispatchMaxBodyBytes+1)
+	req := httptest.NewRequest(http.MethodPost, "/syncNode/dispatch", bytes.NewReader(huge))
+	rec := httptest.NewRecorder()
+
+	// Minimal Server stub — dispatchSyncTask reads m.cluster fields
+	// only AFTER decoding the body, so an empty cluster is fine for the
+	// over-size path. We construct the wrapper enough to satisfy the
+	// metric label.
+	srv := &Server{cluster: &Cluster{}}
+	srv.dispatchSyncTask(rec, req)
+
+	// MaxBytesReader makes ReadAll error out; the handler returns the
+	// JSON error envelope (200 status, but Code != Success). We also
+	// must NOT see a server-decoded task ID.
+	body, _ := io.ReadAll(rec.Body)
+	if !bytes.Contains(body, []byte("read body")) && !bytes.Contains(body, []byte("http: request body too large")) {
+		t.Errorf("expected body-size error, got: %s", string(body))
 	}
 }

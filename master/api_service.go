@@ -8085,6 +8085,12 @@ func (m *Server) getSyncNodeQuota(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(reply))
 }
 
+// dispatchMaxBodyBytes caps the dispatchSyncTask request body. The
+// payload is an AdminTask envelope (task.ID + task.Request); 1 MB is
+// orders of magnitude beyond anything legitimate sync rules produce
+// and keeps a hostile multi-GB POST from OOMing master.
+const dispatchMaxBodyBytes = 1 << 20 // 1 MB
+
 // dispatchSyncTask is the master entry point that other services call to
 // ask master to fan-out a sync task. The request body is an AdminTask
 // envelope (task.ID + task.Request payload); master picks the
@@ -8107,6 +8113,10 @@ func (m *Server) dispatchSyncTask(w http.ResponseWriter, r *http.Request) {
 		doStatAndMetric(proto.SyncNodeDispatch, metric, err, nil)
 	}()
 
+	// SEC3 fix: cap the request body so a hostile multi-GB POST can't
+	// OOM master. MaxBytesReader makes the next read return an error
+	// once the cap is exceeded; io.ReadAll surfaces it cleanly.
+	r.Body = http.MaxBytesReader(w, r.Body, dispatchMaxBodyBytes)
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Errorf("read body: %v", err).Error()})

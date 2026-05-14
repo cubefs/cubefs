@@ -620,3 +620,163 @@ func TestDispatcher_AllOwnerships_Snapshot(t *testing.T) {
 		t.Errorf("AllOwnerships should return a copy; dispatcher mutated")
 	}
 }
+
+// -----------------------------------------------------------------------
+// Bug S2: MarkShardTerminal / cleanup on last shard
+// -----------------------------------------------------------------------
+
+func TestSyncFanout_MarkShardTerminal_PartialNotClear(t *testing.T) {
+	fo, _, _ := fanoutHarness(t, 4)
+	send := func(string, int, interface{}) error { return nil }
+	if _, err := fo.DispatchN("p1", "r1", 4,
+		map[string]interface{}{}, jsonRoundTripFanoutCloner, send, 3); err != nil {
+		t.Fatalf("DispatchN: %v", err)
+	}
+
+	allDone, exists := fo.MarkShardTerminal("p1", 0)
+	if !exists {
+		t.Fatalf("MarkShardTerminal exists=false for known parent")
+	}
+	if allDone {
+		t.Errorf("allDone=true after 1/4 shards terminal")
+	}
+	if !fo.IsParent("p1") {
+		t.Errorf("parent dropped prematurely after partial terminal")
+	}
+}
+
+func TestSyncFanout_MarkShardTerminal_AllDoneTriggersCleanup(t *testing.T) {
+	fo, _, _ := fanoutHarness(t, 4)
+	send := func(string, int, interface{}) error { return nil }
+	if _, err := fo.DispatchN("p1", "r1", 4,
+		map[string]interface{}{}, jsonRoundTripFanoutCloner, send, 3); err != nil {
+		t.Fatalf("DispatchN: %v", err)
+	}
+	for shard := 0; shard < 4; shard++ {
+		allDone, exists := fo.MarkShardTerminal("p1", shard)
+		if !exists {
+			t.Fatalf("shard %d exists=false", shard)
+		}
+		want := shard == 3
+		if allDone != want {
+			t.Errorf("shard %d allDone=%v, want %v", shard, allDone, want)
+		}
+	}
+	// Caller (handleSyncNodeTaskResponse) is responsible for the Clear
+	// after seeing allDone — mirror that here.
+	fo.Clear("p1")
+	if fo.IsParent("p1") {
+		t.Errorf("IsParent(p1) = true after Clear; parents map leaks")
+	}
+}
+
+func TestSyncFanout_MarkShardTerminal_UnknownParent(t *testing.T) {
+	fo, _, _ := fanoutHarness(t, 2)
+	allDone, exists := fo.MarkShardTerminal("ghost", 0)
+	if exists {
+		t.Errorf("exists=true for unknown parent")
+	}
+	if allDone {
+		t.Errorf("allDone=true for unknown parent")
+	}
+}
+
+func TestSyncFanout_MarkShardTerminal_OutOfRangeShard(t *testing.T) {
+	fo, _, _ := fanoutHarness(t, 2)
+	send := func(string, int, interface{}) error { return nil }
+	if _, err := fo.DispatchN("p1", "r1", 2,
+		map[string]interface{}{}, jsonRoundTripFanoutCloner, send, 0); err != nil {
+		t.Fatalf("DispatchN: %v", err)
+	}
+	// Out-of-range shard must NOT count toward allDone, but exists is
+	// still true (we found the parent).
+	allDone, exists := fo.MarkShardTerminal("p1", 99)
+	if !exists {
+		t.Errorf("exists=false for known parent + out-of-range shard")
+	}
+	if allDone {
+		t.Errorf("allDone=true after out-of-range shard mark")
+	}
+}
+
+func TestSyncFanout_MarkShardTerminal_Idempotent(t *testing.T) {
+	fo, _, _ := fanoutHarness(t, 2)
+	send := func(string, int, interface{}) error { return nil }
+	if _, err := fo.DispatchN("p1", "r1", 2,
+		map[string]interface{}{}, jsonRoundTripFanoutCloner, send, 0); err != nil {
+		t.Fatalf("DispatchN: %v", err)
+	}
+	// Marking shard 0 twice does not double-count toward shardTotal.
+	if allDone, _ := fo.MarkShardTerminal("p1", 0); allDone {
+		t.Errorf("allDone after 1/2 mark")
+	}
+	if allDone, _ := fo.MarkShardTerminal("p1", 0); allDone {
+		t.Errorf("allDone after duplicate mark of shard 0")
+	}
+	if allDone, _ := fo.MarkShardTerminal("p1", 1); !allDone {
+		t.Errorf("allDone=false after marking final shard")
+	}
+}
+
+func TestSyncFanout_IsTerminalForParent(t *testing.T) {
+	fo, _, _ := fanoutHarness(t, 2)
+	send := func(string, int, interface{}) error { return nil }
+	if _, err := fo.DispatchN("p1", "r1", 2,
+		map[string]interface{}{}, jsonRoundTripFanoutCloner, send, 0); err != nil {
+		t.Fatalf("DispatchN: %v", err)
+	}
+	if done, ok := fo.IsTerminalForParent("p1"); !ok || done {
+		t.Errorf("initial: done=%v ok=%v, want done=false ok=true", done, ok)
+	}
+	fo.MarkShardTerminal("p1", 0)
+	if done, _ := fo.IsTerminalForParent("p1"); done {
+		t.Errorf("partial: done=true, want false")
+	}
+	fo.MarkShardTerminal("p1", 1)
+	if done, _ := fo.IsTerminalForParent("p1"); !done {
+		t.Errorf("full: done=false, want true")
+	}
+	if _, ok := fo.IsTerminalForParent("ghost"); ok {
+		t.Errorf("ghost: ok=true, want false")
+	}
+}
+
+func TestSyncFanout_AllParents(t *testing.T) {
+	fo, _, _ := fanoutHarness(t, 2)
+	if got := fo.AllParents(); len(got) != 0 {
+		t.Errorf("AllParents on empty = %v, want []", got)
+	}
+	send := func(string, int, interface{}) error { return nil }
+	for _, id := range []string{"a", "b", "c"} {
+		if _, err := fo.DispatchN(id, "r", 2, map[string]interface{}{},
+			jsonRoundTripFanoutCloner, send, 0); err != nil {
+			t.Fatalf("dispatch %s: %v", id, err)
+		}
+	}
+	got := fo.AllParents()
+	if len(got) != 3 {
+		t.Errorf("AllParents = %v, want 3 entries", got)
+	}
+}
+
+func TestSyncFanout_SplitSubTaskID(t *testing.T) {
+	cases := []struct {
+		in     string
+		wantP  string
+		wantS  int
+		wantOk bool
+	}{
+		{"p/0", "p", 0, true},
+		{"complex-id/42", "complex-id", 42, true},
+		{"single-task", "single-task", 0, false},
+		{"p/notanumber", "p/notanumber", 0, false},
+		{"", "", 0, false},
+	}
+	for _, tc := range cases {
+		gotP, gotS, gotOk := splitSubTaskID(tc.in)
+		if gotP != tc.wantP || gotS != tc.wantS || gotOk != tc.wantOk {
+			t.Errorf("splitSubTaskID(%q) = (%q, %d, %v), want (%q, %d, %v)",
+				tc.in, gotP, gotS, gotOk, tc.wantP, tc.wantS, tc.wantOk)
+		}
+	}
+}

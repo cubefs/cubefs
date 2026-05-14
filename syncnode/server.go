@@ -196,7 +196,15 @@ func doStart(srv common.Server, cfg *config.Config) (err error) {
 	s.masterClient = NewSyncMasterClient(s.cfg.MasterAddr, s.cfg.Listen,
 		WithSnapshotProvider(s),
 		WithRateLimitRegistry(s.rateLimits))
-	s.taskHandler = NewTaskHandler(s.runner, s.masterClient)
+	s.taskHandler = NewTaskHandler(s.runner, s.masterClient,
+		WithReadIdleTimeout(s.cfg.TCP.ResolvedReadIdleTimeout()))
+
+	// SEC4: install the admin auth token before the HTTP listener comes
+	// up. An empty token disables auth (preserves pre-fix behaviour for
+	// tests + dev). Operators rotating the token should restart the
+	// process — the slot is threadsafe but the bootstrap path only
+	// reads cfg once.
+	api.SetAdminToken(s.cfg.AdminToken)
 
 	// TCP server for master-dispatched task packets (Phase P1-3). Must be
 	// after runner + taskHandler are wired so the accept loop has somewhere
@@ -273,6 +281,13 @@ func doShutdown(srv common.Server) {
 	if s.backendPool != nil {
 		_ = s.backendPool.Close()
 	}
+	// S6: stop the rules NotifyStore worker (if wrapped) before the
+	// BoltDB underneath is closed so an in-flight onChange can't fire
+	// against a torn-down scheduler / closed boltDB. ruleStore.Close()
+	// is a no-op for non-NotifyStore implementations.
+	if s.ruleStore != nil {
+		_ = s.ruleStore.Close()
+	}
 	if s.boltDB != nil {
 		_ = s.boltDB.Close()
 	}
@@ -336,6 +351,14 @@ func (s *SyncNode) startTCPServer() error {
 		return fmt.Errorf("listen %s: %w", addr, err)
 	}
 	s.tcpListener = l
+	maxConns := s.cfg.TCP.ResolvedMaxConnections()
+	// SEC2: cap the in-flight HandleConn goroutines via a buffered
+	// channel semaphore. A flood of accepts can no longer spawn an
+	// unbounded number of goroutines or hold open FDs forever —
+	// over-cap connections are accepted and immediately closed so the
+	// master sees a fast signal rather than a queued goroutine that
+	// may never get to read.
+	sem := make(chan struct{}, maxConns)
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
@@ -362,11 +385,25 @@ func (s *SyncNode) startTCPServer() error {
 					continue
 				}
 			}
+			// SEC2: try to reserve a slot. Fail-fast on rejection
+			// rather than queueing — master should retry against a
+			// less-loaded peer rather than wait on us.
+			select {
+			case sem <- struct{}{}:
+			default:
+				log.LogWarnf("tcp listener: max %d in-flight conns, rejecting %s",
+					maxConns, conn.RemoteAddr())
+				_ = conn.Close()
+				continue
+			}
 			// P1-3: delegate to the TaskHandler. Each connection drains its
 			// own goroutine. HandleConn closes the conn before returning.
 			s.wg.Add(1)
 			go func(c net.Conn) {
-				defer s.wg.Done()
+				defer func() {
+					<-sem
+					s.wg.Done()
+				}()
 				s.taskHandler.HandleConn(ctx, c)
 			}(conn)
 		}

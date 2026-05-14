@@ -503,19 +503,21 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminLcNode).
 		HandlerFunc(m.adminLcNode)
 
-	// syncnode management APIs
+	// syncnode management APIs — gated by the shared admin token
+	// middleware (SEC1). Empty token disables the check, preserving
+	// dev/test defaults.
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AddSyncNode).
-		HandlerFunc(m.addSyncNode)
+		HandlerFunc(requireSyncAdminToken(m.addSyncNode))
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.ListSyncNodes).
-		HandlerFunc(m.listSyncNodes)
+		HandlerFunc(requireSyncAdminToken(m.listSyncNodes))
 	router.NewRoute().Methods(http.MethodPost).
 		Path(proto.SyncNodeDispatch).
-		HandlerFunc(m.dispatchSyncTask)
+		HandlerFunc(requireSyncAdminToken(m.dispatchSyncTask))
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.GetSyncNodeQuota).
-		HandlerFunc(m.getSyncNodeQuota)
+		HandlerFunc(requireSyncAdminToken(m.getSyncNodeQuota))
 
 	// node task response APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

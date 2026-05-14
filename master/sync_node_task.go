@@ -77,6 +77,20 @@ func (c *Cluster) handleSyncNodeTaskResponse(nodeAddr string, task *proto.AdminT
 		if c.syncFailover != nil {
 			c.syncFailover.Forget(rep.TaskID)
 		}
+		// Bug S2 fix: when the terminal report is for a fan-out sub-task
+		// ("<parent>/<shard>"), mark the shard terminal on the fanout and
+		// clear the parent record once every shard has reported. Without
+		// this, SyncFanout.parents grows monotonically for the lifetime
+		// of the master process.
+		if c.syncFanout != nil {
+			if parentID, shardIdx, isShard := splitSubTaskID(rep.TaskID); isShard {
+				if allDone, exists := c.syncFanout.MarkShardTerminal(parentID, shardIdx); exists && allDone {
+					c.syncFanout.Clear(parentID)
+					log.LogInfof("sn syncFanout: parent %s complete; cleared after %d/%d shards terminal",
+						parentID, shardIdx+1, shardIdx+1)
+				}
+			}
+		}
 		log.LogInfof("sn task %s terminal on %s: status=%s err=%s",
 			rep.TaskID, nodeAddr, rep.Status, rep.Error)
 	default:

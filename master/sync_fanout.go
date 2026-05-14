@@ -65,6 +65,7 @@ type parentTask struct {
 	shardTotal   int
 	subTasks     map[int]string       // shardIndex → owner addr
 	progress     map[int]TaskProgress // shardIndex → latest snapshot
+	terminal     map[int]bool         // shardIndex → reported terminal (Bug S2)
 	startedAt    time.Time
 	doneAt       time.Time
 	status       string // "running" / "done" / "failed"
@@ -334,6 +335,76 @@ func (f *SyncFanout) recordOwner(parentTaskID string, shardIndex int, addr strin
 // used by syncnode/tasks.TriggerSubTask so failover lookup works.
 func subTaskID(parentTaskID string, shardIndex int) string {
 	return fmt.Sprintf("%s/%d", parentTaskID, shardIndex)
+}
+
+// splitSubTaskID is the inverse of subTaskID. Returns (parent, shard,
+// true) when s has the "<parent>/<shard>" shape with a numeric shard
+// suffix; (s, 0, false) otherwise (single-task path; not a fan-out
+// sub-task). Splits on the FIRST "/" so parent IDs may themselves
+// contain slashes if a future caller injects them.
+func splitSubTaskID(s string) (parent string, shard int, ok bool) {
+	slash := strings.Index(s, "/")
+	if slash < 0 {
+		return s, 0, false
+	}
+	idx, err := strconv.Atoi(s[slash+1:])
+	if err != nil {
+		return s, 0, false
+	}
+	return s[:slash], idx, true
+}
+
+// MarkShardTerminal records that shardIndex of parentTaskID has reached
+// a terminal status (done / failed / cancelled). Returns
+// (allTerminal, exists): allTerminal is true when every shard of the
+// parent has been marked terminal; exists is false when no parent is
+// registered with parentTaskID (e.g. the single-task path, or a
+// late report after Clear). Idempotent: marking the same shard twice
+// is harmless.
+//
+// Caller (the task-response handler) is responsible for invoking
+// Clear(parentTaskID) when allTerminal && exists.
+func (f *SyncFanout) MarkShardTerminal(parentTaskID string, shardIndex int) (allTerminal bool, exists bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	p, ok := f.parents[parentTaskID]
+	if !ok {
+		return false, false
+	}
+	if shardIndex < 0 || shardIndex >= p.shardTotal {
+		return false, true
+	}
+	if p.terminal == nil {
+		p.terminal = make(map[int]bool, p.shardTotal)
+	}
+	p.terminal[shardIndex] = true
+	return len(p.terminal) >= p.shardTotal, true
+}
+
+// IsTerminalForParent reports whether every shard of parentTaskID has
+// reported terminal. ok is false when the parent is unknown. Intended
+// for callers that want to inspect state without mutating it.
+func (f *SyncFanout) IsTerminalForParent(parentTaskID string) (allTerminal bool, ok bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	p, exists := f.parents[parentTaskID]
+	if !exists {
+		return false, false
+	}
+	return len(p.terminal) >= p.shardTotal, true
+}
+
+// AllParents returns a snapshot of the currently-tracked parent task
+// IDs. Order is undefined. Cheap O(n) copy — used by ops dashboards
+// and tests; not on the hot path.
+func (f *SyncFanout) AllParents() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]string, 0, len(f.parents))
+	for id := range f.parents {
+		out = append(out, id)
+	}
+	return out
 }
 
 // jsonRoundTripFanoutCloner is the production PayloadCloner: JSON-

@@ -28,12 +28,15 @@ import (
 // changes immediately (HTTP CRUD, G-3 auto-degrade, SIGHUP reload all
 // pass through here).
 //
-// Concurrency: OnChange is invoked SYNCHRONOUSLY on the goroutine that
-// called the mutating method. The callback MUST be cheap (atomic
-// counter bump, a non-blocking send onto a channel) — the production
-// callback in server.go takes a snapshot + calls scheduler.ApplyRules
-// (which is itself non-blocking; the scheduler diffs in its own
-// goroutine).
+// S6: OnChange is invoked ASYNCHRONOUSLY on a dedicated worker
+// goroutine — every successful mutation does a non-blocking send onto
+// a single-slot channel, and the worker drains the channel and
+// invokes onChange. Multiple sends that arrive before the worker has
+// drained collapse into one onChange call, which is exactly what the
+// scheduler wants (the relevant input is "the current rule set", not
+// "the sequence of edits"). This decouples HTTP handler goroutines
+// from the multi-millisecond cost of scheduler.ApplyRules and
+// contains callback panics to the worker.
 //
 // Read operations (List, Get) pass through unchanged. UpdateLastRun is
 // intentionally NOT a fire trigger — it's the executor's heartbeat
@@ -45,14 +48,34 @@ type NotifyStore struct {
 	mu        sync.Mutex
 	onChange  func()
 	lastFired time.Time
+
+	// fireCh is the wakeup channel for the worker. Single-slot — a
+	// non-blocking send collapses bursts of mutations into one
+	// onChange invocation. stopCh ends the worker on Close.
+	fireCh   chan struct{}
+	stopCh   chan struct{}
+	stopOnce sync.Once
+	workerWg sync.WaitGroup
 }
 
 // NewNotifyStore wraps inner. onChange may be nil (no-op wrapper);
 // SetOnChange installs the callback once the scheduler exists. The
 // wrapper is transparent to handlers and Degrade because it embeds
 // Store and only overrides the mutating methods.
+//
+// Spawns a single worker goroutine that drains fireCh. Call Close
+// when the wrapper is no longer needed; without Close, the worker
+// will run until the process exits (cheap — it blocks on a channel).
 func NewNotifyStore(inner Store, onChange func()) *NotifyStore {
-	return &NotifyStore{Store: inner, onChange: onChange}
+	n := &NotifyStore{
+		Store:    inner,
+		onChange: onChange,
+		fireCh:   make(chan struct{}, 1),
+		stopCh:   make(chan struct{}),
+	}
+	n.workerWg.Add(1)
+	go n.worker()
+	return n
 }
 
 // SetOnChange swaps the callback after construction. Useful when the
@@ -64,19 +87,33 @@ func (n *NotifyStore) SetOnChange(fn func()) {
 	n.mu.Unlock()
 }
 
-// LastFiredAt returns when the most recent successful mutation fired
-// the callback. Zero value until the first fire. For diagnostics.
+// LastFiredAt returns when the worker most recently invoked the
+// callback. Zero value until the first fire. For diagnostics.
 func (n *NotifyStore) LastFiredAt() time.Time {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	return n.lastFired
 }
 
-// fire runs the registered callback. Recovers from panics so a buggy
-// callback can't corrupt the store's state — the mutation already
-// succeeded by the time we get here, and we don't want the caller of
-// Create/Update/etc. to see a panic that wasn't theirs.
-func (n *NotifyStore) fire() {
+// worker drains fireCh and invokes the registered callback. Exits on
+// stopCh close. A panic inside the callback is recovered so the
+// worker survives bad callbacks; the next fire still runs.
+func (n *NotifyStore) worker() {
+	defer n.workerWg.Done()
+	for {
+		select {
+		case <-n.stopCh:
+			return
+		case <-n.fireCh:
+			n.invokeOnChange()
+		}
+	}
+}
+
+// invokeOnChange reads the live callback under the mutex, updates
+// lastFired, then calls the callback with a recover in place so a
+// buggy callback can't kill the worker.
+func (n *NotifyStore) invokeOnChange() {
 	n.mu.Lock()
 	cb := n.onChange
 	n.lastFired = time.Now()
@@ -90,6 +127,28 @@ func (n *NotifyStore) fire() {
 		}
 	}()
 	cb()
+}
+
+// fire wakes the worker. Non-blocking: if a fire is already pending
+// the duplicate is dropped — the worker will collapse the burst into
+// one onChange invocation. This is the intended scheduler input
+// (current rule snapshot, not edit log).
+func (n *NotifyStore) fire() {
+	select {
+	case n.fireCh <- struct{}{}:
+	default:
+		// already pending — collapse.
+	}
+}
+
+// Close stops the worker, waits for it to exit, then closes the
+// underlying Store. Safe to call multiple times. The order matters:
+// the worker MUST exit before we close the inner Store so the
+// callback can't fire on a teardown scheduler.
+func (n *NotifyStore) Close() error {
+	n.stopOnce.Do(func() { close(n.stopCh) })
+	n.workerWg.Wait()
+	return n.Store.Close()
 }
 
 // Create inserts the rule and fires OnChange on success.

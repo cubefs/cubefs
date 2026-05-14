@@ -185,6 +185,237 @@ func TestAuthMiddleware_Passthrough(t *testing.T) {
 	}
 }
 
+// withAdminToken sets the package-level admin token for the duration of
+// the test and restores the previous value via t.Cleanup. Tests that
+// install a token must do so via this helper so a panic / fail in one
+// test doesn't leak into the next.
+func withAdminToken(t *testing.T, token string) {
+	t.Helper()
+	prev := getAdminToken()
+	SetAdminToken(token)
+	t.Cleanup(func() { SetAdminToken(prev) })
+}
+
+// TestAuthMiddleware_DisabledWhenTokenEmpty pins down the "auth-off"
+// default: when no SetAdminToken has happened (or it's been cleared),
+// every request passes through. This preserves the pre-fix behaviour
+// for tests + dev that build a SyncConfig without an adminToken.
+func TestAuthMiddleware_DisabledWhenTokenEmpty(t *testing.T) {
+	withAdminToken(t, "")
+
+	want := map[string]string{"ok": "yes"}
+	chained := AuthMiddleware(func(r *http.Request) (interface{}, error) { return want, nil })
+	req := httptest.NewRequest(http.MethodGet, "/admin/syncnode/version", nil)
+	// No Authorization header at all — should still pass.
+	got, err := chained(req)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if got.(map[string]string)["ok"] != "yes" {
+		t.Errorf("got %v", got)
+	}
+}
+
+// TestAuthMiddleware_RejectsMissingToken: when a token is set on the
+// server, a request with no credential is 401 / CodeUnauthorized.
+func TestAuthMiddleware_RejectsMissingToken(t *testing.T) {
+	withAdminToken(t, "s3cret-token")
+
+	called := false
+	chained := AuthMiddleware(func(r *http.Request) (interface{}, error) {
+		called = true
+		return "ok", nil
+	})
+	req := httptest.NewRequest(http.MethodGet, "/admin/syncnode/version", nil)
+	_, err := chained(req)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if called {
+		t.Fatal("inner handler must not be called when auth fails")
+	}
+	apiErr, ok := err.(*APIError)
+	if !ok || apiErr == nil {
+		t.Fatalf("err = %v (%T), want *APIError", err, err)
+	}
+	if apiErr.Status != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", apiErr.Status)
+	}
+	if apiErr.Code != CodeUnauthorized {
+		t.Errorf("code = %d, want %d", apiErr.Code, CodeUnauthorized)
+	}
+}
+
+// TestAuthMiddleware_AcceptsBearer: Authorization: Bearer <token> form
+// is accepted, including case-insensitive scheme matching.
+func TestAuthMiddleware_AcceptsBearer(t *testing.T) {
+	withAdminToken(t, "s3cret-token")
+
+	cases := []string{
+		"Bearer s3cret-token",
+		"bearer s3cret-token",
+		"BEARER s3cret-token",
+	}
+	for _, header := range cases {
+		header := header
+		t.Run(header, func(t *testing.T) {
+			t.Parallel()
+			chained := AuthMiddleware(func(r *http.Request) (interface{}, error) {
+				return "ok", nil
+			})
+			req := httptest.NewRequest(http.MethodGet, "/admin/syncnode/version", nil)
+			req.Header.Set("Authorization", header)
+			got, err := chained(req)
+			if err != nil {
+				t.Fatalf("err: %v", err)
+			}
+			if got != "ok" {
+				t.Errorf("got %v", got)
+			}
+		})
+	}
+}
+
+// TestAuthMiddleware_AcceptsXSyncToken: X-Sync-Token header is the
+// secondary form, used by curl-friendly tooling that doesn't want to
+// wrestle with Authorization parsing.
+func TestAuthMiddleware_AcceptsXSyncToken(t *testing.T) {
+	withAdminToken(t, "s3cret-token")
+
+	chained := AuthMiddleware(func(r *http.Request) (interface{}, error) {
+		return "ok", nil
+	})
+	req := httptest.NewRequest(http.MethodGet, "/admin/syncnode/version", nil)
+	req.Header.Set("X-Sync-Token", "s3cret-token")
+	got, err := chained(req)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if got != "ok" {
+		t.Errorf("got %v", got)
+	}
+}
+
+// TestAuthMiddleware_RejectsWrongToken: a credential is provided but it
+// does not match. Must return 401 + CodeUnauthorized and must NOT call
+// the inner handler.
+func TestAuthMiddleware_RejectsWrongToken(t *testing.T) {
+	withAdminToken(t, "s3cret-token")
+
+	cases := []struct {
+		name   string
+		header string
+		value  string
+	}{
+		{"bearer_mismatch", "Authorization", "Bearer wrong"},
+		{"xsync_mismatch", "X-Sync-Token", "wrong"},
+		{"bearer_empty", "Authorization", "Bearer "},
+		{"bearer_no_prefix", "Authorization", "s3cret-token"},     // missing "Bearer "
+		{"xsync_whitespace", "X-Sync-Token", "    "},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			called := false
+			chained := AuthMiddleware(func(r *http.Request) (interface{}, error) {
+				called = true
+				return "ok", nil
+			})
+			req := httptest.NewRequest(http.MethodGet, "/admin/syncnode/version", nil)
+			req.Header.Set(tc.header, tc.value)
+			_, err := chained(req)
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if called {
+				t.Fatal("inner handler must not be called when auth fails")
+			}
+			apiErr, ok := err.(*APIError)
+			if !ok || apiErr.Status != http.StatusUnauthorized || apiErr.Code != CodeUnauthorized {
+				t.Fatalf("err = %v (%T), want 401/%d", err, err, CodeUnauthorized)
+			}
+		})
+	}
+}
+
+// TestAuthMiddleware_EndToEnd wires AuthMiddleware through ToHTTPHandler
+// to confirm the 401 reaches the wire envelope exactly the way operator
+// tooling sees it.
+func TestAuthMiddleware_EndToEnd(t *testing.T) {
+	withAdminToken(t, "abc123")
+
+	h := ToHTTPHandler(func(r *http.Request) (interface{}, error) {
+		return map[string]string{"role": "sync"}, nil
+	}, AuthMiddleware)
+
+	// No header — 401.
+	rec := httptest.NewRecorder()
+	h(rec, httptest.NewRequest(http.MethodGet, "/admin/syncnode/version", nil))
+	got := decode(t, rec)
+	if got.Status != http.StatusUnauthorized || got.Code != CodeUnauthorized {
+		t.Fatalf("missing-token: status=%d code=%d, want 401/%d", got.Status, got.Code, CodeUnauthorized)
+	}
+
+	// Valid header — 200.
+	rec = httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/admin/syncnode/version", nil)
+	req.Header.Set("Authorization", "Bearer abc123")
+	h(rec, req)
+	got = decode(t, rec)
+	if got.Status != http.StatusOK || got.Code != CodeOK {
+		t.Fatalf("valid-token: status=%d code=%d, want 200/0", got.Status, got.Code)
+	}
+}
+
+// TestConstantTimeEq exercises the helper directly so a future refactor
+// can't drop the length-mismatch handling without a test screaming.
+func TestConstantTimeEq(t *testing.T) {
+	cases := []struct {
+		name string
+		a, b string
+		want bool
+	}{
+		{"equal", "abcdef", "abcdef", true},
+		{"diff_value_same_len", "abcdef", "abcdez", false},
+		{"diff_len_short", "abc", "abcdef", false},
+		{"diff_len_long", "abcdef", "abc", false},
+		{"both_empty", "", "", true},
+		{"empty_vs_nonempty", "", "x", false},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			if got := constantTimeEq(tc.a, tc.b); got != tc.want {
+				t.Errorf("constantTimeEq(%q,%q) = %v, want %v", tc.a, tc.b, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestSetAdminToken_Swap confirms a later SetAdminToken call REPLACES
+// the previous value rather than appending. The reload path in
+// server.go relies on this to roll the token without restarting the
+// listener (even though current design only sets on startup, the swap
+// behaviour is a public guarantee).
+func TestSetAdminToken_Swap(t *testing.T) {
+	prev := getAdminToken()
+	t.Cleanup(func() { SetAdminToken(prev) })
+
+	SetAdminToken("first")
+	if got := getAdminToken(); got != "first" {
+		t.Fatalf("getAdminToken = %q, want first", got)
+	}
+	SetAdminToken("second")
+	if got := getAdminToken(); got != "second" {
+		t.Fatalf("getAdminToken = %q, want second", got)
+	}
+	SetAdminToken("")
+	if got := getAdminToken(); got != "" {
+		t.Fatalf("getAdminToken = %q, want empty", got)
+	}
+}
+
 func TestChain_Ordering(t *testing.T) {
 	// Outer middleware should run BEFORE inner. We tag the request via a
 	// header so the order of operations is observable end-to-end.

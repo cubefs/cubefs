@@ -26,10 +26,13 @@
 package api
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
+	"sync"
 )
 
 // Response is the wire shape of every admin response. Empty payloads
@@ -174,13 +177,89 @@ func Chain(h Handler, mw ...Middleware) Handler {
 	return h
 }
 
-// AuthMiddleware is the P0 placeholder for the auth hook. Returning the
-// inner handler unmodified means every request passes through. The signature
-// and chaining shape are what matters — when P2-H adds real auth, only this
-// function changes.
+// SEC4: shared-token gate for the admin surface.
+//
+// The token is installed at server startup via SetAdminToken (or by tests
+// directly). When the token is EMPTY the middleware is a passthrough —
+// this preserves the P0/dev behaviour where every test that builds a
+// SyncConfig without an adminToken still works.
+//
+// Wire format: `Authorization: Bearer <token>` OR `X-Sync-Token: <token>`.
+// Both are accepted so operators can pick whichever fits their proxy /
+// curl invocation. The compare is constant-time so a network attacker
+// cannot derive the token from response-time differences.
+//
+// Threadsafe: the token slot is guarded by an RWMutex so a future
+// SIGHUP-driven rotation can swap without restarting the listener.
+var (
+	adminTokenMu sync.RWMutex
+	adminToken   string
+)
+
+// SetAdminToken installs the admin token. Passing an empty string
+// disables auth. Safe to call concurrently.
+func SetAdminToken(t string) {
+	adminTokenMu.Lock()
+	adminToken = t
+	adminTokenMu.Unlock()
+}
+
+// getAdminToken returns the live admin token under the read lock.
+func getAdminToken() string {
+	adminTokenMu.RLock()
+	defer adminTokenMu.RUnlock()
+	return adminToken
+}
+
+// constantTimeEq compares two strings in O(len) time without leaking the
+// match position via early-exit. Length mismatch is handled with a
+// throwaway constant-time compare so two strings of different lengths
+// still take the same amount of work.
+func constantTimeEq(a, b string) bool {
+	if len(a) != len(b) {
+		// Do a dummy compare so the timing of "wrong length" matches the
+		// timing of "right length, wrong value" — defends against the
+		// length-leak case where an attacker can probe one byte at a time.
+		_ = subtle.ConstantTimeCompare([]byte(a), []byte(a))
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+}
+
+// AuthMiddleware enforces the shared-token gate on admin requests. When
+// the token slot is empty the middleware is a passthrough. When set, the
+// request must carry the same token in either `Authorization: Bearer ...`
+// or `X-Sync-Token: ...`.
 func AuthMiddleware(next Handler) Handler {
 	return func(r *http.Request) (interface{}, error) {
-		// Hook lives here. P0 = no-op.
+		tok := getAdminToken()
+		if tok == "" {
+			// Auth disabled — preserves dev/P0 behaviour for callers that
+			// build a SyncConfig without an adminToken.
+			return next(r)
+		}
+		provided := extractToken(r)
+		if provided == "" || !constantTimeEq(provided, tok) {
+			return nil, &APIError{
+				Status: http.StatusUnauthorized,
+				Code:   CodeUnauthorized,
+				Msg:    "missing or invalid admin token",
+			}
+		}
 		return next(r)
 	}
+}
+
+// extractToken pulls the bearer / X-Sync-Token credential out of r.
+// Returns "" when neither header carries a non-empty token.
+func extractToken(r *http.Request) string {
+	if v := r.Header.Get("Authorization"); v != "" {
+		// Case-insensitive prefix match — RFC 7235 says the scheme is
+		// case-insensitive, so accept "Bearer", "bearer", "BEARER".
+		const bearer = "bearer "
+		if len(v) > len(bearer) && strings.EqualFold(v[:len(bearer)], bearer) {
+			return strings.TrimSpace(v[len(bearer):])
+		}
+	}
+	return strings.TrimSpace(r.Header.Get("X-Sync-Token"))
 }
