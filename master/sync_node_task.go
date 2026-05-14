@@ -91,6 +91,26 @@ func (c *Cluster) handleSyncNodeTaskResponse(nodeAddr string, task *proto.AdminT
 				}
 			}
 		}
+		// Update the task ledger so /syncTask/get returns the terminal status.
+		// Executor uses "done"/"failed"/"cancelled"; master ledger uses
+		// "succeeded"/"failed"/"cancelled" — map accordingly.
+		var masterStatus SyncTaskStatus
+		switch rep.Status {
+		case "done":
+			masterStatus = SyncTaskStatusSucceeded
+		case "failed":
+			masterStatus = SyncTaskStatusFailed
+		case "cancelled":
+			masterStatus = SyncTaskStatusCancelled
+		default:
+			masterStatus = SyncTaskStatus(rep.Status)
+		}
+		// TaskTerminalReport carries no progress; preserve the last snapshot.
+		var prog SyncTaskProgress
+		if existing := c.syncTaskLedger.Get(rep.TaskID); existing != nil {
+			prog = existing.Progress
+		}
+		c.recordTaskTerminal(rep.TaskID, masterStatus, rep.Error, prog)
 		log.LogInfof("sn task %s terminal on %s: status=%s err=%s",
 			rep.TaskID, nodeAddr, rep.Status, rep.Error)
 	default:
