@@ -225,6 +225,13 @@ type Cluster struct {
 	// Phase 3 only constructs the manager so admin handlers can call
 	// Register/Unregister without nil checks).
 	syncRuleMgr *SyncRuleManager
+
+	// syncTaskLedger is the bounded LRU view of task ownership +
+	// terminal status, used by /syncTask/* and /syncNode/tasks (P2-4).
+	// Populated by Dispatch / DispatchN on send and by
+	// /syncNode/response on terminal. Capacity defaults to
+	// SyncTaskLedgerCap.
+	syncTaskLedger *SyncTaskLedger
 }
 
 type cTask struct {
@@ -532,6 +539,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.syncFanout = NewSyncFanout(c.syncDispatcher)
 	c.syncRuleCache = NewSyncRuleCache()
 	c.syncRuleMgr = NewSyncRuleManager(c)
+	c.syncTaskLedger = NewSyncTaskLedger(SyncTaskLedgerCap)
 	// SEC1: install the /syncNode/* admin token from master config
 	// (key "syncAdminToken"). Empty value = middleware passthrough,
 	// preserving zero-config dev/test behavior; operators opt in by

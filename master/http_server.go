@@ -521,6 +521,59 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	// window — clients on older builds get a 404, which surfaces a clean
 	// "upgrade syncnode" signal rather than a silent fall-through.
 
+	// P2-4: sync rule + task + node admin surface. Auth gated by the
+	// same shared admin token as AddSyncNode.
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.SyncRuleCreate).
+		HandlerFunc(requireSyncAdminToken(m.createSyncRule))
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.SyncRuleUpdate).
+		HandlerFunc(requireSyncAdminToken(m.updateSyncRule))
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.SyncRuleDelete).
+		HandlerFunc(requireSyncAdminToken(m.deleteSyncRule))
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.SyncRulePause).
+		HandlerFunc(requireSyncAdminToken(m.pauseSyncRule))
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.SyncRuleResume).
+		HandlerFunc(requireSyncAdminToken(m.resumeSyncRule))
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.SyncRuleList).
+		HandlerFunc(requireSyncAdminToken(m.listSyncRules))
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.SyncRuleGet).
+		HandlerFunc(requireSyncAdminToken(m.getSyncRule))
+
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.SyncTaskList).
+		HandlerFunc(requireSyncAdminToken(m.listSyncTasks))
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.SyncTaskGet).
+		HandlerFunc(requireSyncAdminToken(m.getSyncTask))
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.SyncTaskCancel).
+		HandlerFunc(requireSyncAdminToken(m.cancelSyncTask))
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.SyncTaskRetry).
+		HandlerFunc(requireSyncAdminToken(m.retrySyncTask))
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.SyncTaskExport).
+		HandlerFunc(requireSyncAdminToken(m.exportSyncTasks))
+
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.SyncNodeDecommission).
+		HandlerFunc(requireSyncAdminToken(m.decommissionSyncNode))
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.SyncNodeDrain).
+		HandlerFunc(requireSyncAdminToken(m.drainSyncNode))
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.SyncNodeRestore).
+		HandlerFunc(requireSyncAdminToken(m.restoreSyncNode))
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.SyncNodeTasks).
+		HandlerFunc(requireSyncAdminToken(m.listSyncNodeTasks))
+
 	// node task response APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.GetDataNodeTaskResponse).

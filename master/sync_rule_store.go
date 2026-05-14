@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
@@ -197,4 +198,51 @@ func (c *Cluster) loadSyncRules() (err error) {
 	}
 	log.LogInfof("action[loadSyncRules], loaded %d of %d records", loaded, len(result))
 	return
+}
+
+// recordTaskDispatch is the centralised ledger Put used by every
+// dispatch path (SyncRuleManager + /syncNode/dispatch handler). Builds a
+// SyncTaskRecord with the rule snapshot context and pushes it into the
+// LRU. shardTotal == 0 means single-task; shardTotal > 0 with owner=""
+// records the parent of a fan-out; shardTotal > 0 with non-empty owner
+// records a child shard. Idempotent — re-calling with the same taskID
+// updates the record in place.
+func (c *Cluster) recordTaskDispatch(taskID string, rule *proto.SyncRule, owner string, shardIdx, shardTotal int) {
+	if c == nil || c.syncTaskLedger == nil || rule == nil || taskID == "" {
+		return
+	}
+	rec := &SyncTaskRecord{
+		TaskID:     taskID,
+		RuleID:     rule.ID(),
+		Type:       rule.Config.Type,
+		Status:     SyncTaskStatusRunning,
+		Owner:      owner,
+		ShardIdx:   shardIdx,
+		ShardTotal: shardTotal,
+		StartedAt:  time.Now(),
+	}
+	c.syncTaskLedger.Put(rec)
+}
+
+// recordTaskTerminal updates the ledger entry for taskID with its
+// terminal status + error + final progress. Invoked from
+// /syncNode/response (handleSyncNodeTaskResponse) when a worker reports
+// back. Missing taskID is a warning, not an error — the LRU may have
+// evicted the record between dispatch and terminal report.
+func (c *Cluster) recordTaskTerminal(taskID string, status SyncTaskStatus, errMsg string, progress SyncTaskProgress) {
+	if c == nil || c.syncTaskLedger == nil || taskID == "" {
+		return
+	}
+	prev := c.syncTaskLedger.Get(taskID)
+	if prev == nil {
+		log.LogWarnf("recordTaskTerminal: taskID %q evicted from ledger; skipping", taskID)
+		return
+	}
+	// Clone so the LRU's previous pointer doesn't get re-Put as-is.
+	updated := *prev
+	updated.Status = status
+	updated.Error = errMsg
+	updated.Progress = progress
+	updated.DoneAt = time.Now()
+	c.syncTaskLedger.Put(&updated)
 }

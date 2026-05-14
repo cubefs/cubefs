@@ -259,6 +259,34 @@ const (
 	// this every heartbeat tick (P1-8 + P1-9). 'GET ?addr=<self-addr>'.
 	GetSyncNodeQuota = "/syncNode/getQuota"
 
+	// Phase P2-4 — master-owned sync rule, task, and node admin
+	// surface. Replaces the per-syncnode /admin/sync/* endpoints; the
+	// console talks to master only.
+
+	// SyncRule CRUD + state transitions. Body / query params documented
+	// in master/api_service_sync_rule.go.
+	SyncRuleCreate = "/syncRule/create" // POST body: proto.SyncRule
+	SyncRuleUpdate = "/syncRule/update" // POST body: proto.SyncRule
+	SyncRuleDelete = "/syncRule/delete" // POST ?id=
+	SyncRulePause  = "/syncRule/pause"  // POST ?id=
+	SyncRuleResume = "/syncRule/resume" // POST ?id=
+	SyncRuleList   = "/syncRule/list"   // GET  [?state=active|paused|degraded]
+	SyncRuleGet    = "/syncRule/get"    // GET  ?id=
+
+	// SyncTask observability + lifecycle. Master-side ledger answers
+	// list / get; cancel + retry hit the dispatch layer.
+	SyncTaskList   = "/syncTask/list"   // GET  [?status=&ruleID=&owner=]
+	SyncTaskGet    = "/syncTask/get"    // GET  ?id=
+	SyncTaskCancel = "/syncTask/cancel" // POST ?id=
+	SyncTaskRetry  = "/syncTask/retry"  // POST ?id=
+	SyncTaskExport = "/syncTask/export" // GET  [?since=RFC3339] NDJSON stream
+
+	// SyncNode lifecycle + observability beyond AddSyncNode / ListSyncNodes.
+	SyncNodeDecommission = "/syncNode/decommission" // POST ?addr=&force=
+	SyncNodeDrain        = "/syncNode/drain"        // POST ?addr=
+	SyncNodeRestore      = "/syncNode/restore"      // POST ?addr=
+	SyncNodeTasks        = "/syncNode/tasks"        // GET  ?addr=[&status=]
+
 	QueryDisableDisk             = "/dataNode/queryDisableDisk"
 	QueryDecommissionSuccessDisk = "/dataNode/queryDecommissionSuccessDisk"
 	// Operation response

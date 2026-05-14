@@ -274,9 +274,15 @@ func (d *SyncDispatcher) Candidates(staleThreshold time.Duration) []string {
 		bolt := sn.BoltDBHealthy
 		running := sn.RunningTasks
 		maxConc := sn.MaxConcurrentTasks
+		state := sn.State
 		sn.RUnlock()
 
 		if !active {
+			return true
+		}
+		// P2: operator-controlled drain. Draining nodes stop receiving
+		// new task dispatch but keep finishing what they have.
+		if state == SyncNodeStateDraining {
 			return true
 		}
 		if now.Sub(rt) > staleThreshold {

@@ -263,6 +263,10 @@ func (m *SyncRuleManager) dispatchHash(taskID string, rule *proto.SyncRule, payl
 		if err != nil {
 			return fmt.Errorf("Dispatch rule=%q: %w", rule.ID(), err)
 		}
+		// Ledger: record the new task with owner so /syncTask/get +
+		// /syncNode/tasks see it immediately. Terminal status arrives
+		// via /syncNode/response and re-Puts the record.
+		m.cluster.recordTaskDispatch(taskID, rule, addr, 0, 0)
 		log.LogInfof("SyncRuleManager.dispatchHash rule=%q taskID=%q owner=%s", rule.ID(), taskID, addr)
 		return nil
 	}
@@ -276,9 +280,15 @@ func (m *SyncRuleManager) dispatchHash(taskID string, rule *proto.SyncRule, payl
 		return fmt.Errorf("syncFanout not initialised")
 	}
 	send := m.shardSendFn()
-	_, err := fo.DispatchN(taskID, rule.ID(), shardTotal, payload, jsonRoundTripFanoutCloner, send, 3)
+	owners, err := fo.DispatchN(taskID, rule.ID(), shardTotal, payload, jsonRoundTripFanoutCloner, send, 3)
 	if err != nil {
 		return fmt.Errorf("DispatchN rule=%q: %w", rule.ID(), err)
+	}
+	// Ledger: record the parent (no owner) + one child per shard.
+	m.cluster.recordTaskDispatch(taskID, rule, "", 0, shardTotal)
+	for shard, addr := range owners {
+		subID := fmt.Sprintf("%s/%d", taskID, shard)
+		m.cluster.recordTaskDispatch(subID, rule, addr, shard, shardTotal)
 	}
 	log.LogInfof("SyncRuleManager.dispatchHash rule=%q taskID=%q fanout shardTotal=%d", rule.ID(), taskID, shardTotal)
 	return nil
