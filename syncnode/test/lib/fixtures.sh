@@ -115,7 +115,7 @@ create_rule() {
 
 delete_rule_silent() {
   local id="$1"
-  master_post "/syncRule/delete?id=$id" "" >/dev/null 2>&1 || true
+  master_rule_delete "$id" >/dev/null 2>&1 || true
 }
 
 # trigger_and_wait <ruleID> [timeout-sec]

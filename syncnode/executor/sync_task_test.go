@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -315,12 +316,15 @@ func TestRunSync_FilterExcludesOne(t *testing.T) {
 	}
 }
 
-func TestRunSync_IdempotentReRun(t *testing.T) {
+// TestRunSync_IdempotentReRun_NoETag verifies that local→local re-runs (no
+// ETag on either side) always re-upload rather than silently skipping. This
+// is the safe behaviour: without a content hash we cannot prove equality, so
+// we must overwrite to avoid missing same-size mutations.
+func TestRunSync_IdempotentReRun_NoETag(t *testing.T) {
 	env := newSyncTestEnv(t)
 	env.writeSrcFile(t, "x.bin", []byte("xxxxxxx"))
 	env.writeSrcFile(t, "y.bin", []byte("yyyyyyyyy"))
 
-	// First run lands the files.
 	res1 := runSyncTask(context.Background(), t, newSyncTask(env, "t-id-1"))
 	if res1.Status != StatusDone {
 		t.Fatalf("first Status = %s, want Done. err=%s", res1.Status, res1.Error)
@@ -329,16 +333,157 @@ func TestRunSync_IdempotentReRun(t *testing.T) {
 		t.Fatalf("first FilesDone = %d, want 2", res1.Progress.FilesDone)
 	}
 
-	// Second run should detect matching sizes and skip both files.
+	// Second run: local backend returns no ETag, so we cannot skip.
 	res2 := runSyncTask(context.Background(), t, newSyncTask(env, "t-id-2"))
 	if res2.Status != StatusDone {
 		t.Fatalf("second Status = %s, want Done. err=%s", res2.Status, res2.Error)
 	}
+	if res2.Progress.FilesDone != 2 {
+		t.Errorf("second FilesDone = %d, want 2 (re-upload without ETag)", res2.Progress.FilesDone)
+	}
+	if res2.Progress.FilesSkipped != 0 {
+		t.Errorf("second FilesSkipped = %d, want 0 (no ETag to verify equality)", res2.Progress.FilesSkipped)
+	}
+}
+
+// etagBackend wraps a local Backend and injects synthetic ETags so that
+// idempotency tests can exercise the skip-on-ETag-match path without
+// requiring a real S3 server.
+type etagBackend struct {
+	inner backend.Backend
+	mu    sync.Mutex
+	etags map[string]string // key → etag
+}
+
+func newETagBackend(t *testing.T) *etagBackend {
+	t.Helper()
+	dir := t.TempDir()
+	resolved, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatalf("EvalSymlinks: %v", err)
+	}
+	b, err := local.New(&local.Config{
+		AllowedRoots:         []string{resolved},
+		DefaultBufferSizeKiB: 256,
+	})
+	if err != nil {
+		t.Fatalf("new etagBackend: %v", err)
+	}
+	t.Cleanup(func() { _ = b.Close() })
+	return &etagBackend{inner: b, etags: make(map[string]string)}
+}
+
+func (e *etagBackend) Kind() string { return e.inner.Kind() }
+func (e *etagBackend) List(ctx context.Context, prefix string, recursive bool) (<-chan backend.Entry, error) {
+	ch, err := e.inner.List(ctx, prefix, recursive)
+	if err != nil {
+		return nil, err
+	}
+	out := make(chan backend.Entry, 32)
+	go func() {
+		defer close(out)
+		for entry := range ch {
+			if !entry.IsDir && entry.ETag == "" {
+				e.mu.Lock()
+				entry.ETag = e.etags[entry.Key]
+				e.mu.Unlock()
+			}
+			out <- entry
+		}
+	}()
+	return out, nil
+}
+func (e *etagBackend) Get(ctx context.Context, key string, off, size int64) (io.ReadCloser, error) {
+	return e.inner.Get(ctx, key, off, size)
+}
+func (e *etagBackend) Head(ctx context.Context, key string) (int64, string, time.Time, error) {
+	sz, _, mt, err := e.inner.Head(ctx, key)
+	if err != nil {
+		return 0, "", time.Time{}, err
+	}
+	e.mu.Lock()
+	etag := e.etags[key]
+	e.mu.Unlock()
+	return sz, etag, mt, nil
+}
+func (e *etagBackend) Put(ctx context.Context, key string, body io.Reader, size int64, opts backend.PutOptions) (string, error) {
+	etag, err := e.inner.Put(ctx, key, body, size, opts)
+	if err != nil {
+		return "", err
+	}
+	// Generate a stable synthetic ETag from a counter so identical
+	// content written twice gets a different tag (simulating re-put).
+	// For idempotency we want the same content to get the same tag —
+	// use a fixed tag per key so repeated puts of the same payload match.
+	e.mu.Lock()
+	if e.etags[key] == "" {
+		e.etags[key] = fmt.Sprintf("etag-%s", key)
+	}
+	etag = e.etags[key]
+	e.mu.Unlock()
+	return etag, nil
+}
+func (e *etagBackend) Delete(ctx context.Context, key string) error {
+	e.mu.Lock()
+	delete(e.etags, key)
+	e.mu.Unlock()
+	return e.inner.Delete(ctx, key)
+}
+func (e *etagBackend) Rename(ctx context.Context, oldKey, newKey string) error {
+	e.mu.Lock()
+	e.etags[newKey] = e.etags[oldKey]
+	delete(e.etags, oldKey)
+	e.mu.Unlock()
+	return e.inner.Rename(ctx, oldKey, newKey)
+}
+func (e *etagBackend) Capabilities() backend.Caps { return e.inner.Capabilities() }
+func (e *etagBackend) Close() error               { return e.inner.Close() }
+
+// TestRunSync_IdempotentReRun_WithETag verifies that when both src and dst
+// backends provide ETags (as S3 does), a re-run with unchanged content skips
+// all files.
+func TestRunSync_IdempotentReRun_WithETag(t *testing.T) {
+	src := newETagBackend(t)
+	dst := newETagBackend(t)
+
+	payload := []byte("hello-etag-world")
+	for _, key := range []string{"a.bin", "b.bin"} {
+		if _, err := src.Put(context.Background(), key,
+			bytes.NewReader(payload), int64(len(payload)), backend.PutOptions{}); err != nil {
+			t.Fatalf("seed src %q: %v", key, err)
+		}
+	}
+
+	task := &Task{
+		ID:               "t-etag-1",
+		Type:             TaskTypeSync,
+		Src:              src,
+		Dst:              dst,
+		SrcPath:          "",
+		DstPath:          "",
+		AfterCopy:        AfterCopyKeep,
+		DownloadStrategy: DownloadStrategyTempRename,
+	}
+	ex := New()
+	res1 := ex.Run(context.Background(), task, NoopReporter{})
+	if res1.Status != StatusDone {
+		t.Fatalf("first Status = %s, err=%s", res1.Status, res1.Error)
+	}
+	if res1.Progress.FilesDone != 2 {
+		t.Fatalf("first FilesDone = %d, want 2", res1.Progress.FilesDone)
+	}
+
+	task2 := *task
+	task2.ID = "t-etag-2"
+	res2 := ex.Run(context.Background(), &task2, NoopReporter{})
+	if res2.Status != StatusDone {
+		t.Fatalf("second Status = %s, err=%s", res2.Status, res2.Error)
+	}
 	if res2.Progress.FilesSkipped != 2 {
-		t.Errorf("second FilesSkipped = %d, want 2", res2.Progress.FilesSkipped)
+		t.Errorf("second FilesSkipped = %d, want 2 (ETag match)", res2.Progress.FilesSkipped)
 	}
 	if res2.Progress.FilesDone != 0 {
-		t.Errorf("second FilesDone = %d, want 0 (idempotent)", res2.Progress.FilesDone)
+		t.Errorf("second FilesDone = %d, want 0", res2.Progress.FilesDone)
 	}
 }
 

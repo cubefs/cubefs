@@ -33,6 +33,9 @@ _curl_with_retry() {
   local backoff=1
   local attempt
   local out status
+  # Initialise so callers can safely reference these even when all retries fail.
+  HTTP_BODY=""
+  HTTP_STATUS=""
   for ((attempt=1; attempt<=max_attempts; attempt++)); do
     if [ "${RUN_VERBOSE:-0}" = "1" ]; then
       log_debug "curl[$attempt] $*"
