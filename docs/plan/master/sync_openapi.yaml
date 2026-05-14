@@ -1,0 +1,961 @@
+openapi: 3.0.3
+info:
+  title: CubeFS master — Sync subsystem API
+  version: "1.0.0"
+  description: |
+    P2-cutover HTTP surface for the sync subsystem. The master is the
+    authoritative store for sync rules; the cron scheduler runs on the
+    raft leader and dispatches tasks across the syncnode fleet via
+    OpSyncNodeRunTask packets.
+
+    Endpoints grouped:
+      - syncRule  : rule CRUD + state transitions + synchronous trigger
+      - syncTask  : task observability + lifecycle (cancel / retry / export)
+      - syncNode  : node registration, listing, decommission, drain, restore
+
+    All endpoints share:
+      - Auth: requireSyncAdminToken middleware (Bearer <token> or
+        X-Sync-Token; empty token disables auth — dev/test default).
+      - Envelope: proto.HTTPReply `{code, msg, data}` (code is int32).
+      - Error codes:
+          0     — success
+          1     — InternalError (wraps "not found", "already exists",
+                  cycle, generic)
+          2     — ParamError (missing field, invalid shardingStrategy)
+          4     — PersistenceByRaft (HTTP 503; client retries)
+          1014  — duplicate rule pair
+          1015  — prefix overlap
+          1016  — sync cycle
+      - Raft commit failures return HTTP 503 + code=4.
+
+    Wire JSON shape note: SyncRule create/update accepts a FLAT
+    SyncRuleConfig body (id, type, src, dst, ...). The server wraps it
+    into a SyncRule with `state=active` + server-controlled timestamps
+    and lastRun fields.
+  contact:
+    name: CubeFS Sync Team
+
+servers:
+  - url: "http://{host}:{port}"
+    description: master HTTP port (default 17010)
+    variables:
+      host:
+        default: "127.0.0.1"
+      port:
+        default: "17010"
+
+tags:
+  - name: syncRule
+    description: 集群规则管理（raft 持久化）
+  - name: syncTask
+    description: 任务观测 + 生命周期（master 内存 LRU ledger）
+  - name: syncNode
+    description: 节点注册 + 下线 + drain
+
+security:
+  - BearerAuth: []
+  - SyncTokenAuth: []
+
+paths:
+  # ─────────────────────── syncRule ───────────────────────
+  /syncRule/create:
+    post:
+      tags: [syncRule]
+      summary: 创建规则
+      operationId: createSyncRule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SyncRuleConfig"
+            example:
+              id: r-local-to-s3
+              type: sync
+              schedule: "*/30 * * * * *"
+              src:
+                kind: local
+                path: /srv/data/
+              dst:
+                kind: s3
+                endpoint: https://s3.example.com
+                region: us-east-1
+                bucket: backup
+                prefix: cubefs/
+                storageClass: STANDARD_IA
+                accessKeyEnv: AWS_ACCESS_KEY_ID
+                secretKeyEnv: AWS_SECRET_ACCESS_KEY
+              afterCopy: keep
+              downloadStrategy: temp_rename
+              onMismatch: alert
+              filter:
+                include: ["*"]
+              shardingStrategy: prefix
+              shardPrefixes: ["2024/", "2025/", "logs/"]
+              parallelism: 3
+              bandwidthLimitMBps: 100
+              aggregateBandwidthLimitMBps: 0
+      responses:
+        "200":
+          description: 已入库的 SyncRule
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Response"
+                  - properties:
+                      data:
+                        $ref: "#/components/schemas/SyncRule"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/RaftUnavailable"
+
+  /syncRule/update:
+    post:
+      tags: [syncRule]
+      summary: 更新规则（必须已存在）
+      operationId: updateSyncRule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SyncRuleConfig"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Response"
+                  - properties:
+                      data:
+                        $ref: "#/components/schemas/SyncRule"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/RaftUnavailable"
+
+  /syncRule/delete:
+    post:
+      tags: [syncRule]
+      summary: 删除规则
+      operationId: deleteSyncRule
+      parameters:
+        - $ref: "#/components/parameters/RuleIDQuery"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Response"
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          id:
+                            type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/RaftUnavailable"
+
+  /syncRule/pause:
+    post:
+      tags: [syncRule]
+      summary: 暂停规则 (state → paused)
+      operationId: pauseSyncRule
+      parameters:
+        - $ref: "#/components/parameters/RuleIDQuery"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Response"
+                  - properties:
+                      data:
+                        $ref: "#/components/schemas/SyncRule"
+
+  /syncRule/resume:
+    post:
+      tags: [syncRule]
+      summary: 恢复规则 (state → active)
+      operationId: resumeSyncRule
+      parameters:
+        - $ref: "#/components/parameters/RuleIDQuery"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Response"
+                  - properties:
+                      data:
+                        $ref: "#/components/schemas/SyncRule"
+
+  /syncRule/list:
+    get:
+      tags: [syncRule]
+      summary: 列出全部规则（可按 state 过滤）
+      operationId: listSyncRules
+      parameters:
+        - name: state
+          in: query
+          required: false
+          description: 仅返回该状态的规则
+          schema:
+            $ref: "#/components/schemas/SyncRuleState"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Response"
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/SyncRule"
+
+  /syncRule/get:
+    get:
+      tags: [syncRule]
+      summary: 查询单条规则
+      operationId: getSyncRule
+      parameters:
+        - $ref: "#/components/parameters/RuleIDQuery"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Response"
+                  - properties:
+                      data:
+                        $ref: "#/components/schemas/SyncRule"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /syncRule/trigger:
+    post:
+      tags: [syncRule]
+      summary: 同步触发规则（绕开 cron）
+      description: |
+        Synchronously invokes SyncRuleManager.dispatchRule — same code
+        path the cron callback runs. Returns the new taskID immediately
+        even though the task itself runs asynchronously on the chosen
+        syncnode(s). Useful for ops scripts + tests.
+      operationId: triggerSyncRule
+      parameters:
+        - $ref: "#/components/parameters/RuleIDQuery"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Response"
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          ruleID:
+                            type: string
+                          taskID:
+                            type: string
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ─────────────────────── syncTask ───────────────────────
+  /syncTask/list:
+    get:
+      tags: [syncTask]
+      summary: 列出任务记录（三维过滤）
+      operationId: listSyncTasks
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/SyncTaskStatus"
+        - name: ruleID
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: owner
+          in: query
+          required: false
+          description: 节点 addr 过滤
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Response"
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/SyncTaskRecord"
+
+  /syncTask/get:
+    get:
+      tags: [syncTask]
+      summary: 查询单条任务
+      description: |
+        For fan-out parent tasks, the record's `owner` is empty and
+        `shardTotal > 0`. Iterate `/syncTask/list?ruleID=<id>` to find
+        child shards whose `taskID` begins with `<parentID>/`.
+      operationId: getSyncTask
+      parameters:
+        - $ref: "#/components/parameters/TaskIDQuery"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Response"
+                  - properties:
+                      data:
+                        $ref: "#/components/schemas/SyncTaskRecord"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /syncTask/cancel:
+    post:
+      tags: [syncTask]
+      summary: 取消任务（异步生效）
+      description: |
+        Cancel is async — returns `status=cancelling` immediately and
+        the master pushes OpSyncNodeCancelTask to the owner node(s).
+        Poll `/syncTask/get?id=` for the terminal status.
+
+        For a fan-out parent: cancellation fans out to every
+        non-terminal child shard; the `cancelled` field in the response
+        reports how many got the packet.
+      operationId: cancelSyncTask
+      parameters:
+        - $ref: "#/components/parameters/TaskIDQuery"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Response"
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          taskID:
+                            type: string
+                          status:
+                            type: string
+                            example: cancelling
+                          cancelled:
+                            type: integer
+                            description: 仅 fan-out 父任务返回
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /syncTask/retry:
+    post:
+      tags: [syncTask]
+      summary: 重试任务（新 taskID）
+      operationId: retrySyncTask
+      parameters:
+        - $ref: "#/components/parameters/TaskIDQuery"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Response"
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          prevTaskID:
+                            type: string
+                          newTaskID:
+                            type: string
+                          record:
+                            $ref: "#/components/schemas/SyncTaskRecord"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /syncTask/export:
+    get:
+      tags: [syncTask]
+      summary: 流式导出任务历史
+      description: |
+        Streams the in-memory ledger (capped at 10k records) as NDJSON;
+        each line is one SyncTaskRecord. Optional `since=RFC3339`
+        filters by StartedAt. For long-term history, dashboard from
+        Prometheus / logs — master is not the audit store.
+      operationId: exportSyncTasks
+      parameters:
+        - name: since
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: NDJSON 流
+          content:
+            application/x-ndjson:
+              schema:
+                type: string
+                description: 每行一个 SyncTaskRecord JSON
+
+  # ─────────────────────── syncNode ───────────────────────
+  /syncNode/add:
+    post:
+      tags: [syncNode]
+      summary: 注册 syncnode
+      operationId: addSyncNode
+      parameters:
+        - name: addr
+          in: query
+          required: true
+          schema:
+            type: string
+            example: "10.0.1.10:17910"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Response"
+
+  /syncNode/list:
+    get:
+      tags: [syncNode]
+      summary: 列出全部 syncnode
+      operationId: listSyncNodes
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Response"
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/SyncNodeInfo"
+
+  /syncNode/decommission:
+    post:
+      tags: [syncNode]
+      summary: 下线节点
+      description: |
+        - `force=false` (默认): mark draining → dispatcher 停止派发；
+          已有任务自然终结后由集群 cron 移除节点。
+        - `force=true`: drain 子流程 + raft delete 节点记录。
+      operationId: decommissionSyncNode
+      parameters:
+        - $ref: "#/components/parameters/NodeAddrQuery"
+        - name: force
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Response"
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          addr:
+                            type: string
+                          state:
+                            type: string
+                            example: draining
+                          force:
+                            type: boolean
+                          drained:
+                            type: integer
+                          removed:
+                            type: boolean
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/RaftUnavailable"
+
+  /syncNode/drain:
+    post:
+      tags: [syncNode]
+      summary: 清空节点任务（保留注册）
+      description: 同 decommission?force=true，但跳过 raft delete。
+      operationId: drainSyncNode
+      parameters:
+        - $ref: "#/components/parameters/NodeAddrQuery"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Response"
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          addr:
+                            type: string
+                          state:
+                            type: string
+                            example: draining
+                          drained:
+                            type: integer
+
+  /syncNode/restore:
+    post:
+      tags: [syncNode]
+      summary: 恢复节点 (draining → active)
+      operationId: restoreSyncNode
+      parameters:
+        - $ref: "#/components/parameters/NodeAddrQuery"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Response"
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          addr:
+                            type: string
+                          state:
+                            type: string
+                            example: active
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/RaftUnavailable"
+
+  /syncNode/tasks:
+    get:
+      tags: [syncNode]
+      summary: 列节点上的任务
+      description: |
+        Reverse-index lookup via the master task ledger. Returns every
+        record whose owner == addr (regardless of status unless filter
+        is set).
+      operationId: listSyncNodeTasks
+      parameters:
+        - $ref: "#/components/parameters/NodeAddrQuery"
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/SyncTaskStatus"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Response"
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/SyncTaskRecord"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: "`Authorization: Bearer <syncAdminToken>`"
+    SyncTokenAuth:
+      type: apiKey
+      in: header
+      name: X-Sync-Token
+      description: 与 Bearer 二选一
+
+  parameters:
+    RuleIDQuery:
+      name: id
+      in: query
+      required: true
+      description: 规则 ID
+      schema:
+        type: string
+    TaskIDQuery:
+      name: id
+      in: query
+      required: true
+      description: 任务 ID
+      schema:
+        type: string
+    NodeAddrQuery:
+      name: addr
+      in: query
+      required: true
+      description: syncnode TCP listen 地址 (host:port)
+      schema:
+        type: string
+
+  responses:
+    BadRequest:
+      description: 字段缺失 / 格式错（code=2）
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Response"
+          example:
+            code: 2
+            msg: "missing required field: id"
+    NotFound:
+      description: 资源不存在（code=1, msg 含 "not found"）
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Response"
+          example:
+            code: 1
+            msg: "sync rule not found: r-001"
+    Conflict:
+      description: 规则冲突 (code 1014/1015/1016)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Response"
+          example:
+            code: 1015
+            msg: 'sync rule conflict (code=1015 rules=r1,r2): overlapping src paths'
+    RaftUnavailable:
+      description: Raft commit failed; client should backoff + retry (code=4)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Response"
+          example:
+            code: 4
+            msg: "raft submit failed: leader unavailable"
+
+  schemas:
+    Response:
+      type: object
+      required: [code, msg]
+      properties:
+        code:
+          type: integer
+          format: int32
+        msg:
+          type: string
+          example: OK
+        data:
+          nullable: true
+
+    SyncRuleState:
+      type: string
+      enum: [active, paused, degraded]
+
+    SyncRuleType:
+      type: string
+      enum: [sync, load, check]
+
+    SyncShardingStrategy:
+      type: string
+      enum: ["", hash, prefix, auto]
+
+    SyncEndpointConfig:
+      type: object
+      description: |
+        按 kind 取不同字段:
+          cfs   → vol, path
+          s3    → endpoint, region, bucket, prefix, storageClass,
+                  accessKeyEnv, secretKeyEnv, insecureSkipTLS
+          local → path, bufferSizeKiB, concurrency, directIO, fadviseSequential
+      properties:
+        kind:
+          type: string
+          enum: [cfs, s3, local]
+        vol:
+          type: string
+        path:
+          type: string
+        bucket:
+          type: string
+        prefix:
+          type: string
+        endpoint:
+          type: string
+        region:
+          type: string
+        storageClass:
+          type: string
+        accessKeyEnv:
+          type: string
+          description: env var NAME holding access key (not the value)
+        secretKeyEnv:
+          type: string
+        insecureSkipTLS:
+          type: boolean
+          description: dev/test only — disables TLS verify
+        bufferSizeKiB:
+          type: integer
+        concurrency:
+          type: integer
+        directIO:
+          type: boolean
+        fadviseSequential:
+          type: boolean
+      required: [kind]
+
+    SyncFilterConfig:
+      type: object
+      properties:
+        include:
+          type: array
+          items:
+            type: string
+        exclude:
+          type: array
+          items:
+            type: string
+        minSize:
+          type: string
+        maxSize:
+          type: string
+        minAge:
+          type: string
+        maxAge:
+          type: string
+
+    SyncRetentionConfig:
+      type: object
+      properties:
+        pattern:
+          type: string
+        keepLast:
+          type: integer
+        keepWithin:
+          type: string
+
+    SyncRuleConfig:
+      type: object
+      required: [id, type, src, dst]
+      description: |
+        Flat wire shape accepted by /syncRule/{create,update}. The
+        server wraps this into a SyncRule with state=active +
+        server-controlled timestamps.
+      properties:
+        id:
+          type: string
+        type:
+          $ref: "#/components/schemas/SyncRuleType"
+        schedule:
+          type: string
+          description: 6-field cron expression with seconds (e.g. "*/30 * * * * *"). Empty = manual trigger only.
+        src:
+          $ref: "#/components/schemas/SyncEndpointConfig"
+        dst:
+          $ref: "#/components/schemas/SyncEndpointConfig"
+        filter:
+          $ref: "#/components/schemas/SyncFilterConfig"
+        retention:
+          $ref: "#/components/schemas/SyncRetentionConfig"
+        afterCopy:
+          type: string
+          enum: [keep, delete]
+        downloadStrategy:
+          type: string
+          enum: [temp_rename, direct]
+        onMismatch:
+          type: string
+          enum: [alert, overwrite, skip, auto_fix]
+        sampleStrategy:
+          type: string
+        sampleRate:
+          type: number
+          format: double
+        bandwidthLimitMBps:
+          type: integer
+          description: per-node bandwidth cap
+        aggregateBandwidthLimitMBps:
+          type: integer
+          description: cluster-wide cap; master divides across active nodes
+        parallelism:
+          type: integer
+          description: max sub-tasks per trigger (capped by candidate count)
+        shardingStrategy:
+          $ref: "#/components/schemas/SyncShardingStrategy"
+        shardPrefixes:
+          type: array
+          items:
+            type: string
+          description: required when shardingStrategy=prefix; optional whitelist for auto
+
+    SyncRule:
+      type: object
+      description: 运行时视图：Config + 服务端管理字段
+      properties:
+        config:
+          $ref: "#/components/schemas/SyncRuleConfig"
+        state:
+          $ref: "#/components/schemas/SyncRuleState"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        lastRunAt:
+          type: string
+          format: date-time
+        lastRunStatus:
+          type: string
+        lastRunError:
+          type: string
+
+    SyncTaskStatus:
+      type: string
+      enum: [queued, running, succeeded, failed, cancelled]
+
+    SyncTaskProgress:
+      type: object
+      properties:
+        filesTotal:
+          type: integer
+          format: int64
+        filesDone:
+          type: integer
+          format: int64
+        filesSkipped:
+          type: integer
+          format: int64
+        filesFailed:
+          type: integer
+          format: int64
+        bytesTotal:
+          type: integer
+          format: int64
+        bytesDone:
+          type: integer
+          format: int64
+        throughputMBps:
+          type: number
+          format: double
+
+    SyncTaskRecord:
+      type: object
+      properties:
+        taskID:
+          type: string
+        ruleID:
+          type: string
+        type:
+          $ref: "#/components/schemas/SyncRuleType"
+        status:
+          $ref: "#/components/schemas/SyncTaskStatus"
+        owner:
+          type: string
+          description: empty for fan-out parent tasks
+        shardIdx:
+          type: integer
+        shardTotal:
+          type: integer
+        startedAt:
+          type: string
+          format: date-time
+        doneAt:
+          type: string
+          format: date-time
+        error:
+          type: string
+        progress:
+          $ref: "#/components/schemas/SyncTaskProgress"
+
+    SyncNodeInfo:
+      type: object
+      properties:
+        addr:
+          type: string
+        isActive:
+          type: boolean
+        state:
+          type: string
+          enum: [active, draining]
+        version:
+          type: string
+        uptimeSeconds:
+          type: integer
+          format: int64
+        runningTasks:
+          type: integer
+          format: int64
+        queuedTasks:
+          type: integer
+          format: int64
+        bandwidthMBps:
+          type: number
+          format: double
+        bandwidthMBpsLimit:
+          type: number
+          format: double
+        cpuPercent:
+          type: number
+          format: double
+        memPercent:
+          type: number
+          format: double
+        boltDBHealthy:
+          type: boolean
+        loadScore:
+          type: number
+          format: double

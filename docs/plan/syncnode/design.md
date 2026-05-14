@@ -2196,3 +2196,362 @@ cubefs_master_syncnode_count{state}                                             
 ## 17. Last Updated
 
 `2026-05-13` — initial consolidated spec for SDD-based development. W6 (BOS/TOS → GPFS 反向直传) added as the dual of W4; no new code needed since `kind: local` ↔ `kind: s3` configurations already cover it via the universal Backend abstraction.
+
+---
+
+# Part II — P2 重构：规则全局化 + 单任务多节点
+
+> 此部分覆盖 2026-05 之后的 P2 重构内容。前文（§0-§17）保留作为 P0/P1 的历史规约，但凡涉及"syncnode 拥有规则存储 / cron / 任务 HTTP"的描述，以本部分为准。
+
+## P2-§1 Context
+
+P0/P1 完成后系统存在分层撕裂：
+
+- **规则层是节点本地的**：每个 syncnode 在 BoltDB 里有自己的规则集，HTTP CRUD 打到哪个节点就只存在哪个节点，cron 各自独立触发。控制台对接需要给每个节点都创建一遍规则；同 ID 的规则会被多个节点重复触发。
+- **任务层已经是全局的**：master 已有 `SyncDispatcher`（负载均衡）+ `SyncFanout`（哈希分片）+ `SyncQuota`（集群配额）+ `SyncFailover`（节点失联重派）。任务的生命周期是 master 主导的。
+
+P2 把规则上移到 master，让任务层与规则层语义对齐：
+
+```
+console ─→ master /syncRule/*          ← 唯一入口（raft 复制）
+master leader cron ─→ 触发 rule
+         ─→ 构造 RunTaskRequest（含 SyncRule 快照）
+         ─→ SyncFanout.DispatchN(WithPrefixBuckets) ─→ syncnodes
+syncnode 收 OpSyncNodeRunTask 即跑，本地无 rule store、无 cron
+syncnode /admin/sync/rule/* 删除
+syncnode /admin/sync/task/* 删除
+syncnode /admin/syncnode/{version,stat,reload} 保留为本地诊断面
+```
+
+## P2-§2 设计决议
+
+| 决议 | 选择 | 理由 |
+|---|---|---|
+| 规则持久化 | master raft（op 码 0x83-0x85，key prefix `#sr#`） | 与 lcConf 同语义，leader 切换状态不丢；console / ops 走 CP 语义 |
+| 调度时钟 | master leader 独占 robfig/cron | 一个 leader 一个 cron，避免多副本同条规则重复触发 |
+| 节点状态机 | raft 持久化 SyncNode.State (op 0x82) | draining 状态在 leader 切换间一致 |
+| 节点本地 rule API | 整套删除 | 避免双写撕裂；syncnode 退化为纯 worker |
+| 节点本地 task API | 整套删除 | 控制台 + 运维都走 master `/syncTask/*` |
+| Raft 提交失败 | HTTP 503 + ErrCodePersistenceByRaft，控制台退避重试 | 与 lcConf 等现有 master API 一致 |
+| 前缀分片 | 显式（operator 声明）+ 自动（master probe）双模式 | 显式可控，自动零配置 |
+| Master → syncnode 任务载荷 | 内嵌 SyncRule 快照 | syncnode 不再需要本地规则查找 |
+
+## P2-§3 架构
+
+```
+                    ┌──────────────────────────────────┐
+                    │            console                │
+                    │  /syncRule/{CRUD,pause,resume}    │
+                    │  /syncTask/{list,get,cancel,…}    │
+                    │  /syncNode/{list,decommission,…}  │
+                    └────────────────┬─────────────────┘
+                                     │ HTTP + admin token
+                                     ▼
+        ┌──────────────────────────────────────────────────┐
+        │                  master leader                    │
+        │                                                   │
+        │  ┌──────────────┐  ┌───────────────────────┐     │
+        │  │ SyncRuleCache│←─│ raft (op 0x83-0x85)   │     │
+        │  └──────┬───────┘  └───────────────────────┘     │
+        │         │                                         │
+        │         ▼                                         │
+        │  ┌──────────────────┐                            │
+        │  │ SyncRuleManager  │ ← cron (robfig/cron)        │
+        │  │  - fireRule(id)  │                             │
+        │  │  - prefix probe  │ ← OpSyncNodeListPrefixes   │
+        │  └────────┬─────────┘                            │
+        │           ▼                                       │
+        │  ┌─────────────────┐  ┌────────────────┐         │
+        │  │ SyncDispatcher  │  │  SyncFanout    │         │
+        │  │ (load-balance)  │  │  Dispatch[N]   │         │
+        │  └────────┬────────┘  └────┬───────────┘         │
+        │           ▼                ▼                       │
+        │  ┌─────────────────────────────┐                  │
+        │  │       SyncTaskLedger        │                  │
+        │  │  taskID → record (LRU 10k)  │                  │
+        │  │  addr   → set[taskID]       │                  │
+        │  └─────────────────────────────┘                  │
+        └─────────┬─────────────────────────────────────────┘
+                  │ TCP : OpSyncNodeRunTask (Rule snapshot embedded)
+                  │       OpSyncNodeCancelTask
+                  │       OpSyncNodeListPrefixes
+                  ▼
+        ┌──────────────────────────────────────────────────┐
+        │              syncnode (worker)                    │
+        │                                                   │
+        │  TaskHandler.handleRunTask                         │
+        │    └─ Runner.TriggerWithRule(rule, taskID,        │
+        │           shardIdx, shardTotal, prefixes)         │
+        │         └─ executor.Task.ShardPrefixes            │
+        │            └─ ShouldKeep(key, idx, total, prefixes)│
+        │                                                   │
+        │  /admin/syncnode/{version,stat,reload}            │
+        │  /metrics (Prometheus)                            │
+        └──────────────────────────────────────────────────┘
+```
+
+## P2-§4 组件清单
+
+### 新增（master）
+
+| 文件 | 职责 |
+|---|---|
+| `master/sync_rule_store.go` | 规则 raft 持久化 + SyncRuleCache + recordTaskDispatch/Terminal |
+| `master/sync_rule_manager.go` | cron 引擎 + fireRule + dispatchHash/Prefix + buildRunTaskRequest |
+| `master/sync_rule_prefix_probe.go` | auto-mode prefix 探测 + 5-min TTL 缓存 |
+| `master/sync_rule_conflicts.go` | ValidateSyncRules（duplicate / overlap / cycle） |
+| `master/sync_task_ledger.go` | LRU 10k 双索引（taskID + addr） |
+| `master/sync_metrics.go` | 7 个 Prometheus series |
+| `master/api_service_sync_rule.go` | 7 个 /syncRule/* handler + /syncRule/trigger |
+| `master/api_service_sync_task.go` | 5 个 /syncTask/* handler |
+| `master/api_service_sync_node.go` | 4 个 /syncNode/{decommission,drain,restore,tasks} handler |
+
+### 删除（syncnode）
+
+| 文件 | 状态 |
+|---|---|
+| `syncnode/scheduler/` 整包 | 删 |
+| `syncnode/rules/handlers.go` + test | 删 |
+| `syncnode/rules/store_jsonfile.go` + test | 保留（编译依赖；运行时不写入） |
+| `syncnode/tasks/handlers.go` + test | 删 |
+| `syncnode/bolt/rule_store.go` | 保留 stub；不写入 |
+
+### 修改（syncnode）
+
+| 文件 | 修改要点 |
+|---|---|
+| `syncnode/task_handler.go` | 新增 `RunTaskRequest.Rule *proto.SyncRule` + handleRunTask 快路径 + handleListPrefixes |
+| `syncnode/tasks/runner.go` | 新增 `Runner.TriggerWithRule` + shardOverride.prefixes |
+| `syncnode/executor/executor.go` | 新增 `Task.ShardPrefixes []string` |
+| `syncnode/executor/shard.go` | `ShouldKeep` 新签名（多了 prefixes 参数） |
+| `syncnode/server.go` | 删除 scheduler 初始化 + rule/task handler 注册 |
+| `syncnode/reload.go` | 删除 rule reapply 分支 |
+| `syncnode/snapshot.go` | `ScheduledRules` 恒为 0 |
+
+## P2-§5 HTTP API（master）
+
+### 规则管理（8）
+
+| 方法 | 路径 | 描述 |
+|---|---|---|
+| POST | `/syncRule/create` | body: 扁平 SyncRuleConfig；server 注入 state/timestamps |
+| POST | `/syncRule/update` | 必须已存在；merge Config 到现有记录 |
+| POST | `/syncRule/delete?id=` | 删除 |
+| POST | `/syncRule/pause?id=` | state → paused |
+| POST | `/syncRule/resume?id=` | state → active |
+| GET  | `/syncRule/list[?state=]` | 列表 |
+| GET  | `/syncRule/get?id=` | 详情 |
+| POST | `/syncRule/trigger?id=` | 同步触发（绕开 cron） |
+
+### 任务管理（5）
+
+| 方法 | 路径 | 描述 |
+|---|---|---|
+| GET  | `/syncTask/list[?status=&ruleID=&owner=]` | 三维过滤 |
+| GET  | `/syncTask/get?id=` | 单个任务记录（含 owner、shard 信息） |
+| POST | `/syncTask/cancel?id=` | 取消（fanout 父任务会展开取消所有 shard） |
+| POST | `/syncTask/retry?id=` | 重新派发，新 taskID |
+| GET  | `/syncTask/export[?since=RFC3339]` | NDJSON 流 |
+
+### 节点管理（6，新增 4 个）
+
+| 方法 | 路径 | 描述 |
+|---|---|---|
+| POST | `/syncNode/add` | 已有 |
+| GET  | `/syncNode/list` | 已有 |
+| POST | `/syncNode/decommission?addr=&force=<bool>` | 下线节点 |
+| POST | `/syncNode/drain?addr=` | 清空节点任务但保留注册 |
+| POST | `/syncNode/restore?addr=` | draining → active |
+| GET  | `/syncNode/tasks?addr=[&status=]` | 列节点上的任务 |
+
+### 鉴权
+
+复用 `requireSyncAdminToken` 中间件（与 `/syncNode/add` 同等级）。空 token 放行（dev 默认）。
+
+### 错误码（proto.HTTPReply.Code）
+
+| 值 | 含义 |
+|---|---|
+| 0 | 成功 |
+| 1 | InternalError（包含 "not found"、"already exists"、其他未分类） |
+| 2 | ParamError（字段缺失、shardingStrategy 非法等） |
+| 4 | PersistenceByRaft（503，控制台退避重试） |
+| 1014-1016 | 规则冲突（duplicate / prefix overlap / cycle） |
+
+## P2-§6 Master ↔ syncnode 协议
+
+### Wire ops
+
+| Op | Hex | 方向 | 说明 |
+|---|---|---|---|
+| OpSyncNodeHeartbeat | 0x78 | master ↔ syncnode | 心跳 + 配额下发 |
+| OpSyncNodeRunTask | 0x79 | master → syncnode | **P2：Request 内嵌 `Rule` 快照** |
+| OpSyncNodeCancelTask | 0x7A | master → syncnode | 取消单个 taskID |
+| **OpSyncNodeListPrefixes** | **0x7B** | **master → syncnode** | **P2 新增：auto-prefix 探测** |
+
+### RunTaskRequest（P2 扩展）
+
+```go
+type RunTaskRequest struct {
+    TaskID   string                 `json:"taskId,omitempty"`
+    RuleID   string                 `json:"ruleId"`
+    Type     string                 `json:"type,omitempty"`
+    Rule     *proto.SyncRule        `json:"rule,omitempty"`     // P2: 全量快照
+    SubTask  *RunSubTaskInfo        `json:"subTask,omitempty"`
+    Override map[string]interface{} `json:"override,omitempty"`
+}
+
+type RunSubTaskInfo struct {
+    ParentTaskID string   `json:"parentTaskId"`
+    ShardIndex   int      `json:"shardIndex"`
+    ShardTotal   int      `json:"shardTotal"`
+    Prefixes     []string `json:"prefixes,omitempty"`              // P2-5: prefix 模式
+}
+```
+
+### ListPrefixes 请求/响应
+
+```go
+type SyncListPrefixesRequest struct {
+    Endpoint    SyncEndpointConfig `json:"endpoint"`
+    Prefix      string             `json:"prefix"`
+    Delimiter   string             `json:"delimiter,omitempty"`
+    MaxPrefixes int                `json:"maxPrefixes,omitempty"`
+}
+
+type SyncListPrefixesReply struct {
+    Prefixes []string `json:"prefixes"`
+    Err      string   `json:"err,omitempty"`
+}
+```
+
+## P2-§7 分片策略
+
+### `shardingStrategy: ""` / `"hash"`（默认）
+
+FNV-1a 哈希取模分片。`ShouldKeep(key, shardIdx, shardTotal, nil)` 走哈希分支。适合大量小文件、key 分布均匀的场景。
+
+- `shardTotal = min(parallelism, len(candidates))`
+- 每个 shard 通过 hash(key) % shardTotal 决定归属
+- 主任务 + N 个子任务记入 ledger
+
+### `shardingStrategy: "prefix"`
+
+operator 显式声明 `shardPrefixes: ["2024/", "2025/", "logs/"]`。`ShouldKeep(key, _, _, prefixes)` 走 `strings.HasPrefix` 分支，哈希不参与。
+
+- `len(buckets) = min(len(shardPrefixes), parallelism, len(candidates))`
+- 字典序贪心装箱（`bucketsForPrefix`）—— 7 个前缀 + parallelism=3 → [[1,4,7],[2,5],[3,6]]
+- 每个子任务 `SubTaskInfo.Prefixes = buckets[i]`
+- 适合数据按时间/租户/类型分目录的场景
+
+### `shardingStrategy: "auto"`
+
+master 在触发时探测一个候选节点，要求枚举 `src.prefix` 下的顶层目录。结果缓存 5 min（key = `ruleID + endpoint identity`）。
+
+- 探测异步：第一次 fire 退化为 hash 模式 + 启动探测；后续 fire 命中缓存使用 prefix 模式
+- 探测失败 → 退化 hash + `cfs_master_syncrule_auto_probe_fail` 计数
+- 缓存过期 → 下次 fire 重新探测
+- 适合数据布局未知 / 动态目录
+
+## P2-§8 节点生命周期
+
+```
+        ┌─────────┐
+        │ active  │ ← /syncNode/add
+        └────┬────┘
+             │ /syncNode/decommission?force=false
+             │ /syncNode/drain
+             ▼
+        ┌──────────┐
+        │ draining │
+        └────┬─────┘
+             │ all tasks done (force=false)
+             │ tasks force-cancelled (force=true)
+             │ /syncNode/restore (drain → active)
+             ▼
+       ┌────────┐
+       │removed │ (force=true decommission)
+       └────────┘
+```
+
+- `SyncDispatcher.Candidates()` 跳过 `State == Draining` 的节点（master/sync_dispatcher.go:271）
+- 状态走 raft（op 0x82），leader 切换不丢
+- Decommission `force=true` 时：标 draining → 调 drainSyncNodeTasks → raft delete 节点
+
+## P2-§9 Prometheus 指标
+
+| Series | 类型 | Labels | 说明 |
+|---|---|---|---|
+| `cfs_master_syncrule_total` | GaugeVec | state | 各状态规则数（active/paused/degraded） |
+| `cfs_master_syncrule_dispatch_total` | Counter | rule, strategy | 成功分发计数 |
+| `cfs_master_syncrule_dispatch_fail` | Counter | rule, reason | 失败计数（no_candidates / dispatch_n_err 等） |
+| `cfs_master_syncrule_shard_dispatch` | Counter | rule | 每分片一次 +1 |
+| `cfs_master_syncrule_auto_probe_fail` | Counter | rule, reason | auto-prefix 探测失败 |
+| `cfs_master_syncnode_state` | GaugeVec | addr, state | 节点状态（active/draining 各 0/1） |
+| `cfs_master_syncnode_drain_total` | Counter | addr, result | drain 调用计数（success/partial/failed） |
+
+## P2-§10 持久化布局
+
+### Master raft（rocksdb）
+
+| Key prefix | Op codes | 类型 |
+|---|---|---|
+| `#sr#<ruleID>` | 0x83/0x84/0x85 | proto.SyncRule JSON |
+| `#sn#<addr>` | 0x80/0x81/0x82 | syncNodeValue JSON（含 State） |
+
+### Master 内存（不持久化）
+
+- `SyncRuleCache`：map[id]*proto.SyncRule，leader 切换 reload
+- `SyncTaskLedger`：LRU 10k + addr 反向索引
+- `SyncRuleManager.prefixCache`：auto-mode 探测结果（5 min TTL）
+- `SyncDispatcher.taskOwner`：taskID → addr
+- `SyncFanout.parents`：parentTaskID → 子任务状态
+
+### Syncnode bolt（保留但不写规则桶）
+
+- `tasks_active` / `tasks_history` / `in_progress`：本地任务断点续传仍走 bolt
+- `rules`：桶仍在但不写入（兼容旧版 sync.json 启动）
+
+## P2-§11 集成测试覆盖
+
+`syncnode/test/` 已迁移到 master API。关键变化：
+
+- `lib/master.sh`（新增）：24 个 wrapper 函数 + `wait_for_task_terminal` / `wait_for_rule_visible` 轮询助手
+- `lib/fixtures.sh::create_rule` / `delete_rule_silent` / `trigger_and_wait` → master 路径
+- `smoke/03_rule_basic.sh` / `functional/10_rule_crud.sh` / `functional/11_rule_conflicts.sh` / `functional/32_cancel_queued.sh` → 全部迁移
+- `functional/35_prefix_sharding.sh`（新增）：端到端验证显式 prefix 分片
+
+新增环境变量 `SYNCNODE_FLEET_SIZE`（>1 时启用多节点分发断言）。
+
+## P2-§12 控制台对接要点
+
+1. 控制台只需对接 master，无需感知 syncnode 节点数
+2. 创建规则用 flat shape，省略 `config` 嵌套层：
+
+   ```json
+   {
+     "id": "r1", "type": "sync", "schedule": "*/5 * * * * *",
+     "src": {"kind": "local", "path": "/srv/data/"},
+     "dst": {"kind": "s3", "endpoint": "...", "bucket": "backup"},
+     "shardingStrategy": "prefix",
+     "shardPrefixes": ["2024/", "2025/", "logs/"],
+     "parallelism": 3
+   }
+   ```
+
+3. 503 错误是 raft 不可用的信号 —— 控制台需要退避重试（指数 backoff 起 1s，max 30s）
+4. 1014-1016 是规则冲突 —— 报告给操作员，不该自动重试
+5. 任务取消是异步的：`/syncTask/cancel` 立即返回 `status=cancelling`，需要轮询 `/syncTask/get` 看终态
+6. fanout 父任务的 `/syncTask/get` 返回的 record `Owner` 为空、`ShardTotal > 0`；要看每个 shard 的 owner，遍历 `/syncTask/list?ruleID=<id>` 中 `taskID` 以 `<parentID>/` 开头的子记录
+
+## P2-§13 已知限制
+
+1. **prefix `auto` 探测的首次 fire 是 hash 模式**：缓存冷起需要一次任务跑完才能填充。多数场景可接受（cron 每 N 分钟 fire 一次，第二次就走 prefix）。如果需要立即生效，operator 应显式声明 `shardPrefixes`。
+2. **prefix 桶装箱算法是字典序贪心**：可能出现不均衡（一个桶塞了大目录，另一个塞了空目录）。v2 可加 size hint。
+3. **任务 ledger 是 LRU 10k**：长时间历史归档需要靠 Prometheus + 日志，master 不当持久化审计存储。
+4. **Raft leader 切换瞬间可能双触发**：旧 leader 还没收到下台消息时 cron 可能触发一次 + 新 leader 同步 metadata 后 cron 又触发一次。任务 ID 含时间戳，幂等执行可吸收。
+5. **`sync.json` 里的 `rules` 字段被忽略**：reload log 提示 "ignored — master owns rule store"。Operator 改 master `/syncRule/*` API。
+
+## P2-§14 Last Updated
+
+`2026-05-14` — P2 cutover landed. Commits `6ce0ba093` → `0fa6bf16b`.

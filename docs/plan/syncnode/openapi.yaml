@@ -1,22 +1,22 @@
 openapi: 3.0.3
 info:
-  title: CubeFS syncnode Admin API
-  version: "1.0.0"
+  title: CubeFS syncnode — Local Admin API (P2)
+  version: "2.0.0"
   description: |
-    管理面 HTTP 接口，控制台对接使用。
+    Post-P2 syncnode HTTP surface. The rule + task admin endpoints
+    have moved to master (see docs/plan/master/sync_openapi.yaml).
+    This document only covers what stays on the syncnode itself —
+    three node-local diagnostic endpoints.
 
-    - 所有路径（除 `/admin/sync/task/export`）返回统一信封 `{code, msg, data}`。
-    - `code = 0` 为成功；非 0 见 `components.schemas.ErrorCode` 描述。
-    - HTTP 状态码与错误类别对齐：`4xx` 客户端错误，`5xx` 服务端故障。
-    - 当 syncnode 启动配置了 `adminToken` 时，所有接口需带 `Authorization: Bearer <token>`
-      或 `X-Sync-Token: <token>`；未配置时为放行模式（dev 默认）。
+    Console + ops talk to master. Operators only hit syncnode when
+    SSH-debugging a single node.
 
   contact:
     name: CubeFS Sync Team
 
 servers:
   - url: "http://{host}:{port}"
-    description: syncnode 管理端口（默认 17911）
+    description: syncnode admin HTTP port (default 17911)
     variables:
       host:
         default: "127.0.0.1"
@@ -24,23 +24,18 @@ servers:
         default: "17911"
 
 tags:
-  - name: node
-    description: 节点级控制（版本、运行时快照、热加载）
-  - name: rules
-    description: 同步规则 CRUD 与状态切换
-  - name: tasks
-    description: 任务触发、查询、取消、重试、历史导出
+  - name: diagnostics
+    description: 节点级诊断
 
 security:
   - BearerAuth: []
   - SyncTokenAuth: []
 
 paths:
-  # ────────────────── node ──────────────────
   /admin/syncnode/version:
     get:
-      tags: [node]
-      summary: 获取版本与构建信息
+      tags: [diagnostics]
+      summary: 版本与构建信息
       operationId: getVersion
       responses:
         "200":
@@ -56,8 +51,11 @@ paths:
 
   /admin/syncnode/stat:
     get:
-      tags: [node]
-      summary: 获取运行时快照
+      tags: [diagnostics]
+      summary: 运行时快照
+      description: |
+        scheduledRules 在 P2 后恒为 0（master 是 cron 主），保留在响应
+        体里只为不破坏控制台 schema。其他字段反映本节点实际运行状态。
       operationId: getStat
       responses:
         "200":
@@ -73,11 +71,14 @@ paths:
 
   /admin/syncnode/reload:
     post:
-      tags: [node]
+      tags: [diagnostics]
       summary: 触发 sync.json 热加载
       description: |
-        重新读取并应用 sync.json 配置文件。失败次数会累计到 `stat.reloadFailuresTotal`。
-        与 SIGHUP 信号等价。
+        Reload re-reads sync.json + applies non-rule fields
+        (concurrency, bandwidth limits, etc.). The `rules:[...]` block,
+        if present, is now IGNORED — master is the rule authority.
+        Log line announces "ignored — master owns rule store" so
+        operators see the deprecation.
       operationId: reloadConfig
       responses:
         "200":
@@ -93,496 +94,31 @@ paths:
               schema:
                 $ref: "#/components/schemas/Response"
 
-  # ────────────────── rules ──────────────────
-  /admin/sync/rule/list:
-    get:
-      tags: [rules]
-      summary: 列出全部规则
-      operationId: listRules
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/Response"
-                  - properties:
-                      data:
-                        type: array
-                        items:
-                          $ref: "#/components/schemas/Rule"
-
-  /admin/sync/rule/get:
-    get:
-      tags: [rules]
-      summary: 查询单条规则
-      operationId: getRule
-      parameters:
-        - $ref: "#/components/parameters/RuleIDQuery"
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/Response"
-                  - properties:
-                      data:
-                        $ref: "#/components/schemas/Rule"
-        "404":
-          $ref: "#/components/responses/NotFound"
-
-  /admin/sync/rule/create:
-    post:
-      tags: [rules]
-      summary: 创建规则
-      description: |
-        请求体即 `RuleConfig`。后端会执行冲突校验（prefix overlap / 重复规则 /
-        cycle sync），冲突时返回 409 + 错误码 1014/1015/1016。
-      operationId: createRule
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/RuleConfig"
-            example:
-              $ref: "#/components/examples/RuleConfigExample/value"
-      responses:
-        "200":
-          description: OK（已入库的 Rule）
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/Response"
-                  - properties:
-                      data:
-                        $ref: "#/components/schemas/Rule"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "409":
-          $ref: "#/components/responses/Conflict"
-
-  /admin/sync/rule/update:
-    post:
-      tags: [rules]
-      summary: 更新规则（id 必须已存在）
-      operationId: updateRule
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/RuleConfig"
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/Response"
-                  - properties:
-                      data:
-                        $ref: "#/components/schemas/Rule"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-
-  /admin/sync/rule/delete:
-    post:
-      tags: [rules]
-      summary: 删除规则
-      operationId: deleteRule
-      parameters:
-        - $ref: "#/components/parameters/RuleIDQuery"
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/Response"
-                  - properties:
-                      data:
-                        type: object
-                        properties:
-                          id:
-                            type: string
-        "404":
-          $ref: "#/components/responses/NotFound"
-
-  /admin/sync/rule/pause:
-    post:
-      tags: [rules]
-      summary: 暂停规则（state → paused）
-      operationId: pauseRule
-      parameters:
-        - $ref: "#/components/parameters/RuleIDQuery"
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/Response"
-                  - properties:
-                      data:
-                        $ref: "#/components/schemas/Rule"
-        "404":
-          $ref: "#/components/responses/NotFound"
-
-  /admin/sync/rule/resume:
-    post:
-      tags: [rules]
-      summary: 恢复规则（state → active）
-      operationId: resumeRule
-      parameters:
-        - $ref: "#/components/parameters/RuleIDQuery"
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/Response"
-                  - properties:
-                      data:
-                        $ref: "#/components/schemas/Rule"
-        "404":
-          $ref: "#/components/responses/NotFound"
-
-  # ────────────────── tasks ──────────────────
-  /admin/sync/task/trigger:
-    post:
-      tags: [tasks]
-      summary: 手动触发规则一次（type 由规则自身决定）
-      operationId: triggerTask
-      parameters:
-        - $ref: "#/components/parameters/RuleIDQuery"
-        - $ref: "#/components/parameters/WaitQuery"
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/Response"
-                  - properties:
-                      data:
-                        $ref: "#/components/schemas/Record"
-        "404":
-          $ref: "#/components/responses/NotFound"
-
-  /admin/sync/task/save:
-    post:
-      tags: [tasks]
-      summary: 触发 sync 类型任务（要求规则 type=sync）
-      operationId: triggerSave
-      parameters:
-        - $ref: "#/components/parameters/RuleIDQuery"
-        - $ref: "#/components/parameters/WaitQuery"
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/Response"
-                  - properties:
-                      data:
-                        $ref: "#/components/schemas/Record"
-        "400":
-          description: 规则类型不匹配（code=2003）
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response"
-        "404":
-          $ref: "#/components/responses/NotFound"
-
-  /admin/sync/task/load:
-    post:
-      tags: [tasks]
-      summary: 触发 load 类型任务（要求规则 type=load）
-      operationId: triggerLoad
-      parameters:
-        - $ref: "#/components/parameters/RuleIDQuery"
-        - $ref: "#/components/parameters/WaitQuery"
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/Response"
-                  - properties:
-                      data:
-                        $ref: "#/components/schemas/Record"
-        "400":
-          description: 规则类型不匹配（code=2003）
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response"
-        "404":
-          $ref: "#/components/responses/NotFound"
-
-  /admin/sync/task/list:
-    get:
-      tags: [tasks]
-      summary: 列出任务记录（可按状态过滤）
-      operationId: listTasks
-      parameters:
-        - name: status
-          in: query
-          required: false
-          description: 按状态过滤；省略返回全部
-          schema:
-            $ref: "#/components/schemas/TaskStatus"
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/Response"
-                  - properties:
-                      data:
-                        type: array
-                        items:
-                          $ref: "#/components/schemas/Record"
-
-  /admin/sync/task/get:
-    get:
-      tags: [tasks]
-      summary: 查询单条任务记录
-      operationId: getTask
-      parameters:
-        - $ref: "#/components/parameters/TaskIDQuery"
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/Response"
-                  - properties:
-                      data:
-                        $ref: "#/components/schemas/Record"
-        "404":
-          $ref: "#/components/responses/NotFound"
-
-  /admin/sync/task/cancel:
-    post:
-      tags: [tasks]
-      summary: 取消任务（异步生效）
-      description: |
-        立即返回 `{taskID, status: "cancelling"}`。执行器观测到 ctx.Done 后才
-        会把任务状态翻转为 `cancelled`，控制台需要轮询 `/get` 或 `/list` 确认终态。
-      operationId: cancelTask
-      parameters:
-        - $ref: "#/components/parameters/TaskIDQuery"
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/Response"
-                  - properties:
-                      data:
-                        type: object
-                        properties:
-                          taskID:
-                            type: string
-                          status:
-                            type: string
-                            example: cancelling
-        "404":
-          $ref: "#/components/responses/NotFound"
-
-  /admin/sync/task/retry:
-    post:
-      tags: [tasks]
-      summary: 重试失败/取消的任务
-      description: 新建 taskID 重跑，原记录保留。
-      operationId: retryTask
-      parameters:
-        - $ref: "#/components/parameters/TaskIDQuery"
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/Response"
-                  - properties:
-                      data:
-                        $ref: "#/components/schemas/Record"
-        "404":
-          $ref: "#/components/responses/NotFound"
-
-  /admin/sync/task/export:
-    get:
-      tags: [tasks]
-      summary: 导出任务历史（流式 NDJSON）
-      description: |
-        **不走标准信封**。响应体为 `application/x-ndjson`，每行一个 `Record`
-        JSON 对象。客户端可逐行解析或直接落盘。
-      operationId: exportTaskHistory
-      parameters:
-        - name: since
-          in: query
-          required: false
-          description: 仅导出 doneAt 晚于该时间戳的记录（RFC3339）
-          schema:
-            type: string
-            format: date-time
-            example: "2026-05-14T00:00:00Z"
-      responses:
-        "200":
-          description: NDJSON 流
-          headers:
-            Content-Disposition:
-              schema:
-                type: string
-                example: 'attachment; filename="task-history.jsonl"'
-          content:
-            application/x-ndjson:
-              schema:
-                type: string
-                description: 每行一个 Record JSON
-        "400":
-          description: since 格式非法（code=2003）
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Response"
-
-# ────────────────── components ──────────────────
 components:
   securitySchemes:
     BearerAuth:
       type: http
       scheme: bearer
-      description: |
-        `Authorization: Bearer <admin-token>`。当 syncnode 启动未配置
-        `adminToken` 时所有请求免鉴权。
+      description: "`Authorization: Bearer <adminToken>`"
     SyncTokenAuth:
       type: apiKey
       in: header
       name: X-Sync-Token
-      description: |
-        替代方案，与 Bearer 二选一，方便部分网关回填 Header。
-
-  parameters:
-    RuleIDQuery:
-      name: id
-      in: query
-      required: true
-      description: 规则 ID
-      schema:
-        type: string
-    TaskIDQuery:
-      name: id
-      in: query
-      required: true
-      description: 任务 ID
-      schema:
-        type: string
-    WaitQuery:
-      name: wait
-      in: query
-      required: false
-      description: 为 true 时阻塞到终态（受 HTTP 超时约束）
-      schema:
-        type: boolean
-        default: false
-
-  responses:
-    BadRequest:
-      description: 请求体或字段非法
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/Response"
-          example:
-            code: 2002
-            msg: "missing required field: id"
-    NotFound:
-      description: 资源不存在
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/Response"
-          example:
-            code: 2004
-            msg: "rule not found: r-001"
-    Conflict:
-      description: 资源冲突或规则冲突（重复、prefix overlap、cycle sync）
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/Response"
-          example:
-            code: 1015
-            msg: "duplicate rule pair (rules: [r-001 r-002])"
 
   schemas:
-    # ─── 通用信封 ───
     Response:
       type: object
       required: [code, msg]
       properties:
         code:
           type: integer
-          description: 业务错误码；0 表示成功。详见 ErrorCode 表。
           example: 0
         msg:
           type: string
           example: OK
         data:
-          description: 业务负载；错误时通常为 null
           nullable: true
 
-    ErrorCode:
-      type: integer
-      description: |
-        ## 错误码表
-        | 范围 | 含义 |
-        |---|---|
-        | 0 | 成功 |
-        | 1014 | rule prefix 重叠 |
-        | 1015 | 重复规则对 |
-        | 1016 | 规则间形成同步环路 |
-        | 2001 | 请求体格式错 |
-        | 2002 | 必填字段缺失 |
-        | 2003 | 字段值非法 |
-        | 2004 | 资源不存在 |
-        | 2005 | 资源冲突（重复 id 等） |
-        | 2006 | 未授权 |
-        | 2007 | 限流 |
-        | 2008 | 方法不被支持 |
-        | 2010 | 服务端内部错 |
-
-    # ─── 节点级 ───
     VersionInfo:
       type: object
       properties:
@@ -597,7 +133,6 @@ components:
           type: string
         nodeAddress:
           type: string
-          example: "10.0.0.1:17910"
 
     StatSnapshot:
       type: object
@@ -606,7 +141,6 @@ components:
           type: string
         uptimeSeconds:
           type: number
-          format: double
         concurrentTasks:
           type: integer
           format: int64
@@ -615,287 +149,8 @@ components:
           format: int64
         scheduledRules:
           type: integer
+          description: "Always 0 post-P2 — master is the cron authority."
         runningTasks:
           type: integer
         boltdbHealthy:
           type: boolean
-
-    # ─── 规则 ───
-    RuleState:
-      type: string
-      enum: [active, paused, degraded]
-      description: |
-        - active：scheduler 会按 cron 触发
-        - paused：操作员主动暂停
-        - degraded：前置条件失效（如 vol 不存在）被自动降级
-
-    RuleType:
-      type: string
-      enum: [sync, load, check]
-
-    EndpointConfig:
-      type: object
-      description: |
-        按 `kind` 取不同字段：
-        - `cfs`：vol、path
-        - `s3`：endpoint、region、bucket、prefix、storageClass、accessKeyEnv、secretKeyEnv
-        - `local`：path、bufferSizeKiB、concurrency、directIO、fadviseSequential
-      properties:
-        kind:
-          type: string
-          enum: [cfs, s3, local]
-        vol:
-          type: string
-        path:
-          type: string
-        bucket:
-          type: string
-        prefix:
-          type: string
-        endpoint:
-          type: string
-        region:
-          type: string
-        storageClass:
-          type: string
-        accessKeyEnv:
-          type: string
-          description: 按端点级覆盖的 access key 环境变量名（覆盖 s3Defaults）
-        secretKeyEnv:
-          type: string
-          description: 按端点级覆盖的 secret key 环境变量名（覆盖 s3Defaults）
-        bufferSizeKiB:
-          type: integer
-        concurrency:
-          type: integer
-        directIO:
-          type: boolean
-        fadviseSequential:
-          type: boolean
-      required: [kind]
-
-    FilterConfig:
-      type: object
-      description: 文件过滤；size/age 使用人类可读单位（"1MB"、"30s"）
-      properties:
-        include:
-          type: array
-          items:
-            type: string
-        exclude:
-          type: array
-          items:
-            type: string
-        minSize:
-          type: string
-        maxSize:
-          type: string
-        minAge:
-          type: string
-        maxAge:
-          type: string
-
-    RetentionConfig:
-      type: object
-      properties:
-        pattern:
-          type: string
-        keepLast:
-          type: integer
-        keepWithin:
-          type: string
-
-    RuleConfig:
-      type: object
-      required: [id, type, src, dst]
-      properties:
-        id:
-          type: string
-        type:
-          $ref: "#/components/schemas/RuleType"
-        schedule:
-          type: string
-          description: 6 字段 cron 表达式（含秒）
-        src:
-          $ref: "#/components/schemas/EndpointConfig"
-        dst:
-          $ref: "#/components/schemas/EndpointConfig"
-        filter:
-          $ref: "#/components/schemas/FilterConfig"
-        retention:
-          $ref: "#/components/schemas/RetentionConfig"
-        afterCopy:
-          type: string
-          enum: [keep, delete]
-        downloadStrategy:
-          type: string
-          enum: [temp_rename, direct]
-        onMismatch:
-          type: string
-          enum: [alert, overwrite, skip, auto_fix]
-        sampleStrategy:
-          type: string
-          enum: [head, random, tail]
-        sampleRate:
-          type: number
-          format: double
-        bandwidthLimitMBps:
-          type: integer
-          description: 本节点带宽上限（MBps）
-        aggregateBandwidthLimitMBps:
-          type: integer
-          description: 集群级总带宽配额；master 切分后下发各节点。0=不限。
-        parallelism:
-          type: integer
-        shardingStrategy:
-          type: string
-
-    Rule:
-      type: object
-      description: 规则运行时视图：`RuleConfig` + state/timestamps + lastRun 摘要
-      properties:
-        config:
-          $ref: "#/components/schemas/RuleConfig"
-        state:
-          $ref: "#/components/schemas/RuleState"
-        createdAt:
-          type: string
-          format: date-time
-        updatedAt:
-          type: string
-          format: date-time
-        lastRunAt:
-          type: string
-          format: date-time
-        lastRunStatus:
-          type: string
-          example: done
-        lastRunError:
-          type: string
-
-    # ─── 任务 ───
-    TaskStatus:
-      type: string
-      enum: [queued, running, succeeded, failed, cancelled]
-
-    Progress:
-      type: object
-      properties:
-        filesTotal:
-          type: integer
-          format: int64
-        filesDone:
-          type: integer
-          format: int64
-        filesSkipped:
-          type: integer
-          format: int64
-        filesFailed:
-          type: integer
-          format: int64
-        bytesTotal:
-          type: integer
-          format: int64
-        bytesDone:
-          type: integer
-          format: int64
-        throughputMBps:
-          type: number
-          format: double
-
-    MismatchReason:
-      type: string
-      enum: [missing_dst, missing_src, size_mismatch, etag_mismatch, src_newer]
-
-    Mismatch:
-      type: object
-      description: check 任务发现的不一致项
-      properties:
-        key:
-          type: string
-        reason:
-          $ref: "#/components/schemas/MismatchReason"
-        srcSize:
-          type: integer
-          format: int64
-        dstSize:
-          type: integer
-          format: int64
-        srcETag:
-          type: string
-        dstETag:
-          type: string
-
-    Record:
-      type: object
-      description: 任务执行记录
-      properties:
-        taskID:
-          type: string
-        ruleID:
-          type: string
-          description: 临时触发任务可能为空
-        type:
-          $ref: "#/components/schemas/RuleType"
-        status:
-          $ref: "#/components/schemas/TaskStatus"
-        startedAt:
-          type: string
-          format: date-time
-        doneAt:
-          type: string
-          format: date-time
-          description: 仅终态时填充
-        error:
-          type: string
-          description: 仅 failed 状态填充
-        progress:
-          $ref: "#/components/schemas/Progress"
-        mismatches:
-          type: array
-          description: 仅 check 任务返回
-          items:
-            $ref: "#/components/schemas/Mismatch"
-
-  # ─── 通用示例 ───
-  examples:
-    RuleConfigExample:
-      summary: 本地 → S3 同步规则
-      value:
-        id: r-local-to-s3
-        type: sync
-        schedule: "0 */5 * * * *"
-        src:
-          kind: local
-          path: /srv/data/
-          bufferSizeKiB: 1024
-          concurrency: 4
-        dst:
-          kind: s3
-          endpoint: https://s3.cn-north-1.amazonaws.com.cn
-          region: cn-north-1
-          bucket: backup
-          prefix: cubefs/
-          storageClass: STANDARD_IA
-          accessKeyEnv: AWS_ACCESS_KEY_ID
-          secretKeyEnv: AWS_SECRET_ACCESS_KEY
-        filter:
-          include: ["*.log", "*.csv"]
-          exclude: [".tmp/*"]
-          minSize: "1KB"
-          maxSize: "100MB"
-          minAge: "0s"
-          maxAge: "30d"
-        retention:
-          pattern: ""
-          keepLast: 10
-          keepWithin: "7d"
-        afterCopy: keep
-        downloadStrategy: temp_rename
-        onMismatch: alert
-        sampleStrategy: head
-        sampleRate: 0.0
-        bandwidthLimitMBps: 100
-        aggregateBandwidthLimitMBps: 0
-        parallelism: 8
-        shardingStrategy: ""
