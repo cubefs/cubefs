@@ -114,6 +114,12 @@ func (c *Config) validate() error {
 	if c.Endpoint == "" {
 		return fmt.Errorf("%w: missing Endpoint", backend.ErrConfigInvalid)
 	}
+	// Normalize bare hostnames: AWS SDK v2 requires BaseEndpoint to be a
+	// full URI. Add https:// when no scheme is present so callers don't have
+	// to include the scheme explicitly.
+	if !strings.HasPrefix(c.Endpoint, "http://") && !strings.HasPrefix(c.Endpoint, "https://") {
+		c.Endpoint = "https://" + c.Endpoint
+	}
 	if c.Region == "" {
 		return fmt.Errorf("%w: missing Region", backend.ErrConfigInvalid)
 	}
