@@ -86,6 +86,8 @@ func (b *backendBuilder) Build(_ context.Context, ep *spec.EndpointConfig) (back
 		endpoint := firstNonEmpty(ep.Endpoint, s3Defaults.Endpoint)
 		region := firstNonEmpty(ep.Region, s3Defaults.Region)
 		storageClass := firstNonEmpty(ep.StorageClass, s3Defaults.StorageClass)
+		accessKeyEnv := firstNonEmpty(ep.AccessKeyEnv, s3Defaults.AccessKeyEnv)
+		secretKeyEnv := firstNonEmpty(ep.SecretKeyEnv, s3Defaults.SecretKeyEnv)
 		return b.pool.Acquire(backend.PoolKey{
 			Kind:     "s3",
 			Endpoint: endpoint,
@@ -95,8 +97,8 @@ func (b *backendBuilder) Build(_ context.Context, ep *spec.EndpointConfig) (back
 			Endpoint:     endpoint,
 			Region:       region,
 			Bucket:       ep.Bucket,
-			AccessKeyEnv: s3Defaults.AccessKeyEnv,
-			SecretKeyEnv: s3Defaults.SecretKeyEnv,
+			AccessKeyEnv: accessKeyEnv,
+			SecretKeyEnv: secretKeyEnv,
 			StorageClass: storageClass,
 		})
 	case "local":

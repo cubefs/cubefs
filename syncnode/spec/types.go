@@ -58,11 +58,15 @@ type EndpointConfig struct {
 	Vol  string `json:"vol"`
 	Path string `json:"path"`
 	// s3 fields
-	Bucket       string `json:"bucket"`
-	Prefix       string `json:"prefix"`
-	Endpoint     string `json:"endpoint"`
-	Region       string `json:"region"`
-	StorageClass string `json:"storageClass"`
+	Bucket        string `json:"bucket"`
+	Prefix        string `json:"prefix"`
+	Endpoint      string `json:"endpoint"`
+	Region        string `json:"region"`
+	StorageClass  string `json:"storageClass"`
+	// s3 credential override — names of env vars that hold the access/secret keys.
+	// When set, these take precedence over the global s3Defaults in sync.json.
+	AccessKeyEnv string `json:"accessKeyEnv"`
+	SecretKeyEnv string `json:"secretKeyEnv"`
 	// local fields (any host-mounted POSIX path)
 	BufferSizeKiB     int  `json:"bufferSizeKiB"`
 	Concurrency       int  `json:"concurrency"`
