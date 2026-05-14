@@ -20,3 +20,10 @@ java/src/main/resources/*.so
 /cover.output
 /cubefs_unittest.output
 .version
+
+# syncnode integration test harness — operator-local files.
+# env.sh is copied from env.example.sh and holds tokens / cluster
+# addresses; artifacts/ + *.log are produced by run.sh.
+syncnode/test/env.sh
+syncnode/test/artifacts/
+syncnode/test/*.log
