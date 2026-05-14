@@ -218,6 +218,13 @@ type Cluster struct {
 	// then update the cache. Reset on leader switch by master_manager's
 	// loadMetadata.
 	syncRuleCache *SyncRuleCache
+
+	// syncRuleMgr is the master-side cron + dispatch engine for sync
+	// rules (Phase P2-3). The manager Start/Stop pair is driven by raft
+	// leader gain/loss in master_manager.go (Phase 6 wires the call —
+	// Phase 3 only constructs the manager so admin handlers can call
+	// Register/Unregister without nil checks).
+	syncRuleMgr *SyncRuleManager
 }
 
 type cTask struct {
@@ -523,6 +530,8 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.syncFailover = NewSyncFailover(c, c.syncDispatcher)
 	c.syncQuota = NewSyncQuotaCalculator(c)
 	c.syncFanout = NewSyncFanout(c.syncDispatcher)
+	c.syncRuleCache = NewSyncRuleCache()
+	c.syncRuleMgr = NewSyncRuleManager(c)
 	// SEC1: install the /syncNode/* admin token from master config
 	// (key "syncAdminToken"). Empty value = middleware passthrough,
 	// preserving zero-config dev/test behavior; operators opt in by
