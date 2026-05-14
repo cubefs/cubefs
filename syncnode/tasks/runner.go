@@ -308,6 +308,39 @@ func (r *Runner) TriggerAs(ctx context.Context, ruleID string, wantType executor
 	return r.triggerRule(ctx, rule, "", nil, wait)
 }
 
+// TriggerWithRule is the P2-6 master-driven entry point. The master
+// ships the full SyncRule snapshot in the OpSyncNodeRunTask payload,
+// so the syncnode does NOT need a local rule lookup — this path
+// bypasses r.rules entirely and consumes the supplied rule directly.
+//
+// taskID is honoured verbatim when non-empty (master's task ledger
+// keys by exactly this id). subtask carries the optional fan-out
+// descriptor: shardIndex / shardTotal / prefixes — all passed through
+// to executor.Task. nil sub = single-task run.
+//
+// Wait=true blocks until the task reaches a terminal status (or ctx is
+// done). The syncnode master loop typically uses wait=false so the TCP
+// reply is fast; the executor reports the terminal state separately
+// via the master responder hook.
+func (r *Runner) TriggerWithRule(ctx context.Context, rule *rules.Rule, taskID string,
+	shardIndex, shardTotal int, prefixes []string, wait bool,
+) (*Record, error) {
+	if rule == nil {
+		return nil, errors.New("nil rule")
+	}
+	if rule.Config.ID == "" {
+		return nil, errors.New("rule has empty ID")
+	}
+	var sub *shardOverride
+	if shardTotal > 0 || len(prefixes) > 0 {
+		if shardTotal > 0 && (shardIndex < 0 || shardIndex >= shardTotal) {
+			return nil, fmt.Errorf("shardIndex %d out of range [0,%d)", shardIndex, shardTotal)
+		}
+		sub = &shardOverride{index: shardIndex, total: shardTotal, prefixes: prefixes}
+	}
+	return r.triggerRule(ctx, rule, taskID, sub, wait)
+}
+
 // Cancel signals the named task to stop. Covers tasks in any phase:
 //
 //   - QUEUED   : context cancel makes runAfterWait abort before
@@ -357,10 +390,13 @@ func (r *Runner) Retry(ctx context.Context, taskID string) (*Record, error) {
 
 // shardOverride carries the (index, total) shard descriptor through
 // triggerRule so the same constructor handles both regular Trigger and
-// the P1-7 fan-out path. nil means "no override".
+// the P1-7 fan-out path. nil means "no override". P2-5 added Prefixes
+// for prefix-mode sharding — non-empty Prefixes flips executor.ShouldKeep
+// to literal-prefix match and bypasses hash math.
 type shardOverride struct {
-	index int
-	total int
+	index    int
+	total    int
+	prefixes []string
 }
 
 // triggerRule is the shared core for Trigger / TriggerAs / Retry /
@@ -394,6 +430,9 @@ func (r *Runner) triggerRule(ctx context.Context, rule *rules.Rule, newID string
 	if shard != nil && shard.total > 0 {
 		task.ShardIndex = shard.index
 		task.ShardTotal = shard.total
+	}
+	if shard != nil && len(shard.prefixes) > 0 {
+		task.ShardPrefixes = shard.prefixes
 	}
 
 	// Concurrency gate (FIX C). Decide on admission BEFORE persisting a
@@ -721,7 +760,6 @@ func (r *Runner) Close() error {
 	r.wg.Wait()
 	return nil
 }
-
 
 // On ctx cancellation the task keeps running; only explicit Runner.Cancel
 // stops it.

@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/syncnode/rules"
 	"github.com/cubefs/cubefs/syncnode/tasks"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -46,6 +47,15 @@ type runnerAPI interface {
 type subTaskRunner interface {
 	TriggerSubTask(ctx context.Context, ruleID, parentTaskID string,
 		shardIndex, shardTotal int, wait bool) (*tasks.Record, error)
+}
+
+// ruleAwareRunner is the P2-6 fan-out hook that consumes the master-
+// shipped rule snapshot directly, bypassing the local rule store. The
+// production *tasks.Runner satisfies it via TriggerWithRule; tests can
+// stub via runnerAPI alone if they don't exercise this path.
+type ruleAwareRunner interface {
+	TriggerWithRule(ctx context.Context, rule *rules.Rule, taskID string,
+		shardIndex, shardTotal int, prefixes []string, wait bool) (*tasks.Record, error)
 }
 
 // masterResponder is the slim contract TaskHandler needs from SyncMasterClient
@@ -280,6 +290,12 @@ func (h *TaskHandler) HandlePacket(ctx context.Context, p *proto.Packet) *proto.
 // envelope, pulls the RunTaskRequest out, and triggers the rule asynchronously
 // via Runner.Trigger(wait=false). On any decode / validation / trigger failure
 // we nack with the error message so the master surfaces it.
+//
+// P2-6 fast path: when req.Rule != nil the master shipped the full rule
+// snapshot — go straight to TriggerWithRule, skipping the local rule
+// store lookup entirely. This is the only path master uses post-cutover;
+// the legacy RuleID-only path is kept for backward compat with older
+// callers but is no longer exercised by the master scheduler.
 func (h *TaskHandler) handleRunTask(ctx context.Context, p *proto.Packet) *proto.Packet {
 	h.runTaskTotal.Add(1)
 
@@ -287,13 +303,34 @@ func (h *TaskHandler) handleRunTask(ctx context.Context, p *proto.Packet) *proto
 	if err != nil {
 		return errorReply(p, fmt.Errorf("decode run task: %w", err))
 	}
-	if req.RuleID == "" {
-		return errorReply(p, errors.New("missing ruleID in RunTaskRequest"))
+	if req.RuleID == "" && req.Rule == nil {
+		return errorReply(p, errors.New("missing ruleID and rule snapshot in RunTaskRequest"))
 	}
 
-	// Use a fresh background context: the inbound packet's ctx represents
-	// "stop reading more packets on this connection" — it must NOT cancel
-	// the spawned task. Cancellation is explicit via OpSyncNodeCancelTask.
+	// P2-6 fast path: master shipped the rule snapshot. Use it directly.
+	if req.Rule != nil {
+		rar, ok := h.runner.(ruleAwareRunner)
+		if !ok {
+			return errorReply(p, fmt.Errorf(
+				"rule-aware dispatch unsupported by runner: rule=%q", req.Rule.ID()))
+		}
+		var shardIdx, shardTotal int
+		var prefixes []string
+		if req.SubTask != nil {
+			shardIdx = req.SubTask.ShardIndex
+			shardTotal = req.SubTask.ShardTotal
+			prefixes = req.SubTask.Prefixes
+		}
+		if _, err := rar.TriggerWithRule(context.Background(), req.Rule, req.TaskID,
+			shardIdx, shardTotal, prefixes, false); err != nil {
+			return errorReply(p, fmt.Errorf("trigger rule %q (snapshot path): %w", req.Rule.ID(), err))
+		}
+		return okReply(p)
+	}
+
+	// Legacy path: master sent only RuleID; syncnode looks up by ID
+	// in its local store. Retained for pre-P2 callers + tests that
+	// don't yet build a rule snapshot.
 	//
 	// P1-7: when SubTask is set the master has split the rule into a
 	// shard fan-out; route through TriggerSubTask so the executor.Task

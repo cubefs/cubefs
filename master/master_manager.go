@@ -83,6 +83,13 @@ func (m *Server) handleLeaderChange(leader uint64) {
 		m.cluster.lcMgr.startLcScanHandleLeaderChange()
 		m.cluster.flashManMgr.startFlashScanHandleLeaderChange()
 		m.cluster.followerReadManager.reSet()
+		// P2-6: master is now the authoritative scheduler for sync
+		// rules. loadMetadata above already populated the rule cache
+		// from raft; arm the cron entries here. Stop+rebuild on lose-
+		// leader below symmetrically clears state.
+		if m.cluster.syncRuleMgr != nil {
+			m.cluster.syncRuleMgr.Start()
+		}
 	} else {
 		Warn(m.clusterName, fmt.Sprintf("clusterID[%v] leader is changed to %v",
 			m.clusterName, m.leaderInfo.addr))
@@ -95,6 +102,13 @@ func (m *Server) handleLeaderChange(leader uint64) {
 		if m.cluster.flashManMgr != nil {
 			close(m.cluster.flashManMgr.exitCh)
 			m.cluster.flashManMgr = newFlashManualTaskManager(m.cluster)
+		}
+		// P2-6: stop cron so the old leader doesn't double-fire while
+		// the new leader is coming up. Rebuild the manager so the
+		// next leader gain starts from a clean slate.
+		if m.cluster.syncRuleMgr != nil {
+			m.cluster.syncRuleMgr.Stop()
+			m.cluster.syncRuleMgr = NewSyncRuleManager(m.cluster)
 		}
 		m.metaReady = false
 		m.cluster.metaReady = false
