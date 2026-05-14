@@ -369,6 +369,17 @@ func TestExtend_GetInode(t *testing.T) {
 	}
 }
 
+// TestExtend_GetMinVerNilMultiSnap tests GetMinVer when multiSnap is nil
+func TestExtend_GetMinVerNilMultiSnap(t *testing.T) {
+	extend := NewExtend(12345)
+	if extend.multiSnap != nil {
+		t.Fatal("new extend should have nil multiSnap")
+	}
+	if got := extend.GetMinVer(); got != 0 {
+		t.Errorf("GetMinVer with nil multiSnap: want 0, got %d", got)
+	}
+}
+
 // TestExtend_QuotaHandling tests quota handling
 func TestExtend_QuotaHandling(t *testing.T) {
 	extend := NewExtendWithQuota(12345)

@@ -655,7 +655,12 @@ func testTxRscCommit(t *testing.T) {
 
 	assert.True(t, status == proto.OpOk && err == nil)
 
-	// commit delete dentry
+	// commit delete dentry (TxAdd): commitDentry decrements parent nlink, parent inode must exist
+	parent := NewInode(pInodeNum, DirModeType)
+	parent.NLink = 3
+	parent.PoolId = proto.DefaultSSDPoolId
+	putInodeForTxTest(t, mp1, parent)
+
 	rbDentry2 := mockDeleteTxDentry(mp1, t)
 	handle, err = txRsc.txRbDentryTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
@@ -674,6 +679,156 @@ func TestTxRscCommit(t *testing.T) {
 func TestTxRscCommit_Rocksdb(t *testing.T) {
 	initMps(t, proto.StoreModeRocksDb)
 	testTxRscCommit(t)
+}
+
+func putInodeForTxTest(t *testing.T, mp *metaPartition, ino *Inode) {
+	t.Helper()
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	_, _, err = mp.inodeTree.ReplaceOrInsert(handle, ino, true)
+	require.NoError(t, err)
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
+}
+
+// commitDentry(TxAdd) should only DecNLink the parent directory, not unlink/evict it from inode tree.
+func TestCommitDentryTxAddDecNLinkKeepsParentInode(t *testing.T) {
+	initMps(t, proto.StoreModeMem)
+	mp := mp1
+
+	parent := NewInode(pInodeNum, DirModeType)
+	parent.NLink = 3
+	parent.PoolId = proto.DefaultSSDPoolId
+	putInodeForTxTest(t, mp, parent)
+
+	rbDentry := mockDeleteTxDentry(mp, t)
+	txRsc := mp.txProcessor.txResource
+
+	handle, err := txRsc.txRbDentryTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	status, err := txRsc.commitDentry(handle, rbDentry.txDentryInfo.TxID, rbDentry.txDentryInfo.ParentId, rbDentry.txDentryInfo.Name)
+	require.NoError(t, err)
+	require.Equal(t, proto.OpOk, status)
+	err = txRsc.txRbDentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
+
+	parentAfter, err := mp.inodeTree.Get(NewInode(pInodeNum, 0))
+	require.NoError(t, err)
+	require.NotNil(t, parentAfter, "parent directory inode must not be removed on commitDentry")
+	assert.Equal(t, uint32(2), parentAfter.NLink)
+
+	rbAfter, err := txRsc.getTxRbDentry(pInodeNum, dentryName)
+	require.NoError(t, err)
+	assert.Nil(t, rbAfter)
+}
+
+// commitDentry for TxDelete rb (tx create dentry) must not change parent nlink.
+func TestCommitDentryTxDeleteSkipsParentNLink(t *testing.T) {
+	initMps(t, proto.StoreModeMem)
+	mp := mp1
+
+	parent := NewInode(pInodeNum, DirModeType)
+	parent.NLink = 5
+	parent.PoolId = proto.DefaultSSDPoolId
+	putInodeForTxTest(t, mp, parent)
+
+	rbDentry := mockAddTxDentry(mp, t)
+	require.Equal(t, TxDelete, rbDentry.rbType)
+
+	txRsc := mp.txProcessor.txResource
+	handle, err := txRsc.txRbDentryTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	status, err := txRsc.commitDentry(handle, rbDentry.txDentryInfo.TxID, rbDentry.txDentryInfo.ParentId, rbDentry.txDentryInfo.Name)
+	require.NoError(t, err)
+	require.Equal(t, proto.OpOk, status)
+	err = txRsc.txRbDentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
+
+	parentAfter, err := mp.inodeTree.Get(NewInode(pInodeNum, 0))
+	require.NoError(t, err)
+	require.NotNil(t, parentAfter)
+	assert.Equal(t, uint32(5), parentAfter.NLink)
+}
+
+func TestCommitDentryParentShouldDeleteSkipsDecNLink(t *testing.T) {
+	initMps(t, proto.StoreModeMem)
+	mp := mp1
+
+	parent := NewInode(pInodeNum, DirModeType)
+	parent.NLink = 3
+	parent.Flag |= DeleteMarkFlag
+	parent.PoolId = proto.DefaultSSDPoolId
+	putInodeForTxTest(t, mp, parent)
+
+	rbDentry := mockDeleteTxDentry(mp, t)
+	txRsc := mp.txProcessor.txResource
+
+	handle, err := txRsc.txRbDentryTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	status, err := txRsc.commitDentry(handle, rbDentry.txDentryInfo.TxID, rbDentry.txDentryInfo.ParentId, rbDentry.txDentryInfo.Name)
+	require.NoError(t, err)
+	require.Equal(t, proto.OpOk, status)
+	err = txRsc.txRbDentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
+
+	parentAfter, err := mp.inodeTree.Get(NewInode(pInodeNum, 0))
+	require.NoError(t, err)
+	require.NotNil(t, parentAfter)
+	assert.Equal(t, uint32(3), parentAfter.NLink)
+}
+
+func TestCommitDentryRbNotExist(t *testing.T) {
+	initMps(t, proto.StoreModeMem)
+	txRsc := mp1.txProcessor.txResource
+	handle, err := txRsc.txRbDentryTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	status, err := txRsc.commitDentry(handle, "missing-tx", pInodeNum, dentryName)
+	require.Error(t, err)
+	assert.Equal(t, proto.OpTxRbDentryNotExistErr, status)
+	err = txRsc.txRbDentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
+}
+
+func TestCommitDentryParentInodeNotExist(t *testing.T) {
+	initMps(t, proto.StoreModeMem)
+	mp := mp1
+
+	rbDentry := mockDeleteTxDentry(mp, t)
+	txRsc := mp.txProcessor.txResource
+
+	handle, err := txRsc.txRbDentryTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	status, _ := txRsc.commitDentry(handle, rbDentry.txDentryInfo.TxID, rbDentry.txDentryInfo.ParentId, rbDentry.txDentryInfo.Name)
+	require.Equal(t, proto.OpNotExistErr, status)
+	err = txRsc.txRbDentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
+}
+
+func TestCommitDentryParentNLinkLow(t *testing.T) {
+	initMps(t, proto.StoreModeMem)
+	mp := mp1
+
+	parent := NewInode(pInodeNum, DirModeType)
+	parent.NLink = 2
+	parent.PoolId = proto.DefaultSSDPoolId
+	putInodeForTxTest(t, mp, parent)
+
+	rbDentry := mockDeleteTxDentry(mp, t)
+	txRsc := mp.txProcessor.txResource
+
+	handle, err := txRsc.txRbDentryTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	status, err := txRsc.commitDentry(handle, rbDentry.txDentryInfo.TxID, rbDentry.txDentryInfo.ParentId, rbDentry.txDentryInfo.Name)
+	require.NoError(t, err)
+	require.Equal(t, proto.OpOk, status)
+	err = txRsc.txRbDentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
+
+	parentAfter, err := mp.inodeTree.Get(NewInode(pInodeNum, 0))
+	require.NoError(t, err)
+	require.NotNil(t, parentAfter)
+	// Dir inode with NLink=2: DecNLink decrements twice (special case at NLink==2, then NLink>0)
+	assert.Equal(t, uint32(0), parentAfter.NLink)
 }
 
 func testTxTreeRollback(t *testing.T) {

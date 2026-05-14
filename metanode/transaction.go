@@ -1786,18 +1786,37 @@ func (tr *TransactionResource) commitDentry(handle interface{}, txID string, pId
 		status = proto.OpErr
 		return
 	}
-	// unlink parent inode
+	// decrement parent nlink, same as fsmDeleteDentry after dentry removal
 	if rbDentry.rbType == TxAdd {
-		parInode := NewInode(pId, 0)
-		var st *InodeResponse
-		st, err = tr.txProcessor.mp.fsmUnlinkInode(handle, parInode, 0)
+		mp := tr.txProcessor.mp
+		var parentIno *Inode
+		parentIno, err = mp.inodeTree.Get(NewInode(pId, 0))
 		if err != nil {
-			log.LogErrorf("fsmUnlinkInode failed: %v", err)
+			status = proto.OpErr
+			log.LogErrorf("commitDentry: get parent inode(%v) err: %v, txId %s", pId, err, txID)
 			return
 		}
-		if st.Status != proto.OpOk {
-			log.LogWarnf("commitDentry: try unlink parent inode failed, txId %s, inode[%v]", txID, parInode)
+		if parentIno == nil {
+			log.LogErrorf("commitDentry: parent inode(%v) is nil, txId %s", pId, txID)
+			status = proto.OpNotExistErr
 			return
+		}
+		if parentIno != nil && !parentIno.ShouldDelete() {
+
+			if parentIno.NLink <= 2 {
+				log.LogErrorf("commitDentry: parent inode(%v) nlink is less than 2, txId %s", pId, txID)
+			}
+
+			if rbDentry.dentry.getSeqFiled() == 0 {
+				parentIno.DecNLink()
+			}
+			parentIno.SetMtime()
+			if err = mp.inodeTree.Update(handle, parentIno); err != nil {
+				status = proto.OpErr
+				log.LogErrorf("commitDentry: update parent inode(%v) err: %v, txId %s", pId, err, txID)
+				return
+			}
+			log.LogDebugf("commitDentry: txId %s parent inode %v nlink decremented, dentry %s", txID, pId, name)
 		}
 	}
 

@@ -87,7 +87,10 @@ func (e *Extend) checkSequence() error {
 
 // GetMinVer returns the minimum version
 func (e *Extend) GetMinVer() uint64 {
-	if e.multiSnap == nil || len(e.multiSnap.multiVers) == 0 {
+	if e.multiSnap == nil {
+		return 0
+	}
+	if len(e.multiSnap.multiVers) == 0 {
 		return e.multiSnap.verSeq
 	}
 	return e.multiSnap.multiVers[len(e.multiSnap.multiVers)-1].getVersion()
