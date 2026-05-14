@@ -177,6 +177,11 @@ const (
 	OpGcBatchDeleteExtent uint8 = 0x76 // SDK to MetaNode
 	OpGetExpiredMultipart uint8 = 0x77
 
+	// Operations: Master -> SyncNode (Phase B)
+	OpSyncNodeHeartbeat  uint8 = 0x78
+	OpSyncNodeRunTask    uint8 = 0x79
+	OpSyncNodeCancelTask uint8 = 0x7A
+
 	// Operations: MetaNode Leader -> MetaNode Follower
 	OpMetaBatchDeleteInode  uint8 = 0x90
 	OpMetaBatchDeleteDentry uint8 = 0x91
@@ -747,6 +752,12 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpLcNodeScan"
 	case OpLcNodeSnapshotVerDel:
 		m = "OpLcNodeSnapshotVerDel"
+	case OpSyncNodeHeartbeat:
+		m = "OpSyncNodeHeartbeat"
+	case OpSyncNodeRunTask:
+		m = "OpSyncNodeRunTask"
+	case OpSyncNodeCancelTask:
+		m = "OpSyncNodeCancelTask"
 	case OpMetaReadDirOnly:
 		m = "OpMetaReadDirOnly"
 	case OpBackupRead:

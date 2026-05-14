@@ -176,6 +176,25 @@ func (api *NodeAPI) ResponseLcNodeTask(task *proto.AdminTask) (err error) {
 	return api.mc.request(newRequest(post, proto.GetLcNodeTaskResponse).Header(api.h).Body(task))
 }
 
+// AddSyncNode registers a syncnode with master. Mirrors AddLcNode.
+// Returns the master-allocated nodeID; syncnode persists this id locally.
+func (api *NodeAPI) AddSyncNode(serverAddr string) (id uint64, err error) {
+	request := newRequest(get, proto.AddSyncNode).Header(api.h).addParam("addr", serverAddr)
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	id, err = strconv.ParseUint(string(data), 10, 64)
+	return
+}
+
+// ResponseSyncNodeTask is the syncnode → master push for task lifecycle
+// transitions (started / progress / done). Master uses this to maintain the
+// task ownership table in raft.
+func (api *NodeAPI) ResponseSyncNodeTask(task *proto.AdminTask) (err error) {
+	return api.mc.request(newRequest(post, proto.GetSyncNodeTaskResponse).Header(api.h).Body(task))
+}
+
 func (api *NodeAPI) QueryDecommissionedDisks(addr string) (disks *proto.DecommissionedDisks, err error) {
 	disks = &proto.DecommissionedDisks{}
 	err = api.mc.requestWith(disks, newRequest(get, proto.QueryDisableDisk).Header(api.h).addParam("addr", addr))
