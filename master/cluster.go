@@ -516,16 +516,14 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.syncFailover = NewSyncFailover(c, c.syncDispatcher)
 	c.syncQuota = NewSyncQuotaCalculator(c)
 	c.syncFanout = NewSyncFanout(c.syncDispatcher)
-	// SEC1: install the /syncNode/* admin token. cfg.SyncAdminToken
-	// is currently unwired in clusterConfig (no master config team
-	// surface for it yet); the helper is a no-op-by-default when the
-	// installed token is empty, so the middleware in http_server.go
-	// remains a pass-through until the operator configures one.
-	// Re-call SetSyncAdminToken("...") from an admin endpoint or on
-	// config reload to enable enforcement.
-	// TODO(master-config): pipe a `syncAdminToken` config key through
-	// clusterConfig + server.Start so this line can read it.
-	SetSyncAdminToken("")
+	// SEC1: install the /syncNode/* admin token from master config
+	// (key "syncAdminToken"). Empty value = middleware passthrough,
+	// preserving zero-config dev/test behavior; operators opt in by
+	// setting the key in master.json. Master has no SIGHUP reload
+	// path today — TODO(master-config): wire SetSyncAdminToken into
+	// a reload hook if/when one is added so rotation doesn't require
+	// a restart.
+	SetSyncAdminToken(c.cfg.SyncAdminToken)
 	return
 }
 

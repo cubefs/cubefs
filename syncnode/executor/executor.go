@@ -208,7 +208,18 @@ type Executor struct {
 	mu       sync.Mutex
 	running  map[string]context.CancelFunc // task_id → cancel
 	resultCh chan Result
+
+	// closed is set by Close(); Run() refuses to start once true. Combined
+	// with the nil-map guard below this closes the race where a queued
+	// Runner goroutine could call Run() against a torn-down executor and
+	// nil-deref into running map.
+	closed atomic.Bool
 }
+
+// ErrExecutorClosed is returned (via Result.Error) by Run when the
+// executor has been Close()'d. Callers — primarily Runner.runAfterWait —
+// treat this as "task terminated cancelled".
+var ErrExecutorClosed = errors.New("executor: closed")
 
 type options struct {
 	transfersPerTask   int
@@ -297,15 +308,46 @@ func (e *Executor) Run(ctx context.Context, t *Task, r Reporter) Result {
 		return Result{TaskID: t.ID, Status: StatusFailed,
 			Error: err.Error(), StartedAt: time.Now(), DoneAt: time.Now()}
 	}
+	// FIX Q2 — refuse to start when the executor has been Close()'d.
+	// The nil-map guard below catches the same race even if a caller
+	// races past this check, but checking the flag first lets the fast
+	// path return without taking the mu.
+	if e.closed.Load() {
+		now := time.Now()
+		return Result{
+			TaskID:    t.ID,
+			Status:    StatusCancelled,
+			Error:     ErrExecutorClosed.Error(),
+			StartedAt: now,
+			DoneAt:    now,
+		}
+	}
 
 	taskCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	e.mu.Lock()
+	if e.running == nil {
+		// Closed between the atomic check and acquiring mu — bail without
+		// touching the nil map. Returning a cancelled Result keeps
+		// Runner's bookkeeping consistent (it persists Cancelled and
+		// fires the terminal hook).
+		e.mu.Unlock()
+		now := time.Now()
+		return Result{
+			TaskID:    t.ID,
+			Status:    StatusCancelled,
+			Error:     ErrExecutorClosed.Error(),
+			StartedAt: now,
+			DoneAt:    now,
+		}
+	}
 	e.running[t.ID] = cancel
 	e.mu.Unlock()
 	defer func() {
 		e.mu.Lock()
-		delete(e.running, t.ID)
+		if e.running != nil {
+			delete(e.running, t.ID)
+		}
 		e.mu.Unlock()
 	}()
 
@@ -395,7 +437,13 @@ func (e *Executor) RunningCount() int {
 }
 
 // Close cancels all in-flight tasks and releases internal resources.
+//
+// FIX Q2 — sets the closed flag atomically BEFORE clearing the running
+// map. Combined with the flag + nil-map guards in Run(), a queued
+// Runner goroutine that calls Run() after Close() now gets a cancelled
+// Result instead of panicking on a nil-map write.
 func (e *Executor) Close() error {
+	e.closed.Store(true)
 	e.mu.Lock()
 	for _, cancel := range e.running {
 		cancel()

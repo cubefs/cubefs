@@ -122,6 +122,26 @@ type Runner struct {
 	// goroutine successfully claims a slot. Exposed via QueueLen for
 	// diagnostics (heartbeat snapshot).
 	queueLen atomic.Int64
+
+	// FIX Q1 + Q2 — per-task cancellation surface that covers BOTH
+	// queued (awaiting slot) AND running (in executor) phases.
+	// cancellers[taskID] is invoked by Cancel() AND by Close() to abort
+	// the per-task ctx that runAfterWait + run honour. Cleared in
+	// run()'s defer after the executor returns.
+	cancellersMu sync.Mutex
+	cancellers   map[string]context.CancelFunc
+
+	// closed is set by Close(); triggerRule refuses to spawn when set.
+	// closedCh is used by runAfterWait's slot-wait select so queued tasks
+	// can abort during shutdown without waiting for their semaphore turn.
+	closed   atomic.Bool
+	closedCh chan struct{}
+
+	// wg tracks every spawned run/runAfterWait goroutine so Close can
+	// block until all in-flight work has finished. Add fires in
+	// triggerRule before the goroutine launches; Done fires in each
+	// goroutine's defer.
+	wg sync.WaitGroup
 }
 
 // RunnerOption configures a Runner.
@@ -178,6 +198,8 @@ func NewRunner(exec *executor.Executor, store Store, ruleLookup RuleLookup, b Ba
 		rules:         ruleLookup,
 		builder:       b,
 		waiters:       make(map[string]chan struct{}),
+		cancellers:    make(map[string]context.CancelFunc),
+		closedCh:      make(chan struct{}),
 		maxConcurrent: defaultMaxConcurrent,
 		maxQueue:      defaultQueueSize,
 	}
@@ -286,43 +308,31 @@ func (r *Runner) TriggerAs(ctx context.Context, ruleID string, wantType executor
 	return r.triggerRule(ctx, rule, "", nil, wait)
 }
 
-// Cancel signals the executor to stop the named task. Returns
-// ErrTaskNotFound if no record exists for that taskID.
+// Cancel signals the named task to stop. Covers tasks in any phase:
 //
-// Note: there is an unavoidable tiny window between Trigger spawning the
-// run goroutine and the executor inserting the task into its cancel map.
-// We close the per-task done channel only when the task TERMINATES, so
-// observing the running record + a stable cancel call is the contract. To
-// make Cancel resilient against the race, we re-fire executor.Cancel a
-// few times until either the task is observably cancelled (done channel
-// fires + status flips) or the budget expires.
+//   - QUEUED   : context cancel makes runAfterWait abort before
+//     acquiring the slot (was a silent no-op before Q1).
+//   - RUNNING  : context cancel propagates into executor.Run; executor
+//     also gets a direct Cancel call as belt-and-braces.
+//   - UNKNOWN  : returns ErrTaskNotFound (matches pre-fix behavior).
+//
+// FIX Q1 — pre-fix code only called executor.Cancel, which is a silent
+// no-op for tasks still waiting for a concurrency slot. The per-task
+// canceller registered in triggerRule covers both phases.
 func (r *Runner) Cancel(ctx context.Context, taskID string) error {
 	if _, err := r.store.Get(ctx, taskID); err != nil {
 		return err
 	}
-	r.mu.Lock()
-	done := r.waiters[taskID]
-	r.mu.Unlock()
-
+	r.cancellersMu.Lock()
+	cancel := r.cancellers[taskID]
+	r.cancellersMu.Unlock()
+	if cancel != nil {
+		cancel() // aborts taskCtx; runAfterWait + executor exit
+	}
+	// Belt-and-braces for the running phase: even if the canceller fired
+	// before the executor registered the task, hitting executor.Cancel
+	// after the registration closes the race.
 	r.exec.Cancel(taskID)
-
-	if done == nil {
-		// Already terminal; nothing to cancel.
-		return nil
-	}
-	// If the task hasn't registered with the executor yet, retry briefly so
-	// the cancel actually lands. The executor registers the task at the top
-	// of Run; once the run goroutine has handed off control this loop sees
-	// at most ~one extra iteration.
-	deadline := time.Now().Add(200 * time.Millisecond)
-	for time.Now().Before(deadline) {
-		select {
-		case <-done:
-			return nil
-		case <-time.After(5 * time.Millisecond):
-			r.exec.Cancel(taskID)
-		}
-	}
 	return nil
 }
 
@@ -360,6 +370,13 @@ type shardOverride struct {
 func (r *Runner) triggerRule(ctx context.Context, rule *rules.Rule, newID string,
 	shard *shardOverride, wait bool,
 ) (*Record, error) {
+	// FIX Q2 — refuse new triggers after Close. Avoids spawning a
+	// goroutine whose runAfterWait + run would race against a torn-down
+	// executor.
+	if r.closed.Load() {
+		return nil, errors.New("runner: closed")
+	}
+
 	src, err := r.builder.Build(ctx, &rule.Config.Src)
 	if err != nil {
 		return nil, fmt.Errorf("build src backend: %w", err)
@@ -432,15 +449,23 @@ func (r *Runner) triggerRule(ctx context.Context, rule *rules.Rule, newID string
 	r.waiters[task.ID] = done
 	r.mu.Unlock()
 
-	// Run in a fresh background context so an HTTP-client disconnect (which
-	// cancels ctx) does NOT cancel an in-flight task. Cancellation is
-	// explicit via Runner.Cancel.
+	// FIX Q1 + Q2 — per-task cancellable context. Background root
+	// (not the inbound HTTP ctx, which represents "stop reading more
+	// requests"). Cancel() and Close() both invoke taskCancel to drive
+	// queued + running phases off the same surface. taskCancel is
+	// deregistered in run()'s defer (or in runAfterWait's cancel path).
+	taskCtx, taskCancel := context.WithCancel(context.Background())
+	r.cancellersMu.Lock()
+	r.cancellers[task.ID] = taskCancel
+	r.cancellersMu.Unlock()
+
+	r.wg.Add(1)
 	if admitted {
-		go r.run(task, src, dst, done)
+		go r.run(taskCtx, task, src, dst, done)
 	} else {
 		// Queued: spawn a waiter that blocks until a slot frees, then
 		// runs. Decrement queueLen as soon as we own the slot.
-		go r.runAfterWait(task, src, dst, done)
+		go r.runAfterWait(taskCtx, task, src, dst, done)
 	}
 
 	if !wait {
@@ -451,7 +476,7 @@ func (r *Runner) triggerRule(ctx context.Context, rule *rules.Rule, newID string
 
 // run executes one task, updates the record on completion, and signals the
 // done channel for any waiters.
-func (r *Runner) run(task *executor.Task, src, dst backend.Backend, done chan struct{}) {
+func (r *Runner) run(taskCtx context.Context, task *executor.Task, src, dst backend.Backend, done chan struct{}) {
 	defer func() {
 		// Release the concurrency slot FIRST so a queued task can claim
 		// it before we close the done channel (avoids a brief gap where
@@ -463,11 +488,13 @@ func (r *Runner) run(task *executor.Task, src, dst backend.Backend, done chan st
 		r.mu.Lock()
 		delete(r.waiters, task.ID)
 		r.mu.Unlock()
+		r.deregisterCanceller(task.ID)
 		close(done)
+		r.wg.Done()
 	}()
 
 	reporter := r.reporterFactory(task.ID)
-	result := r.exec.Run(context.Background(), task, reporter)
+	result := r.exec.Run(taskCtx, task, reporter)
 
 	// Reload to avoid losing concurrent updates (none today, but cheap and
 	// future-proof against e.g. a metadata patcher).
@@ -528,19 +555,73 @@ func (r *Runner) run(task *executor.Task, src, dst backend.Backend, done chan st
 // to run for the actual work. Spawned by triggerRule when the cap is
 // reached but the queue has room.
 //
+// FIX Q1 + Q2 — the slot wait honours taskCtx (per-task Cancel) and
+// closedCh (Runner Close). Aborts before run() ever calls into the
+// executor, so a queued cancel + an in-flight shutdown both terminate
+// cleanly instead of either silently running anyway (Q1) or panicking
+// on a torn-down executor (Q2).
+//
 // SAFETY: r.slots is guaranteed non-nil here because runAfterWait is only
 // ever spawned when tryAdmit returned (false, true), which itself
-// requires r.maxConcurrent > 0 (i.e. r.slots != nil). Blocks forever if
-// no slot ever frees — that is the same behavior as a Trigger blocked
-// on a finite-cap worker pool elsewhere in the codebase.
-func (r *Runner) runAfterWait(task *executor.Task, src, dst backend.Backend, done chan struct{}) {
-	// Block until a slot frees. No ctx wired in here because the queued
-	// goroutine outlives the request context that admitted it (same
-	// rationale as the background ctx in run() — operator Cancel is the
-	// explicit interrupt path).
-	r.slots <- struct{}{}
-	r.queueLen.Add(-1)
-	r.run(task, src, dst, done)
+// requires r.maxConcurrent > 0 (i.e. r.slots != nil).
+func (r *Runner) runAfterWait(taskCtx context.Context, task *executor.Task, src, dst backend.Backend, done chan struct{}) {
+	select {
+	case r.slots <- struct{}{}:
+		// Slot acquired — proceed to run() which owns wg.Done + cleanup.
+		r.queueLen.Add(-1)
+		r.run(taskCtx, task, src, dst, done)
+		return
+	case <-taskCtx.Done():
+		r.abortQueued(task, src, dst, done, taskCtx.Err().Error())
+		return
+	case <-r.closedCh:
+		r.abortQueued(task, src, dst, done, "runner closed")
+		return
+	}
+}
+
+// abortQueued tears down a task that was cancelled BEFORE acquiring a
+// concurrency slot. Persists a cancelled Record so operators see the
+// outcome, closes backends, deregisters waiters/cancellers and decrements
+// the queue depth.
+func (r *Runner) abortQueued(task *executor.Task, src, dst backend.Backend, done chan struct{}, reason string) {
+	defer func() {
+		r.queueLen.Add(-1)
+		_ = src.Close()
+		_ = dst.Close()
+		r.mu.Lock()
+		delete(r.waiters, task.ID)
+		r.mu.Unlock()
+		r.deregisterCanceller(task.ID)
+		close(done)
+		r.wg.Done()
+	}()
+	// Best-effort update. If the record was deleted between persist and
+	// abort, swallow the error: the cancel intent is already on the wire.
+	now := time.Now()
+	cur, err := r.store.Get(context.Background(), task.ID)
+	if err != nil {
+		return
+	}
+	cur.Status = executor.StatusCancelled
+	cur.DoneAt = now
+	cur.Error = reason
+	_ = r.store.Put(context.Background(), cur)
+	if r.onTerminal != nil {
+		func() {
+			defer func() { _ = recover() }()
+			r.onTerminal(cloneRecord(cur))
+		}()
+	}
+}
+
+// deregisterCanceller removes the per-task cancel func from the registry.
+// Idempotent — safe to call from both the normal exit path and the
+// queued-abort path.
+func (r *Runner) deregisterCanceller(taskID string) {
+	r.cancellersMu.Lock()
+	delete(r.cancellers, taskID)
+	r.cancellersMu.Unlock()
 }
 
 // tryAdmit attempts to admit a task to either the running set or the
@@ -611,6 +692,34 @@ func (r *Runner) RunningCount() int {
 // the load-score so an overloaded node sheds new triggers earlier.
 func (r *Runner) QueueLen() int {
 	return int(r.queueLen.Load())
+}
+
+// Close stops accepting new triggers, cancels every queued task ctx so
+// runAfterWait goroutines exit without ever calling into the executor,
+// signals every running task to terminate, and blocks until all in-flight
+// goroutines have finished. Idempotent — second Close returns nil.
+//
+// FIX Q2 — must be called BEFORE Executor.Close in server.doShutdown.
+// Otherwise queued goroutines blocked on the semaphore would, on slot
+// release, race against the executor's nil running map and panic.
+func (r *Runner) Close() error {
+	if !r.closed.CompareAndSwap(false, true) {
+		return nil
+	}
+	close(r.closedCh)
+	// Cancel every registered task (queued + running). Either phase
+	// honours the per-task ctx; ordering doesn't matter.
+	r.cancellersMu.Lock()
+	cancels := make([]context.CancelFunc, 0, len(r.cancellers))
+	for _, c := range r.cancellers {
+		cancels = append(cancels, c)
+	}
+	r.cancellersMu.Unlock()
+	for _, c := range cancels {
+		c()
+	}
+	r.wg.Wait()
+	return nil
 }
 
 

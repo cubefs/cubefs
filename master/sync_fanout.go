@@ -340,15 +340,24 @@ func subTaskID(parentTaskID string, shardIndex int) string {
 // splitSubTaskID is the inverse of subTaskID. Returns (parent, shard,
 // true) when s has the "<parent>/<shard>" shape with a numeric shard
 // suffix; (s, 0, false) otherwise (single-task path; not a fan-out
-// sub-task). Splits on the FIRST "/" so parent IDs may themselves
-// contain slashes if a future caller injects them.
+// sub-task).
+//
+// FIX Q4: splits on the LAST "/" so parent IDs may legitimately contain
+// slashes (e.g. "job/2026-05-14"). Since shardIndex is always a
+// non-negative integer (subTaskID compose uses %d), the suffix after the
+// last "/" is the canonical shard portion. Splitting on the first "/"
+// (the previous behaviour) silently mis-identified parents whenever
+// operators / external callers used slash-bearing IDs — the parent
+// lookup pointed at a wrong prefix and the dispatcher's MarkShardTerminal
+// / Clear path didn't fire, leaving leaked parent entries.
 func splitSubTaskID(s string) (parent string, shard int, ok bool) {
-	slash := strings.Index(s, "/")
+	slash := strings.LastIndex(s, "/")
 	if slash < 0 {
 		return s, 0, false
 	}
-	idx, err := strconv.Atoi(s[slash+1:])
-	if err != nil {
+	suffix := s[slash+1:]
+	idx, err := strconv.Atoi(suffix)
+	if err != nil || idx < 0 {
 		return s, 0, false
 	}
 	return s[:slash], idx, true

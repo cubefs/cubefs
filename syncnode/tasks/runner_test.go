@@ -1077,3 +1077,222 @@ func TestRunner_QueueLength_ExposedViaCount(t *testing.T) {
 		t.Errorf("final QueueLen = %d, want 0", got)
 	}
 }
+
+// TestRunner_Cancel_CancelsQueuedTask covers FIX Q1: a Cancel on a task
+// that has been admitted to the queue but does not yet hold a slot must
+// flip the record to Cancelled and prevent the task from ever running.
+//
+// Pre-fix behavior was a silent no-op — executor.Cancel only knows
+// running tasks.
+func TestRunner_Cancel_CancelsQueuedTask(t *testing.T) {
+	exec := executor.New()
+	t.Cleanup(func() { _ = exec.Close() })
+	store := NewMemoryStore()
+	t.Cleanup(func() { _ = store.Close() })
+	lookup := newStubRuleLookup()
+	lookup.put(newSyncRule("rule1"))
+
+	var inFlight atomic.Int32
+	be, release := newGatedBackend(&inFlight)
+	t.Cleanup(func() {
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+	})
+	// Count how many times the builder fires per task — proxy for
+	// "did the queued task ever progress past triggerRule?". The
+	// QUEUED task DOES still build (admission is post-build), but the
+	// gated backend's List() is what would block the running task; we
+	// assert the queued task never reaches gatedBackend.List by
+	// watching the started channel.
+	builder := &stubBackendBuilder{factory: func(*spec.EndpointConfig) (backend.Backend, error) {
+		return be, nil
+	}}
+	r := NewRunner(exec, store, lookup, builder, WithMaxConcurrent(1), WithQueueSize(1))
+
+	first, err := r.Trigger(context.Background(), "rule1", false)
+	if err != nil {
+		t.Fatalf("first Trigger: %v", err)
+	}
+	// Wait for first to occupy the slot (List started).
+	select {
+	case <-be.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("first task did not start within 2s")
+	}
+	queued, err := r.Trigger(context.Background(), "rule1", false)
+	if err != nil {
+		t.Fatalf("queued Trigger: %v", err)
+	}
+	// Confirm the second task is genuinely queued, not running.
+	if got := r.QueueLen(); got != 1 {
+		t.Fatalf("QueueLen before cancel = %d, want 1", got)
+	}
+
+	// Snapshot the started-events seen so far so we can prove the queued
+	// task never starts after cancel.
+	startedBefore := len(be.started)
+
+	// Q1: Cancel must work on a queued task.
+	if err := r.Cancel(context.Background(), queued.TaskID); err != nil {
+		t.Fatalf("Cancel queued: %v", err)
+	}
+	// The record must flip to Cancelled within a generous bound; in
+	// practice the deregister + persist completes in microseconds.
+	waitForStatus(t, store, queued.TaskID, executor.StatusCancelled, 2*time.Second)
+	// Queue depth must drop to 0 (queued task aborted, never claimed a
+	// slot) before we release first.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && r.QueueLen() != 0 {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if got := r.QueueLen(); got != 0 {
+		t.Errorf("QueueLen after queued cancel = %d, want 0", got)
+	}
+
+	// Release the running task. The queued task must NOT have started
+	// (gatedBackend.List should fire exactly once — for `first`).
+	close(release)
+	waitForStatus(t, store, first.TaskID, executor.StatusDone, 3*time.Second)
+
+	if got := len(be.started); got != startedBefore {
+		t.Errorf("queued task started after cancel: started events grew from %d to %d", startedBefore, got)
+	}
+}
+
+// TestRunner_Close_DrainsQueueWithoutPanic covers FIX Q2: Close must
+// cancel queued + running tasks and wait for every spawned goroutine
+// to finish, BEFORE the caller proceeds to shut down the executor. A
+// pre-fix shutdown sequence could race a queued goroutine into a nil
+// executor.running map.
+func TestRunner_Close_DrainsQueueWithoutPanic(t *testing.T) {
+	exec := executor.New()
+	t.Cleanup(func() { _ = exec.Close() })
+	store := NewMemoryStore()
+	t.Cleanup(func() { _ = store.Close() })
+	lookup := newStubRuleLookup()
+	lookup.put(newSyncRule("rule1"))
+
+	var inFlight atomic.Int32
+	be, release := newGatedBackend(&inFlight)
+	t.Cleanup(func() {
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+	})
+	builder := &stubBackendBuilder{factory: func(*spec.EndpointConfig) (backend.Backend, error) {
+		return be, nil
+	}}
+	r := NewRunner(exec, store, lookup, builder, WithMaxConcurrent(1), WithQueueSize(3))
+
+	recs := make([]*Record, 0, 3)
+	for i := 0; i < 3; i++ {
+		rec, err := r.Trigger(context.Background(), "rule1", false)
+		if err != nil {
+			t.Fatalf("Trigger[%d]: %v", i, err)
+		}
+		recs = append(recs, rec)
+	}
+	// One running, two queued. Wait for the steady state.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if r.RunningCount() == 1 && r.QueueLen() == 2 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if got, want := r.QueueLen(), 2; got != want {
+		t.Fatalf("QueueLen before Close = %d, want %d", got, want)
+	}
+
+	// Close in a goroutine — running task is gated, so Close has to
+	// cancel it via the per-task ctx to unblock the wg.Wait.
+	closeDone := make(chan error, 1)
+	go func() { closeDone <- r.Close() }()
+
+	// Close must return within a reasonable timeout. The running
+	// gated task only exits when its ctx fires — exec.Run propagates
+	// taskCtx into the backend's List which respects ctx.Done.
+	select {
+	case err := <-closeDone:
+		if err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close did not return within 5s — wg.Wait stuck")
+	}
+
+	// All three records must be terminal. Cancelled is the expected
+	// status for both queued tasks and (because the running task's
+	// ctx was cancelled mid-List) the in-flight task.
+	for _, rec := range recs {
+		got, err := store.Get(context.Background(), rec.TaskID)
+		if err != nil {
+			t.Fatalf("Get %s: %v", rec.TaskID, err)
+		}
+		if got.Status != executor.StatusCancelled && got.Status != executor.StatusDone {
+			t.Errorf("task %s Status = %q, want cancelled or done", rec.TaskID, got.Status)
+		}
+		if got.DoneAt.IsZero() {
+			t.Errorf("task %s DoneAt is zero after Close", rec.TaskID)
+		}
+	}
+
+	// Second Close is idempotent.
+	if err := r.Close(); err != nil {
+		t.Errorf("second Close: %v", err)
+	}
+}
+
+// TestRunner_Close_RefusesNewTriggers covers FIX Q2: once Close has
+// fired, triggerRule must refuse new admissions to avoid spawning
+// goroutines that race the shutdown.
+func TestRunner_Close_RefusesNewTriggers(t *testing.T) {
+	r, lookup, _, store := newRunnerHarness(t, func(*spec.EndpointConfig) (backend.Backend, error) {
+		return &emptyBackend{}, nil
+	})
+	lookup.put(newSyncRule("rule1"))
+
+	if err := r.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	rec, err := r.Trigger(context.Background(), "rule1", false)
+	if err == nil {
+		t.Fatal("Trigger after Close = nil err, want error")
+	}
+	if rec != nil {
+		t.Errorf("Trigger after Close returned record = %+v, want nil", rec)
+	}
+	// And no record should have been persisted.
+	got, _ := store.List(context.Background(), "")
+	if len(got) != 0 {
+		t.Errorf("records after refused Trigger = %d, want 0", len(got))
+	}
+}
+
+// TestRunner_Cancel_AfterRunStarts_StillWorks confirms the per-task
+// canceller introduced by FIX Q1 still covers the running phase. With
+// the new design the executor's per-task cancel is driven by the same
+// ctx.
+func TestRunner_Cancel_AfterRunStarts_StillWorks(t *testing.T) {
+	r, lookup, _, store := newRunnerHarness(t, func(*spec.EndpointConfig) (backend.Backend, error) {
+		return &blockingBackend{}, nil
+	})
+	lookup.put(newSyncRule("rule1"))
+
+	rec, err := r.Trigger(context.Background(), "rule1", false)
+	if err != nil {
+		t.Fatalf("Trigger: %v", err)
+	}
+	// Give the executor a moment to register the task with its internal
+	// cancel map.
+	time.Sleep(50 * time.Millisecond)
+	if err := r.Cancel(context.Background(), rec.TaskID); err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+	waitForStatus(t, store, rec.TaskID, executor.StatusCancelled, 3*time.Second)
+}

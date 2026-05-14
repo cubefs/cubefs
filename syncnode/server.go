@@ -288,6 +288,13 @@ func doShutdown(srv common.Server) {
 	if s.tcpListener != nil {
 		_ = s.tcpListener.Close()
 	}
+	// FIX Q2 — drain Runner BEFORE Executor. Runner.Close cancels every
+	// queued task ctx so runAfterWait goroutines exit cleanly before the
+	// executor goes away. Otherwise a queued goroutine could call
+	// executor.Run on a torn-down running map → panic.
+	if s.runner != nil {
+		_ = s.runner.Close()
+	}
 	// Drain the executor: cancel any still-running tasks, then close.
 	if s.executor != nil {
 		_ = s.executor.Close()

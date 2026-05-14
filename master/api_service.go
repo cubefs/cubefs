@@ -8110,6 +8110,25 @@ func (m *Server) dispatchSyncTask(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+	// FIX Q4: reject task IDs whose last "/<digits>" suffix would make
+	// splitSubTaskID mis-parse this single task as a fan-out shard. We
+	// still ALLOW arbitrary "/" in parent IDs (operators commonly use
+	// "job/2026-05-14"-style stamps), but a literal trailing "/<digits>"
+	// IS the shard suffix the fan-out builder synthesises — so a caller
+	// who hands us "job/0" creates a parent that's indistinguishable
+	// from sub-task #0 of parent "job". The dispatch path treats this as
+	// a parent (no fan-out routing), but downstream the terminal handler
+	// would see "job/0" as a shard report. Be strict here to keep the
+	// invariant clean.
+	if slash := strings.LastIndex(task.ID, "/"); slash > 0 {
+		if suffix := task.ID[slash+1:]; suffix != "" {
+			if _, atoiErr := strconv.Atoi(suffix); atoiErr == nil {
+				err = fmt.Errorf("task.ID %q ends with /<digits>; that shape is reserved for fan-out sub-task ids", task.ID)
+				sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+				return
+			}
+		}
+	}
 	if m.cluster.syncDispatcher == nil {
 		err = fmt.Errorf("syncDispatcher not initialised")
 		sendErrReply(w, r, newErrHTTPReply(err))

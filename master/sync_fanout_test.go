@@ -771,12 +771,42 @@ func TestSyncFanout_SplitSubTaskID(t *testing.T) {
 		{"single-task", "single-task", 0, false},
 		{"p/notanumber", "p/notanumber", 0, false},
 		{"", "", 0, false},
+		// FIX Q4: parent IDs may contain "/". Split on LAST "/" so
+		// "job/2026-05-14/3" → parent="job/2026-05-14", shard=3.
+		{"job/2026-05-14/3", "job/2026-05-14", 3, true},
+		{"a/b/c/0", "a/b/c", 0, true},
+		// Negative shard is invalid (compose never emits this).
+		{"p/-1", "p/-1", 0, false},
+		// Trailing slash with empty suffix → not a sub-task.
+		{"p/", "p/", 0, false},
 	}
 	for _, tc := range cases {
 		gotP, gotS, gotOk := splitSubTaskID(tc.in)
 		if gotP != tc.wantP || gotS != tc.wantS || gotOk != tc.wantOk {
 			t.Errorf("splitSubTaskID(%q) = (%q, %d, %v), want (%q, %d, %v)",
 				tc.in, gotP, gotS, gotOk, tc.wantP, tc.wantS, tc.wantOk)
+		}
+	}
+}
+
+// TestSyncFanout_SubTaskRoundTrip verifies the compose ↔ split symmetry:
+// every output of subTaskID(parent, shard) splits back to the same
+// (parent, shard). Catches a regression where the last-slash split
+// would misalign on a parent containing "/".
+func TestSyncFanout_SubTaskRoundTrip(t *testing.T) {
+	parents := []string{"p", "job", "job/2026-05-14", "run/exp-42/v3", ""}
+	shards := []int{0, 1, 7, 99}
+	for _, p := range parents {
+		for _, s := range shards {
+			id := subTaskID(p, s)
+			gotP, gotS, ok := splitSubTaskID(id)
+			if !ok {
+				t.Errorf("compose %q+%d → %q; split says not a sub-task", p, s, id)
+				continue
+			}
+			if gotP != p || gotS != s {
+				t.Errorf("round-trip: subTaskID(%q, %d) = %q → split = (%q, %d)", p, s, id, gotP, gotS)
+			}
 		}
 	}
 }

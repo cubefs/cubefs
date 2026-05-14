@@ -217,3 +217,70 @@ func TestTransfersPerTask_TaskOverride(t *testing.T) {
 		t.Errorf("with default, got %d", got)
 	}
 }
+
+// TestExecutor_RunRefusesAfterClose covers FIX Q2: after Close() the
+// executor returns a cancelled Result with ErrExecutorClosed.Error()
+// instead of panicking on a nil-map write. This is the contract
+// Runner.runAfterWait relies on when a queued goroutine races Close().
+func TestExecutor_RunRefusesAfterClose(t *testing.T) {
+	e := New()
+	if err := e.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	task := &Task{
+		ID:   "t-closed",
+		Type: TaskTypeSync,
+		Src:  &nullBackend{},
+		Dst:  &nullBackend{},
+	}
+	res := e.Run(context.Background(), task, NoopReporter{})
+	if res.Status != StatusCancelled {
+		t.Errorf("Status = %q, want %q", res.Status, StatusCancelled)
+	}
+	if res.Error != ErrExecutorClosed.Error() {
+		t.Errorf("Error = %q, want %q", res.Error, ErrExecutorClosed.Error())
+	}
+	if res.TaskID != "t-closed" {
+		t.Errorf("TaskID = %q, want t-closed", res.TaskID)
+	}
+	if res.StartedAt.IsZero() || res.DoneAt.IsZero() {
+		t.Error("StartedAt/DoneAt should be populated even on the closed-fast-path")
+	}
+	// Close again — must be idempotent so doShutdown can call it
+	// freely.
+	if err := e.Close(); err != nil {
+		t.Errorf("second Close: %v", err)
+	}
+}
+
+// TestExecutor_RunWithNilRunningMap_DoesNotPanic synthesises the race
+// where the running map is nil at the moment Run() takes the mu. The
+// executor must return a cancelled Result instead of writing into the
+// nil map.
+func TestExecutor_RunWithNilRunningMap_DoesNotPanic(t *testing.T) {
+	e := New()
+	// Drive the executor into the post-Close state without going
+	// through the public flag check: clear the map directly. This
+	// simulates the race window where a queued Runner goroutine has
+	// observed closed=false but the executor's running map has been
+	// nilled before Run() takes the mu.
+	e.mu.Lock()
+	e.running = nil
+	e.mu.Unlock()
+
+	task := &Task{
+		ID:   "t-nil-map",
+		Type: TaskTypeSync,
+		Src:  &nullBackend{},
+		Dst:  &nullBackend{},
+	}
+	// Must not panic; must return a cancelled Result.
+	res := e.Run(context.Background(), task, NoopReporter{})
+	if res.Status != StatusCancelled {
+		t.Errorf("Status = %q, want %q", res.Status, StatusCancelled)
+	}
+	if res.Error == "" {
+		t.Error("Error should be populated on the nil-map fast path")
+	}
+}
