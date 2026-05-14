@@ -16,19 +16,30 @@ package syncnode
 
 import (
 	"context"
+	stderrors "errors"
+	"flag"
 	"fmt"
 	"net"
 	"net/http"
+	"os"
+	"os/signal"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/syncnode/api"
+	"github.com/cubefs/cubefs/syncnode/backend"
+	"github.com/cubefs/cubefs/syncnode/bolt"
+	"github.com/cubefs/cubefs/syncnode/executor"
 	"github.com/cubefs/cubefs/syncnode/rules"
+	"github.com/cubefs/cubefs/syncnode/scheduler"
+	"github.com/cubefs/cubefs/syncnode/tasks"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
@@ -36,27 +47,53 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// SyncNode is the main service struct (Phase A: skeleton only; later phases
-// populate scheduler / executor / state store fields).
+// SyncNode is the main service struct. After Phase F it owns:
+//
+//   - BoltDB-backed state (rules, tasks_active, tasks_history, in_progress)
+//   - The executor pool (per-task data movement)
+//   - tasks.Runner (Trigger / Cancel / Retry HTTP dispatch + lifecycle)
+//   - scheduler.Scheduler (cron-driven rule firing)
+//   - tasks.TTLRunner (move terminal records to history; purge expired)
+//   - Admin HTTP server (rules + tasks + reload endpoints)
 type SyncNode struct {
-	cfg *SyncConfig
+	// Config + reload state.
+	cfgMu   sync.RWMutex
+	cfg     *SyncConfig
+	cfgPath string // recorded by parseConfig from config.Config.FilePath
 
 	// Network
 	tcpListener  net.Listener
 	httpServer   *http.Server
 	httpListener net.Listener
 
-	// Identity (filled after master registration in Phase B; left empty in Phase A)
+	// Identity (filled after master registration in Phase B; left empty in
+	// Phase A).
 	localServerAddr string
 	clusterID       string
 	nodeID          uint64
 
-	// Admin-API subsystems (Phase E). ruleStore is the JSON-file-backed
-	// persistence layer; ruleHandlers attach the CRUD endpoints to the
-	// router. Phase F-2 swaps the JSON store for BoltDB without touching
-	// either handlers or this struct.
-	ruleStore    rules.Store
+	// State store (Phase F-2). One BoltDB underlying every persisted
+	// surface: ruleStore + taskStore + inProgress all derived from boltDB.
+	boltDB     *bolt.DB
+	ruleStore  rules.Store
+	taskStore  tasks.Store
+	inProgress bolt.InProgressStore
+
+	// Backend pool + executor + tasks subsystem (Phase D + E + F).
+	backendPool *backend.Pool
+	executor    *executor.Executor
+	runner      *tasks.Runner
+
+	// Background loops (Phase F-1 + F-4).
+	scheduler *scheduler.Scheduler
+	ttlRunner *tasks.TTLRunner
+
+	// HTTP handler bundles (Phase E-2 + E-3 + F-4).
 	ruleHandlers *rules.Handlers
+	taskHandlers *tasks.Handlers
+
+	// Signal handling for SIGHUP reload (Phase F-3).
+	sighupCh chan os.Signal
 
 	// Lifecycle
 	stopC   chan struct{}
@@ -127,19 +164,33 @@ func doStart(srv common.Server, cfg *config.Config) (err error) {
 		return fmt.Errorf("start tcp server: %w", err)
 	}
 
-	// Admin subsystems (Phase E). Initialise the rule store BEFORE starting
-	// HTTP so handlers have something to bind to. JSON-file persistence
-	// satisfies the "rules survive restart" contract until F-2 swaps in
-	// BoltDB.
-	if err = s.initRuleStore(); err != nil {
-		return fmt.Errorf("init rule store: %w", err)
+	// Phase F: BoltDB + executor + runner + scheduler + TTL. Order is
+	// important: state store first (so we can recover interrupted tasks
+	// before any new ones land), then executor/runner, then scheduler/TTL.
+	if err = s.initStateStore(); err != nil {
+		return fmt.Errorf("init state store: %w", err)
+	}
+	if err = s.initExecutorAndRunner(); err != nil {
+		return fmt.Errorf("init executor: %w", err)
+	}
+	if err = s.bootstrapRulesFromConfig(); err != nil {
+		return fmt.Errorf("bootstrap rules: %w", err)
+	}
+	if err = s.validateRuleConflicts(); err != nil {
+		return err
+	}
+	if err = s.initSchedulerAndTTL(); err != nil {
+		return fmt.Errorf("init scheduler / ttl: %w", err)
 	}
 
-	// HTTP admin server (includes /admin/syncnode/version, /metrics-friendly
-	// endpoints; full admin API lands in Phase E).
+	// HTTP admin server — everything above is wired so handlers' backends
+	// are ready by the time we accept the first request.
 	if err = s.startHTTPServer(); err != nil {
 		return fmt.Errorf("start http server: %w", err)
 	}
+
+	// SIGHUP → reload. Lives for the life of the process.
+	s.installSIGHUPHandler()
 
 	// Master registration stub: in Phase B this becomes a real register loop
 	// + heartbeat goroutine. In Phase A it's a no-op so single-node smoke
@@ -164,6 +215,18 @@ func doShutdown(srv common.Server) {
 	if s.stopC != nil {
 		close(s.stopC)
 	}
+	// Stop the periodic loops first so they don't try to use stores we're
+	// about to close.
+	if s.scheduler != nil {
+		_ = s.scheduler.Stop()
+	}
+	if s.ttlRunner != nil {
+		_ = s.ttlRunner.Stop()
+	}
+	if s.sighupCh != nil {
+		signal.Stop(s.sighupCh)
+		close(s.sighupCh)
+	}
 	if s.httpServer != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -172,8 +235,15 @@ func doShutdown(srv common.Server) {
 	if s.tcpListener != nil {
 		_ = s.tcpListener.Close()
 	}
-	if s.ruleStore != nil {
-		_ = s.ruleStore.Close()
+	// Drain the executor: cancel any still-running tasks, then close.
+	if s.executor != nil {
+		_ = s.executor.Close()
+	}
+	if s.backendPool != nil {
+		_ = s.backendPool.Close()
+	}
+	if s.boltDB != nil {
+		_ = s.boltDB.Close()
 	}
 	s.wg.Wait()
 	log.LogInfo("syncnode shutdown complete")
@@ -181,7 +251,8 @@ func doShutdown(srv common.Server) {
 
 // parseConfig loads the raw config.Config into a typed SyncConfig and runs
 // validateConfig. On failure the returned error includes ConfigError code +
-// field for operators / tests.
+// field for operators / tests. Records cfg.FilePath into s.cfgPath so reload
+// can re-read the same file.
 func (s *SyncNode) parseConfig(cfg *config.Config) error {
 	// config.Config keeps the original JSON bytes in Raw; we parse with our
 	// own typed schema + validator rather than fishing fields out one by one.
@@ -198,7 +269,22 @@ func (s *SyncNode) parseConfig(cfg *config.Config) error {
 	if strings.Contains(sc.MasterAddr, ",") {
 		// just validate it's non-empty; full parsing in Phase B's register().
 	}
+	s.cfgMu.Lock()
 	s.cfg = sc
+	// Record the file path from the standard cfs-server "-c" flag. SIGHUP
+	// reload reads from the same file. Empty when the service is invoked
+	// without -c (rare; production always uses it).
+	if f := flag.Lookup("c"); f != nil {
+		if p := f.Value.String(); p != "" {
+			abs, err := filepath.Abs(p)
+			if err == nil {
+				s.cfgPath = abs
+			} else {
+				s.cfgPath = p
+			}
+		}
+	}
+	s.cfgMu.Unlock()
 	return nil
 }
 
@@ -236,10 +322,14 @@ func (s *SyncNode) startHTTPServer() error {
 	router := mux.NewRouter().SkipClean(true)
 	router.HandleFunc("/admin/syncnode/version", api.ToHTTPHandler(s.handleVersion, api.AuthMiddleware)).Methods(http.MethodGet)
 	router.HandleFunc("/admin/syncnode/stat", api.ToHTTPHandler(s.handleStat, api.AuthMiddleware)).Methods(http.MethodGet)
+	router.HandleFunc("/admin/syncnode/reload", api.ToHTTPHandler(s.handleReload, api.AuthMiddleware)).Methods(http.MethodPost)
 
 	// Admin API subsystems register their own routes.
 	if s.ruleHandlers != nil {
 		s.ruleHandlers.Register(router)
+	}
+	if s.taskHandlers != nil {
+		s.taskHandlers.Register(router)
 	}
 
 	addr := ":" + s.cfg.HTTPListen
@@ -263,34 +353,100 @@ func (s *SyncNode) startHTTPServer() error {
 	return nil
 }
 
-// initRuleStore wires up the JSON-file-backed rule store and the CRUD
-// handlers. Persistence lives under <DataDir>/rules; the directory is created
-// if missing. Phase F-2 swaps this for a BoltDB-backed Store without
-// touching the handlers.
-//
-// E-4 startup invariant: after loading, every persisted rule plus any rules
-// declared in sync.json are run through rules.Validate(). Any conflict
-// (duplicate src+dst, prefix overlap, cycle sync) FAILS Start with a clear
-// error pointing at the offending rule IDs.
-func (s *SyncNode) initRuleStore() error {
-	store, err := rules.NewJSONFileStore(s.cfg.DataDir)
-	if err != nil {
-		return fmt.Errorf("open rule store at %q: %w", s.cfg.DataDir, err)
+// initStateStore opens the BoltDB at {dataDir}/syncnode.db, derives the
+// rule / task / in-progress stores from it, and runs the crash-recovery
+// sweep (any pending/running tasks left over from a previous run are
+// marked failed with "interrupted by node restart").
+func (s *SyncNode) initStateStore() error {
+	if s.cfg.DataDir == "" {
+		return errors.New("dataDir is required for BoltDB state store")
 	}
-	s.ruleStore = store
-	s.ruleHandlers = rules.NewHandlers(store)
-	if err := s.validateRuleConflicts(); err != nil {
-		_ = store.Close()
-		s.ruleStore = nil
-		s.ruleHandlers = nil
-		return err
+	if err := os.MkdirAll(s.cfg.DataDir, 0o755); err != nil {
+		return fmt.Errorf("mkdir dataDir %q: %w", s.cfg.DataDir, err)
+	}
+	dbPath := filepath.Join(s.cfg.DataDir, "syncnode.db")
+	db, err := bolt.Open(dbPath)
+	if err != nil {
+		return fmt.Errorf("open bolt %q: %w", dbPath, err)
+	}
+	if hErr := db.Health(); hErr != nil {
+		_ = db.Close()
+		return fmt.Errorf("bolt health check: %w", hErr)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	interrupted, err := db.Recover(ctx)
+	if err != nil {
+		_ = db.Close()
+		return fmt.Errorf("bolt recover: %w", err)
+	}
+	if interrupted > 0 {
+		log.LogWarnf("syncnode crash recovery: marked %d task(s) interrupted", interrupted)
+	}
+	s.boltDB = db
+	s.ruleStore = db.RuleStore()
+	s.taskStore = db.TaskStore()
+	s.inProgress = db.InProgress()
+	s.ruleHandlers = rules.NewHandlers(s.ruleStore)
+	return nil
+}
+
+// initExecutorAndRunner constructs the per-task executor pool and the
+// tasks.Runner that fronts it over HTTP / scheduler triggers. The
+// BackendBuilder adapter (backend_builder.go) plugs in the shared pool so
+// rules pointing at the same (kind, endpoint, region) reuse one HTTP/2
+// connection pool.
+func (s *SyncNode) initExecutorAndRunner() error {
+	s.backendPool = backend.NewPool()
+
+	execOpts := []executor.Option{}
+	if s.cfg.Concurrency.TransfersPerTask > 0 {
+		execOpts = append(execOpts, executor.WithTransfersPerTask(s.cfg.Concurrency.TransfersPerTask))
+	}
+	if s.cfg.Concurrency.BandwidthLimitMBps > 0 {
+		execOpts = append(execOpts, executor.WithBandwidthLimit(s.cfg.Concurrency.BandwidthLimitMBps))
+	}
+	s.executor = executor.New(execOpts...)
+
+	builder := newBackendBuilder(s.backendPool, s.cfg)
+	s.runner = tasks.NewRunner(s.executor, s.taskStore, s.ruleStore, builder)
+	s.taskHandlers = tasks.NewHandlers(s.runner, s.taskStore)
+	return nil
+}
+
+// bootstrapRulesFromConfig upserts every rule declared in sync.json into
+// the rule store. Pre-existing rules with the same ID keep their runtime
+// state (CreatedAt, State, last-run summary) and only get their Config
+// portion overwritten — mirrors the SIGHUP reload semantics.
+func (s *SyncNode) bootstrapRulesFromConfig() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	for i := range s.cfg.Rules {
+		cfg := s.cfg.Rules[i]
+		existing, err := s.ruleStore.Get(ctx, cfg.ID)
+		if err != nil && !stderrors.Is(err, rules.ErrRuleNotFound) {
+			return fmt.Errorf("get %q: %w", cfg.ID, err)
+		}
+		if existing == nil {
+			if cErr := s.ruleStore.Create(ctx, rules.NewRule(cfg)); cErr != nil {
+				return fmt.Errorf("create %q: %w", cfg.ID, cErr)
+			}
+			continue
+		}
+		updated := *existing
+		updated.Config = cfg
+		updated.UpdatedAt = time.Now()
+		if uErr := s.ruleStore.Update(ctx, &updated); uErr != nil {
+			return fmt.Errorf("update %q: %w", cfg.ID, uErr)
+		}
 	}
 	return nil
 }
 
-// validateRuleConflicts runs the E-4 validator over the union of persisted
-// rules and config-file-declared rules. The returned error names the
-// conflicting rule IDs so operators can locate them in their config.
+// validateRuleConflicts runs the E-4 validator over the full persisted rule
+// set after bootstrap. Failures at startup mean operators have edited
+// sync.json into a conflicting state and need to fix it before the node
+// will accept work.
 func (s *SyncNode) validateRuleConflicts() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -298,26 +454,67 @@ func (s *SyncNode) validateRuleConflicts() error {
 	if err != nil {
 		return fmt.Errorf("list rules for startup validation: %w", err)
 	}
-	// Index stored rules by ID so a config-file rule with the same ID is
-	// treated as a single entry (the persisted form wins; sync.json rules
-	// are the bootstrap source, not the runtime source of truth).
-	set := make([]*rules.Rule, 0, len(stored)+len(s.cfg.Rules))
-	seen := make(map[string]bool, len(stored))
-	for _, r := range stored {
-		set = append(set, r)
-		seen[r.ID()] = true
-	}
-	for i := range s.cfg.Rules {
-		cfg := s.cfg.Rules[i]
-		if seen[cfg.ID] {
-			continue
-		}
-		set = append(set, rules.NewRule(cfg))
-	}
-	if vErr := rules.Validate(set); vErr != nil {
+	if vErr := rules.Validate(stored); vErr != nil {
 		return fmt.Errorf("rule conflict at startup: %w", vErr)
 	}
 	return nil
+}
+
+// initSchedulerAndTTL builds the cron scheduler + the TTL Runner and
+// arms both. ApplyRules is called once after Start with the current store
+// snapshot; subsequent rule changes (HTTP create/update/delete/pause/resume,
+// SIGHUP reload) re-call ApplyRules via the reload path.
+func (s *SyncNode) initSchedulerAndTTL() error {
+	s.scheduler = scheduler.New(s.ruleStore, s.runner)
+	if err := s.scheduler.Start(context.Background()); err != nil {
+		return fmt.Errorf("start scheduler: %w", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	stored, err := s.ruleStore.List(ctx)
+	if err != nil {
+		return fmt.Errorf("list rules for scheduler: %w", err)
+	}
+	if err := s.scheduler.ApplyRules(stored); err != nil {
+		// Non-fatal: some rules had bad cron expressions. Already-good
+		// rules are armed; operators fix the bad ones via the API.
+		log.LogWarnf("syncnode: scheduler.ApplyRules partial: %v", err)
+	}
+
+	s.ttlRunner = tasks.NewTTLRunner(s.taskStore)
+	if err := s.ttlRunner.Start(context.Background()); err != nil {
+		return fmt.Errorf("start ttl runner: %w", err)
+	}
+	return nil
+}
+
+// installSIGHUPHandler arms a goroutine that calls reload on every SIGHUP.
+// Reload failures are logged and reflected in reloadFailuresTotal but do
+// NOT crash the process — the in-flight config stays active.
+func (s *SyncNode) installSIGHUPHandler() {
+	s.sighupCh = make(chan os.Signal, 1)
+	signal.Notify(s.sighupCh, syscall.SIGHUP)
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		for {
+			select {
+			case <-s.stopC:
+				return
+			case _, ok := <-s.sighupCh:
+				if !ok {
+					return
+				}
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				if err := s.reload(ctx); err != nil {
+					log.LogErrorf("syncnode SIGHUP reload failed: %v", err)
+				} else {
+					log.LogInfof("syncnode SIGHUP reload OK")
+				}
+				cancel()
+			}
+		}
+	}()
 }
 
 // handleVersion responds with build info + role identity. AC for A-1.
@@ -331,14 +528,29 @@ func (s *SyncNode) handleVersion(r *http.Request) (interface{}, error) {
 	}, nil
 }
 
-// handleStat is a Phase-A minimal endpoint that returns node-level state.
-// More detailed fields land in Phase E.
+// handleStat is the runtime snapshot endpoint. Now exposes scheduler size +
+// reload failure count so operators can sanity-check the live state.
 func (s *SyncNode) handleStat(r *http.Request) (interface{}, error) {
-	return map[string]interface{}{
-		"role":            ModuleName,
-		"uptimeSeconds":   time.Since(startedAt).Seconds(),
-		"concurrentTasks": concurrentTasks.Load(),
-	}, nil
+	out := map[string]interface{}{
+		"role":                ModuleName,
+		"uptimeSeconds":       time.Since(startedAt).Seconds(),
+		"concurrentTasks":     concurrentTasks.Load(),
+		"reloadFailuresTotal": reloadFailuresTotal.Load(),
+	}
+	if s.scheduler != nil {
+		out["scheduledRules"] = s.scheduler.RegisteredCount()
+	}
+	if s.executor != nil {
+		out["runningTasks"] = s.executor.RunningCount()
+	}
+	if s.boltDB != nil {
+		if err := s.boltDB.Health(); err == nil {
+			out["boltdbHealthy"] = true
+		} else {
+			out["boltdbHealthy"] = false
+		}
+	}
+	return out, nil
 }
 
 // registerStub is a placeholder for Phase B's real register() loop. In

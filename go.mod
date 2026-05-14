@@ -41,11 +41,13 @@ require (
 	github.com/opentracing/opentracing-go v1.2.0
 	github.com/peterbourgon/diskv/v3 v3.0.1
 	github.com/prometheus/client_golang v1.13.0
+	github.com/robfig/cron/v3 v3.0.1
 	github.com/rs/xid v1.5.0
 	github.com/samsarahq/thunder v0.0.0-20211005041752-96f4331b7baa
 	github.com/spf13/cobra v1.2.1
 	github.com/stretchr/testify v1.8.2
 	github.com/tecbot/gorocksdb v0.0.0-20191217155057-f0fad39f321c
+	go.etcd.io/bbolt v1.3.12
 	go.etcd.io/etcd/raft/v3 v3.5.8
 	go.uber.org/automaxprocs v1.5.1
 	golang.org/x/net v0.49.0

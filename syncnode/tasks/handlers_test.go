@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -404,5 +405,156 @@ func TestHandlers_ListInternalError(t *testing.T) {
 	}
 	if env.Code != api.CodeInternal {
 		t.Errorf("code = %d", env.Code)
+	}
+}
+
+// rawGet performs an HTTP GET and returns (status, full body bytes,
+// headers) without forcing the body through the envelope decoder. The
+// /export endpoint streams JSONL — not the standard envelope — so its
+// tests need direct access to the raw body.
+func rawGet(t *testing.T, router *mux.Router, target string) (int, []byte, http.Header) {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, target, nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	return rec.Code, rec.Body.Bytes(), rec.Result().Header
+}
+
+func TestHandlers_Export_Empty(t *testing.T) {
+	_, _, _, router := newHandlerHarness(t, func(*spec.EndpointConfig) (backend.Backend, error) {
+		return &emptyBackend{}, nil
+	})
+	status, body, _ := rawGet(t, router, "/admin/sync/task/export")
+	if status != http.StatusOK {
+		t.Errorf("status = %d, want 200", status)
+	}
+	if len(body) != 0 {
+		t.Errorf("body = %q, want empty", string(body))
+	}
+}
+
+func TestHandlers_Export_ContentType(t *testing.T) {
+	_, _, _, router := newHandlerHarness(t, func(*spec.EndpointConfig) (backend.Backend, error) {
+		return &emptyBackend{}, nil
+	})
+	status, _, hdr := rawGet(t, router, "/admin/sync/task/export")
+	if status != http.StatusOK {
+		t.Errorf("status = %d, want 200", status)
+	}
+	if got := hdr.Get("Content-Type"); got != "application/x-ndjson; charset=utf-8" {
+		t.Errorf("Content-Type = %q, want application/x-ndjson; charset=utf-8", got)
+	}
+	if got := hdr.Get("Content-Disposition"); got != `attachment; filename="task-history.jsonl"` {
+		t.Errorf("Content-Disposition = %q", got)
+	}
+}
+
+func TestHandlers_Export_ThreeRecords(t *testing.T) {
+	_, _, store, router := newHandlerHarness(t, func(*spec.EndpointConfig) (backend.Backend, error) {
+		return &emptyBackend{}, nil
+	})
+	// Seed three history records directly through the store.
+	now := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)
+	for i, id := range []string{"r1", "r2", "r3"} {
+		// 1h, 2h, 3h ago — ListHistory returns them sorted DESC.
+		seedHistoryRecord(t, store, id, now.Add(-time.Duration(i+1)*time.Hour))
+	}
+
+	status, body, _ := rawGet(t, router, "/admin/sync/task/export")
+	if status != http.StatusOK {
+		t.Fatalf("status = %d", status)
+	}
+	// Trim trailing newline; split.
+	lines := strings.Split(strings.TrimRight(string(body), "\n"), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("lines = %d, want 3 (body=%q)", len(lines), string(body))
+	}
+	ids := make([]string, 0, 3)
+	for _, line := range lines {
+		var rec Record
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+			t.Fatalf("decode %q: %v", line, err)
+		}
+		ids = append(ids, rec.TaskID)
+	}
+	// DoneAt desc: r1 (-1h) > r2 (-2h) > r3 (-3h).
+	want := []string{"r1", "r2", "r3"}
+	for i := range want {
+		if ids[i] != want[i] {
+			t.Errorf("ids[%d] = %q, want %q (full=%v)", i, ids[i], want[i], ids)
+		}
+	}
+}
+
+func TestHandlers_Export_BadSince(t *testing.T) {
+	_, _, _, router := newHandlerHarness(t, func(*spec.EndpointConfig) (backend.Backend, error) {
+		return &emptyBackend{}, nil
+	})
+	status, body, hdr := rawGet(t, router, "/admin/sync/task/export?since=not-a-time")
+	if status != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", status)
+	}
+	// Body MUST be the envelope JSON, not JSONL, because we error out
+	// before writing the stream header.
+	if ct := hdr.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		t.Errorf("Content-Type = %q, want application/json...", ct)
+	}
+	var env envelope
+	if err := json.Unmarshal(body, &env); err != nil {
+		t.Fatalf("decode: %v body=%q", err, string(body))
+	}
+	if env.Code != api.CodeInvalidField {
+		t.Errorf("code = %d, want CodeInvalidField=%d", env.Code, api.CodeInvalidField)
+	}
+}
+
+func TestHandlers_Export_SinceFilter(t *testing.T) {
+	_, _, store, router := newHandlerHarness(t, func(*spec.EndpointConfig) (backend.Backend, error) {
+		return &emptyBackend{}, nil
+	})
+	now := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)
+	seedHistoryRecord(t, store, "old", now.Add(-10*time.Hour))
+	seedHistoryRecord(t, store, "new", now.Add(-1*time.Hour))
+
+	since := now.Add(-5 * time.Hour).Format(time.RFC3339)
+	status, body, _ := rawGet(t, router, "/admin/sync/task/export?since="+since)
+	if status != http.StatusOK {
+		t.Fatalf("status = %d", status)
+	}
+	lines := strings.Split(strings.TrimRight(string(body), "\n"), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("lines = %d, want 1 (body=%q)", len(lines), string(body))
+	}
+	var rec Record
+	if err := json.Unmarshal([]byte(lines[0]), &rec); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if rec.TaskID != "new" {
+		t.Errorf("TaskID = %q, want new", rec.TaskID)
+	}
+}
+
+func TestHandlers_Export_StoreErrorAppendsComment(t *testing.T) {
+	// When ListHistory fails mid-handler, the stream body so far becomes
+	// a JSONL prefix + a "# error: ..." comment line. Verify the
+	// "# error" sentinel surfaces.
+	exec := executor.New()
+	t.Cleanup(func() { _ = exec.Close() })
+	store := &errListHistoryStore{base: NewMemoryStore()}
+	lookup := newStubRuleLookup()
+	builder := &stubBackendBuilder{factory: func(*spec.EndpointConfig) (backend.Backend, error) {
+		return &emptyBackend{}, nil
+	}}
+	runner := NewRunner(exec, store, lookup, builder)
+	handlers := NewHandlers(runner, store)
+	router := mux.NewRouter()
+	handlers.Register(router)
+
+	status, body, _ := rawGet(t, router, "/admin/sync/task/export")
+	if status != http.StatusOK {
+		t.Errorf("status = %d, want 200 (headers already flushed)", status)
+	}
+	if !strings.Contains(string(body), "# error: ") {
+		t.Errorf("body should contain error comment: %q", string(body))
 	}
 }

@@ -18,6 +18,7 @@ import (
 	"context"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/cubefs/cubefs/syncnode/executor"
 )
@@ -25,16 +26,27 @@ import (
 // memoryStore is the in-memory Store impl used by tests and by ephemeral
 // nodes. Safe for concurrent use. All reads return deep copies so callers
 // cannot mutate internal state.
+//
+// The store keeps two maps — `records` is the ACTIVE compartment that
+// Put/Get/List/Delete operate on; `history` holds terminal records moved
+// in via MoveToHistory and is the source for ListHistory /
+// PurgeHistoryBefore. Both maps share the single mu (history transitions
+// happen rarely relative to active-record churn, so contention is not a
+// concern at the scale tasks runs at).
 type memoryStore struct {
 	mu      sync.RWMutex
 	records map[string]*Record
+	history map[string]*Record
 }
 
 // NewMemoryStore returns an empty in-memory Store. The concrete type is
 // returned (not the interface) so callers in the same package can compose
 // it; external callers should hold it as Store.
 func NewMemoryStore() *memoryStore {
-	return &memoryStore{records: make(map[string]*Record)}
+	return &memoryStore{
+		records: make(map[string]*Record),
+		history: make(map[string]*Record),
+	}
 }
 
 // Put inserts or overwrites a record. A nil record is rejected to surface
@@ -49,7 +61,8 @@ func (s *memoryStore) Put(_ context.Context, r *Record) error {
 	return nil
 }
 
-// Get fetches a record by taskID. Returns ErrTaskNotFound when absent.
+// Get fetches a record by taskID from the active compartment. Returns
+// ErrTaskNotFound when absent (use ListHistory to inspect aged records).
 func (s *memoryStore) Get(_ context.Context, taskID string) (*Record, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -60,8 +73,8 @@ func (s *memoryStore) Get(_ context.Context, taskID string) (*Record, error) {
 	return cloneRecord(r), nil
 }
 
-// List returns every record matching statusFilter (empty filter = all),
-// sorted by StartedAt descending.
+// List returns every active record matching statusFilter (empty filter =
+// all), sorted by StartedAt descending.
 func (s *memoryStore) List(_ context.Context, statusFilter executor.Status) ([]*Record, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -78,7 +91,8 @@ func (s *memoryStore) List(_ context.Context, statusFilter executor.Status) ([]*
 	return out, nil
 }
 
-// Delete removes a record. Returns ErrTaskNotFound when absent.
+// Delete removes a record from the active compartment. Returns
+// ErrTaskNotFound when absent.
 func (s *memoryStore) Delete(_ context.Context, taskID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -89,5 +103,72 @@ func (s *memoryStore) Delete(_ context.Context, taskID string) error {
 	return nil
 }
 
+// MoveToHistory transitions an active record into history. The source must
+// be in a terminal status; running tasks may not age out. Idempotent when
+// the record is already in history (returns nil).
+func (s *memoryStore) MoveToHistory(_ context.Context, taskID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, already := s.history[taskID]; already {
+		// Idempotent — already in history. Source may or may not still be
+		// in active; remove from active to converge.
+		delete(s.records, taskID)
+		return nil
+	}
+	r, ok := s.records[taskID]
+	if !ok {
+		return ErrTaskNotFound
+	}
+	if !isTerminal(r.Status) {
+		return ErrTaskNotTerminal
+	}
+	s.history[taskID] = cloneRecord(r)
+	delete(s.records, taskID)
+	return nil
+}
+
+// ListHistory returns history records with DoneAt >= since (zero `since`
+// means everything). Sorted by DoneAt descending.
+func (s *memoryStore) ListHistory(_ context.Context, since time.Time) ([]*Record, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]*Record, 0, len(s.history))
+	for _, r := range s.history {
+		if !since.IsZero() && r.DoneAt.Before(since) {
+			continue
+		}
+		out = append(out, cloneRecord(r))
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].DoneAt.After(out[j].DoneAt)
+	})
+	return out, nil
+}
+
+// PurgeHistoryBefore removes records whose DoneAt is strictly before
+// cutoff. Returns the number of records purged.
+func (s *memoryStore) PurgeHistoryBefore(_ context.Context, cutoff time.Time) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	purged := 0
+	for id, r := range s.history {
+		if r.DoneAt.Before(cutoff) {
+			delete(s.history, id)
+			purged++
+		}
+	}
+	return purged, nil
+}
+
 // Close is a no-op for the in-memory impl. Present to satisfy Store.
 func (s *memoryStore) Close() error { return nil }
+
+// isTerminal reports whether status is a terminal one — eligible for being
+// moved to the history compartment.
+func isTerminal(s executor.Status) bool {
+	switch s {
+	case executor.StatusDone, executor.StatusFailed, executor.StatusCancelled:
+		return true
+	}
+	return false
+}

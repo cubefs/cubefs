@@ -17,6 +17,7 @@ package tasks
 import (
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/cubefs/cubefs/syncnode/api"
 	"github.com/cubefs/cubefs/syncnode/executor"
@@ -50,6 +51,11 @@ func (h *Handlers) Register(router *mux.Router) {
 	router.HandleFunc("/admin/sync/task/get", api.ToHTTPHandler(h.handleGet, api.AuthMiddleware)).Methods(http.MethodGet)
 	router.HandleFunc("/admin/sync/task/cancel", api.ToHTTPHandler(h.handleCancel, api.AuthMiddleware)).Methods(http.MethodPost)
 	router.HandleFunc("/admin/sync/task/retry", api.ToHTTPHandler(h.handleRetry, api.AuthMiddleware)).Methods(http.MethodPost)
+	// /export streams the history compartment as JSONL — it sits outside
+	// api.ToHTTPHandler because the envelope shape doesn't apply to a
+	// streamed body. Auth still applies, but for P0 AuthMiddleware is a
+	// no-op so we wire the handler directly.
+	router.HandleFunc("/admin/sync/task/export", h.handleExport).Methods(http.MethodGet)
 }
 
 // handleTrigger runs the rule's task type once. ?ruleID= is required;
@@ -143,6 +149,42 @@ func (h *Handlers) handleRetry(r *http.Request) (interface{}, error) {
 		return nil, mapStoreErr(err, id)
 	}
 	return rec, nil
+}
+
+// handleExport streams the history compartment as newline-delimited JSON.
+// It bypasses the standard envelope because the body is a stream of
+// Record-per-line values, not a single payload. Validation of the optional
+// ?since= query param still uses api.WriteError so a bad timestamp gets
+// the normal {code,msg} response shape with HTTP 400.
+func (h *Handlers) handleExport(w http.ResponseWriter, r *http.Request) {
+	since, err := parseSinceQuery(r)
+	if err != nil {
+		api.WriteError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/x-ndjson; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="task-history.jsonl"`)
+	// Streaming write: any error mid-stream means a partial body. JSONL is
+	// line-oriented so the client just sees one fewer line; appending a
+	// "# error: ..." comment line is best-effort so an operator inspecting
+	// the file by hand still gets a hint.
+	if err := WriteHistoryJSONL(r.Context(), h.store, w, since); err != nil {
+		_, _ = w.Write([]byte("\n# error: " + err.Error() + "\n"))
+	}
+}
+
+// parseSinceQuery extracts ?since=RFC3339 or returns zero time when absent.
+// Invalid values yield an *api.APIError so the wire envelope is correct.
+func parseSinceQuery(r *http.Request) (time.Time, error) {
+	v := r.URL.Query().Get("since")
+	if v == "" {
+		return time.Time{}, nil
+	}
+	t, err := time.Parse(time.RFC3339, v)
+	if err != nil {
+		return time.Time{}, api.ErrInvalidField("since", "must be RFC3339, got: "+v)
+	}
+	return t, nil
 }
 
 // requireQueryParam returns the named query parameter or a 400-class
