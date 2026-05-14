@@ -21,7 +21,7 @@ auth=()
 out="$(mktemp -t syncnode-export.XXXXXX.jsonl)"
 trap "rm -f $out" EXIT
 
-status=$(curl -sS -o "$out" -w '%{http_code}' "${auth[@]}" \
+status=$(curl -sS -o "$out" -w '%{http_code}' ${auth[@]+"${auth[@]}"} \
   "http://${SYNCNODE_HOST}:${SYNCNODE_HTTP_PORT}/admin/sync/task/export")
 
 assert_eq "200" "$status" "export endpoint HTTP status"
@@ -41,7 +41,7 @@ else
 fi
 
 # Bonus: ?since=<RFC3339> filter syntax check — invalid format must 400.
-bad_since=$(curl -sS -o /dev/null -w '%{http_code}' "${auth[@]}" \
+bad_since=$(curl -sS -o /dev/null -w '%{http_code}' ${auth[@]+"${auth[@]}"} \
   "http://${SYNCNODE_HOST}:${SYNCNODE_HTTP_PORT}/admin/sync/task/export?since=not-a-time")
 assert_eq "400" "$bad_since" "invalid ?since= rejection"
 
