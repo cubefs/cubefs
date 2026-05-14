@@ -12,85 +12,27 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-// Package spec carries the on-the-wire and on-disk configuration shapes for
-// syncnode rules. Pulled out of the `syncnode` package so subpackages
-// (rules, tasks, scheduler) can reference these types without an import
-// cycle back into syncnode itself.
-//
-// These are plain data types — no logic, no validation, no I/O. Validation
-// lives in syncnode/config.go (operating on these types via aliases).
+// Package spec carries the on-the-wire and on-disk configuration shapes
+// for syncnode rules. As of P2 (rule store moved to master), the
+// canonical type definitions live in proto/sync_rule.go; this package
+// re-exports them via Go type aliases so existing syncnode callsites
+// compile unchanged.
 package spec
 
+import "github.com/cubefs/cubefs/proto"
+
 // RuleConfig is the on-disk schema for a single sync rule.
-type RuleConfig struct {
-	ID                 string          `json:"id"`
-	Type               string          `json:"type"`
-	Schedule           string          `json:"schedule"`
-	Src                EndpointConfig  `json:"src"`
-	Dst                EndpointConfig  `json:"dst"`
-	Filter             FilterConfig    `json:"filter"`
-	Retention          RetentionConfig `json:"retention"`
-	AfterCopy          string          `json:"afterCopy"`
-	DownloadStrategy   string          `json:"downloadStrategy"`
-	OnMismatch         string          `json:"onMismatch"`
-	SampleStrategy     string          `json:"sampleStrategy"`
-	SampleRate         float64         `json:"sampleRate"`
-	BandwidthLimitMBps int             `json:"bandwidthLimitMBps"`
-	// AggregateBandwidthLimitMBps is the cluster-wide bandwidth ceiling
-	// for this rule, summed across every syncnode running it (design.md
-	// §12.4.1 + §4.2). The master quota calculator (P1-8) divides this
-	// cap across active nodes and pushes per-node slices on the
-	// heartbeat reply (RuleQuotas). 0 means "no cluster cap" — only the
-	// per-node BandwidthLimitMBps applies. The syncnode itself never
-	// reads this field; it lives in the rule store so master can fetch
-	// it during quota fan-out.
-	AggregateBandwidthLimitMBps int    `json:"aggregateBandwidthLimitMBps"`
-	Parallelism                 int    `json:"parallelism"`
-	ShardingStrategy            string `json:"shardingStrategy"`
-}
+// Alias of proto.SyncRuleConfig.
+type RuleConfig = proto.SyncRuleConfig
 
-// EndpointConfig describes one source or destination of a rule. The fields
-// used depend on Kind: cfs uses Vol+Path; s3 uses Bucket+Prefix+Endpoint+
-// Region+StorageClass; local uses Path + buffer hints.
-type EndpointConfig struct {
-	Kind string `json:"kind"`
-	// cfs fields
-	Vol  string `json:"vol"`
-	Path string `json:"path"`
-	// s3 fields
-	Bucket        string `json:"bucket"`
-	Prefix        string `json:"prefix"`
-	Endpoint      string `json:"endpoint"`
-	Region        string `json:"region"`
-	StorageClass  string `json:"storageClass"`
-	// s3 credential override — names of env vars that hold the access/secret keys.
-	// When set, these take precedence over the global s3Defaults in sync.json.
-	AccessKeyEnv string `json:"accessKeyEnv"`
-	SecretKeyEnv string `json:"secretKeyEnv"`
-	// InsecureSkipTLS disables TLS certificate verification for s3 endpoints.
-	// Use only in dev/test environments without a proper CA cert bundle.
-	InsecureSkipTLS bool `json:"insecureSkipTLS"`
-	// local fields (any host-mounted POSIX path)
-	BufferSizeKiB     int  `json:"bufferSizeKiB"`
-	Concurrency       int  `json:"concurrency"`
-	DirectIO          bool `json:"directIO"`
-	FadviseSequential bool `json:"fadviseSequential"`
-}
+// EndpointConfig describes one source or destination of a rule.
+// Alias of proto.SyncEndpointConfig.
+type EndpointConfig = proto.SyncEndpointConfig
 
-// FilterConfig is the JSON shape of executor.Filter. Sizes / durations are
-// strings ("1MB", "30s") at the boundary; ParseFilter converts.
-type FilterConfig struct {
-	Include []string `json:"include"`
-	Exclude []string `json:"exclude"`
-	MinSize string   `json:"minSize"`
-	MaxSize string   `json:"maxSize"`
-	MinAge  string   `json:"minAge"`
-	MaxAge  string   `json:"maxAge"`
-}
+// FilterConfig is the wire / persisted shape of executor.Filter.
+// Alias of proto.SyncFilterConfig.
+type FilterConfig = proto.SyncFilterConfig
 
-// RetentionConfig is the JSON shape of executor.Retention.
-type RetentionConfig struct {
-	Pattern    string `json:"pattern"`
-	KeepLast   int    `json:"keepLast"`
-	KeepWithin string `json:"keepWithin"`
-}
+// RetentionConfig is the wire shape of executor.Retention.
+// Alias of proto.SyncRetentionConfig.
+type RetentionConfig = proto.SyncRetentionConfig
