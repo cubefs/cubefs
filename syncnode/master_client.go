@@ -358,6 +358,20 @@ func sleepCtx(ctx context.Context, stopCh <-chan struct{}, d time.Duration) bool
 	}
 }
 
+// ResponseTask posts a task lifecycle update back to master via
+// ResponseSyncNodeTask. Thin wrapper around the SDK call so callers (in
+// particular task_handler.go's lifecycle push-back path) don't reach into the
+// embedded master.MasterClient directly.
+func (c *SyncMasterClient) ResponseTask(task *proto.AdminTask) error {
+	if c == nil || c.mc == nil {
+		return errors.New("syncnode master client: not initialised")
+	}
+	if err := c.mc.NodeAPI().ResponseSyncNodeTask(task); err != nil {
+		return fmt.Errorf("response sync node task: %w", err)
+	}
+	return nil
+}
+
 // splitMasterAddrs parses the comma-separated masterAddr config field
 // (mirrors NewMasterClientFromString but tolerates whitespace).
 func splitMasterAddrs(s string) []string {

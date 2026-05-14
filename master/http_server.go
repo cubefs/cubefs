@@ -510,6 +510,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.ListSyncNodes).
 		HandlerFunc(m.listSyncNodes)
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.SyncNodeDispatch).
+		HandlerFunc(m.dispatchSyncTask)
 
 	// node task response APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

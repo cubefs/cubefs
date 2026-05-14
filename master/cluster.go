@@ -186,6 +186,10 @@ type Cluster struct {
 	mu          sync.Mutex
 	PlanRun     bool
 	flashManMgr *flashManualTaskManager
+
+	// syncDispatcher is the master-side syncnode scheduler (Phase P1).
+	// Passive reader of syncNodes — see sync_dispatcher.go.
+	syncDispatcher *SyncDispatcher
 }
 
 type cTask struct {
@@ -487,6 +491,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.cleanTask = make(map[string]*CleanTask)
 	c.PlanRun = false
 	c.flashManMgr = newFlashManualTaskManager(c)
+	c.syncDispatcher = NewSyncDispatcher(c)
 	return
 }
 
@@ -1036,11 +1041,16 @@ func (c *Cluster) checkLcNodeHeartbeat() {
 // P0 — IsActive=false is enough; the operator decides when to evict.
 func (c *Cluster) checkSyncNodeHeartbeat() {
 	tasks := make([]*proto.AdminTask, 0)
+	deadAddrs := make([]string, 0)
 	c.syncNodes.Range(func(addr, syncNode interface{}) bool {
 		node := syncNode.(*SyncNode)
+		wasActive := node.IsActive
 		node.checkLiveness()
 		if !node.IsActive {
 			log.LogInfof("checkSyncNodeHeartbeat: syncnode(%v) is inactive", node.Addr)
+			if wasActive {
+				deadAddrs = append(deadAddrs, node.Addr)
+			}
 			return true
 		}
 		task := node.createHeartbeatTask(c.masterAddr())
@@ -1048,6 +1058,14 @@ func (c *Cluster) checkSyncNodeHeartbeat() {
 		return true
 	})
 	c.addSyncNodeTasks(tasks)
+	// Tell the dispatcher about freshly-dead nodes so any task ownership
+	// it tracked for them is cleared. P1-4 will swap this for a true
+	// redispatch path.
+	if c.syncDispatcher != nil {
+		for _, addr := range deadAddrs {
+			c.syncDispatcher.handleNodeDeath(addr)
+		}
+	}
 }
 
 func (c *Cluster) scheduleToCheckMetaPartitions() {

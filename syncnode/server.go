@@ -89,6 +89,11 @@ type SyncNode struct {
 	runner      *tasks.Runner
 	rateLimits  *ratelimit.Registry
 
+	// taskHandler dispatches OpSyncNodeRunTask / OpSyncNodeCancelTask packets
+	// pushed by master onto the TCP listener (Phase P1-3). Built after
+	// initExecutorAndRunner so it can wrap the runner.
+	taskHandler *TaskHandler
+
 	// Background loops (Phase F-1 + F-4).
 	scheduler *scheduler.Scheduler
 	ttlRunner *tasks.TTLRunner
@@ -164,11 +169,6 @@ func doStart(srv common.Server, cfg *config.Config) (err error) {
 	exporter.Init(ModuleName, cfg)
 	exporter.RegistConsul("", ModuleName, cfg)
 
-	// TCP server for future master-dispatched task packets (no-op in Phase A).
-	if err = s.startTCPServer(); err != nil {
-		return fmt.Errorf("start tcp server: %w", err)
-	}
-
 	// Phase F: BoltDB + executor + runner + scheduler + TTL. Order is
 	// important: state store first (so we can recover interrupted tasks
 	// before any new ones land), then executor/runner, then scheduler/TTL.
@@ -188,6 +188,22 @@ func doStart(srv common.Server, cfg *config.Config) (err error) {
 		return fmt.Errorf("init scheduler / ttl: %w", err)
 	}
 
+	// Phase B-3 + B-4 + P1-3: construct the master client BEFORE the TCP
+	// listener so the TaskHandler can carry it. Start() (which kicks off the
+	// register + heartbeat goroutines) still happens at the end of doStart,
+	// after the HTTP admin surface is up, so the syncnode is fully ready to
+	// service requests before it announces itself to master.
+	s.masterClient = NewSyncMasterClient(s.cfg.MasterAddr, s.cfg.Listen,
+		WithSnapshotProvider(s))
+	s.taskHandler = NewTaskHandler(s.runner, s.masterClient)
+
+	// TCP server for master-dispatched task packets (Phase P1-3). Must be
+	// after runner + taskHandler are wired so the accept loop has somewhere
+	// to dispatch.
+	if err = s.startTCPServer(); err != nil {
+		return fmt.Errorf("start tcp server: %w", err)
+	}
+
 	// HTTP admin server — everything above is wired so handlers' backends
 	// are ready by the time we accept the first request.
 	if err = s.startHTTPServer(); err != nil {
@@ -197,11 +213,10 @@ func doStart(srv common.Server, cfg *config.Config) (err error) {
 	// SIGHUP → reload. Lives for the life of the process.
 	s.installSIGHUPHandler()
 
-	// Phase B-3 + B-4: register with master and start the heartbeat loop.
-	// Start() returns immediately; the first register attempt happens in the
-	// background so a missing master does not block syncnode boot.
-	s.masterClient = NewSyncMasterClient(s.cfg.MasterAddr, s.cfg.Listen,
-		WithSnapshotProvider(s))
+	// Phase B-3 + B-4: start the register + heartbeat goroutines now that
+	// every other subsystem is alive. Start() returns immediately; the first
+	// register attempt happens in the background so a missing master does
+	// not block syncnode boot.
 	if err = s.masterClient.Start(context.Background()); err != nil {
 		return fmt.Errorf("start master client: %w", err)
 	}
@@ -313,6 +328,17 @@ func (s *SyncNode) startTCPServer() error {
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
+		// One ctx for the whole accept loop; cancelled when stopC closes so
+		// in-flight HandleConn goroutines exit promptly on shutdown.
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		go func() {
+			select {
+			case <-s.stopC:
+				cancel()
+			case <-ctx.Done():
+			}
+		}()
 		for {
 			conn, aerr := l.Accept()
 			if aerr != nil {
@@ -325,9 +351,13 @@ func (s *SyncNode) startTCPServer() error {
 					continue
 				}
 			}
-			// Phase A: no master-dispatched packets handled yet. Close conn
-			// so peers that mistakenly point at us don't pile up.
-			_ = conn.Close()
+			// P1-3: delegate to the TaskHandler. Each connection drains its
+			// own goroutine. HandleConn closes the conn before returning.
+			s.wg.Add(1)
+			go func(c net.Conn) {
+				defer s.wg.Done()
+				s.taskHandler.HandleConn(ctx, c)
+			}(conn)
 		}
 	}()
 	return nil

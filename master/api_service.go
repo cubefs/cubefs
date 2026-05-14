@@ -8025,8 +8025,9 @@ func (m *Server) addSyncNode(w http.ResponseWriter, r *http.Request) {
 
 // listSyncNodes returns the master's current view of every registered
 // syncnode, in arbitrary order. Includes the per-node identity record
-// only (runtime gauges are returned via the admin /syncNode/response path
-// in later phases).
+// plus the dispatcher load score (P1-1) so operators / external schedulers
+// can see relative pressure across the fleet without scraping individual
+// syncnode endpoints.
 func (m *Server) listSyncNodes(w http.ResponseWriter, r *http.Request) {
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.ListSyncNodes))
 	var err error
@@ -8044,10 +8045,76 @@ func (m *Server) listSyncNodes(w http.ResponseWriter, r *http.Request) {
 			RegisteredAt: sn.ReportTime.Unix(),
 		}
 		sn.RUnlock()
+		if m.cluster.syncDispatcher != nil {
+			info.LoadScore = m.cluster.syncDispatcher.LoadScore(info.Addr)
+		}
 		out = append(out, info)
 		return true
 	})
 	sendOkReply(w, r, newSuccessHTTPReply(out))
+}
+
+// dispatchSyncTask is the master entry point that other services call to
+// ask master to fan-out a sync task. The request body is an AdminTask
+// envelope (task.ID + task.Request payload); master picks the
+// lowest-load syncnode and forwards an OpSyncNodeRunTask packet to it.
+// On nack/failure the dispatcher retries with the next-best candidate
+// up to 3 times (P1-2 acceptance criterion).
+//
+// Response: { "node": "<addr>", "taskID": "<id>" }
+func (m *Server) dispatchSyncTask(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.SyncNodeDispatch))
+	var err error
+	defer func() {
+		doStatAndMetric(proto.SyncNodeDispatch, metric, err, nil)
+	}()
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Errorf("read body: %v", err).Error()})
+		return
+	}
+	var task proto.AdminTask
+	if err = json.Unmarshal(body, &task); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Errorf("decode task: %v", err).Error()})
+		return
+	}
+	if task.ID == "" {
+		err = fmt.Errorf("task.ID is required")
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if m.cluster.syncDispatcher == nil {
+		err = fmt.Errorf("syncDispatcher not initialised")
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	sendFn := func(addr string) error {
+		value, ok := m.cluster.syncNodes.Load(addr)
+		if !ok {
+			return fmt.Errorf("syncnode %s not registered", addr)
+		}
+		sn, ok := value.(*SyncNode)
+		if !ok || sn == nil {
+			return fmt.Errorf("syncnode %s entry invalid", addr)
+		}
+		// Build a fresh OpSyncNodeRunTask carrying the original Request
+		// payload, addressed to this candidate.
+		runTask := proto.NewAdminTask(proto.OpSyncNodeRunTask, addr, task.Request)
+		sn.TaskManager.AddTask(runTask)
+		return nil
+	}
+	addr, dispErr := m.cluster.syncDispatcher.Dispatch(task.ID, sendFn, 3)
+	if dispErr != nil {
+		err = dispErr
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(map[string]interface{}{
+		"node":   addr,
+		"taskID": task.ID,
+	}))
 }
 
 // handle tasks such as heartbeat，expiration scanning, etc.

@@ -250,8 +250,9 @@ const (
 
 	// SyncNode admin (Phase B). Mirror of /lcNode/add — master keeps a
 	// node table and replies to heartbeats with task dispatch metadata.
-	AddSyncNode           = "/syncNode/add"
-	ListSyncNodes         = "/syncNode/list"
+	AddSyncNode             = "/syncNode/add"
+	ListSyncNodes           = "/syncNode/list"
+	SyncNodeDispatch        = "/syncNode/dispatch" // Method: 'POST' — master picks a syncnode for the task and forwards OpSyncNodeRunTask
 	GetSyncNodeTaskResponse = "/syncNode/response" // Method: 'POST'
 
 	QueryDisableDisk             = "/dataNode/queryDisableDisk"
@@ -1016,12 +1017,17 @@ type LcNodeHeartbeatResponse struct {
 // what /admin/syncnode/version reports plus the node's load score (P0
 // computes locally; P1 master aggregates across nodes).
 type SyncNodeInfo struct {
-	NodeID          uint64   `json:"nodeId"`
-	Addr            string   `json:"addr"`
-	Version         string   `json:"version"`
-	Commit          string   `json:"commit"`
-	Capabilities    []string `json:"capabilities,omitempty"` // e.g. ["s3", "cfs", "local"]
-	RegisteredAt    int64    `json:"registeredAt"`           // unix seconds
+	NodeID       uint64   `json:"nodeId"`
+	Addr         string   `json:"addr"`
+	Version      string   `json:"version"`
+	Commit       string   `json:"commit"`
+	Capabilities []string `json:"capabilities,omitempty"` // e.g. ["s3", "cfs", "local"]
+	RegisteredAt int64    `json:"registeredAt"`           // unix seconds
+
+	// LoadScore is the master-side scheduler score per design.md §6.3.1.
+	// Lower is better; +Inf means the node is stale or unhealthy. Computed
+	// by SyncDispatcher.LoadScore at /syncNode/list time.
+	LoadScore float64 `json:"loadScore"`
 }
 
 // SyncNodeHeartbeatRequest is sent FROM master TO syncnode (master pushes
@@ -1036,24 +1042,24 @@ type SyncNodeHeartbeatRequest struct {
 // SyncNodeHeartbeatResponse is the heartbeat reply. Includes the local
 // snapshot needed by master for load-score / health calculation.
 type SyncNodeHeartbeatResponse struct {
-	Status    uint8  `json:"status"`
-	Result    string `json:"result"`
+	Status uint8  `json:"status"`
+	Result string `json:"result"`
 
-	NodeID    uint64 `json:"nodeId"`
-	Addr      string `json:"addr"`
+	NodeID uint64 `json:"nodeId"`
+	Addr   string `json:"addr"`
 
 	// Live runtime gauges — used by master for load score (§6.3.1) and
 	// alerting. All counts are point-in-time snapshots at heartbeat send.
-	UptimeSeconds   int64   `json:"uptimeSeconds"`
-	RunningTasks    int64   `json:"runningTasks"`
-	QueuedTasks     int64   `json:"queuedTasks"`
-	ScheduledRules  int     `json:"scheduledRules"`
-	BoltDBHealthy   bool    `json:"boltDBHealthy"`
-	BandwidthMBps   float64 `json:"bandwidthMBps"` // last-1m average egress
-	CPUPercent      float64 `json:"cpuPercent"`
-	MemPercent      float64 `json:"memPercent"`
-	ReloadFailures  uint64  `json:"reloadFailures"`
-	NodeVersion     string  `json:"version"`
+	UptimeSeconds  int64   `json:"uptimeSeconds"`
+	RunningTasks   int64   `json:"runningTasks"`
+	QueuedTasks    int64   `json:"queuedTasks"`
+	ScheduledRules int     `json:"scheduledRules"`
+	BoltDBHealthy  bool    `json:"boltDBHealthy"`
+	BandwidthMBps  float64 `json:"bandwidthMBps"` // last-1m average egress
+	CPUPercent     float64 `json:"cpuPercent"`
+	MemPercent     float64 `json:"memPercent"`
+	ReloadFailures uint64  `json:"reloadFailures"`
+	NodeVersion    string  `json:"version"`
 }
 
 type FlashNodeDiskCacheStat struct {
