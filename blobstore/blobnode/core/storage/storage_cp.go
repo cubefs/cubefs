@@ -35,10 +35,14 @@ type replicateStorage struct {
 	slaveStg  core.Storage
 	notify    func(error)
 	lastErr   error
+	// writeHook is called after each successful double-write with the shard byte size.
+	writeHook func(n int64)
 }
 
-func NewReplicateStg(master core.Storage, slave core.Storage, notify notifyFunc) (replStg core.Storage) {
-	return &replicateStorage{masterStg: master, slaveStg: slave, notify: notify}
+// NewReplicateStg creates a storage that writes to both master and slave in parallel.
+// writeHook is called after each successful double-write; pass nil to disable.
+func NewReplicateStg(master core.Storage, slave core.Storage, notify notifyFunc, writeHook func(n int64)) (replStg core.Storage) {
+	return &replicateStorage{masterStg: master, slaveStg: slave, notify: notify, writeHook: writeHook}
 }
 
 func (stg *replicateStorage) PendingError() error {
@@ -154,12 +158,17 @@ func (stg *replicateStorage) forward(ctx context.Context, b *core.Shard) (waiter
 func (stg *replicateStorage) Write(ctx context.Context, b *core.Shard) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
+	shardSize := int64(b.Size)
+
 	// modify shard.Body
 	wait, _ := stg.forward(ctx, b)
 	defer func() {
 		fwdErr := wait(err)
 		span.Debugf("wait err:%v, fwdErr:%v", err, fwdErr)
 		err = fwdErr
+		if err == nil && stg.writeHook != nil {
+			stg.writeHook(shardSize)
+		}
 	}()
 
 	// write original location

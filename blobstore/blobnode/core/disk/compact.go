@@ -57,6 +57,7 @@ func (ds *DiskStorage) CompactChunkInternal(ctx context.Context, vuid proto.Vuid
 
 	// The following logic, for the same vuid, only allows serial execution
 	if ds.ChunkLimitPerKey.Acquire(vuid) != nil {
+		_ = cs.StopCompact(ctx, ncs)
 		return bloberr.ErrOverload
 	}
 	defer ds.ChunkLimitPerKey.Release(vuid)
@@ -120,6 +121,20 @@ func (ds *DiskStorage) ExecCompactChunk(vuid proto.Vuid) (err error) {
 		span.Infof("dont need do compact, vuid:%d, chunkFile:%s", vuid, cs.ID())
 		return nil
 	}
+
+	// record compact duration and result after the compact finishes
+	start := time.Now()
+	defer func() {
+		elapsed := time.Since(start)
+		if err != nil {
+			ds.compactMetrics.counterFailed.Inc()
+			span.Errorf("compact done: vuid:%d result:failed elapsed:%v err:%v", vuid, elapsed, err)
+		} else {
+			ds.compactMetrics.counterSuccess.Inc()
+			ds.compactMetrics.duration.Observe(elapsed.Seconds())
+			span.Infof("compact done: vuid:%d result:success elapsed:%v", vuid, elapsed)
+		}
+	}()
 
 	// Persistent compacting field
 	err = ds.UpdateChunkCompactState(ctx, vuid, true)
@@ -210,14 +225,25 @@ func (ds *DiskStorage) runCompactFiles() {
 	}
 	ds.Lock.RUnlock()
 
+	// Scan all chunks: count total pending and pick the first one to enqueue this round.
+	var pendingCnt int
+	enqueueVuid := proto.InvalidVuid
+
 	for _, chunk := range chunks {
 		if !chunk.NeedCompact(ctx) {
 			continue
 		}
-		span.Infof("will compact vuid:<%d>", chunk.Vuid())
-		ds.EnqueueCompact(ctx, chunk.Vuid())
-		// Once in a round
-		return
+		pendingCnt++
+		if enqueueVuid == proto.InvalidVuid {
+			enqueueVuid = chunk.Vuid()
+		}
+	}
+
+	ds.compactMetrics.pending.Set(float64(pendingCnt))
+
+	if enqueueVuid != proto.InvalidVuid {
+		span.Infof("will compact vuid:<%d>, total pending: %d", enqueueVuid, pendingCnt)
+		ds.EnqueueCompact(ctx, enqueueVuid)
 	}
 }
 

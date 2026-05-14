@@ -650,6 +650,9 @@ func TestChunkStorage_StopCompact(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "stopped")
 
+	err = cs.StopCompact(ctx, nil)
+	require.NoError(t, err)
+
 	wg.Wait()
 
 	// --------------- release ---------------
