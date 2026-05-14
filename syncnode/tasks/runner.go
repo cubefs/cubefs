@@ -272,6 +272,24 @@ func (r *Runner) run(task *executor.Task, src, dst backend.Backend, done chan st
 	cur.Error = result.Error
 	cur.Mismatches = result.Mismatches
 	_ = r.store.Put(context.Background(), cur)
+
+	// Phase G-3 hook: if the run terminated in failure with a class of
+	// error that warrants degradation (vol_not_found / path_not_allowed /
+	// auth_failure), flip the rule into StateDegraded so the scheduler
+	// stops re-firing it until an operator resumes. Best-effort — failure
+	// here is logged via the task record's Error string already.
+	//
+	// The Runner only holds a narrow RuleLookup; production wires this to
+	// the full rules.Store so the type assertion succeeds. Tests pass a
+	// stub that is NOT a Store; the assertion fails and we silently skip
+	// — which is exactly what the existing tests need.
+	if cur.RuleID != "" && result.Status == executor.StatusFailed {
+		if class := rules.ClassifyError(result.Error); class.IsDegrading() {
+			if store, ok := r.rules.(rules.Store); ok {
+				_ = rules.Degrade(context.Background(), store, cur.RuleID, result.Error)
+			}
+		}
+	}
 }
 
 // waitForRecord blocks until the task's done channel fires or ctx is done.

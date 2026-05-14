@@ -7993,6 +7993,63 @@ func (m *Server) addLcNode(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(id))
 }
 
+// addSyncNode is the master HTTP entry point for syncnode self-registration.
+// Mirrors addLcNode shape (POST /syncNode/add?addr=...). Returns the
+// allocated nodeID on success; idempotent on addr.
+func (m *Server) addSyncNode(w http.ResponseWriter, r *http.Request) {
+	var (
+		nodeAddr string
+		id       uint64
+		err      error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AddSyncNode))
+	defer func() {
+		doStatAndMetric(proto.AddSyncNode, metric, err, nil)
+		AuditLog(r, proto.AddSyncNode, fmt.Sprintf("node(%v) id(%d)", nodeAddr, id), err)
+	}()
+
+	if nodeAddr, err = parseAndExtractNodeAddr(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if !checkIp(nodeAddr) {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Errorf("addr not legal").Error()})
+		return
+	}
+	if id, err = m.cluster.addSyncNode(nodeAddr); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(id))
+}
+
+// listSyncNodes returns the master's current view of every registered
+// syncnode, in arbitrary order. Includes the per-node identity record
+// only (runtime gauges are returned via the admin /syncNode/response path
+// in later phases).
+func (m *Server) listSyncNodes(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.ListSyncNodes))
+	var err error
+	defer func() {
+		doStatAndMetric(proto.ListSyncNodes, metric, err, nil)
+	}()
+	out := make([]*proto.SyncNodeInfo, 0)
+	m.cluster.syncNodes.Range(func(_, v interface{}) bool {
+		sn := v.(*SyncNode)
+		sn.RLock()
+		info := &proto.SyncNodeInfo{
+			NodeID:       sn.ID,
+			Addr:         sn.Addr,
+			Version:      sn.Version,
+			RegisteredAt: sn.ReportTime.Unix(),
+		}
+		sn.RUnlock()
+		out = append(out, info)
+		return true
+	})
+	sendOkReply(w, r, newSuccessHTTPReply(out))
+}
+
 // handle tasks such as heartbeat，expiration scanning, etc.
 func (m *Server) handleLcNodeTaskResponse(w http.ResponseWriter, r *http.Request) {
 	var (

@@ -18,11 +18,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/syncnode/backend"
+	"github.com/cubefs/cubefs/syncnode/ratelimit"
 )
 
 // runLoad is the entry point for TaskTypeLoad. Called from Executor.Run.
@@ -219,7 +221,7 @@ func (e *Executor) loadOne(ctx context.Context, t *Task, entry backend.Entry, p 
 		tempKeys.Store(landingKey, struct{}{})
 	}
 
-	bytesWritten, err := e.transferOne(ctx, t.Src, t.Dst, entry, landingKey)
+	bytesWritten, err := e.transferOne(ctx, t, entry, landingKey)
 	if err != nil {
 		// Best-effort cleanup of the partial temp; ignore errors.
 		if useTemp {
@@ -282,18 +284,30 @@ func (e *Executor) loadOne(ctx context.Context, t *Task, entry backend.Entry, p 
 
 // transferOne streams entry.Size bytes from src[entry.Key] → dst[landingKey].
 // Returns the number of bytes successfully written to the destination (which
-// for a successful run equals entry.Size).
-func (e *Executor) transferOne(ctx context.Context, src, dst backend.Backend, entry backend.Entry, landingKey string) (int64, error) {
-	body, err := src.Get(ctx, entry.Key, 0, 0)
+// for a successful run equals entry.Size). When the executor has a rate-
+// limit registry configured (or the task has a per-task cap) the body is
+// wrapped in a LimitedReader so the byte stream conforms to the layered
+// bandwidth budget (§12.4).
+func (e *Executor) transferOne(ctx context.Context, t *Task, entry backend.Entry, landingKey string) (int64, error) {
+	body, err := t.Src.Get(ctx, entry.Key, 0, 0)
 	if err != nil {
 		return 0, fmt.Errorf("get src %q: %w", entry.Key, err)
 	}
 	defer body.Close()
 
+	// Apply the layered rate limit on the source side; back-pressure
+	// propagates into Put via the wrapped reader. If no layer is
+	// configured buildTransferLimiter returns nil and we use the raw body
+	// (preserving the historical fast path).
+	src := io.Reader(body)
+	if lim := e.buildTransferLimiter(t); lim != nil {
+		src = ratelimit.NewLimitedReader(ctx, body, lim)
+	}
+
 	// We can't observe the byte count cheaply through Put — backends own
 	// the read loop. The Verify Head call upstream confirms the final size,
 	// so we report entry.Size as the byte count on success and 0 on failure.
-	if _, err := dst.Put(ctx, landingKey, body, entry.Size, backend.PutOptions{}); err != nil {
+	if _, err := t.Dst.Put(ctx, landingKey, src, entry.Size, backend.PutOptions{}); err != nil {
 		return 0, fmt.Errorf("put dst %q: %w", landingKey, err)
 	}
 	return entry.Size, nil

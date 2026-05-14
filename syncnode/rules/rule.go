@@ -108,3 +108,47 @@ var (
 	ErrRuleExists   = errors.New("rule already exists")
 	ErrInvalidState = errors.New("invalid rule state transition")
 )
+
+// ReasonRuleInterrupted is the canonical LastRunError string written when a
+// rule is auto-degraded but the executor's terminal error message is empty
+// (e.g. the rule's last run was cancelled mid-flight). Operators look for
+// this string in /admin/sync/rule responses to distinguish "task failed
+// before reporting a reason" from "rule paused by an operator".
+const ReasonRuleInterrupted = "rule interrupted"
+
+// Degrade flips a rule into StateDegraded and stamps reason into
+// LastRunError so operators can inspect WHY degradation fired without
+// cross-referencing the task records.
+//
+// Degrade is idempotent: invoking it against an already-degraded rule
+// just refreshes LastRunError with the latest reason. The function
+// returns ErrRuleNotFound when ruleID does not exist in store.
+//
+// If reason is empty, ReasonRuleInterrupted is used as the placeholder so
+// LastRunError is never left blank for a degraded rule.
+//
+// See design.md §9 G-3.
+func Degrade(ctx context.Context, store Store, ruleID, reason string) error {
+	if store == nil {
+		return errors.New("rules.Degrade: nil store")
+	}
+	if ruleID == "" {
+		return ErrRuleNotFound
+	}
+	// Probe for existence so callers see ErrRuleNotFound rather than
+	// SetState's downstream error.
+	if _, err := store.Get(ctx, ruleID); err != nil {
+		return err
+	}
+	if err := store.SetState(ctx, ruleID, StateDegraded); err != nil {
+		return err
+	}
+	if reason == "" {
+		reason = ReasonRuleInterrupted
+	}
+	return store.UpdateLastRun(ctx, ruleID, LastRunSummary{
+		At:     time.Now(),
+		Status: "failed",
+		Error:  reason,
+	})
+}

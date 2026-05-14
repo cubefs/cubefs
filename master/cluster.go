@@ -63,6 +63,7 @@ type ClusterTopoSubItem struct {
 	dataNodes sync.Map
 	metaNodes sync.Map
 	lcNodes   sync.Map
+	syncNodes sync.Map
 
 	idAlloc            *IDAllocator
 	t                  *topology
@@ -887,6 +888,18 @@ func (c *Cluster) scheduleToCheckHeartbeat() {
 			},
 		})
 
+	c.runTask(
+		&cTask{
+			tickTime: time.Second * defaultIntervalToCheckHeartbeat,
+			name:     "scheduleToCheckHeartbeat_checkSyncNodeHeartbeat",
+			function: func() (fin bool) {
+				if c.partition != nil && c.partition.IsRaftLeader() {
+					c.checkSyncNodeHeartbeat()
+				}
+				return
+			},
+		})
+
 	go func() {
 		ticker := time.NewTicker(time.Second * defaultIntervalToCheckHeartbeat)
 		defer ticker.Stop()
@@ -1015,6 +1028,26 @@ func (c *Cluster) checkLcNodeHeartbeat() {
 		log.LogInfof("checkLcNodeHeartbeat: deregister node(%v)", node)
 		_ = c.delLcNode(node)
 	}
+}
+
+// checkSyncNodeHeartbeat ticks each registered SyncNode, marks stale nodes
+// inactive, and queues a fresh heartbeat AdminTask for live ones. Unlike
+// LcNode, syncnode entries are NOT auto-deregistered on liveness loss in
+// P0 — IsActive=false is enough; the operator decides when to evict.
+func (c *Cluster) checkSyncNodeHeartbeat() {
+	tasks := make([]*proto.AdminTask, 0)
+	c.syncNodes.Range(func(addr, syncNode interface{}) bool {
+		node := syncNode.(*SyncNode)
+		node.checkLiveness()
+		if !node.IsActive {
+			log.LogInfof("checkSyncNodeHeartbeat: syncnode(%v) is inactive", node.Addr)
+			return true
+		}
+		task := node.createHeartbeatTask(c.masterAddr())
+		tasks = append(tasks, task)
+		return true
+	})
+	c.addSyncNodeTasks(tasks)
 }
 
 func (c *Cluster) scheduleToCheckMetaPartitions() {
@@ -2330,6 +2363,16 @@ func (c *Cluster) lcNode(addr string) (lcNode *LcNode, err error) {
 		return
 	}
 	lcNode = value.(*LcNode)
+	return
+}
+
+func (c *Cluster) syncNode(addr string) (sn *SyncNode, err error) {
+	value, ok := c.syncNodes.Load(addr)
+	if !ok {
+		err = errors.Trace(syncNodeNotFound(addr), "%v not found", addr)
+		return
+	}
+	sn = value.(*SyncNode)
 	return
 }
 
@@ -5791,6 +5834,108 @@ errHandler:
 	err = fmt.Errorf("action[addLcNode], clusterID[%v], lcNodeAddr: %v, err: %v ", c.Name, nodeAddr, err.Error())
 	log.LogError(errors.Stack(err))
 	Warn(c.Name, err.Error())
+	return
+}
+
+// addSyncNode registers a syncnode by address. Mirrors addLcNode:
+// idempotent on addr — second call with the same addr returns the
+// existing ID. State change is raft-replicated before the in-memory
+// map is updated.
+func (c *Cluster) addSyncNode(nodeAddr string) (id uint64, err error) {
+	var sn *SyncNode
+	if value, ok := c.syncNodes.Load(nodeAddr); ok {
+		sn = value.(*SyncNode)
+		sn.ReportTime = time.Now()
+		sn.clean()
+		sn.TaskManager = newAdminTaskManager(sn.Addr, c.Name)
+		log.LogInfof("action[addSyncNode] already add nodeAddr: %v, id: %v", nodeAddr, sn.ID)
+	} else {
+		// allocate SyncNode id first; if this is slow we still want a fresh
+		// ReportTime so the very-first liveness tick doesn't mark inactive.
+		if id, err = c.idAlloc.allocateCommonID(); err != nil {
+			goto errHandler
+		}
+		sn = newSyncNode(nodeAddr, c.Name)
+		sn.ID = id
+		log.LogInfof("action[addSyncNode] add nodeAddr: %v, allocateCommonID: %v", nodeAddr, id)
+	}
+
+	if err = c.syncAddSyncNode(sn); err != nil {
+		goto errHandler
+	}
+	c.syncNodes.Store(nodeAddr, sn)
+	log.LogInfof("action[addSyncNode], clusterID[%v], syncNodeAddr: %v, id: %v, success", c.Name, nodeAddr, sn.ID)
+	return sn.ID, nil
+
+errHandler:
+	err = fmt.Errorf("action[addSyncNode], clusterID[%v], syncNodeAddr: %v, err: %v ", c.Name, nodeAddr, err.Error())
+	log.LogError(errors.Stack(err))
+	Warn(c.Name, err.Error())
+	return
+}
+
+// addSyncNodeTasks dispatches each AdminTask to the addressed SyncNode's
+// TaskManager. Unknown addresses are logged and skipped (the syncnode may
+// have just been removed).
+func (c *Cluster) addSyncNodeTasks(tasks []*proto.AdminTask) {
+	for _, t := range tasks {
+		if t == nil {
+			continue
+		}
+		if node, err := c.syncNode(t.OperatorAddr); err != nil {
+			log.LogWarnf("action[addSyncNodeTasks],nodeAddr:%s,taskID:%s,err:%v", t.OperatorAddr, t.ID, err)
+		} else {
+			node.TaskManager.AddTask(t)
+		}
+	}
+}
+
+// syncAddSyncNode raft-replicates an Add op for the supplied SyncNode.
+// Mirrors syncAddLcNode + syncPutLcNodeInfo.
+func (c *Cluster) syncAddSyncNode(sn *SyncNode) (err error) {
+	return c.syncPutSyncNodeInfo(opSyncAddSyncNode, sn)
+}
+
+// syncDeleteSyncNode raft-replicates a Delete op. Kept for parity with
+// the lcnode path even though P0 does not auto-evict syncnodes.
+func (c *Cluster) syncDeleteSyncNode(sn *SyncNode) (err error) {
+	return c.syncPutSyncNodeInfo(opSyncDeleteSyncNode, sn)
+}
+
+func (c *Cluster) syncPutSyncNodeInfo(opType uint32, sn *SyncNode) (err error) {
+	metadata := new(RaftCmd)
+	metadata.Op = opType
+	metadata.K = syncNodePrefix + sn.Addr
+	snv := newSyncNodeValue(sn)
+	metadata.V, err = json.Marshal(snv)
+	if err != nil {
+		return errors.New(err.Error())
+	}
+	return c.submit(metadata)
+}
+
+// loadSyncNodes reconstructs the in-memory syncNodes map from the raft
+// store on master start (cold load) and on leader switch. Mirrors
+// loadLcNodes. A fresh cluster with no persisted records yields an empty
+// map and no error.
+func (c *Cluster) loadSyncNodes() (err error) {
+	result, err := c.fsm.store.SeekForPrefix([]byte(syncNodePrefix))
+	if err != nil {
+		err = fmt.Errorf("action[loadSyncNodes],err:%v", err.Error())
+		return err
+	}
+	log.LogInfof("action[loadSyncNodes], result count %v", len(result))
+	for _, value := range result {
+		snv := &syncNodeValue{}
+		if err = json.Unmarshal(value, snv); err != nil {
+			err = fmt.Errorf("action[loadSyncNodes],value:%v,unmarshal err:%v", string(value), err)
+			return
+		}
+		sn := newSyncNode(snv.Addr, c.Name)
+		sn.ID = snv.ID
+		c.syncNodes.Store(sn.Addr, sn)
+		log.LogInfof("action[loadSyncNodes], store syncNode[%v], id[%v]", sn.Addr, sn.ID)
+	}
 	return
 }
 

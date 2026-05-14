@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/syncnode/backend"
+	"github.com/cubefs/cubefs/syncnode/ratelimit"
 )
 
 // runSync is the entry point for TaskTypeSync. Called from Executor.Run.
@@ -228,7 +229,15 @@ func (e *Executor) syncOneFile(
 		<-putErrCh // drain the writer goroutine
 		return fmt.Errorf("get src %q: %w", entry.Key, gerr)
 	}
-	n, copyErr := io.Copy(pw, rc)
+	// Wrap the source reader with the layered bandwidth limiter (§12.4).
+	// Wrapping the READER side is the canonical placement — the Put side
+	// consumes from the pipe, so throttling the producer naturally back-
+	// pressures the consumer through the io.Pipe.
+	var src io.Reader = rc
+	if lim := e.buildTransferLimiter(t); lim != nil {
+		src = ratelimit.NewLimitedReader(ctx, rc, lim)
+	}
+	n, copyErr := io.Copy(pw, src)
 	_ = rc.Close()
 	_ = pw.CloseWithError(copyErr)
 	putErr := <-putErrCh

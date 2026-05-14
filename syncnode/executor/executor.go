@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/syncnode/backend"
+	"github.com/cubefs/cubefs/syncnode/ratelimit"
 )
 
 // TaskType identifies which data-path the executor runs for a Task.
@@ -198,8 +199,15 @@ type Executor struct {
 
 type options struct {
 	transfersPerTask   int
-	bandwidthLimitMBps int  // node-level (layer 3)
+	bandwidthLimitMBps int // node-level (layer 3); honoured via rateLimits
 	progressInterval   time.Duration
+
+	// rateLimits is the layered bandwidth registry described in §12.4.
+	// When non-nil, syncOneFile / loadOne wrap source readers with a
+	// LimitedReader composing layer 1 (per-task) + layer 3 (node) + layer
+	// 4 (per-backend). When nil, transfers run unthrottled — preserving
+	// the historical executor behaviour for tests that don't care.
+	rateLimits *ratelimit.Registry
 }
 
 // Option configures a new Executor.
@@ -215,11 +223,25 @@ func WithTransfersPerTask(n int) Option {
 }
 
 // WithBandwidthLimit sets the node-level (layer 3) bandwidth cap.
+//
+// When used together with WithRateLimitRegistry, this option is recorded
+// for diagnostics but the registry's node bucket is the authority — the
+// caller is expected to construct the registry with the same value.
 func WithBandwidthLimit(mbps int) Option {
 	return func(o *options) {
 		if mbps > 0 {
 			o.bandwidthLimitMBps = mbps
 		}
+	}
+}
+
+// WithRateLimitRegistry injects the node-level + per-backend rate-limit
+// registry. The executor wraps every transfer's source reader with a
+// LimitedReader composing per-task (Task.BandwidthLimitMBps), node and
+// per-backend buckets. Pass nil (or omit) to run unthrottled.
+func WithRateLimitRegistry(reg *ratelimit.Registry) Option {
+	return func(o *options) {
+		o.rateLimits = reg
 	}
 }
 
@@ -412,4 +434,41 @@ func snapshotProgress(p *Progress, startedAt time.Time) Progress {
 		out.ThroughputMBps = float64(out.BytesDone) / 1024.0 / 1024.0 / elapsed
 	}
 	return out
+}
+
+// buildTransferLimiter composes the per-transfer bandwidth limiter from
+// the task (layer 1), node (layer 3) and per-backend (layer 4) buckets.
+// Returns nil if no layer is configured — callers should treat nil as
+// "skip wrapping" so the unthrottled fast path stays branch-free.
+//
+// Both src and dst contribute layer-4 buckets; in the common case where
+// neither has a configured backend cap, this still folds the task + node
+// layers into the same Composite.
+func (e *Executor) buildTransferLimiter(t *Task) ratelimit.Limiter {
+	if t == nil {
+		return nil
+	}
+	var layers []ratelimit.Limiter
+	if t.BandwidthLimitMBps > 0 {
+		layers = append(layers, ratelimit.NewBucket(t.BandwidthLimitMBps))
+	}
+	if reg := e.opts.rateLimits; reg != nil {
+		if nb := reg.NodeBucket(); nb != nil {
+			layers = append(layers, nb)
+		}
+		if t.Src != nil {
+			if b := reg.BackendBucket(ratelimit.BackendKey{Kind: t.Src.Kind()}); b != nil {
+				layers = append(layers, b)
+			}
+		}
+		if t.Dst != nil {
+			if b := reg.BackendBucket(ratelimit.BackendKey{Kind: t.Dst.Kind()}); b != nil {
+				layers = append(layers, b)
+			}
+		}
+	}
+	if len(layers) == 0 {
+		return nil
+	}
+	return ratelimit.NewComposite(layers...)
 }

@@ -503,6 +503,14 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminLcNode).
 		HandlerFunc(m.adminLcNode)
 
+	// syncnode management APIs
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AddSyncNode).
+		HandlerFunc(m.addSyncNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.ListSyncNodes).
+		HandlerFunc(m.listSyncNodes)
+
 	// node task response APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.GetDataNodeTaskResponse).

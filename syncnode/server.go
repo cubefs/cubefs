@@ -25,7 +25,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -37,6 +36,7 @@ import (
 	"github.com/cubefs/cubefs/syncnode/backend"
 	"github.com/cubefs/cubefs/syncnode/bolt"
 	"github.com/cubefs/cubefs/syncnode/executor"
+	"github.com/cubefs/cubefs/syncnode/ratelimit"
 	"github.com/cubefs/cubefs/syncnode/rules"
 	"github.com/cubefs/cubefs/syncnode/scheduler"
 	"github.com/cubefs/cubefs/syncnode/tasks"
@@ -72,6 +72,10 @@ type SyncNode struct {
 	clusterID       string
 	nodeID          uint64
 
+	// Master client (Phase B-3 + B-4). Owns the register + heartbeat
+	// goroutines. nil until doStart wires it.
+	masterClient *SyncMasterClient
+
 	// State store (Phase F-2). One BoltDB underlying every persisted
 	// surface: ruleStore + taskStore + inProgress all derived from boltDB.
 	boltDB     *bolt.DB
@@ -83,6 +87,7 @@ type SyncNode struct {
 	backendPool *backend.Pool
 	executor    *executor.Executor
 	runner      *tasks.Runner
+	rateLimits  *ratelimit.Registry
 
 	// Background loops (Phase F-1 + F-4).
 	scheduler *scheduler.Scheduler
@@ -192,10 +197,15 @@ func doStart(srv common.Server, cfg *config.Config) (err error) {
 	// SIGHUP → reload. Lives for the life of the process.
 	s.installSIGHUPHandler()
 
-	// Master registration stub: in Phase B this becomes a real register loop
-	// + heartbeat goroutine. In Phase A it's a no-op so single-node smoke
-	// tests work without a running master.
-	s.registerStub()
+	// Phase B-3 + B-4: register with master and start the heartbeat loop.
+	// Start() returns immediately; the first register attempt happens in the
+	// background so a missing master does not block syncnode boot.
+	s.masterClient = NewSyncMasterClient(s.cfg.MasterAddr, s.cfg.Listen,
+		WithSnapshotProvider(s))
+	if err = s.masterClient.Start(context.Background()); err != nil {
+		return fmt.Errorf("start master client: %w", err)
+	}
+	s.localServerAddr = s.masterClient.LocalServerAddr() // may be empty if first register pending
 
 	log.LogInfof("syncnode started: listen=%s httpListen=%s exporterPort=%d",
 		s.cfg.Listen, s.cfg.HTTPListen, s.cfg.ExporterPort)
@@ -214,6 +224,11 @@ func doShutdown(srv common.Server) {
 	}()
 	if s.stopC != nil {
 		close(s.stopC)
+	}
+	// Stop the master client first so register/heartbeat goroutines exit
+	// before we tear down the stores they snapshot.
+	if s.masterClient != nil {
+		_ = s.masterClient.Stop()
 	}
 	// Stop the periodic loops first so they don't try to use stores we're
 	// about to close.
@@ -399,7 +414,15 @@ func (s *SyncNode) initStateStore() error {
 func (s *SyncNode) initExecutorAndRunner() error {
 	s.backendPool = backend.NewPool()
 
-	execOpts := []executor.Option{}
+	// G-2: the rate-limit registry holds layer-3 (node) + layer-4
+	// (per-backend) buckets. We always construct it so future SetBackendLimit
+	// calls (e.g. via SIGHUP reload) have somewhere to land; a zero node
+	// bandwidth means "unlimited" inside the Bucket.
+	s.rateLimits = ratelimit.NewRegistry(s.cfg.Concurrency.BandwidthLimitMBps)
+
+	execOpts := []executor.Option{
+		executor.WithRateLimitRegistry(s.rateLimits),
+	}
 	if s.cfg.Concurrency.TransfersPerTask > 0 {
 		execOpts = append(execOpts, executor.WithTransfersPerTask(s.cfg.Concurrency.TransfersPerTask))
 	}
@@ -551,18 +574,6 @@ func (s *SyncNode) handleStat(r *http.Request) (interface{}, error) {
 		}
 	}
 	return out, nil
-}
-
-// registerStub is a placeholder for Phase B's real register() loop. In
-// Phase A this only records localServerAddr for /admin/syncnode/version
-// to display; no network call to master.
-func (s *SyncNode) registerStub() {
-	host, _, _ := net.SplitHostPort(s.cfg.MasterAddr)
-	port, _ := strconv.Atoi(s.cfg.Listen)
-	if host == "" {
-		host = "127.0.0.1"
-	}
-	s.localServerAddr = fmt.Sprintf("%s:%d", host, port)
 }
 
 // _ = proto.* is a build-time sanity check that proto package is reachable.
