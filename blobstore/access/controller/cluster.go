@@ -98,6 +98,8 @@ func (alg AlgChoose) String() string {
 	switch alg {
 	case AlgAvailable:
 		return "Available"
+	case AlgRoundRobin:
+		return "RoundRobin"
 	case AlgRandom:
 		return "Random"
 	default:
@@ -109,8 +111,20 @@ func (alg AlgChoose) String() string {
 var (
 	ErrNoSuchCluster      = errors.New("controller: no such cluster")
 	ErrNoClusterAvailable = errors.New("controller: no cluster available")
-	ErrInvalidChooseAlg   = errors.New("controller: invalid cluster chosen algorithm")
 )
+
+// ParseClusterChooseAlg parses cluster_choose_alg from access JSON config.
+// Unrecognized values default to AlgAvailable.
+func ParseClusterChooseAlg(s string) AlgChoose {
+	switch strings.TrimSpace(strings.ToLower(s)) {
+	case "roundrobin":
+		return AlgRoundRobin
+	case "random":
+		return AlgRandom
+	default:
+		return AlgAvailable
+	}
+}
 
 // ClusterController controller of clusters in one region
 type ClusterController interface {
@@ -126,8 +140,6 @@ type ClusterController interface {
 	GetVolumeGetter(clusterID proto.ClusterID) (VolumeGetter, error)
 	// GetConfig get specified config of key from cluster manager
 	GetConfig(ctx context.Context, key string) (string, error)
-	// ChangeChooseAlg change alloc algorithm
-	ChangeChooseAlg(alg AlgChoose) error
 	// GetShardController return IShardController in specified cluster
 	GetShardController(clusterID proto.ClusterID) (IShardController, error)
 }
@@ -151,6 +163,9 @@ type ClusterConfig struct {
 	ConsulToken     string    `json:"consul_token"`
 	ConsulTokenFile string    `json:"consul_token_file"`
 	Clusters        []Cluster `json:"clusters"`
+
+	// ClusterChooseAlg selects how Access picks a cluster for Put/Alloc without assign_cluster_id.
+	ClusterChooseAlg string `json:"cluster_choose_alg"`
 }
 
 // Cluster cluster config, each clusterID related to hosts list
@@ -206,14 +221,16 @@ func NewClusterController(cfg *ClusterConfig, proxy proxy.Cacher, stopCh <-chan 
 			return nil, fmt.Errorf("new consul client failed, err: %v", err)
 		}
 	}
+	alg := ParseClusterChooseAlg(cfg.ClusterChooseAlg)
+
 	controller := &clusterControllerImpl{
 		region:   cfg.Region,
 		kvClient: client,
 		proxy:    proxy,
 		stopCh:   stopCh,
 		config:   *cfg,
+		allocAlg: uint32(alg),
 	}
-	atomic.StoreUint32(&controller.allocAlg, uint32(AlgAvailable))
 
 	f := controller.loadWithConfig
 	if client != nil {
@@ -240,6 +257,7 @@ func NewClusterController(cfg *ClusterConfig, proxy proxy.Cacher, stopCh <-chan 
 			}
 		}
 	}()
+	log.Infof("cluster controller initialized, alg: %s", alg.String())
 	return controller, nil
 }
 
@@ -478,15 +496,6 @@ func (c *clusterControllerImpl) ChooseOne() (*cmapi.ClusterInfo, error) {
 	}
 
 	return nil, fmt.Errorf("no available cluster by %s", alg.String())
-}
-
-func (c *clusterControllerImpl) ChangeChooseAlg(alg AlgChoose) error {
-	if !alg.IsValid() {
-		return ErrInvalidChooseAlg
-	}
-
-	atomic.StoreUint32(&c.allocAlg, uint32(alg))
-	return nil
 }
 
 func (c *clusterControllerImpl) GetServiceController(clusterID proto.ClusterID) (ServiceController, error) {

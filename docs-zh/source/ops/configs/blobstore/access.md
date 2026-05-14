@@ -68,7 +68,7 @@ access的配置是基于[公有配置](./base.md)，以下配置说明主要针�
 | volume_punish_threshold  | 卷磁盘惩罚阈值               | 否，默认 10                     |
 | volume_punish_interval_s | 卷惩罚恢复间隔               | 否，默认 600                    |
 | clustermgr_client_config | clustermgr rpc 配置    | 参考rpc配置示例[rpc](./rpc.md)    |
-
+| cluster_choose_alg       | 多集群且未指定 `assign_cluster_id` 时的选簇算法：`available`、`roundrobin`、`random`。 | 否                           |
 
 ## 配置示例
 
