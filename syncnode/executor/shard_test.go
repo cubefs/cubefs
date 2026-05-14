@@ -24,8 +24,8 @@ func TestShouldKeep_TotalZeroOrOneKeepsEverything(t *testing.T) {
 	cases := []int{0, 1}
 	for _, total := range cases {
 		for _, key := range []string{"", "a", "deep/nested/key", "1234567890"} {
-			if !ShouldKeep(key, 0, total) {
-				t.Errorf("ShouldKeep(%q, 0, %d) = false, want true", key, total)
+			if !ShouldKeep(key, 0, total, nil) {
+				t.Errorf("ShouldKeep(%q, 0, %d, nil) = false, want true", key, total)
 			}
 		}
 	}
@@ -34,8 +34,8 @@ func TestShouldKeep_TotalZeroOrOneKeepsEverything(t *testing.T) {
 func TestShouldKeep_NegativeOrOutOfRangeIndexDrops(t *testing.T) {
 	// total=4: valid indices are 0..3. Anything outside drops.
 	for _, idx := range []int{-1, 4, 100} {
-		if ShouldKeep("anything", idx, 4) {
-			t.Errorf("ShouldKeep(anything, %d, 4) = true, want false", idx)
+		if ShouldKeep("anything", idx, 4, nil) {
+			t.Errorf("ShouldKeep(anything, %d, 4, nil) = true, want false", idx)
 		}
 	}
 }
@@ -87,7 +87,7 @@ func TestShouldKeep_PartitionsExactlyOnce(t *testing.T) {
 		hits := 0
 		owner := -1
 		for shard := 0; shard < total; shard++ {
-			if ShouldKeep(key, shard, total) {
+			if ShouldKeep(key, shard, total, nil) {
 				hits++
 				owner = shard
 			}
@@ -110,14 +110,14 @@ func TestShouldKeep_UniformDistribution(t *testing.T) {
 	for i := 0; i < N; i++ {
 		key := fmt.Sprintf("obj-%d", i)
 		for shard := 0; shard < total; shard++ {
-			if ShouldKeep(key, shard, total) {
+			if ShouldKeep(key, shard, total, nil) {
 				counts[shard]++
 				break
 			}
 		}
 	}
 	mean := float64(N) / float64(total) // 250
-	tol := 0.25                          // ±25%
+	tol := 0.25                         // ±25%
 	for i, c := range counts {
 		dev := math.Abs(float64(c)-mean) / mean
 		if dev > tol {
@@ -139,7 +139,7 @@ func TestShouldKeep_DistributionLarge(t *testing.T) {
 	for i := 0; i < N; i++ {
 		key := fmt.Sprintf("longer/key/with/path/segments/obj-%d.bin", i)
 		for shard := 0; shard < total; shard++ {
-			if ShouldKeep(key, shard, total) {
+			if ShouldKeep(key, shard, total, nil) {
 				counts[shard]++
 				break
 			}
@@ -152,6 +152,51 @@ func TestShouldKeep_DistributionLarge(t *testing.T) {
 		if dev > tol {
 			t.Errorf("shard %d count=%d mean=%.0f dev=%.3f > %.2f",
 				i, c, mean, dev, tol)
+		}
+	}
+}
+
+// TestShouldKeep_PrefixMode covers the P2-5 prefix-mode branch: when
+// prefixes is non-empty, ShouldKeep matches via strings.HasPrefix and
+// IGNORES the hash math.
+func TestShouldKeep_PrefixMode(t *testing.T) {
+	cases := []struct {
+		name     string
+		key      string
+		prefixes []string
+		want     bool
+	}{
+		{"single prefix hit", "2024/jan/a.bin", []string{"2024/"}, true},
+		{"single prefix miss", "2025/jan/a.bin", []string{"2024/"}, false},
+		{"multi prefix first hit", "logs/access.log", []string{"logs/", "metrics/"}, true},
+		{"multi prefix second hit", "metrics/latency.csv", []string{"logs/", "metrics/"}, true},
+		{"multi prefix miss", "junk/x", []string{"logs/", "metrics/"}, false},
+		{"empty prefixes falls back to hash", "x", []string{}, true}, // total=0 → keep
+		{"nil prefixes falls back to hash", "x", nil, true},          // total=0 → keep
+		{"exact prefix match no slash", "abc", []string{"abc"}, true},
+		{"shorter key drops", "ab", []string{"abc"}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := ShouldKeep(tc.key, 0, 0, tc.prefixes); got != tc.want {
+				t.Errorf("ShouldKeep(%q, 0, 0, %v) = %v, want %v", tc.key, tc.prefixes, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestShouldKeep_PrefixOverridesHash verifies prefix-mode wins when
+// both prefixes AND a non-trivial (index, total) are supplied — the
+// hash is bypassed.
+func TestShouldKeep_PrefixOverridesHash(t *testing.T) {
+	target := shardKey("x", 4)
+	prefixes := []string{"x"}
+	for shard := 0; shard < 4; shard++ {
+		if shard == target {
+			continue
+		}
+		if !ShouldKeep("x", shard, 4, prefixes) {
+			t.Errorf("shard %d: prefix-mode should accept key x regardless of hash", shard)
 		}
 	}
 }

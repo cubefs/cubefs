@@ -58,25 +58,29 @@ type masterResponder interface {
 // field of OpSyncNodeRunTask packets. The master dispatcher fills these when
 // it picks this syncnode as the owner.
 //
-// SubTask is the P1-7 fan-out hook; P1-3 only requires RuleID to make
-// end-to-end master-driven execution work.
+// As of P2 the master ships the full rule snapshot in the Rule field so
+// syncnode no longer needs a local rule store; Phase 6 cuts the local
+// lookup path. SubTask is the P1-7 fan-out hook; SubTask.Prefixes (P2-5)
+// is the prefix-mode shard descriptor.
 type RunTaskRequest struct {
 	TaskID   string                 `json:"taskId,omitempty"`
 	RuleID   string                 `json:"ruleId"`
 	Type     string                 `json:"type,omitempty"`
+	Rule     *proto.SyncRule        `json:"rule,omitempty"`
 	SubTask  *RunSubTaskInfo        `json:"subTask,omitempty"`
 	Override map[string]interface{} `json:"override,omitempty"`
 }
 
-// RunSubTaskInfo describes one shard of a fan-out task. P1-7 fills it; for
-// P1-3 we just plumb it through without acting on it.
-//
-// TODO(P1-7): when Runner.TriggerSubTask lands, dispatch on SubTask != nil and
-// forward ShardIndex / ShardTotal so workers can scope their work range.
+// RunSubTaskInfo describes one shard of a fan-out task. ShardIndex /
+// ShardTotal cover hash-mode dispatch (P1-7); Prefixes (P2-5) carries
+// the literal prefix list a prefix-mode shard owns. Both modes route
+// through the same SubTask field — readers should treat a non-empty
+// Prefixes as a signal to ignore ShardIndex/Total for filtering.
 type RunSubTaskInfo struct {
-	ParentTaskID string `json:"parentTaskId"`
-	ShardIndex   int    `json:"shardIndex"`
-	ShardTotal   int    `json:"shardTotal"`
+	ParentTaskID string   `json:"parentTaskId"`
+	ShardIndex   int      `json:"shardIndex"`
+	ShardTotal   int      `json:"shardTotal"`
+	Prefixes     []string `json:"prefixes,omitempty"`
 }
 
 // CancelTaskRequest is the master-pushed cancel directive carried inside the
@@ -96,6 +100,12 @@ type TaskHandler struct {
 	runner       runnerAPI
 	masterClient masterResponder
 
+	// bb is the backend builder used by handleListPrefixes (P2-5
+	// auto-prefix probe). nil = list-prefixes packets return an error
+	// (test-friendly default; production wires this via
+	// WithBackendBuilder from server.go).
+	bb *backendBuilder
+
 	// SEC2: per-read deadline applied inside HandleConn. Stored as
 	// time.Duration so callers can wire it from SyncConfig.TCP. Zero
 	// or negative falls back to DefaultTCPReadIdleTimeout seconds at
@@ -106,8 +116,9 @@ type TaskHandler struct {
 
 	// Counters exposed via the existing /admin/syncnode/stat surface in a
 	// future patch; reading them in tests is enough for now.
-	runTaskTotal    atomic.Uint64
-	cancelTaskTotal atomic.Uint64
+	runTaskTotal      atomic.Uint64
+	cancelTaskTotal   atomic.Uint64
+	listPrefixesTotal atomic.Uint64
 }
 
 // TaskHandlerOption configures optional TaskHandler behaviour. See
@@ -118,6 +129,14 @@ type TaskHandlerOption func(*TaskHandler)
 // HandleConn. d <= 0 falls back to DefaultTCPReadIdleTimeout seconds.
 func WithReadIdleTimeout(d time.Duration) TaskHandlerOption {
 	return func(h *TaskHandler) { h.readIdleTimeout = d }
+}
+
+// withBackendBuilder wires the backend builder used by the auto-prefix
+// probe handler. Unexported because production callers go through
+// server.go construction; tests can drive HandlePacket without it (the
+// list-prefixes path returns an error when bb is nil).
+func withBackendBuilder(bb *backendBuilder) TaskHandlerOption {
+	return func(h *TaskHandler) { h.bb = bb }
 }
 
 // NewTaskHandler constructs a TaskHandler. runner must be non-nil; mc may be
@@ -250,6 +269,8 @@ func (h *TaskHandler) HandlePacket(ctx context.Context, p *proto.Packet) *proto.
 		return h.handleRunTask(ctx, p)
 	case proto.OpSyncNodeCancelTask:
 		return h.handleCancelTask(ctx, p)
+	case proto.OpSyncNodeListPrefixes:
+		return h.handleListPrefixes(ctx, p)
 	default:
 		return errorReply(p, fmt.Errorf("unknown opcode 0x%X", p.Opcode))
 	}
@@ -417,4 +438,90 @@ func errorReply(req *proto.Packet, err error) *proto.Packet {
 		Size:       uint32(len(msg)),
 		Data:       msg,
 	}
+}
+
+// handleListPrefixes is the OpSyncNodeListPrefixes path (Phase P2-5
+// auto-prefix probe). The master asks this syncnode to enumerate the
+// top-level prefixes under a given (endpoint, prefix, delimiter) tuple;
+// the result drives master's prefix-bucket fan-out.
+//
+// The handler is intentionally lightweight: it builds (or reuses from
+// the pool) a backend, calls List(prefix, recursive=false), collects
+// the CommonPrefixes (Entry.IsDir==true), and replies. Does NOT count
+// toward concurrentTasks — listing one directory is a sub-second
+// operation and shouldn't block real task dispatch.
+func (h *TaskHandler) handleListPrefixes(ctx context.Context, p *proto.Packet) *proto.Packet {
+	h.listPrefixesTotal.Add(1)
+	if h.bb == nil {
+		return errorReply(p, errors.New("backend builder not wired"))
+	}
+	req, err := decodeListPrefixesRequest(p.Data)
+	if err != nil {
+		return errorReply(p, fmt.Errorf("decode list-prefixes request: %w", err))
+	}
+	ep := req.Endpoint
+	be, err := h.bb.Build(ctx, &ep)
+	if err != nil {
+		return errorReply(p, fmt.Errorf("build backend: %w", err))
+	}
+	maxPrefixes := req.MaxPrefixes
+	if maxPrefixes <= 0 {
+		maxPrefixes = proto.SyncListPrefixesMaxDefault
+	}
+	listCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	ch, err := be.List(listCtx, req.Prefix, false)
+	if err != nil {
+		return errorReply(p, fmt.Errorf("backend list: %w", err))
+	}
+	prefixes := make([]string, 0, 16)
+	for entry := range ch {
+		if entry.Err != nil {
+			return errorReply(p, fmt.Errorf("list err: %w", entry.Err))
+		}
+		if !entry.IsDir {
+			continue
+		}
+		prefixes = append(prefixes, entry.Key)
+		if len(prefixes) >= maxPrefixes {
+			break
+		}
+	}
+	reply := &proto.SyncListPrefixesReply{Prefixes: prefixes}
+	body, err := json.Marshal(reply)
+	if err != nil {
+		return errorReply(p, fmt.Errorf("marshal reply: %w", err))
+	}
+	log.LogInfof("handleListPrefixes: kind=%s prefix=%q found=%d", ep.Kind, req.Prefix, len(prefixes))
+	return &proto.Packet{
+		Magic:      proto.ProtoMagic,
+		Opcode:     p.Opcode,
+		ReqID:      p.ReqID,
+		ResultCode: proto.OpOk,
+		Size:       uint32(len(body)),
+		Data:       body,
+	}
+}
+
+// decodeListPrefixesRequest unwraps the AdminTask envelope and pulls a
+// typed SyncListPrefixesRequest out. The wire format goes through two
+// JSON layers: the outer AdminTask carries Request as interface{}, and
+// the inner payload is the request struct. We round-trip rather than
+// type-assert because the inner shape arrives as map[string]interface{}
+// after the outer Unmarshal.
+func decodeListPrefixesRequest(data []byte) (*proto.SyncListPrefixesRequest, error) {
+	var envelope struct {
+		Request json.RawMessage `json:"Request"`
+	}
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		return nil, fmt.Errorf("decode envelope: %w", err)
+	}
+	if len(envelope.Request) == 0 {
+		return nil, errors.New("missing Request body")
+	}
+	var req proto.SyncListPrefixesRequest
+	if err := json.Unmarshal(envelope.Request, &req); err != nil {
+		return nil, fmt.Errorf("decode request body: %w", err)
+	}
+	return &req, nil
 }

@@ -127,12 +127,14 @@ func (e *Executor) runSync(ctx context.Context, t *Task, r Reporter, p *Progress
 				if entry.IsDir {
 					continue
 				}
-				// P1-7 sharding: drop entries that don't map to our
+				// P1-7 + P2-5 sharding: drop entries that don't map to our
 				// shard BEFORE counting them. The other N-1 sub-tasks
 				// will count their share, so the parent's aggregate
 				// FilesTotal across all shards equals the un-sharded
-				// total. Default ShardTotal=0 keeps every entry.
-				if t.ShardTotal > 0 && !ShouldKeep(entry.Key, t.ShardIndex, t.ShardTotal) {
+				// total. ShouldKeep handles hash-mode (default) AND
+				// prefix-mode (Task.ShardPrefixes != nil) — see
+				// shard.go for the dispatch rule.
+				if t.ShardTotal > 0 && !ShouldKeep(entry.Key, t.ShardIndex, t.ShardTotal, t.ShardPrefixes) {
 					continue
 				}
 				atomic.AddInt64(&p.FilesTotal, 1)
@@ -179,8 +181,8 @@ func (e *Executor) runSync(ctx context.Context, t *Task, r Reporter, p *Progress
 }
 
 // syncOneFile transfers a single entry from src to dst. Heads dst first to
-// support idempotent re-runs; on size (and optional etag) match the file is
-// counted as Skipped and no bytes are moved.
+// support idempotent re-runs; skips only when both sides agree on an ETag
+// so same-size mutations on ETag-less backends (local POSIX) are re-uploaded.
 func (e *Executor) syncOneFile(
 	ctx context.Context,
 	t *Task,
@@ -196,15 +198,16 @@ func (e *Executor) syncOneFile(
 		return fmt.Errorf("rebase key %q: %w", entry.Key, err)
 	}
 
-	// Idempotency check: if dst already has matching size (and matching
-	// etag when both sides report one), skip.
+	// Idempotency check: skip if dst already has a verified match.
+	// We require BOTH sides to have an ETag and for them to agree; when
+	// either side lacks an ETag (e.g. local POSIX backend) we cannot verify
+	// content equality and must re-upload to avoid silently skipping
+	// same-size mutations.
 	if dstSize, dstETag, _, herr := t.Dst.Head(ctx, dstKey); herr == nil {
-		if dstSize == entry.Size {
-			if entry.ETag == "" || dstETag == "" || entry.ETag == dstETag {
-				atomic.AddInt64(&p.FilesSkipped, 1)
-				r.OnFileDone(entry.Key, 0, nil)
-				return nil
-			}
+		if dstSize == entry.Size && entry.ETag != "" && dstETag != "" && entry.ETag == dstETag {
+			atomic.AddInt64(&p.FilesSkipped, 1)
+			r.OnFileDone(entry.Key, 0, nil)
+			return nil
 		}
 	} else if !errors.Is(herr, backend.ErrKeyNotFound) {
 		// Surface unexpected Head errors. ErrKeyNotFound is the happy

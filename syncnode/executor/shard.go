@@ -14,23 +14,28 @@
 
 package executor
 
-import "hash/fnv"
+import (
+	"hash/fnv"
+	"strings"
+)
 
-// Sharding (Phase P1-7) — file-level fan-out across N syncnodes.
+// Sharding (Phase P1-7 + P2-5) — file-level fan-out across N syncnodes.
 //
-// Each shard owner runs a regular Task whose ShardTotal == N and whose
-// ShardIndex is its position [0, N). The producer loops in sync_task.go
-// and load_task.go filter the source listing through ShouldKeep so each
-// owner only transfers the subset of entries whose hashed key maps to
-// its ShardIndex.
+// Two modes:
 //
-// The hash is FNV-1a over the raw object key, modulo ShardTotal. The
-// split is therefore:
-//   - deterministic (a re-dispatched sub-task on a new owner sees the
-//     same subset),
-//   - stateless (no master-side per-entry assignment ledger),
-//   - uniform (FNV-1a gives an even distribution across reasonable key
-//     populations — verified in shard_test.go).
+//  - hash (default): FNV-1a over the raw object key, modulo ShardTotal.
+//    Deterministic, stateless, uniform — every shard runs ShouldKeep
+//    independently and selects its subset.
+//
+//  - prefix (P2-5): when Task.ShardPrefixes is non-empty, the shard
+//    owns one or more literal prefix strings; ShouldKeep returns true
+//    only when the entry key starts with at least one of them. This is
+//    populated by the master from explicit operator-declared prefixes
+//    (rule.shardPrefixes) or from a backend-probe at fire time (the
+//    auto strategy). Hash math is bypassed in this mode.
+//
+// shardKey + the hash branch are kept identical to P1-7 so existing
+// hash-mode dispatches keep working.
 
 // shardKey returns the stable shard bucket [0, total) for an object key.
 // FNV-1a is fast (one allocation per call worst-case) and uniform enough
@@ -46,14 +51,27 @@ func shardKey(key string, total int) int {
 }
 
 // ShouldKeep reports whether the entry with the given key belongs in
-// the (index, total) shard of a fan-out task. Returns true unconditionally
-// when total <= 1 — sharding disabled, every entry stays in scope.
+// the (index, total) shard of a fan-out task.
 //
-// Negative or out-of-range index returns false (defensive default: the
-// caller built a malformed Task; rather than corrupt the destination by
-// running with no filter, drop everything on the floor and let the
-// fan-out coordinator surface the failure via FilesFailed/empty result).
-func ShouldKeep(key string, index, total int) bool {
+// When prefixes is non-empty, prefix-mode wins: returns true iff the
+// key has any of the listed prefixes as a literal prefix. (index, total)
+// are still tracked for parent task correlation but no longer affect
+// the filter decision.
+//
+// When prefixes is empty, hash-mode applies:
+//   - total <= 1: returns true unconditionally
+//   - index out of range: returns false (defensive — caller built a
+//     malformed Task)
+//   - otherwise: returns true iff shardKey(key, total) == index
+func ShouldKeep(key string, index, total int, prefixes []string) bool {
+	if len(prefixes) > 0 {
+		for _, p := range prefixes {
+			if strings.HasPrefix(key, p) {
+				return true
+			}
+		}
+		return false
+	}
 	if total <= 1 {
 		return true
 	}

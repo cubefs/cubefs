@@ -32,21 +32,21 @@ import (
 // See design.md §8.2 (load data flow) and §9 Phase D-3 (this task).
 //
 // Flow:
-//   1. List src under t.SrcPath (recursive=true).
-//   2. For each Entry that passes t.Filter.Match, schedule a transfer worker
-//      to:
-//      a. Compute dst key by rebasing entry.Key from t.SrcPath onto t.DstPath.
-//      b. Head dst → if size matches src size, skip (FilesSkipped++).
-//      c. According to DownloadStrategy:
-//         - temp_rename (default): Put body to "<dst>.downloading.<task_id>",
-//           then Rename(temp, dst). Falls back to a non-atomic Delete + log
-//           when the backend reports ErrBackendUnsupported (§10.6 Caps).
-//         - direct: Put straight to dst key (no temp suffix).
-//      d. Verify: Head dst, confirm size matches src size; on mismatch
-//         FilesFailed++ and best-effort cleanup of the temp.
-//   3. On cancellation / fatal error: best-effort delete any temp keys we
-//      created. The orphan-temp cleanup is sequential and ignores errors —
-//      we just want the next run to see a clean destination.
+//  1. List src under t.SrcPath (recursive=true).
+//  2. For each Entry that passes t.Filter.Match, schedule a transfer worker
+//     to:
+//     a. Compute dst key by rebasing entry.Key from t.SrcPath onto t.DstPath.
+//     b. Head dst → if size matches src size, skip (FilesSkipped++).
+//     c. According to DownloadStrategy:
+//     - temp_rename (default): Put body to "<dst>.downloading.<task_id>",
+//     then Rename(temp, dst). Falls back to a non-atomic Delete + log
+//     when the backend reports ErrBackendUnsupported (§10.6 Caps).
+//     - direct: Put straight to dst key (no temp suffix).
+//     d. Verify: Head dst, confirm size matches src size; on mismatch
+//     FilesFailed++ and best-effort cleanup of the temp.
+//  3. On cancellation / fatal error: best-effort delete any temp keys we
+//     created. The orphan-temp cleanup is sequential and ignores errors —
+//     we just want the next run to see a clean destination.
 func (e *Executor) runLoad(ctx context.Context, t *Task, r Reporter, p *Progress) error {
 	workers := e.transfersPerTask(t)
 	if workers < 1 {
@@ -129,10 +129,10 @@ func (e *Executor) runLoad(ctx context.Context, t *Task, r Reporter, p *Progress
 				if entry.IsDir {
 					continue
 				}
-				// P1-7 sharding: filter to this shard's subset before
-				// counting / dispatching to workers. Default
+				// P1-7 + P2-5 sharding: hash- or prefix-mode filter
+				// before counting / dispatching to workers. Default
 				// ShardTotal=0 disables sharding (every entry kept).
-				if t.ShardTotal > 0 && !ShouldKeep(entry.Key, t.ShardIndex, t.ShardTotal) {
+				if t.ShardTotal > 0 && !ShouldKeep(entry.Key, t.ShardIndex, t.ShardTotal, t.ShardPrefixes) {
 					continue
 				}
 				if !t.Filter.Match(entry, now) {

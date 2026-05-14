@@ -83,10 +83,11 @@ type SyncNode struct {
 	inProgress bolt.InProgressStore
 
 	// Backend pool + executor + tasks subsystem (Phase D + E + F).
-	backendPool *backend.Pool
-	executor    *executor.Executor
-	runner      *tasks.Runner
-	rateLimits  *ratelimit.Registry
+	backendPool    *backend.Pool
+	backendBuilder *backendBuilder // P2-5: shared with TaskHandler for auto-prefix probe
+	executor       *executor.Executor
+	runner         *tasks.Runner
+	rateLimits     *ratelimit.Registry
 
 	// taskHandler dispatches OpSyncNodeRunTask / OpSyncNodeCancelTask packets
 	// pushed by master onto the TCP listener (Phase P1-3). Built after
@@ -210,7 +211,8 @@ func doStart(srv common.Server, cfg *config.Config) (err error) {
 		WithSnapshotProvider(s),
 		WithRateLimitRegistry(s.rateLimits))
 	s.taskHandler = NewTaskHandler(s.runner, s.masterClient,
-		WithReadIdleTimeout(s.cfg.TCP.ResolvedReadIdleTimeout()))
+		WithReadIdleTimeout(s.cfg.TCP.ResolvedReadIdleTimeout()),
+		withBackendBuilder(s.backendBuilder))
 
 	// SEC4: install the admin auth token before the HTTP listener comes
 	// up. An empty token disables auth (preserves pre-fix behaviour for
@@ -537,6 +539,7 @@ func (s *SyncNode) initExecutorAndRunner() error {
 	// Backend construction. The closure reads under cfgMu so a half-swap
 	// can't race a Build.
 	builder := newBackendBuilder(s.backendPool, s.currentConfig)
+	s.backendBuilder = builder // P2-5: stash so TaskHandler can reuse for ListPrefixes probe
 	runnerOpts := []tasks.RunnerOption{
 		tasks.WithOnTerminal(s.onTaskTerminal),
 	}

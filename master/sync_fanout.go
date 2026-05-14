@@ -88,10 +88,17 @@ type TaskProgress struct {
 // Defined here (not imported from syncnode) so master doesn't pull the
 // syncnode binary into its own build graph. The two struct shapes must
 // stay JSON-compatible.
+//
+// Prefixes (P2-5) carries the literal prefix list when the rule uses
+// prefix-mode sharding (operator-declared or auto-probed). It is
+// omitempty so hash-mode dispatches don't emit the field. Readers
+// (executor.ShouldKeep) treat a non-empty Prefixes as a signal to skip
+// hash math entirely.
 type SubTaskInfo struct {
-	ParentTaskID string `json:"parentTaskId"`
-	ShardIndex   int    `json:"shardIndex"`
-	ShardTotal   int    `json:"shardTotal"`
+	ParentTaskID string   `json:"parentTaskId"`
+	ShardIndex   int      `json:"shardIndex"`
+	ShardTotal   int      `json:"shardTotal"`
+	Prefixes     []string `json:"prefixes,omitempty"`
 }
 
 // PayloadCloner is the contract DispatchN uses to clone the parent
@@ -200,6 +207,89 @@ func (f *SyncFanout) DispatchN(parentTaskID, ruleID string, shardTotal int,
 		dispatched++
 	}
 
+	if dispatched < shardTotal {
+		if firstErr == nil {
+			firstErr = ErrInsufficientCandidates
+		}
+		return owners, fmt.Errorf("%w: dispatched %d/%d (first error: %v)",
+			ErrInsufficientCandidates, dispatched, shardTotal, firstErr)
+	}
+	return owners, nil
+}
+
+// DispatchNWithPrefixBuckets is the prefix-mode counterpart to DispatchN.
+// shardTotal == len(buckets); each shard gets the bucket's prefix list
+// attached to its SubTaskInfo.Prefixes field via the cloner. The
+// executor on the receiving syncnode will use the prefix list to filter
+// the source listing instead of the hash math (see
+// syncnode/executor/shard.go::ShouldKeep).
+//
+// buckets MUST be non-empty and each inner slice MUST also be non-empty
+// (we don't want a shard with no work). Returns owners map +/- the same
+// partial-success semantics as DispatchN.
+//
+// The implementation reuses the dispatcher + cloner + registerParent
+// scaffolding so failover + progress aggregation work identically to
+// hash-mode fan-out.
+func (f *SyncFanout) DispatchNWithPrefixBuckets(parentTaskID, ruleID string,
+	payloadTemplate interface{}, buckets [][]string, cloner PayloadCloner,
+	send SendFunc, maxRetries int,
+) (map[int]string, error) {
+	if parentTaskID == "" {
+		return nil, fmt.Errorf("syncfanout: empty parentTaskID")
+	}
+	if len(buckets) == 0 {
+		return nil, fmt.Errorf("syncfanout: empty buckets")
+	}
+	for i, b := range buckets {
+		if len(b) == 0 {
+			return nil, fmt.Errorf("syncfanout: bucket %d is empty", i)
+		}
+	}
+	if cloner == nil {
+		return nil, fmt.Errorf("syncfanout: nil PayloadCloner")
+	}
+	if send == nil {
+		return nil, fmt.Errorf("syncfanout: nil SendFunc")
+	}
+	if f.disp == nil {
+		return nil, fmt.Errorf("syncfanout: nil dispatcher")
+	}
+	shardTotal := len(buckets)
+	f.registerParent(parentTaskID, ruleID, shardTotal)
+
+	owners := make(map[int]string, shardTotal)
+	dispatched := 0
+	var firstErr error
+	for shard := 0; shard < shardTotal; shard++ {
+		shard := shard // closure capture
+		subID := subTaskID(parentTaskID, shard)
+		payload, cloneErr := cloner.CloneWithSubTask(payloadTemplate, SubTaskInfo{
+			ParentTaskID: parentTaskID,
+			ShardIndex:   shard,
+			ShardTotal:   shardTotal,
+			Prefixes:     buckets[shard],
+		})
+		if cloneErr != nil {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("clone payload shard %d: %w", shard, cloneErr)
+			}
+			continue
+		}
+		sendForShard := func(addr string) error {
+			return send(addr, shard, payload)
+		}
+		addr, err := f.disp.Dispatch(subID, sendForShard, maxRetries)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("shard %d: %w", shard, err)
+			}
+			continue
+		}
+		owners[shard] = addr
+		f.recordOwner(parentTaskID, shard, addr)
+		dispatched++
+	}
 	if dispatched < shardTotal {
 		if firstErr == nil {
 			firstErr = ErrInsufficientCandidates

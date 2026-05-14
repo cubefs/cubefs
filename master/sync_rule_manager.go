@@ -52,6 +52,11 @@ type SyncRuleManager struct {
 	cron    *cron.Cron              // nil before Start, nil after Stop
 	entries map[string]cron.EntryID // ruleID → cron entry id
 	started bool                    // true between Start and Stop
+
+	// prefixCache stores the auto-mode probe results per (ruleID +
+	// source identity). Probes are asynchronous; cache hits avoid the
+	// extra TCP round trip + backend list call on every fire.
+	prefixCache *syncPrefixCache
 }
 
 // NewSyncRuleManager builds a manager bound to cluster. The cluster must
@@ -60,8 +65,9 @@ type SyncRuleManager struct {
 // (master_manager.go).
 func NewSyncRuleManager(cluster *Cluster) *SyncRuleManager {
 	return &SyncRuleManager{
-		cluster: cluster,
-		entries: make(map[string]cron.EntryID),
+		cluster:     cluster,
+		entries:     make(map[string]cron.EntryID),
+		prefixCache: newSyncPrefixCache(),
 	}
 }
 
@@ -218,13 +224,13 @@ func (m *SyncRuleManager) fireRule(ruleID string) {
 //   - hash mode (default): if Parallelism > 1 and we have multiple
 //     candidates, fan out via SyncFanout.DispatchN with hash-mode
 //     sub-tasks. Otherwise single Dispatch to the lowest-load node.
-//   - prefix mode (Phase 5): len(ShardPrefixes) sub-tasks, each shard
-//     gets one or more prefixes via SubTaskInfo.Prefixes (TODO).
-//   - auto mode (Phase 5): probe a candidate's backend.List for top-
-//     level prefixes, then pack into sub-tasks (TODO).
-//
-// For Phase 3, prefix and auto fall back to hash with a TODO log so the
-// engine wires through without depending on Phase 5's wire-op changes.
+//   - prefix mode (P2-5): bucketsForPrefix packs the operator-declared
+//     ShardPrefixes into shards (≤ Parallelism); each shard gets its
+//     bucket on SubTaskInfo.Prefixes. The receiving syncnode executor
+//     filters via prefix match instead of hash.
+//   - auto mode: probe a candidate's backend.List for top-level
+//     prefixes, then route through prefix mode. (Phase 5b — wire op
+//     OpSyncNodeListPrefixes lands separately.)
 func (m *SyncRuleManager) dispatchRule(taskID string, rule *proto.SyncRule) error {
 	disp := m.cluster.syncDispatcher
 	if disp == nil {
@@ -235,17 +241,66 @@ func (m *SyncRuleManager) dispatchRule(taskID string, rule *proto.SyncRule) erro
 	parallelism := rule.Config.Parallelism
 
 	switch strategy {
-	case "prefix", "auto":
-		// Phase 5 will plumb shard prefixes through SubTaskInfo. For
-		// now degrade to hash mode so the cron engine is end-to-end
-		// testable without waiting for the wire change.
-		log.LogWarnf("SyncRuleManager.dispatchRule rule=%q strategy=%q TODO Phase 5; falling back to hash", rule.ID(), strategy)
-		fallthrough
+	case "prefix":
+		if len(rule.Config.ShardPrefixes) == 0 {
+			return fmt.Errorf("rule %q: shardingStrategy=prefix requires non-empty shardPrefixes", rule.ID())
+		}
+		return m.dispatchPrefix(taskID, rule, payload, rule.Config.ShardPrefixes, parallelism)
+	case "auto":
+		// Try cache first; on hit, dispatch via prefix mode using the
+		// cached probe result. On miss, kick off an async probe and
+		// fall back to hash for THIS fire (the cache will be warm by
+		// the next fire).
+		key := syncPrefixCacheKey(rule)
+		if cached, ok := m.prefixCache.get(key); ok && len(cached) > 0 {
+			log.LogInfof("SyncRuleManager.dispatchRule rule=%q auto cache HIT, %d prefix(es)", rule.ID(), len(cached))
+			return m.dispatchPrefix(taskID, rule, payload, cached, parallelism)
+		}
+		log.LogInfof("SyncRuleManager.dispatchRule rule=%q auto cache MISS, kicking probe and falling back to hash", rule.ID())
+		_, _ = m.probePrefixes(rule) // best-effort kick; ignore pending sentinel
+		return m.dispatchHash(taskID, rule, payload, parallelism)
 	case "", "hash":
 		return m.dispatchHash(taskID, rule, payload, parallelism)
 	default:
 		return fmt.Errorf("rule %q unknown shardingStrategy %q", rule.ID(), strategy)
 	}
+}
+
+// dispatchPrefix routes the prefix-mode fan-out path. shardTotal is
+// min(len(prefixes), parallelism, candidate count). Each shard owns a
+// subset of the prefix list (bucketsForPrefix packs deterministically).
+func (m *SyncRuleManager) dispatchPrefix(taskID string, rule *proto.SyncRule, payload *SyncRunTaskRequest, prefixes []string, parallelism int) error {
+	disp := m.cluster.syncDispatcher
+	cands := disp.Candidates(dispatcherStaleness)
+	if len(cands) == 0 {
+		return fmt.Errorf("rule %q: %w", rule.ID(), ErrNoCandidates)
+	}
+	// Cap parallelism by both the prefix count AND the candidate count.
+	// A bucket without a node is wasted; a node without a bucket is too.
+	limit := parallelism
+	if limit <= 0 || limit > len(prefixes) {
+		limit = len(prefixes)
+	}
+	if limit > len(cands) {
+		limit = len(cands)
+	}
+	buckets := bucketsForPrefix(prefixes, limit)
+	fo := m.cluster.syncFanout
+	if fo == nil {
+		return fmt.Errorf("syncFanout not initialised")
+	}
+	send := m.shardSendFn()
+	owners, err := fo.DispatchNWithPrefixBuckets(taskID, rule.ID(), payload, buckets, jsonRoundTripFanoutCloner, send, 3)
+	if err != nil {
+		return fmt.Errorf("DispatchNWithPrefixBuckets rule=%q: %w", rule.ID(), err)
+	}
+	m.cluster.recordTaskDispatch(taskID, rule, "", 0, len(buckets))
+	for shard, addr := range owners {
+		subID := fmt.Sprintf("%s/%d", taskID, shard)
+		m.cluster.recordTaskDispatch(subID, rule, addr, shard, len(buckets))
+	}
+	log.LogInfof("SyncRuleManager.dispatchPrefix rule=%q taskID=%q buckets=%d", rule.ID(), taskID, len(buckets))
+	return nil
 }
 
 // dispatchHash routes hash-mode dispatch — single Dispatch when no

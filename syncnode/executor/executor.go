@@ -132,6 +132,14 @@ type Task struct {
 	// exactly the same subset.
 	ShardIndex int
 	ShardTotal int
+
+	// ShardPrefixes (P2-5) opts the producer loop into prefix-mode
+	// sharding: when non-empty, the loop keeps only entries whose key
+	// has one of the listed strings as a prefix, ignoring the hash
+	// math. Master populates this from SyncRule.Config.ShardPrefixes
+	// (explicit mode) or from an OpSyncNodeListPrefixes probe (auto
+	// mode). Empty (nil or len==0) preserves hash-mode behaviour.
+	ShardPrefixes []string
 }
 
 // Result reports the terminal outcome of a Task run.
@@ -163,11 +171,11 @@ type Mismatch struct {
 type MismatchReason string
 
 const (
-	MismatchMissingDst   MismatchReason = "missing_dst"
-	MismatchMissingSrc   MismatchReason = "missing_src"
-	MismatchSizeDiffer   MismatchReason = "size_mismatch"
-	MismatchETagDiffer   MismatchReason = "etag_mismatch"
-	MismatchMtimeNewer   MismatchReason = "src_newer"
+	MismatchMissingDst MismatchReason = "missing_dst"
+	MismatchMissingSrc MismatchReason = "missing_src"
+	MismatchSizeDiffer MismatchReason = "size_mismatch"
+	MismatchETagDiffer MismatchReason = "etag_mismatch"
+	MismatchMtimeNewer MismatchReason = "src_newer"
 )
 
 // Progress holds an in-flight snapshot. All fields are written via atomic
@@ -195,7 +203,7 @@ type Reporter interface {
 // NoopReporter discards all callbacks. Useful for tests / one-off runs.
 type NoopReporter struct{}
 
-func (NoopReporter) OnFileStart(string, int64)      {}
+func (NoopReporter) OnFileStart(string, int64)       {}
 func (NoopReporter) OnFileDone(string, int64, error) {}
 func (NoopReporter) OnProgress(Progress)             {}
 
@@ -353,9 +361,9 @@ func (e *Executor) Run(ctx context.Context, t *Task, r Reporter) Result {
 
 	startedAt := time.Now()
 	var (
-		progress Progress
+		progress   Progress
 		mismatches []Mismatch
-		runErr error
+		runErr     error
 	)
 	progressTicker := time.NewTicker(e.opts.progressInterval)
 	defer progressTicker.Stop()
