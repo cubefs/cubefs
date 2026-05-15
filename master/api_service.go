@@ -8048,11 +8048,23 @@ func (m *Server) listSyncNodes(w http.ResponseWriter, r *http.Request) {
 		sn := v.(*SyncNode)
 		sn.RLock()
 		info := &proto.SyncNodeInfo{
-			NodeID:       sn.ID,
-			Addr:         sn.Addr,
-			Version:      sn.Version,
-			RegisteredAt: sn.ReportTime.Unix(),
-			State:        string(sn.State),
+			NodeID:              sn.ID,
+			Addr:                sn.Addr,
+			Version:             sn.Version,
+			RegisteredAt:        sn.ReportTime.Unix(),
+			State:               string(sn.State),
+			UptimeSeconds:       sn.UptimeSeconds,
+			RunningTasks:        sn.RunningTasks,
+			QueuedTasks:         sn.QueuedTasks,
+			ScheduledRules:      sn.ScheduledRules,
+			BoltDBHealthy:       sn.BoltDBHealthy,
+			BandwidthMBps:       sn.BandwidthMBps,
+			CPUPercent:          sn.CPUPercent,
+			MemPercent:          sn.MemPercent,
+			ReloadFailures:      sn.ReloadFailures,
+			MaxConcurrentTasks:  sn.MaxConcurrentTasks,
+			BandwidthMBpsLimit:  sn.BandwidthMBpsLimit,
+			LastTaskFailureRate: sn.LastTaskFailureRate,
 		}
 		sn.RUnlock()
 		if scores != nil {

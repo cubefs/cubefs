@@ -265,11 +265,11 @@ const (
 
 	// SyncRule CRUD + state transitions. Body / query params documented
 	// in master/api_service_sync_rule.go.
-	SyncRuleCreate = "/syncRule/create" // POST body: proto.SyncRule
-	SyncRuleUpdate = "/syncRule/update" // POST body: proto.SyncRule
-	SyncRuleDelete = "/syncRule/delete" // POST ?id=
-	SyncRulePause  = "/syncRule/pause"  // POST ?id=
-	SyncRuleResume = "/syncRule/resume" // POST ?id=
+	SyncRuleCreate  = "/syncRule/create"  // POST body: proto.SyncRule
+	SyncRuleUpdate  = "/syncRule/update"  // POST body: proto.SyncRule
+	SyncRuleDelete  = "/syncRule/delete"  // POST ?id=
+	SyncRulePause   = "/syncRule/pause"   // POST ?id=
+	SyncRuleResume  = "/syncRule/resume"  // POST ?id=
 	SyncRuleList    = "/syncRule/list"    // GET  [?state=active|paused|degraded]
 	SyncRuleGet     = "/syncRule/get"     // GET  ?id=
 	SyncRuleTrigger = "/syncRule/trigger" // POST ?id=  — synchronous fire (ops + tests)
@@ -1063,6 +1063,22 @@ type SyncNodeInfo struct {
 	Capabilities []string `json:"capabilities,omitempty"` // e.g. ["s3", "cfs", "local"]
 	RegisteredAt int64    `json:"registeredAt"`           // unix seconds
 	State        string   `json:"state"`                  // active | draining
+
+	// Latest heartbeat snapshot copied from master's in-memory SyncNode.
+	// Exposed on /syncNode/list so consoles do not need N extra
+	// /admin/syncnode/stat calls just to render a fleet table.
+	UptimeSeconds       int64   `json:"uptimeSeconds"`
+	RunningTasks        int64   `json:"runningTasks"`
+	QueuedTasks         int64   `json:"queuedTasks"`
+	ScheduledRules      int     `json:"scheduledRules"`
+	BoltDBHealthy       bool    `json:"boltDBHealthy"`
+	BandwidthMBps       float64 `json:"bandwidthMBps"`
+	CPUPercent          float64 `json:"cpuPercent"`
+	MemPercent          float64 `json:"memPercent"`
+	ReloadFailures      uint64  `json:"reloadFailures"`
+	MaxConcurrentTasks  int     `json:"maxConcurrentTasks"`
+	BandwidthMBpsLimit  float64 `json:"bandwidthMBpsLimit"`
+	LastTaskFailureRate float64 `json:"lastTaskFailureRate"`
 
 	// LoadScore is the master-side scheduler score per design.md §6.3.1.
 	// Lower is better; +Inf means the node is stale or unhealthy. Computed
