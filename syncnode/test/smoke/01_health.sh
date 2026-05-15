@@ -24,4 +24,13 @@ assert_json_gte "$stat" '.data.uptimeSeconds' 0
 echo "$stat" | jq -e '.data.reloadFailuresTotal != null' >/dev/null \
   || test_fail "stat missing reloadFailuresTotal"
 
+# System-gauge keys introduced alongside BandwidthMBps / CPUPercent /
+# MemPercent implementation. cpuPercent and memPercent must be > 0 on any
+# running node; bandwidthMBps is 0 during smoke (no transfers in flight)
+# so we only assert the key is present.
+assert_json_gte "$stat" '.data.cpuPercent'    0.001 ".data.cpuPercent"
+assert_json_gte "$stat" '.data.memPercent'    0.001 ".data.memPercent"
+echo "$stat" | jq -e '.data.bandwidthMBps != null' >/dev/null \
+  || test_fail "stat missing bandwidthMBps"
+
 test_pass "syncnode health"

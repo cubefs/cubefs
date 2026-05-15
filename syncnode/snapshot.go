@@ -16,12 +16,14 @@ package syncnode
 
 import (
 	"context"
+	"math"
 	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/syncnode/executor"
 	"github.com/cubefs/cubefs/syncnode/rules"
+	"github.com/cubefs/cubefs/util/loadutil"
 )
 
 // failureRateScanTimeout caps the synchronous task-store scan that
@@ -52,6 +54,17 @@ type snapshotCache struct {
 	failureRate atomic.Value // float64; nil-load before first refresh
 	rules       atomic.Pointer[[]proto.SyncRuleAdvert]
 	updatedAt   atomic.Int64 // unix nanos of last successful refresh
+
+	// System gauges sampled by the refresh goroutine and read by Snapshot().
+	// Float64 bits are stored via math.Float64bits / math.Float64frombits.
+	cpuPercent    atomic.Uint64 // CPU utilisation [0,100]
+	memPercent    atomic.Uint64 // memory used % [0,100]
+	bandwidthMBps atomic.Uint64 // egress MB/s over the last refresh window
+
+	// Delta state for bandwidth computation. Accessed by the single refresh
+	// goroutine only — no concurrent access, no atomics needed.
+	prevBytesAt    int64 // unix nanos when prevBytesCount was sampled
+	prevBytesCount int64 // registry TotalBytesObserved at prevBytesAt
 }
 
 // Snapshot satisfies HeartbeatSnapshotProvider. The MasterClient calls it
@@ -109,6 +122,9 @@ func (s *SyncNode) Snapshot() proto.SyncNodeHeartbeatResponse {
 		if r := s.snapshotCache.rules.Load(); r != nil {
 			resp.Rules = *r
 		}
+		resp.CPUPercent = math.Float64frombits(s.snapshotCache.cpuPercent.Load())
+		resp.MemPercent = math.Float64frombits(s.snapshotCache.memPercent.Load())
+		resp.BandwidthMBps = math.Float64frombits(s.snapshotCache.bandwidthMBps.Load())
 	}
 
 	return resp
@@ -158,6 +174,36 @@ func (s *SyncNode) refreshSnapshotCache() {
 	s.snapshotCache.failureRate.Store(fr)
 	rs := s.advertiseRules()
 	s.snapshotCache.rules.Store(&rs)
+
+	// CPU utilisation. interval=0 returns differential since the last
+	// gopsutil call (non-blocking); safe to call every 30s.
+	if cpu, err := loadutil.GetCpuUtilPercent(0); err == nil {
+		s.snapshotCache.cpuPercent.Store(math.Float64bits(cpu))
+	}
+
+	// Memory used %.
+	if mem, err := loadutil.GetMemoryUsedPercent(); err == nil {
+		s.snapshotCache.memPercent.Store(math.Float64bits(mem))
+	}
+
+	// Egress bandwidth: derive MB/s from two consecutive byte-count readings.
+	// prevBytesAt / prevBytesCount are single-goroutine fields.
+	if s.rateLimits != nil {
+		now := time.Now().UnixNano()
+		cur := s.rateLimits.TotalBytesObserved()
+		if s.snapshotCache.prevBytesAt > 0 && now > s.snapshotCache.prevBytesAt {
+			dt := float64(now-s.snapshotCache.prevBytesAt) / float64(time.Second)
+			db := float64(cur - s.snapshotCache.prevBytesCount)
+			mbps := (db / (1024 * 1024)) / dt
+			if mbps < 0 {
+				mbps = 0
+			}
+			s.snapshotCache.bandwidthMBps.Store(math.Float64bits(mbps))
+		}
+		s.snapshotCache.prevBytesCount = cur
+		s.snapshotCache.prevBytesAt = now
+	}
+
 	s.snapshotCache.updatedAt.Store(time.Now().UnixNano())
 }
 

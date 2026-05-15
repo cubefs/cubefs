@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 // BackendKey identifies one (kind, endpoint, region) triple — the same
@@ -81,6 +82,26 @@ type Registry struct {
 	// per-rule cap"; callers should treat a nil return from RuleBucket
 	// as "skip this layer".
 	rule map[string]*Bucket
+
+	// totalBytes counts bytes successfully transferred through the registry.
+	// ObserveBytes increments it; TotalBytesObserved reads it. The snapshot
+	// cache differentiates two readings to derive the egress MB/s gauge.
+	totalBytes atomic.Int64
+}
+
+// ObserveBytes records n bytes of successfully transferred data. Called from
+// the executor after every file transfer completes. Safe for concurrent use.
+func (r *Registry) ObserveBytes(n int64) {
+	if n > 0 {
+		r.totalBytes.Add(n)
+	}
+}
+
+// TotalBytesObserved returns the cumulative byte count since the Registry was
+// created. Callers compute an egress rate by differencing two readings taken
+// a known interval apart.
+func (r *Registry) TotalBytesObserved() int64 {
+	return r.totalBytes.Load()
 }
 
 // NewRegistry returns a Registry with the node-level bucket pre-installed.

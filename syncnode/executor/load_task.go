@@ -285,6 +285,9 @@ func (e *Executor) loadOne(ctx context.Context, t *Task, entry backend.Entry, p 
 
 	atomic.AddInt64(&p.FilesDone, 1)
 	atomic.AddInt64(&p.BytesDone, bytesWritten)
+	if e.opts.rateLimits != nil {
+		e.opts.rateLimits.ObserveBytes(bytesWritten)
+	}
 	r.OnFileDone(entry.Key, bytesWritten, nil)
 }
 
