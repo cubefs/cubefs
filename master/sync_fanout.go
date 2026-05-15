@@ -521,6 +521,13 @@ var jsonRoundTripFanoutCloner PayloadCloner = PayloadClonerFunc(func(parent inte
 		return nil, fmt.Errorf("unmarshal parent payload into map: %w", err)
 	}
 	out["subTask"] = info
+	// Rewrite taskId to the shard's own sub-task ID so the syncnode reports
+	// back the correct ID in its terminal push. Without this the terminal
+	// handler receives rep.TaskID = parentTaskID and marks the parent record
+	// terminal instead of the shard record, leaving shards stuck "running".
+	if info.ParentTaskID != "" {
+		out["taskId"] = subTaskID(info.ParentTaskID, info.ShardIndex)
+	}
 	return out, nil
 })
 

@@ -101,7 +101,7 @@ case "$code" in
       local r; r=$(master_task_get "$TID_Q")
       local s; s=$(echo "$r" | jq -r '.data.status // empty')
       case "$s" in
-        done|failed|cancelled) echo yes ;;
+        succeeded|failed|cancelled) echo yes ;;
         *) echo no ;;
       esac
     }

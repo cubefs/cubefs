@@ -139,11 +139,17 @@ func syncPathOf(ep *proto.SyncEndpointConfig) string {
 
 // checkSyncDuplicate reports the first pair of rules whose
 // (srcKey, srcPath, dstKey, dstPath) 4-tuples are byte-equal.
+// Rules of type "check" are exempt: a check rule shares src/dst with a
+// sync rule by design (it reads the same endpoints to audit state) and
+// causes no data-movement conflict.
 func checkSyncDuplicate(rules []*proto.SyncRule) error {
 	type quad struct{ sk, sp, dk, dp string }
 	seen := make(map[quad]string, len(rules))
 	for _, r := range rules {
 		if r == nil {
+			continue
+		}
+		if r.Config.Type == "check" {
 			continue
 		}
 		key := quad{

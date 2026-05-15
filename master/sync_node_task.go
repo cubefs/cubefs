@@ -77,23 +77,7 @@ func (c *Cluster) handleSyncNodeTaskResponse(nodeAddr string, task *proto.AdminT
 		if c.syncFailover != nil {
 			c.syncFailover.Forget(rep.TaskID)
 		}
-		// Bug S2 fix: when the terminal report is for a fan-out sub-task
-		// ("<parent>/<shard>"), mark the shard terminal on the fanout and
-		// clear the parent record once every shard has reported. Without
-		// this, SyncFanout.parents grows monotonically for the lifetime
-		// of the master process.
-		if c.syncFanout != nil {
-			if parentID, shardIdx, isShard := splitSubTaskID(rep.TaskID); isShard {
-				if allDone, exists := c.syncFanout.MarkShardTerminal(parentID, shardIdx); exists && allDone {
-					c.syncFanout.Clear(parentID)
-					log.LogInfof("sn syncFanout: parent %s complete; cleared after %d/%d shards terminal",
-						parentID, shardIdx+1, shardIdx+1)
-				}
-			}
-		}
-		// Update the task ledger so /syncTask/get returns the terminal status.
-		// Executor uses "done"/"failed"/"cancelled"; master ledger uses
-		// "succeeded"/"failed"/"cancelled" — map accordingly.
+		// Map executor status ("done"/"failed"/"cancelled") to ledger status.
 		var masterStatus SyncTaskStatus
 		switch rep.Status {
 		case "done":
@@ -105,7 +89,6 @@ func (c *Cluster) handleSyncNodeTaskResponse(nodeAddr string, task *proto.AdminT
 		default:
 			masterStatus = SyncTaskStatus(rep.Status)
 		}
-		// Use the progress carried in the terminal report.
 		prog := SyncTaskProgress{
 			FilesTotal:   rep.Progress.FilesTotal,
 			FilesDone:    rep.Progress.FilesDone,
@@ -114,9 +97,24 @@ func (c *Cluster) handleSyncNodeTaskResponse(nodeAddr string, task *proto.AdminT
 			BytesTotal:   rep.Progress.BytesTotal,
 			BytesDone:    rep.Progress.BytesDone,
 		}
+		// Write this task's (shard or single) terminal record BEFORE checking
+		// fan-out completion, so aggregateFanoutShards sees all shard records.
 		c.recordTaskTerminal(rep.TaskID, masterStatus, rep.Error, prog)
 		log.LogInfof("sn task %s terminal on %s: status=%s err=%s",
 			rep.TaskID, nodeAddr, rep.Status, rep.Error)
+		// Fan-out: when the terminal report carries a shard sub-task ID
+		// ("<parent>/<N>"), mark it done and — once every shard reports —
+		// aggregate into the parent record and release in-memory state.
+		if c.syncFanout != nil {
+			if parentID, shardIdx, isShard := splitSubTaskID(rep.TaskID); isShard {
+				if allDone, exists := c.syncFanout.MarkShardTerminal(parentID, shardIdx); exists && allDone {
+					parentStatus, parentProg := c.aggregateFanoutShards(parentID)
+					c.recordTaskTerminal(parentID, parentStatus, "", parentProg)
+					c.syncFanout.Clear(parentID)
+					log.LogInfof("sn syncFanout: parent %s complete; status=%s", parentID, parentStatus)
+				}
+			}
+		}
 	default:
 		log.LogInfof("sn handleSyncNodeTaskResponse: unknown opcode %v, ignored", task.OpCode)
 	}
@@ -311,4 +309,44 @@ func isTerminalStatus(status string) bool {
 	default:
 		return false
 	}
+}
+
+// aggregateFanoutShards iterates every shard record of parentID in the task
+// ledger, aggregates progress, and derives the parent's terminal status
+// (failed if any shard failed, cancelled if any shard cancelled, succeeded
+// otherwise). Called after all shards report terminal so every shard record
+// is guaranteed to be written before we query.
+func (c *Cluster) aggregateFanoutShards(parentID string) (SyncTaskStatus, SyncTaskProgress) {
+	parent := c.syncTaskLedger.Get(parentID)
+	if parent == nil {
+		return SyncTaskStatusSucceeded, SyncTaskProgress{}
+	}
+	var prog SyncTaskProgress
+	anyFailed, anyCancelled := false, false
+	for i := 0; i < parent.ShardTotal; i++ {
+		subID := fmt.Sprintf("%s/%d", parentID, i)
+		rec := c.syncTaskLedger.Get(subID)
+		if rec == nil {
+			continue
+		}
+		switch rec.Status {
+		case SyncTaskStatusFailed:
+			anyFailed = true
+		case SyncTaskStatusCancelled:
+			anyCancelled = true
+		}
+		prog.FilesTotal += rec.Progress.FilesTotal
+		prog.FilesDone += rec.Progress.FilesDone
+		prog.FilesSkipped += rec.Progress.FilesSkipped
+		prog.FilesFailed += rec.Progress.FilesFailed
+		prog.BytesTotal += rec.Progress.BytesTotal
+		prog.BytesDone += rec.Progress.BytesDone
+	}
+	status := SyncTaskStatusSucceeded
+	if anyFailed {
+		status = SyncTaskStatusFailed
+	} else if anyCancelled {
+		status = SyncTaskStatusCancelled
+	}
+	return status, prog
 }

@@ -38,14 +38,14 @@ expect_code "$(create_rule "$body")" 0
 # ---- Sync 1: full transfer ----
 res=$(trigger_and_wait "$RID")
 expect_code "$res" 0 "trigger #1"
-assert_json_eq "$res" '.data.status'           "done"
+assert_json_eq "$res" '.data.status' "succeeded"
 assert_json_eq "$res" '.data.progress.filesDone' "$N_FILES"
 assert_json_eq "$res" '.data.progress.filesFailed' "0"
 log_ok "sync #1: $N_FILES files transferred"
 
 # ---- Sync 2: idempotent ----
 res=$(trigger_and_wait "$RID")
-assert_json_eq "$res" '.data.status' "done"
+assert_json_eq "$res" '.data.status' "succeeded"
 assert_json_eq "$res" '.data.progress.filesSkipped' "$N_FILES" "expected all skipped"
 log_ok "sync #2: all skipped (Head matched)"
 
@@ -55,7 +55,7 @@ MUTATED_MD5=$(md5_of "$WORK/f-1.bin")
 assert_ne "$ORIG_MD5_1" "$MUTATED_MD5" "expected new content"
 
 res=$(trigger_and_wait "$RID")
-assert_json_eq "$res" '.data.status'           "done"
+assert_json_eq "$res" '.data.status' "succeeded"
 assert_json_eq "$res" '.data.progress.filesDone' "1" "expected 1 re-transfer"
 assert_json_eq "$res" '.data.progress.filesSkipped' "$((N_FILES - 1))" "rest skipped"
 log_ok "sync #3: incremental re-transfer of 1 file"

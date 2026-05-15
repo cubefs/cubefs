@@ -31,7 +31,7 @@ expect_code "$(create_rule "$body")" 0
 
 # Sync — should transfer all 7, then retention deletes the 2 oldest.
 res=$(trigger_and_wait "$RID")
-assert_json_eq "$res" '.data.status' "done"
+assert_json_eq "$res" '.data.status' "succeeded"
 log_ok "first run completed; retention should have pruned oldest 2"
 
 # The dst is in S3; we can't list it from here without s3cmd. Instead
