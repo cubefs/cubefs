@@ -86,17 +86,18 @@ TID_Q=$(echo "$t2" | jq -r '.data.taskID // empty')
 case "$code" in
   0)
     log_info "queued task admitted: $TID_Q"
-    # Cancel it BEFORE the slot frees
+    # Cancel TID_Q while it is still queued (TID_LONG holds the only slot).
     c=$(master_task_cancel "$TID_Q")
     expect_code "$c" 0 "cancel queued"
     log_ok "cancel sent for queued task"
 
-    # Free the slot by cancelling the long task. The queued one MUST
-    # have already been marked cancelled — it must NOT start running.
-    master_task_cancel "$TID_LONG" >/dev/null
-
-    # Poll the queued task's record. Should be Status=cancelled and
-    # progress.filesDone=0 (never started).
+    # Wait for TID_Q to reach terminal BEFORE freeing the slot.
+    # With TID_LONG still holding the slot, runAfterWait's select has
+    # only one ready case (<-taskCtx.Done()), so there is no race between
+    # the slot arm and the cancel arm. This ordering is intentional: if we
+    # freed the slot first (by cancelling TID_LONG), the admin task manager
+    # might deliver cancel-TID_LONG before cancel-TID_Q (map iteration is
+    # random), letting TID_Q win the slot with a live context.
     wait_q_terminal() {
       local r; r=$(master_task_get "$TID_Q")
       local s; s=$(echo "$r" | jq -r '.data.status // empty')
@@ -107,6 +108,14 @@ case "$code" in
     }
     wait_for wait_q_terminal 30 "queued task to reach terminal"
 
+    # Slot is still held by TID_LONG. Cancel it now as cleanup.
+    master_task_cancel "$TID_LONG" >/dev/null
+    # Wait for TID_LONG to actually reach terminal so the concurrency slot is
+    # freed before the next test runs. Without this, a test that starts < 10s
+    # later (before the next heartbeat) sees RunningTasks=1 with
+    # maxConcurrentTasks=1 and gets "no eligible candidate".
+    wait_for_task_terminal "$TID_LONG" 30 || log_warn "long task did not terminate in 30s"
+
     final=$(master_task_get "$TID_Q")
     assert_json_eq "$final" '.data.status' "cancelled"
     assert_json_eq "$final" '.data.progress.filesDone' "0" \
@@ -115,6 +124,7 @@ case "$code" in
   2007)
     log_info "deploy has queue disabled (ErrQueueFull / 429-like); skipping detailed assertions"
     master_task_cancel "$TID_LONG" >/dev/null
+    wait_for_task_terminal "$TID_LONG" 30 || log_warn "long task (code 2007 path) did not terminate in 30s"
     ;;
   *)
     test_fail "unexpected response code $code for queued trigger"

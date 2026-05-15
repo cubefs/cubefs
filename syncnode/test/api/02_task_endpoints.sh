@@ -40,7 +40,7 @@ expect_code "$(master_rule_create "$body")" 0 "rule create"
 wait_for_rule_visible "$RID"
 
 rec=$(trigger_and_wait "$RID" 60)
-TID=$(echo "$rec" | jq -r '.taskID')
+TID=$(echo "$rec" | jq -r '.data.taskID')
 [ -n "$TID" ] && [ "$TID" != "null" ] || { log_err "trigger_and_wait did not return taskID"; exit 1; }
 log_ok "seeded rule + first task: $TID"
 
