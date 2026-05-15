@@ -620,6 +620,186 @@ func TestAccessServiceSign(t *testing.T) {
 	}
 }
 
+// TestAccessServicePutHashResponse verifies that the /put handler returns the
+// correct hash algorithm keys in the response and that non-requested algorithms
+// are absent.
+func TestAccessServicePutHashResponse(t *testing.T) {
+	host := runMockService(newService())
+	cli := newClient()
+
+	url := func(size int64, hashes access.HashAlgorithm) string {
+		return fmt.Sprintf("%s/put?size=%d&hashes=%d", host, size, hashes)
+	}
+
+	for _, method := range []string{http.MethodPut, http.MethodPost} {
+		// Put with no hash algorithm – HashSumMap should be empty.
+		{
+			body := bytes.NewReader(make([]byte, 1024))
+			req, _ := http.NewRequest(method, url(1024, 0), body)
+			resp := &access.PutResp{}
+			err := cli.DoWith(ctx, req, resp, rpc.WithCrcEncode())
+			require.NoError(t, err)
+			require.Empty(t, resp.HashSumMap)
+		}
+		// Put with CRC32 only – response should contain exactly that key.
+		{
+			body := bytes.NewReader(make([]byte, 1024))
+			req, _ := http.NewRequest(method, url(1024, access.HashAlgCRC32), body)
+			resp := &access.PutResp{}
+			err := cli.DoWith(ctx, req, resp, rpc.WithCrcEncode())
+			require.NoError(t, err)
+			require.Contains(t, resp.HashSumMap, access.HashAlgCRC32)
+			require.NotContains(t, resp.HashSumMap, access.HashAlgMD5)
+		}
+		// Put with CRC32|MD5|SHA1 – response should contain all three keys.
+		{
+			hashes := access.HashAlgCRC32 | access.HashAlgMD5 | access.HashAlgSHA1
+			body := bytes.NewReader(make([]byte, 1024))
+			req, _ := http.NewRequest(method, url(1024, hashes), body)
+			resp := &access.PutResp{}
+			err := cli.DoWith(ctx, req, resp, rpc.WithCrcEncode())
+			require.NoError(t, err)
+			require.Contains(t, resp.HashSumMap, access.HashAlgCRC32)
+			require.Contains(t, resp.HashSumMap, access.HashAlgMD5)
+			require.Contains(t, resp.HashSumMap, access.HashAlgSHA1)
+			require.NotContains(t, resp.HashSumMap, access.HashAlgSHA256)
+		}
+	}
+}
+
+// TestAccessServiceGetInvalidArgs verifies that the /get handler returns 400
+// for various combinations of invalid (offset, readSize, size) arguments even
+// when the location CRC is valid.
+func TestAccessServiceGetInvalidArgs(t *testing.T) {
+	host := runMockService(newService())
+	cli := newClient()
+
+	getURL := fmt.Sprintf("%s/get", host)
+
+	makeArgs := func(size_, offset, readSize uint64) access.GetArgs {
+		loc := location.Copy()
+		loc.Size_ = size_
+		security.LocationCrcFill(&loc)
+		return access.GetArgs{Location: loc, Offset: offset, ReadSize: readSize}
+	}
+
+	cases := []struct {
+		name     string
+		args     access.GetArgs
+		wantCode int
+	}{
+		{
+			// readSize > size_ → IsValid fails
+			name:     "readSize exceeds object size",
+			args:     makeArgs(512, 0, 1024),
+			wantCode: 400,
+		},
+		{
+			// offset > size_ → IsValid fails
+			name:     "offset exceeds object size",
+			args:     makeArgs(512, 1024, 0),
+			wantCode: 400,
+		},
+		{
+			// offset + readSize > size_ → IsValid fails
+			name:     "offset+readSize exceeds object size",
+			args:     makeArgs(1024, 512, 600),
+			wantCode: 400,
+		},
+		{
+			// CRC tampered after filling → LocationCrcVerify fails
+			name: "invalid location CRC",
+			args: func() access.GetArgs {
+				loc := location.Copy()
+				loc.Size_ = 1024
+				security.LocationCrcFill(&loc)
+				loc.Crc++ // corrupt the checksum
+				return access.GetArgs{Location: loc, Offset: 0, ReadSize: 1024}
+			}(),
+			wantCode: 400,
+		},
+	}
+
+	for _, cs := range cases {
+		cs := cs
+		t.Run(cs.name, func(t *testing.T) {
+			resp, err := cli.Post(ctx, getURL, cs.args)
+			require.NoError(t, err)
+			resp.Body.Close()
+			require.Equal(t, cs.wantCode, resp.StatusCode, cs.name)
+		})
+	}
+}
+
+// TestAccessServicePutSizeMismatch verifies that /put returns 400 when the
+// declared size parameter is 0 (IsValid fails before reaching the stream layer).
+func TestAccessServicePutSizeMismatch(t *testing.T) {
+	host := runMockService(newService())
+	cli := newClient()
+
+	for _, method := range []string{http.MethodPut, http.MethodPost} {
+		// size=0 must be rejected regardless of body content.
+		req, _ := http.NewRequest(method,
+			fmt.Sprintf("%s/put?size=0&hashes=0", host),
+			bytes.NewReader(make([]byte, 1024)))
+		resp := &access.PutResp{}
+		err := cli.DoWith(ctx, req, resp, rpc.WithCrcEncode())
+		assertErrorCode(t, 400, err)
+
+		// Negative size (parsed as int64) must also be rejected.
+		req, _ = http.NewRequest(method,
+			fmt.Sprintf("%s/put?size=-1&hashes=0", host),
+			bytes.NewReader(make([]byte, 1024)))
+		err = cli.DoWith(ctx, req, resp, rpc.WithCrcEncode())
+		assertErrorCode(t, 400, err)
+	}
+}
+
+// TestAccessServiceGetResponseCode verifies that the /get handler returns
+// HTTP 200 for a full-object read and HTTP 206 for a range (partial) read.
+func TestAccessServiceGetResponseCode(t *testing.T) {
+	host := runMockService(newService())
+	cli := newClient()
+
+	getURL := fmt.Sprintf("%s/get", host)
+
+	// Full-object read → 200.
+	{
+		loc := location.Copy()
+		loc.Size_ = 2048
+		security.LocationCrcFill(&loc)
+		args := access.GetArgs{Location: loc, Offset: 0, ReadSize: 2048}
+		resp, err := cli.Post(ctx, getURL, args)
+		require.NoError(t, err)
+		resp.Body.Close()
+		require.Equal(t, 200, resp.StatusCode)
+	}
+
+	// Partial read with non-zero offset → 206.
+	{
+		loc := location.Copy()
+		loc.Size_ = 4096
+		security.LocationCrcFill(&loc)
+		args := access.GetArgs{Location: loc, Offset: 1024, ReadSize: 2048}
+		resp, err := cli.Post(ctx, getURL, args)
+		require.NoError(t, err)
+		resp.Body.Close()
+		require.Equal(t, 206, resp.StatusCode)
+	}
+
+	// ReadSize smaller than Size_ but offset=0 → 206 (partial content).
+	{
+		loc := location.Copy()
+		loc.Size_ = 4096
+		security.LocationCrcFill(&loc)
+		args := access.GetArgs{Location: loc, Offset: 0, ReadSize: 2048}
+		resp, err := cli.Post(ctx, getURL, args)
+		require.NoError(t, err)
+		resp.Body.Close()
+		require.Equal(t, 206, resp.StatusCode)
+	}
+}
+
 func assertErrorCode(t *testing.T, code int, err error) {
 	require.Error(t, err)
 	codeActual := rpc.DetectStatusCode(err)

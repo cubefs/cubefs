@@ -22,6 +22,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"hash/crc32"
+	"sync"
 	"testing"
 	"time"
 
@@ -31,6 +32,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
 func TestAccessStreamPutBase(t *testing.T) {
@@ -373,6 +375,85 @@ func TestAccessStreamPutWithClusterIDAndCodeMode(t *testing.T) {
 		require.Equal(t, codemode.EC6P6, loc.CodeMode)
 		require.Equal(t, 1, len(loc.Slices))
 		require.Equal(t, uint32(1), loc.Slices[0].Count)
+	}
+}
+
+// errAfterNReader simulates an io.Reader that succeeds for the first n bytes
+// and then returns a predefined error.
+type errAfterNReader struct {
+	data []byte
+	n    int
+	err  error
+}
+
+func (r *errAfterNReader) Read(p []byte) (int, error) {
+	if r.n <= 0 {
+		return 0, r.err
+	}
+	toRead := len(p)
+	if toRead > r.n {
+		toRead = r.n
+	}
+	n := copy(p[:toRead], r.data)
+	r.n -= n
+	r.data = r.data[n:]
+	return n, nil
+}
+
+// TestAccessStreamPutReadError verifies that Put returns an error when the
+// underlying reader fails after delivering only partial data.
+func TestAccessStreamPutReadError(t *testing.T) {
+	ctx := ctxWithName("TestAccessStreamPutReadError")
+	dataShards.clean()
+	defer dataShards.clean()
+
+	size := 1 << 20 // 1 MB
+	data := make([]byte, size)
+	rand.Read(data)
+
+	// Reader that delivers half the data then returns an error.
+	halfReader := &errAfterNReader{
+		data: data,
+		n:    size / 2,
+		err:  errors.New("simulated read error"),
+	}
+
+	_, err := streamer.Put(ctx(), halfReader, int64(size), nil, proto.ClusterID(0), codemode.CodeModeNone)
+	require.Error(t, err)
+}
+
+// TestAccessStreamPutConcurrent verifies thread-safety by running multiple
+// Put operations in parallel and checking that each succeeds independently.
+func TestAccessStreamPutConcurrent(t *testing.T) {
+	ctx := ctxWithName("TestAccessStreamPutConcurrent")
+	vuidController.Unbreak(1005)
+	defer func() {
+		vuidController.Break(1005)
+		dataShards.clean()
+	}()
+
+	const n = 8
+	type result struct {
+		loc *proto.Location
+		err error
+	}
+	results := make([]result, n)
+
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			size := 1 << 20
+			loc, err := streamer.Put(ctx(), newReader(size), int64(size), nil, proto.ClusterID(0), codemode.CodeModeNone)
+			results[idx] = result{loc: loc, err: err}
+		}(i)
+	}
+	wg.Wait()
+
+	for i, r := range results {
+		require.NoError(t, r.err, "goroutine %d returned unexpected error", i)
+		require.NotNil(t, r.loc, "goroutine %d returned nil location", i)
 	}
 }
 
