@@ -231,8 +231,8 @@ func (dpMap *DataPartitionMap) IncReadWriteDataPartitionCntByPoolId(incCnt int, 
 }
 
 func (dpMap *DataPartitionMap) getReadWriteDataPartitionCntByMediaType(mediaType uint32) (rwDpCnt int) {
-	dpMap.Lock()
-	defer dpMap.Unlock()
+	dpMap.RLock()
+	defer dpMap.RUnlock()
 
 	if cnt, ok := dpMap.rwCntByMediaType[mediaType]; ok {
 		rwDpCnt = cnt
@@ -586,8 +586,8 @@ func inStingList(target string, strArray []string) bool {
 }
 
 func (dpMap *DataPartitionMap) CheckReadWritableCntUnderLimit(limit int, poolId uint8) error {
-	dpMap.Lock()
-	defer dpMap.Unlock()
+	dpMap.RLock()
+	defer dpMap.RUnlock()
 
 	cntOfPoolId, ok := dpMap.rwCntByPoolId[poolId]
 	if !ok {
