@@ -1075,6 +1075,8 @@ type SyncNodeInfo struct {
 	BandwidthMBps       float64 `json:"bandwidthMBps"`
 	CPUPercent          float64 `json:"cpuPercent"`
 	MemPercent          float64 `json:"memPercent"`
+	MemTotalMB          uint64  `json:"memTotalMB"`
+	CPUCores            int     `json:"cpuCores"`
 	ReloadFailures      uint64  `json:"reloadFailures"`
 	MaxConcurrentTasks  int     `json:"maxConcurrentTasks"`
 	BandwidthMBpsLimit  float64 `json:"bandwidthMBpsLimit"`
@@ -1114,6 +1116,8 @@ type SyncNodeHeartbeatResponse struct {
 	BandwidthMBps  float64 `json:"bandwidthMBps"` // last-1m average egress
 	CPUPercent     float64 `json:"cpuPercent"`
 	MemPercent     float64 `json:"memPercent"`
+	MemTotalMB     uint64  `json:"memTotalMB"`
+	CPUCores       int     `json:"cpuCores"`
 	ReloadFailures uint64  `json:"reloadFailures"`
 	NodeVersion    string  `json:"version"`
 

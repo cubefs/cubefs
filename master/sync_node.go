@@ -83,6 +83,8 @@ type SyncNode struct {
 	BandwidthMBps  float64
 	CPUPercent     float64
 	MemPercent     float64
+	MemTotalMB     uint64
+	CPUCores       int
 	ReloadFailures uint64
 
 	// Load-score inputs mirrored from the heartbeat snapshot (§6.3.1).

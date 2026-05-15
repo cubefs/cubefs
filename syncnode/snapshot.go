@@ -17,6 +17,7 @@ package syncnode
 import (
 	"context"
 	"math"
+	"runtime"
 	"sync/atomic"
 	"time"
 
@@ -59,6 +60,8 @@ type snapshotCache struct {
 	// Float64 bits are stored via math.Float64bits / math.Float64frombits.
 	cpuPercent    atomic.Uint64 // CPU utilisation [0,100]
 	memPercent    atomic.Uint64 // memory used % [0,100]
+	memTotalMB    atomic.Uint64 // total physical memory in MiB
+	cpuCores      atomic.Int64  // logical CPU count (cgroup-aware via runtime.NumCPU)
 	bandwidthMBps atomic.Uint64 // egress MB/s over the last refresh window
 
 	// Delta state for bandwidth computation. Accessed by the single refresh
@@ -124,6 +127,8 @@ func (s *SyncNode) Snapshot() proto.SyncNodeHeartbeatResponse {
 		}
 		resp.CPUPercent = math.Float64frombits(s.snapshotCache.cpuPercent.Load())
 		resp.MemPercent = math.Float64frombits(s.snapshotCache.memPercent.Load())
+		resp.MemTotalMB = s.snapshotCache.memTotalMB.Load()
+		resp.CPUCores = int(s.snapshotCache.cpuCores.Load())
 		resp.BandwidthMBps = math.Float64frombits(s.snapshotCache.bandwidthMBps.Load())
 	}
 
@@ -180,10 +185,16 @@ func (s *SyncNode) refreshSnapshotCache() {
 	if cpu, err := loadutil.GetCpuUtilPercent(0); err == nil {
 		s.snapshotCache.cpuPercent.Store(math.Float64bits(cpu))
 	}
+	// CPU cores (cgroup-aware on Kubernetes via runtime.NumCPU).
+	s.snapshotCache.cpuCores.Store(int64(runtime.NumCPU()))
 
 	// Memory used %.
 	if mem, err := loadutil.GetMemoryUsedPercent(); err == nil {
 		s.snapshotCache.memPercent.Store(math.Float64bits(mem))
+	}
+	// Total physical memory in MiB.
+	if totalBytes, err := loadutil.GetTotalMemory(); err == nil {
+		s.snapshotCache.memTotalMB.Store(totalBytes / (1024 * 1024))
 	}
 
 	// Egress bandwidth: derive MB/s from two consecutive byte-count readings.

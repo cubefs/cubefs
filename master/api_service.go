@@ -8061,6 +8061,8 @@ func (m *Server) listSyncNodes(w http.ResponseWriter, r *http.Request) {
 			BandwidthMBps:       sn.BandwidthMBps,
 			CPUPercent:          sn.CPUPercent,
 			MemPercent:          sn.MemPercent,
+			MemTotalMB:          sn.MemTotalMB,
+			CPUCores:            sn.CPUCores,
 			ReloadFailures:      sn.ReloadFailures,
 			MaxConcurrentTasks:  sn.MaxConcurrentTasks,
 			BandwidthMBpsLimit:  sn.BandwidthMBpsLimit,

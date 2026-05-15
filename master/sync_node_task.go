@@ -167,6 +167,8 @@ func (c *Cluster) handleSyncNodeHeartbeatResp(nodeAddr string, resp *proto.SyncN
 	sn.BandwidthMBps = resp.BandwidthMBps
 	sn.CPUPercent = resp.CPUPercent
 	sn.MemPercent = resp.MemPercent
+	sn.MemTotalMB = resp.MemTotalMB
+	sn.CPUCores = resp.CPUCores
 	sn.ReloadFailures = resp.ReloadFailures
 	sn.MaxConcurrentTasks = resp.MaxConcurrentTasks
 	sn.BandwidthMBpsLimit = resp.BandwidthMBpsLimit
