@@ -9,10 +9,11 @@ the suite exercises the real HTTP/TCP surface.
 | Tier        | Time | Scope                                              |
 |-------------|------|----------------------------------------------------|
 | `smoke`     | <2m  | Health + register + one rule. Run on every deploy. |
+| `api`       | <5m  | Per-endpoint master HTTP surface, no tasks executed. |
 | `functional`| ~30m | All single-node features (Phase D-G).              |
 | `integration` | ~1h | Multi-node (P1) + security + performance baseline. |
 | `chaos`     | 6h+  | Long-running kill / partition / memory check.      |
-| `all`       | ~2h  | smoke + functional + integration.                  |
+| `all`       | ~2h  | smoke + api + functional + integration.            |
 
 ## Quick start
 
@@ -22,6 +23,7 @@ $EDITOR env.sh                      # fill in your endpoints + token
 source env.sh
 
 ./run.sh smoke                      # always run this first
+./run.sh api                        # master HTTP surface only (no tasks)
 ./run.sh functional                 # most-used during dev
 ./run.sh integration                # before sign-off
 ./run.sh all                        # full sweep

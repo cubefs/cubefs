@@ -19,10 +19,11 @@ Usage: $0 <tier> [test-name-glob]
 
 Tiers:
   smoke        Health + register + 1 rule. <2 min. Run on every deploy.
+  api          Per-endpoint master HTTP surface tests (no tasks). <5 min.
   functional   Full single-node feature coverage. ~30 min.
   integration  Multi-node P1 + security + perf baseline. ~1 hour.
   chaos        Long-running stability. 6+ hours. Manual review.
-  all          smoke + functional + integration.
+  all          smoke + api + functional + integration.
   cleanup      Wipe every it-* rule + local fixture residue.
 
 Examples:
@@ -82,7 +83,7 @@ main() {
   local tier="${1:-}"
   local glob="${2:-}"
   case "$tier" in
-    smoke|functional|integration|chaos|all)
+    smoke|api|functional|integration|chaos|all)
       # Now we DO need env + tools. Subordinate scripts will re-check
       # them when sourced (without SKIP_AUTOCHECK).
       unset SKIP_AUTOCHECK
@@ -91,6 +92,7 @@ main() {
       case "$tier" in
         all)
           _run_dir smoke "$glob" && \
+          _run_dir api "$glob" && \
           _run_dir functional "$glob" && \
           _run_dir integration "$glob" ;;
         *)
