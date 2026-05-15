@@ -75,9 +75,15 @@ type Config struct {
 	// AccessKeyEnv / SecretKeyEnv are the names of the environment
 	// variables holding the AK / SK. Reading from env (not from disk and
 	// not from config) keeps credentials out of config files. Both
-	// required (e.g. "AWS_ACCESS_KEY_ID" / "AWS_SECRET_ACCESS_KEY").
+	// required unless AccessKey / SecretKey are set directly.
 	AccessKeyEnv string
 	SecretKeyEnv string
+
+	// AccessKey / SecretKey are inline credentials injected by the dashboard
+	// (Approach C). When non-empty, these take precedence over AccessKeyEnv /
+	// SecretKeyEnv and no environment variable lookup is performed.
+	AccessKey string
+	SecretKey string
 
 	// StorageClass is the default storage class applied to PutObject when
 	// PutOptions.StorageClass is empty. May itself be empty (S3 picks
@@ -123,11 +129,11 @@ func (c *Config) validate() error {
 	if c.Region == "" {
 		return fmt.Errorf("%w: missing Region", backend.ErrConfigInvalid)
 	}
-	if c.AccessKeyEnv == "" {
-		return fmt.Errorf("%w: missing AccessKeyEnv", backend.ErrConfigInvalid)
+	if c.AccessKeyEnv == "" && c.AccessKey == "" {
+		return fmt.Errorf("%w: missing AccessKeyEnv (or inline AccessKey)", backend.ErrConfigInvalid)
 	}
-	if c.SecretKeyEnv == "" {
-		return fmt.Errorf("%w: missing SecretKeyEnv", backend.ErrConfigInvalid)
+	if c.SecretKeyEnv == "" && c.SecretKey == "" {
+		return fmt.Errorf("%w: missing SecretKeyEnv (or inline SecretKey)", backend.ErrConfigInvalid)
 	}
 	if c.MultipartThresholdMiB <= 0 {
 		c.MultipartThresholdMiB = defaultMultipartThresholdMiB
@@ -167,8 +173,15 @@ func New(cfg interface{}) (backend.Backend, error) {
 		return nil, err
 	}
 
-	ak := os.Getenv(c.AccessKeyEnv)
-	sk := os.Getenv(c.SecretKeyEnv)
+	// Prefer inline credentials; fall back to env var lookup.
+	ak := c.AccessKey
+	sk := c.SecretKey
+	if ak == "" && c.AccessKeyEnv != "" {
+		ak = os.Getenv(c.AccessKeyEnv)
+	}
+	if sk == "" && c.SecretKeyEnv != "" {
+		sk = os.Getenv(c.SecretKeyEnv)
+	}
 
 	loadOpts := []func(*awsconfig.LoadOptions) error{
 		awsconfig.WithRegion(c.Region),

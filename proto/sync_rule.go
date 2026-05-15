@@ -56,6 +56,11 @@ type SyncEndpointConfig struct {
 	// When set, these take precedence over the global s3Defaults in sync.json.
 	AccessKeyEnv string `json:"accessKeyEnv"`
 	SecretKeyEnv string `json:"secretKeyEnv"`
+	// Inline s3 credentials — injected by the dashboard (Approach C) so syncnode
+	// does not need environment variables for per-backend credentials. When non-empty,
+	// these take precedence over AccessKeyEnv / SecretKeyEnv.
+	AccessKey string `json:"accessKey,omitempty"`
+	SecretKey string `json:"secretKey,omitempty"`
 	// InsecureSkipTLS disables TLS certificate verification for s3 endpoints.
 	// Use only in dev/test environments without a proper CA cert bundle.
 	InsecureSkipTLS bool `json:"insecureSkipTLS"`

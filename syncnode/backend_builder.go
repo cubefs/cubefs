@@ -88,15 +88,25 @@ func (b *backendBuilder) Build(_ context.Context, ep *spec.EndpointConfig) (back
 		storageClass := firstNonEmpty(ep.StorageClass, s3Defaults.StorageClass)
 		accessKeyEnv := firstNonEmpty(ep.AccessKeyEnv, s3Defaults.AccessKeyEnv)
 		secretKeyEnv := firstNonEmpty(ep.SecretKeyEnv, s3Defaults.SecretKeyEnv)
+		// CredKey disambiguates pool entries that share endpoint+bucket but use
+		// different credentials. For inline AK (dashboard Approach C) we use
+		// the AK value itself; for env-var creds we use the env var name.
+		credKey := accessKeyEnv
+		if ep.AccessKey != "" {
+			credKey = ep.AccessKey
+		}
 		return b.pool.Acquire(backend.PoolKey{
 			Kind:     "s3",
 			Endpoint: endpoint,
 			Region:   region,
 			Bucket:   ep.Bucket,
+			CredKey:  credKey,
 		}, &s3.Config{
 			Endpoint:           endpoint,
 			Region:             region,
 			Bucket:             ep.Bucket,
+			AccessKey:          ep.AccessKey,
+			SecretKey:          ep.SecretKey,
 			AccessKeyEnv:       accessKeyEnv,
 			SecretKeyEnv:       secretKeyEnv,
 			StorageClass:       storageClass,

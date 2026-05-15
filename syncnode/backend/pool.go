@@ -31,16 +31,22 @@ import (
 // the second rule's reads/writes would silently hit the wrong
 // bucket. Same hazard for cfs volume. See pool_test.go.
 //
-// For backends without per-bucket identity (e.g. local), Bucket is "".
+// CredKey disambiguates backends that share the same endpoint/bucket
+// but use different credentials (e.g. two rules with different inline
+// AK/SK injected by the dashboard). For env-var credentials it holds
+// the AccessKeyEnv name; for inline credentials it holds the AK value.
+// For backends without per-bucket identity (e.g. local), both Bucket
+// and CredKey are "".
 type PoolKey struct {
 	Kind     string
 	Endpoint string // S3 endpoint URL; empty for cfs/local
 	Region   string // S3 region; empty for cfs/local
 	Bucket   string // S3 bucket OR cfs volume; empty for local
+	CredKey  string // credential discriminator; empty for cfs/local
 }
 
 func (k PoolKey) String() string {
-	return fmt.Sprintf("%s|%s|%s|%s", k.Kind, k.Endpoint, k.Region, k.Bucket)
+	return fmt.Sprintf("%s|%s|%s|%s|%s", k.Kind, k.Endpoint, k.Region, k.Bucket, k.CredKey)
 }
 
 // Pool caches Backend instances by PoolKey. Concurrent callers requesting

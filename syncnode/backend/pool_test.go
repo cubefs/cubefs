@@ -152,17 +152,17 @@ func TestPoolKey_String_IncludesBucket(t *testing.T) {
 		{
 			name: "s3 with bucket",
 			key:  PoolKey{Kind: "s3", Endpoint: "https://s3.example.com", Region: "us-east-1", Bucket: "bucket-a"},
-			want: "s3|https://s3.example.com|us-east-1|bucket-a",
+			want: "s3|https://s3.example.com|us-east-1|bucket-a|",
 		},
 		{
 			name: "cfs with volume in bucket field",
 			key:  PoolKey{Kind: "cfs", Bucket: "vol-prod"},
-			want: "cfs|||vol-prod",
+			want: "cfs|||vol-prod|",
 		},
 		{
 			name: "local empty bucket",
 			key:  PoolKey{Kind: "local"},
-			want: "local|||",
+			want: "local||||",
 		},
 	}
 	for _, tc := range cases {
