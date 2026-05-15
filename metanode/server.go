@@ -130,7 +130,8 @@ func (m *MetaNode) handlePacketError(err error, p *Packet) {
 	if strings.Contains(errMsg, "over quota") ||
 		strings.Contains(errMsg, "inode ID out of range") ||
 		strings.Contains(errMsg, "unknown meta partition") ||
-		p.ResultCode == proto.OpNotExistErr {
+		p.ResultCode == proto.OpNotExistErr ||
+		strings.Contains(errMsg, "rate limited") {
 		log.LogWarnf("serve handlePacket fail: %v", err)
 	} else {
 		log.LogErrorf("serve handlePacket fail: %v", err)

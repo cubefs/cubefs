@@ -9,9 +9,13 @@
 package fs
 
 import (
+	"context"
+	"os"
+	"syscall"
 	"testing"
 	"time"
 
+	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse/fs"
 	"github.com/stretchr/testify/require"
 
@@ -118,4 +122,145 @@ func TestDir_Lookup_metaCacheMissReadDirGate(t *testing.T) {
 		last := now.Add(-5*time.Minute + time.Second).Unix()
 		require.False(t, dirLookupMetaCacheAccelerationGate(6, last, now, 0))
 	})
+}
+
+// superForDirMutationTest builds a minimal Super so Dir.* paths can run with inode
+// metadata only from ic (InodeGet cache hit), without MetaWrapper / ExtentClient.
+func superForDirMutationTest(t *testing.T) *Super {
+	t.Helper()
+	rm := NewRunningMonitor(0)
+	return &Super{
+		metaCacheAcceleration: true,
+		volname:               "ut-vol",
+		volType:               proto.VolumeTypeHot,
+		rootIno:               1,
+		ic:                    NewInodeCache(time.Hour, 10000, true),
+		runningMonitor:        rm,
+		nodeCache:             make(map[uint64]fs.Node),
+		dirDirtyCache:         make(map[uint64]bool),
+		dirDirtyCount:         make(map[uint64]int),
+		// File paths resolve storage class via poolCache; test inode helpers use PoolId 0.
+		poolCache: map[uint8]*proto.StoragePoolInfo{
+			0: {Id: 0, StorageClass: uint8(proto.StorageClass_Replica_HDD)},
+		},
+	}
+}
+
+func dirInodeInfoForMutationTest(ino uint64) *proto.InodeInfo {
+	now := time.Now()
+	return &proto.InodeInfo{
+		Inode:        ino,
+		Mode:         uint32(os.ModeDir | 0o755),
+		Nlink:        2,
+		Uid:          1000,
+		Gid:          1000,
+		Size:         4096,
+		AccessTime:   now,
+		ModifyTime:   now,
+		CreateTime:   now,
+		Extents:      &proto.GetExtentsResponse{},
+		StorageClass: proto.StorageClass_Replica_HDD,
+	}
+}
+
+func fileInodeInfoForMutationTest(ino uint64) *proto.InodeInfo {
+	now := time.Now()
+	return &proto.InodeInfo{
+		Inode:        ino,
+		Mode:         uint32(0o644),
+		Nlink:        1,
+		Uid:          1000,
+		Gid:          1000,
+		Size:         0,
+		AccessTime:   now,
+		ModifyTime:   now,
+		CreateTime:   now,
+		Extents:      &proto.GetExtentsResponse{},
+		StorageClass: proto.StorageClass_Replica_HDD,
+	}
+}
+
+func TestDir_Setattr_metaAccel_beginEndPaired_inodeFromIcache(t *testing.T) {
+	t.Parallel()
+	const dirIno uint64 = 88001
+	s := superForDirMutationTest(t)
+	info := dirInodeInfoForMutationTest(dirIno)
+	s.ic.Put(info)
+
+	d := NewDir(s, info, 1, "utdir").(*Dir)
+
+	req := &fuse.SetattrRequest{Header: fuse.Header{Pid: 4242}}
+	resp := &fuse.SetattrResponse{}
+
+	err := d.Setattr(context.Background(), req, resp)
+	require.NoError(t, err)
+	require.NotZero(t, resp.Attr.Inode)
+
+	_, inCount := s.dirDirtyCount[dirIno]
+	require.False(t, inCount, "EndDirMutation must clear count after Setattr returns")
+}
+
+func TestDir_Link_nonFileOld_returnsEPermBeforeBegin(t *testing.T) {
+	t.Parallel()
+	s := superForDirMutationTest(t)
+	const parentIno = uint64(88010)
+	srcDir := NewDir(s, dirInodeInfoForMutationTest(parentIno), 1, "p").(*Dir)
+	dstDir := NewDir(s, dirInodeInfoForMutationTest(parentIno+1), 1, "q").(*Dir)
+
+	_, err := srcDir.Link(context.Background(), &fuse.LinkRequest{
+		Header:  fuse.Header{Pid: 1},
+		NewName: "hard",
+	}, dstDir)
+	require.ErrorIs(t, err, fuse.EPERM)
+	require.Empty(t, s.dirDirtyCount, "Link must reject non-*File before BeginDirMutation")
+}
+
+func TestDir_Link_nonRegularFile_returnsEPermBeforeBegin(t *testing.T) {
+	t.Parallel()
+	s := superForDirMutationTest(t)
+	const parentIno = uint64(88020)
+	srcDir := NewDir(s, dirInodeInfoForMutationTest(parentIno), 1, "p").(*Dir)
+
+	old := NewFile(s, &proto.InodeInfo{
+		Inode:        88021,
+		Mode:         uint32(os.ModeSymlink | 0o777),
+		Nlink:        1,
+		StorageClass: proto.StorageClass_Replica_HDD,
+	}, syscall.O_RDONLY, parentIno, "sym").(*File)
+
+	_, err := srcDir.Link(context.Background(), &fuse.LinkRequest{
+		Header:  fuse.Header{Pid: 1},
+		NewName: "l",
+	}, old)
+	require.ErrorIs(t, err, fuse.EPERM)
+	require.Empty(t, s.dirDirtyCount)
+}
+
+func TestDir_Mknod_rdevNonZero_returnsENOSYSBeforeBegin(t *testing.T) {
+	t.Parallel()
+	s := superForDirMutationTest(t)
+	d := NewDir(s, dirInodeInfoForMutationTest(88030), 1, "d").(*Dir)
+
+	_, err := d.Mknod(context.Background(), &fuse.MknodRequest{
+		Header: fuse.Header{Pid: 1},
+		Name:   "dev",
+		Rdev:   1,
+	})
+	require.ErrorIs(t, err, fuse.ENOSYS)
+	require.Empty(t, s.dirDirtyCount)
+}
+
+func TestDir_Rename_nonDirDst_returnsENOTSUPBeforeBegin(t *testing.T) {
+	t.Parallel()
+	s := superForDirMutationTest(t)
+	src := NewDir(s, dirInodeInfoForMutationTest(88040), 1, "src").(*Dir)
+	dstFile := NewFile(s, fileInodeInfoForMutationTest(88041), syscall.O_RDONLY, 88040, "notadir").(*File)
+
+	err := src.Rename(context.Background(), &fuse.RenameRequest{
+		Header:  fuse.Header{Pid: 1},
+		OldName: "a",
+		NewName: "b",
+	}, dstFile)
+	require.ErrorIs(t, err, fuse.ENOTSUP)
+	require.Empty(t, s.dirDirtyCount)
 }

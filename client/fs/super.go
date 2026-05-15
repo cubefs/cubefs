@@ -116,6 +116,7 @@ type Super struct {
 	clientPoolId uint8
 
 	dirDirtyCache     map[uint64]bool
+	dirDirtyCount     map[uint64]int
 	dirDirtyCacheLock sync.Mutex
 }
 
@@ -137,6 +138,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	s = new(Super)
 	s.ebsc = make(map[uint8]*blobstore.BlobStoreClient)
 	s.dirDirtyCache = make(map[uint64]bool)
+	s.dirDirtyCount = make(map[uint64]int)
 	masters := strings.Split(opt.Master, meta.HostsSeparator)
 	metaConfig := &meta.MetaConfig{
 		Volume:          opt.Volname,
@@ -394,37 +396,66 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	return s, nil
 }
 
-func (s *Super) AddDirtyDir(ino uint64) {
+// readDirAllCacheBegin is the entry gate for ReadDirAll async dentry cache (see docs/source/design/client-dircache-concurrency.md).
+// When it returns true, this ReadDirAll run must not write dentry / inode cache at the end.
+func (s *Super) readDirAllCacheBegin(ino uint64) (skipCache bool) {
 	if !s.metaCacheAcceleration {
-		return
+		return false
 	}
 	s.dirDirtyCacheLock.Lock()
 	defer s.dirDirtyCacheLock.Unlock()
+	if s.dirDirtyCount[ino] > 0 {
+		return true
+	}
 	s.dirDirtyCache[ino] = false
+	return false
 }
 
-func (s *Super) SetDirtyDir(ino uint64, childIno uint64) {
-	if !s.metaCacheAcceleration {
-		return
-	}
-	s.dirDirtyCacheLock.Lock()
-	defer s.dirDirtyCacheLock.Unlock()
-
-	if _, ok := s.dirDirtyCache[ino]; !ok {
-		return
-	}
-
-	log.LogInfof("SetDirtyDir: ino(%v) is set to dirty, childIno(%v)", ino, childIno)
-	s.dirDirtyCache[ino] = true
-}
-
-func (s *Super) RemoveDirtyDir(ino uint64) {
+func (s *Super) ReleaseDirDirty(ino uint64) {
 	if !s.metaCacheAcceleration {
 		return
 	}
 	s.dirDirtyCacheLock.Lock()
 	defer s.dirDirtyCacheLock.Unlock()
 	delete(s.dirDirtyCache, ino)
+}
+
+// BeginDirMutation marks parent directory inode as being modified (dirDirtyCount++).
+func (s *Super) BeginDirMutation(parentIno uint64) {
+	if !s.metaCacheAcceleration {
+		return
+	}
+	s.dirDirtyCacheLock.Lock()
+	defer s.dirDirtyCacheLock.Unlock()
+	s.dirDirtyCount[parentIno]++
+}
+
+// EndDirMutation pairs with BeginDirMutation: decrements count; when it reaches zero, if local dentry cache
+// remains for that directory, sets dirDirtyCache so ReadDirAll cannot treat a stale listing as clean.
+func (s *Super) EndDirMutation(parentIno uint64) {
+	if !s.metaCacheAcceleration {
+		return
+	}
+
+	s.dirDirtyCacheLock.Lock()
+	defer s.dirDirtyCacheLock.Unlock()
+
+	if _, ok := s.dirDirtyCache[parentIno]; ok {
+		s.dirDirtyCache[parentIno] = true
+	}
+
+	n, ok := s.dirDirtyCount[parentIno]
+	if !ok {
+		log.LogWarnf("EndDirMutation: parentIno(%v) not found in dirDirtyCount", parentIno)
+		return
+	}
+
+	if n <= 1 {
+		delete(s.dirDirtyCount, parentIno)
+		return
+	}
+
+	s.dirDirtyCount[parentIno] = n - 1
 }
 
 func (s *Super) CheckDirDirty(ino uint64, f func()) {
@@ -436,7 +467,12 @@ func (s *Super) CheckDirDirty(ino uint64, f func()) {
 	s.dirDirtyCacheLock.Lock()
 	defer s.dirDirtyCacheLock.Unlock()
 
-	if dirty := s.dirDirtyCache[ino]; dirty {
+	if s.dirDirtyCount[ino] > 0 {
+		log.LogInfof("CheckDirDirty: ino(%v) skip cache (dirDirtyCount=%v)", ino, s.dirDirtyCount[ino])
+		return
+	}
+
+	if s.dirDirtyCache[ino] {
 		log.LogInfof("CheckDirDirty: ino(%v) is dirty", ino)
 		return
 	}

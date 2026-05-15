@@ -502,6 +502,10 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 
 	ino := f.info.Inode
 	reqlen := len(req.Data)
+
+	f.super.BeginDirMutation(f.parentIno)
+	defer f.super.EndDirMutation(f.parentIno)
+
 	// Get storage class from poolId if available, otherwise use existing StorageClass
 	pool := f.getStorageClassByPoolId(f.info.PoolId)
 	storageClass := uint32(pool.StorageClass)
@@ -524,7 +528,6 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	}
 
 	defer func() {
-		f.super.SetDirtyDir(f.parentIno, ino)
 		f.super.ic.Delete(ino)
 	}()
 
@@ -642,6 +645,15 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 	defer func() {
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: f.super.volname})
 	}()
+
+	openForWrite := false
+	if req.Flags&0x0f != syscall.O_RDONLY {
+		openForWrite = true
+	}
+	if openForWrite {
+		f.super.BeginDirMutation(f.parentIno)
+		defer f.super.EndDirMutation(f.parentIno)
+	}
 	// Get storage class from poolId if available, otherwise use existing StorageClass
 	pool := f.getStorageClassByPoolId(f.info.PoolId)
 	storageClass := uint32(pool.StorageClass)
@@ -669,17 +681,8 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 		return ParseError(err)
 	}
 
-	if DisableMetaCache {
-		openForWrite := false
-		if req.Flags&0x0f != syscall.O_RDONLY {
-			openForWrite = true
-		}
-
-		if openForWrite {
-			f.super.SetDirtyDir(f.parentIno, f.info.Inode)
-			f.super.ic.Delete(f.info.Inode)
-		}
-
+	if DisableMetaCache && openForWrite {
+		f.super.ic.Delete(f.info.Inode)
 	}
 
 	elapsed := time.Since(start)
@@ -696,6 +699,15 @@ func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 		stat.EndStat("Fsync", err, bgTime, 1)
 		f.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
+
+	openForWrite := false
+	if req.Flags&0x0f != syscall.O_RDONLY {
+		openForWrite = true
+	}
+	if openForWrite {
+		f.super.BeginDirMutation(f.parentIno)
+		defer f.super.EndDirMutation(f.parentIno)
+	}
 
 	log.LogDebugf("TRACE Fsync enter: ino(%v)", f.info.Inode)
 	start := time.Now()
@@ -720,15 +732,6 @@ func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 		}
 
 		return ParseError(err)
-	}
-
-	openForWrite := false
-	if req.Flags&0x0f != syscall.O_RDONLY {
-		openForWrite = true
-	}
-
-	if openForWrite {
-		f.super.SetDirtyDir(f.parentIno, f.info.Inode)
 	}
 
 	f.super.ic.Delete(f.info.Inode)
@@ -757,6 +760,10 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 	if req.Flags&0x0f != syscall.O_RDONLY {
 		openForWrite = true
 	}
+
+	f.super.BeginDirMutation(f.parentIno)
+	defer f.super.EndDirMutation(f.parentIno)
+
 	isCache := false
 	if proto.IsCold(f.super.volType) || proto.IsStorageClassBlobStore(storageClass) {
 		isCache = true
@@ -778,9 +785,6 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 		if err := f.super.ec.Truncate(f.super.mw, f.parentIno, ino, int(req.Size), fullPath); err != nil {
 			log.LogErrorf("Setattr: truncate ino(%v) size(%v) err(%v)", ino, req.Size, err)
 			return ParseError(err)
-		}
-		if openForWrite {
-			f.super.SetDirtyDir(f.parentIno, ino)
 		}
 		f.super.ic.Delete(ino)
 		f.super.ec.RefreshExtentsCache(ino)
