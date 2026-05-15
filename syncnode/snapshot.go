@@ -64,10 +64,13 @@ type snapshotCache struct {
 	cpuCores      atomic.Int64  // logical CPU count (cgroup-aware via runtime.NumCPU)
 	bandwidthMBps atomic.Uint64 // egress MB/s over the last refresh window
 
-	// Delta state for bandwidth computation. Accessed by the single refresh
-	// goroutine only — no concurrent access, no atomics needed.
-	prevBytesAt    int64 // unix nanos when prevBytesCount was sampled
-	prevBytesCount int64 // registry TotalBytesObserved at prevBytesAt
+	// Delta state for bandwidth and CPU sampling. Accessed by the single
+	// refresh goroutine only — no concurrent access, no atomics needed.
+	prevBytesAt    int64   // unix nanos when prevBytesCount was sampled
+	prevBytesCount int64   // registry TotalBytesObserved at prevBytesAt
+	prevCPUAt      int64   // unix nanos of previous cgroup CPU usage reading
+	prevCPUUsage   int64   // cgroup CPU usage in µs at prevCPUAt
+	cgroupCPUCores float64 // container CPU quota in cores (0 = unlimited)
 }
 
 // Snapshot satisfies HeartbeatSnapshotProvider. The MasterClient calls it
@@ -182,19 +185,62 @@ func (s *SyncNode) refreshSnapshotCache() {
 
 	// CPU utilisation. interval=0 returns differential since the last
 	// gopsutil call (non-blocking); safe to call every 30s.
-	if cpu, err := loadutil.GetCpuUtilPercent(0); err == nil {
-		s.snapshotCache.cpuPercent.Store(math.Float64bits(cpu))
+	//
+	// Cgroup-aware path: sample GetContainerCPUUsageMicros() at two points
+	// and compute (delta_µs / elapsed_µs) / containerCores * 100.
+	// Falls back to gopsutil host-level when not in a container or when the
+	// cgroup files are unavailable (macOS, bare-metal without cgroup limits).
+	cgroupCores, cgroupCoresErr := loadutil.GetContainerCPUCores()
+	if cgroupCoresErr == nil && cgroupCores > 0 {
+		// Container has a CPU limit — use cgroup-based sampling.
+		s.snapshotCache.cgroupCPUCores = cgroupCores
+		s.snapshotCache.cpuCores.Store(int64(math.Round(cgroupCores)))
+		if usage, err := loadutil.GetContainerCPUUsageMicros(); err == nil {
+			now := time.Now().UnixNano()
+			prev := s.snapshotCache.prevCPUUsage
+			prevAt := s.snapshotCache.prevCPUAt
+			if prevAt > 0 && now > prevAt && usage >= prev {
+				elapsedMicros := float64(now-prevAt) / 1000.0
+				cpuPct := (float64(usage-prev) / elapsedMicros) / cgroupCores * 100
+				if cpuPct < 0 {
+					cpuPct = 0
+				} else if cpuPct > 100 {
+					cpuPct = 100
+				}
+				s.snapshotCache.cpuPercent.Store(math.Float64bits(cpuPct))
+			}
+			s.snapshotCache.prevCPUUsage = usage
+			s.snapshotCache.prevCPUAt = now
+		}
+	} else {
+		// No container CPU limit or cgroup unavailable — fall back to host.
+		s.snapshotCache.cgroupCPUCores = 0
+		s.snapshotCache.cpuCores.Store(int64(runtime.NumCPU()))
+		if cpu, err := loadutil.GetCpuUtilPercent(0); err == nil {
+			s.snapshotCache.cpuPercent.Store(math.Float64bits(cpu))
+		}
 	}
-	// CPU cores (cgroup-aware on Kubernetes via runtime.NumCPU).
-	s.snapshotCache.cpuCores.Store(int64(runtime.NumCPU()))
 
-	// Memory used %.
-	if mem, err := loadutil.GetMemoryUsedPercent(); err == nil {
-		s.snapshotCache.memPercent.Store(math.Float64bits(mem))
-	}
-	// Total physical memory in MiB.
-	if totalBytes, err := loadutil.GetTotalMemory(); err == nil {
-		s.snapshotCache.memTotalMB.Store(totalBytes / (1024 * 1024))
+	// Memory. Use cgroup container limit when available; fall back to host.
+	limitBytes, limitErr := loadutil.GetContainerMemoryLimitBytes()
+	if limitErr == nil && limitBytes > 0 {
+		s.snapshotCache.memTotalMB.Store(limitBytes / (1024 * 1024))
+		if usageBytes, err := loadutil.GetContainerMemoryUsageBytes(); err == nil {
+			pct := float64(usageBytes) / float64(limitBytes) * 100
+			if pct < 0 {
+				pct = 0
+			} else if pct > 100 {
+				pct = 100
+			}
+			s.snapshotCache.memPercent.Store(math.Float64bits(pct))
+		}
+	} else {
+		if mem, err := loadutil.GetMemoryUsedPercent(); err == nil {
+			s.snapshotCache.memPercent.Store(math.Float64bits(mem))
+		}
+		if totalBytes, err := loadutil.GetTotalMemory(); err == nil {
+			s.snapshotCache.memTotalMB.Store(totalBytes / (1024 * 1024))
+		}
 	}
 
 	// Egress bandwidth: derive MB/s from two consecutive byte-count readings.
