@@ -8165,7 +8165,7 @@ func (m *Server) dispatchSyncTask(w http.ResponseWriter, r *http.Request) {
 			} `json:"Request"`
 		}
 		_ = json.Unmarshal(body, &ruleHint)
-		send := func(addr string, _ int, payload interface{}) error {
+		send := func(addr string, shardIdx int, payload interface{}) error {
 			value, ok := m.cluster.syncNodes.Load(addr)
 			if !ok {
 				return fmt.Errorf("syncnode %s not registered", addr)
@@ -8174,7 +8174,8 @@ func (m *Server) dispatchSyncTask(w http.ResponseWriter, r *http.Request) {
 			if !ok || sn == nil {
 				return fmt.Errorf("syncnode %s entry invalid", addr)
 			}
-			runTask := proto.NewAdminTask(proto.OpSyncNodeRunTask, addr, payload)
+			runTask := proto.NewAdminTaskEx(proto.OpSyncNodeRunTask, addr, payload,
+				fmt.Sprintf("%s/%d", task.ID, shardIdx))
 			sn.TaskManager.AddTask(runTask)
 			return nil
 		}
@@ -8225,7 +8226,7 @@ func (m *Server) dispatchSyncTask(w http.ResponseWriter, r *http.Request) {
 		}
 		// Build a fresh OpSyncNodeRunTask carrying the original Request
 		// payload, addressed to this candidate.
-		runTask := proto.NewAdminTask(proto.OpSyncNodeRunTask, addr, task.Request)
+		runTask := proto.NewAdminTaskEx(proto.OpSyncNodeRunTask, addr, task.Request, task.ID)
 		sn.TaskManager.AddTask(runTask)
 		return nil
 	}

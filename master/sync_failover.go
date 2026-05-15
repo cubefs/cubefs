@@ -229,7 +229,7 @@ func (f *SyncFailover) redispatch(taskID string) error {
 		// as fresh (CreateTime / SendCount reset, new RequestID). The
 		// RunTaskRequest payload is reused verbatim — re-running the
 		// rule from the top is exactly the failover contract.
-		runTask := proto.NewAdminTask(proto.OpSyncNodeRunTask, addr, payload.Request)
+		runTask := proto.NewAdminTaskEx(proto.OpSyncNodeRunTask, addr, payload.Request, taskID)
 		return f.cluster.sendRunTask(addr, runTask)
 	}
 

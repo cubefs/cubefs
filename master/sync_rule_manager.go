@@ -387,7 +387,26 @@ func sendRunTask(cluster *Cluster, addr string, payload interface{}) error {
 	if !ok || sn == nil {
 		return fmt.Errorf("syncnode %s entry invalid", addr)
 	}
-	runTask := proto.NewAdminTask(proto.OpSyncNodeRunTask, addr, payload)
+	// Derive a unique AdminTask ID from the embedded task ID so that
+	// concurrent RunTask requests for different logical tasks are never
+	// silently dropped by TaskManager's dedup map. Without a unique suffix
+	// every RunTask gets the same fixed ID "addr[x]_op[121]" and a second
+	// trigger is dropped while the first task's entry is still in the map.
+	var reqID string
+	switch p := payload.(type) {
+	case *SyncRunTaskRequest:
+		reqID = p.TaskID
+	case map[string]interface{}:
+		if v, ok := p["taskId"]; ok {
+			reqID, _ = v.(string)
+		}
+	}
+	var runTask *proto.AdminTask
+	if reqID != "" {
+		runTask = proto.NewAdminTaskEx(proto.OpSyncNodeRunTask, addr, payload, reqID)
+	} else {
+		runTask = proto.NewAdminTask(proto.OpSyncNodeRunTask, addr, payload)
+	}
 	sn.TaskManager.AddTask(runTask)
 	return nil
 }
