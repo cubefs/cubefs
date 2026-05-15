@@ -77,6 +77,14 @@ func (c *Cluster) handleSyncNodeTaskResponse(nodeAddr string, task *proto.AdminT
 		if c.syncFailover != nil {
 			c.syncFailover.Forget(rep.TaskID)
 		}
+		// Eagerly decrement RunningTasks so the next Dispatch/Candidates call
+		// sees a fresh count without waiting for the next heartbeat cycle.
+		// The heartbeat will reset it to the authoritative value shortly after.
+		sn.Lock()
+		if sn.RunningTasks > 0 {
+			sn.RunningTasks--
+		}
+		sn.Unlock()
 		// Map executor status ("done"/"failed"/"cancelled") to ledger status.
 		var masterStatus SyncTaskStatus
 		switch rep.Status {
