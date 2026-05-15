@@ -606,7 +606,20 @@ func (r *Runner) run(taskCtx context.Context, task *executor.Task, src, dst back
 func (r *Runner) runAfterWait(taskCtx context.Context, task *executor.Task, src, dst backend.Backend, done chan struct{}) {
 	select {
 	case r.slots <- struct{}{}:
-		// Slot acquired — proceed to run() which owns wg.Done + cleanup.
+		// Both this arm and taskCtx.Done() can be ready simultaneously when
+		// a cancel arrives at the same instant the slot becomes free. Go's
+		// select picks randomly, so we may land here even though the task
+		// was already cancelled. Check Err() after acquiring the slot and
+		// treat a non-nil error as a cancel: release the slot and abort
+		// without ever starting the executor.
+		if err := taskCtx.Err(); err != nil {
+			r.release()
+			r.abortQueued(task, src, dst, done, err.Error())
+			return
+		}
+		// Slot acquired and context is live — proceed to run().
+		// run() owns wg.Done + all cleanup; queueLen is decremented here
+		// (not inside abortQueued) because the slot was legitimately taken.
 		r.queueLen.Add(-1)
 		r.run(taskCtx, task, src, dst, done)
 		return
