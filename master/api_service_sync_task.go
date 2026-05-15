@@ -226,7 +226,7 @@ func sendSyncCancelTo(c *Cluster, addr, taskID string) error {
 		return fmt.Errorf("syncnode %s entry invalid", addr)
 	}
 	req := map[string]interface{}{"taskId": taskID}
-	task := proto.NewAdminTask(proto.OpSyncNodeCancelTask, addr, req)
+	task := proto.NewAdminTaskEx(proto.OpSyncNodeCancelTask, addr, req, taskID)
 	sn.TaskManager.AddTask(task)
 	return nil
 }

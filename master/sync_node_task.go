@@ -242,7 +242,7 @@ func (c *Cluster) cancelOrphanedTasksOnReconnect(addr string) {
 			continue
 		}
 		req := map[string]interface{}{"taskId": taskID}
-		task := proto.NewAdminTask(proto.OpSyncNodeCancelTask, addr, req)
+		task := proto.NewAdminTaskEx(proto.OpSyncNodeCancelTask, addr, req, taskID)
 		sn.TaskManager.AddTask(task)
 		cancelled++
 	}
