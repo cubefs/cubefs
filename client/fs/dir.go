@@ -114,6 +114,12 @@ type Dir struct {
 	lastTime    int64
 }
 
+type readDirAllMetaClient interface {
+	ReadDirLimit_ll(parentID uint64, from string, limit uint64, isAsync bool) ([]proto.Dentry, error)
+	BatchInodeGet(inodes []uint64) []*proto.InodeInfo
+	BatchInodeGetExtents(inodes []uint64) []*proto.InodeInfo
+}
+
 // dirLookupMetaCacheAccelerationGate is the condition under which Lookup may trigger background ReadDirAll
 // on dentry-cache miss (meta cache acceleration). missAfterIncr is the value after AddUint32 on missCount.
 func dirLookupMetaCacheAccelerationGate(missAfterIncr uint32, lastTimeUnix int64, now time.Time, lastDoing int32) bool {
@@ -754,7 +760,6 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 
 // ReadDirAll gets all the dentries in a directory and puts them into the cache.
 func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
-	start := time.Now()
 	bgTime := stat.BeginStat()
 	var err error
 	metric := exporter.NewTPCnt("readdir")
@@ -764,16 +769,31 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 		auditlog.LogClientOp("ReadDirAllComplete", d.getCwd(), "", err, time.Since(*bgTime).Microseconds(), d.info.Inode, 0)
 	}()
 
+	var dirents []fuse.Dirent
+	dirents, err = d.readDirAll(d.super.mw)
+	return dirents, err
+}
+
+func (d *Dir) readDirAll(mw readDirAllMetaClient) ([]fuse.Dirent, error) {
+	start := time.Now()
+	log.LogDebugf("Readdir ino(%v) path(%v) d.super.bcacheDir(%v)", d.info.Inode, d.getCwd(), d.super.bcacheDir)
+	var dcache *DentryCache
+	if !d.super.disableDcache {
+		dcache = NewDentryCache(d.super.metaCacheAcceleration)
+	}
+
 	// transform ReadDirAll to ReadDirLimit_ll
 	noMore := false
 	from := ""
-	var children []proto.Dentry
+	dirents := make([]fuse.Dirent, 0)
+	infos := make([]*proto.InodeInfo, 0)
 	for !noMore {
-		batches, err := d.super.mw.ReadDirLimit_ll(d.info.Inode, from, DefaultReaddirLimit, false)
+		batches, err := mw.ReadDirLimit_ll(d.info.Inode, from, DefaultReaddirLimit, false)
 		if err != nil {
 			log.LogErrorf("Readdir: ino(%v) err(%v) from(%v)", d.info.Inode, err, from)
 			return make([]fuse.Dirent, 0), ParseError(err)
 		}
+
 		batchNr := uint64(len(batches))
 		if batchNr == 0 || (from != "" && batchNr == 1) {
 			break
@@ -783,36 +803,28 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 		if from != "" {
 			batches = batches[1:]
 		}
-		children = append(children, batches...)
-		from = batches[len(batches)-1].Name
-	}
 
-	inodes := make([]uint64, 0, len(children))
-	dirents := make([]fuse.Dirent, 0, len(children))
+		inodes := make([]uint64, 0, len(batches))
+		for _, child := range batches {
+			dentry := fuse.Dirent{
+				Inode: child.Inode,
+				Type:  ParseType(child.Type),
+				Name:  child.Name,
+			}
 
-	log.LogDebugf("Readdir ino(%v) path(%v) d.super.bcacheDir(%v)", d.info.Inode, d.getCwd(), d.super.bcacheDir)
-	var dcache *DentryCache
-	if !d.super.disableDcache {
-		dcache = NewDentryCache(d.super.metaCacheAcceleration)
-	}
-
-	for _, child := range children {
-		dentry := fuse.Dirent{
-			Inode: child.Inode,
-			Type:  ParseType(child.Type),
-			Name:  child.Name,
+			inodes = append(inodes, child.Inode)
+			dirents = append(dirents, dentry)
+			dcache.Put(child.Name, child.Inode)
 		}
 
-		inodes = append(inodes, child.Inode)
-		dirents = append(dirents, dentry)
-		dcache.Put(child.Name, child.Inode)
-	}
+		log.LogDebugf("ReadDirAll BatchInodeGet ino(%v) batchInodes(%v) from(%v)", d.info.Inode, len(inodes), from)
+		if d.super.metaCacheAcceleration {
+			infos = append(infos, mw.BatchInodeGetExtents(inodes)...)
+		} else {
+			infos = append(infos, mw.BatchInodeGet(inodes)...)
+		}
 
-	var infos []*proto.InodeInfo
-	if d.super.metaCacheAcceleration {
-		infos = d.super.mw.BatchInodeGetExtents(inodes)
-	} else {
-		infos = d.super.mw.BatchInodeGet(inodes)
+		from = batches[len(batches)-1].Name
 	}
 
 	d.super.CheckDirDirty(d.info.Inode, func() {

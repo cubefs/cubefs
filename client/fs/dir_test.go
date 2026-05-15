@@ -10,6 +10,7 @@ package fs
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"syscall"
 	"testing"
@@ -78,6 +79,74 @@ func TestDir_getCwd_nodeInCacheButNotDir(t *testing.T) {
 		name:      "x",
 	}
 	require.Equal(t, "unknown/", d.getCwd())
+}
+
+func TestDir_readDirAllBatchesInodeGetsPerReadDirLimit(t *testing.T) {
+	const parentIno uint64 = 100
+
+	mw := &readDirAllMetaClientMock{
+		pages: readDirAllPagedDentries(),
+	}
+	super := &Super{
+		rootIno:       parentIno,
+		ic:            NewInodeCache(time.Hour, 4096, true),
+		nodeCache:     make(map[uint64]fs.Node),
+		inodeLruLimit: 4096,
+	}
+	d := &Dir{
+		super: super,
+		info:  &proto.InodeInfo{Inode: parentIno},
+		name:  "dir",
+	}
+
+	dirents, err := d.readDirAll(mw)
+	require.NoError(t, err)
+	require.Len(t, dirents, DefaultReaddirLimit+2)
+	require.Equal(t, "file-0000", dirents[0].Name)
+	require.Equal(t, "file-1025", dirents[len(dirents)-1].Name)
+
+	require.Equal(t, []string{"", "file-1023"}, mw.readDirMarkers)
+	require.Len(t, mw.batchInodeCalls, 2)
+	require.Len(t, mw.batchInodeCalls[0], DefaultReaddirLimit)
+	require.Equal(t, uint64(1), mw.batchInodeCalls[0][0])
+	require.Equal(t, uint64(1024), mw.batchInodeCalls[0][len(mw.batchInodeCalls[0])-1])
+	require.Equal(t, []uint64{1025, 1026}, mw.batchInodeCalls[1])
+	require.NotNil(t, super.ic.Get(1))
+	require.NotNil(t, super.ic.Get(1026))
+}
+
+func TestDir_readDirAllBatchesInodeGetExtentsWhenMetaCacheAcceleration(t *testing.T) {
+	const parentIno uint64 = 200
+
+	mw := &readDirAllMetaClientMock{
+		pages: readDirAllPagedDentries(),
+	}
+	super := &Super{
+		rootIno:               parentIno,
+		ic:                    NewInodeCache(time.Hour, 4096, true),
+		nodeCache:             make(map[uint64]fs.Node),
+		metaCacheAcceleration: true,
+		inodeLruLimit:         4096,
+		dirDirtyCache:         map[uint64]bool{parentIno: false},
+	}
+	d := &Dir{
+		super: super,
+		info:  &proto.InodeInfo{Inode: parentIno},
+		name:  "dir",
+	}
+
+	dirents, err := d.readDirAll(mw)
+	require.NoError(t, err)
+	require.Len(t, dirents, DefaultReaddirLimit+2)
+
+	require.Empty(t, mw.batchInodeCalls)
+	require.Len(t, mw.batchInodeExtentsCalls, 2)
+	require.Len(t, mw.batchInodeExtentsCalls[0], DefaultReaddirLimit)
+	require.Equal(t, uint64(1), mw.batchInodeExtentsCalls[0][0])
+	require.Equal(t, uint64(1024), mw.batchInodeExtentsCalls[0][len(mw.batchInodeExtentsCalls[0])-1])
+	require.Equal(t, []uint64{1025, 1026}, mw.batchInodeExtentsCalls[1])
+	require.NotNil(t, super.ic.Get(1))
+	require.NotNil(t, super.ic.Get(1026))
 }
 
 func TestDir_Lookup_metaCacheMissReadDirGate(t *testing.T) {
@@ -263,4 +332,54 @@ func TestDir_Rename_nonDirDst_returnsENOTSUPBeforeBegin(t *testing.T) {
 	}, dstFile)
 	require.ErrorIs(t, err, fuse.ENOTSUP)
 	require.Empty(t, s.dirDirtyCount)
+}
+
+type readDirAllMetaClientMock struct {
+	pages                  map[string][]proto.Dentry
+	readDirMarkers         []string
+	batchInodeCalls        [][]uint64
+	batchInodeExtentsCalls [][]uint64
+}
+
+func (m *readDirAllMetaClientMock) ReadDirLimit_ll(parentID uint64, from string, limit uint64, isAsync bool) ([]proto.Dentry, error) {
+	m.readDirMarkers = append(m.readDirMarkers, from)
+	children := m.pages[from]
+	return append([]proto.Dentry(nil), children...), nil
+}
+
+func (m *readDirAllMetaClientMock) BatchInodeGet(inodes []uint64) []*proto.InodeInfo {
+	m.batchInodeCalls = append(m.batchInodeCalls, append([]uint64(nil), inodes...))
+	return inodeInfosFor(inodes)
+}
+
+func (m *readDirAllMetaClientMock) BatchInodeGetExtents(inodes []uint64) []*proto.InodeInfo {
+	m.batchInodeExtentsCalls = append(m.batchInodeExtentsCalls, append([]uint64(nil), inodes...))
+	return inodeInfosFor(inodes)
+}
+
+func readDirAllPagedDentries() map[string][]proto.Dentry {
+	firstPage := make([]proto.Dentry, 0, DefaultReaddirLimit)
+	for i := 0; i < DefaultReaddirLimit; i++ {
+		firstPage = append(firstPage, proto.Dentry{
+			Name:  fmt.Sprintf("file-%04d", i),
+			Inode: uint64(i + 1),
+		})
+	}
+	secondPage := []proto.Dentry{
+		firstPage[len(firstPage)-1],
+		{Name: "file-1024", Inode: 1025},
+		{Name: "file-1025", Inode: 1026},
+	}
+	return map[string][]proto.Dentry{
+		"":          firstPage,
+		"file-1023": secondPage,
+	}
+}
+
+func inodeInfosFor(inodes []uint64) []*proto.InodeInfo {
+	infos := make([]*proto.InodeInfo, 0, len(inodes))
+	for _, ino := range inodes {
+		infos = append(infos, &proto.InodeInfo{Inode: ino})
+	}
+	return infos
 }
