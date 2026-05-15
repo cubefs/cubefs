@@ -27,6 +27,7 @@ package local
 
 import (
 	"context"
+	"crypto/md5" //nolint:gosec
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -458,6 +459,11 @@ func (b *Backend) walkShallow(ctx context.Context, base, prefix string, ch chan<
 		}
 		if de.IsDir() {
 			entry.Size = 0
+		} else {
+			absPath := filepath.Join(base, de.Name())
+			if etag, merr := fileMD5(absPath); merr == nil {
+				entry.ETag = etag
+			}
 		}
 		if !emit(ctx, ch, entry) {
 			return
@@ -516,6 +522,10 @@ func (b *Backend) walkRecursive(ctx context.Context, base, prefix string, ch cha
 		}
 		if d.IsDir() {
 			entry.Size = 0
+		} else {
+			if etag, merr := fileMD5(p); merr == nil {
+				entry.ETag = etag
+			}
 		}
 		if !emit(ctx, ch, entry) {
 			return filepath.SkipAll
@@ -525,6 +535,22 @@ func (b *Backend) walkRecursive(ctx context.Context, base, prefix string, ch cha
 	if walkErr != nil && !errors.Is(walkErr, context.Canceled) && !errors.Is(walkErr, context.DeadlineExceeded) {
 		emit(ctx, ch, backend.Entry{Err: walkErr})
 	}
+}
+
+// fileMD5 computes the hex-encoded MD5 checksum of the named file. Used to
+// produce a content-based ETag for local POSIX entries so the sync executor
+// can perform idempotency checks against S3 ETags.
+func fileMD5(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := md5.New() //nolint:gosec
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // joinKey appends child to prefix using "/" as the separator (object-store
