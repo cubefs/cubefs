@@ -1062,6 +1062,7 @@ type SyncNodeInfo struct {
 	Commit       string   `json:"commit"`
 	Capabilities []string `json:"capabilities,omitempty"` // e.g. ["s3", "cfs", "local"]
 	RegisteredAt int64    `json:"registeredAt"`           // unix seconds
+	State        string   `json:"state"`                  // active | draining
 
 	// LoadScore is the master-side scheduler score per design.md §6.3.1.
 	// Lower is better; +Inf means the node is stale or unhealthy. Computed

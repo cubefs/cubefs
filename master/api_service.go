@@ -8052,6 +8052,7 @@ func (m *Server) listSyncNodes(w http.ResponseWriter, r *http.Request) {
 			Addr:         sn.Addr,
 			Version:      sn.Version,
 			RegisteredAt: sn.ReportTime.Unix(),
+			State:        string(sn.State),
 		}
 		sn.RUnlock()
 		if scores != nil {
