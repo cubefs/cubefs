@@ -579,7 +579,7 @@ func (s *SyncNode) onTaskTerminal(rec *tasks.Record) {
 			ThroughputMBps: rec.Progress.ThroughputMBps,
 		},
 	}
-	task := proto.NewAdminTask(proto.OpSyncNodeRunTask, s.masterClient.LocalServerAddr(), nil)
+	task := proto.NewAdminTaskEx(proto.OpSyncNodeRunTask, s.masterClient.LocalServerAddr(), nil, rec.TaskID)
 	task.Response = report
 	if err := s.masterClient.ResponseTask(task); err != nil {
 		log.LogWarnf("syncnode: push terminal %q: %v", rec.TaskID, err)
