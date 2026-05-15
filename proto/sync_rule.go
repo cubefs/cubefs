@@ -39,7 +39,7 @@ const (
 // SyncEndpointConfig describes one source or destination of a sync rule.
 // Fields used depend on Kind:
 //   - cfs:   Vol + Path
-//   - s3:    Endpoint, Region, Bucket, Prefix, StorageClass, AccessKeyEnv, SecretKeyEnv, InsecureSkipTLS
+//   - s3:    Endpoint, Region, Bucket, Prefix, StorageClass, AccessKeyEnv, SecretKeyEnv, InsecureSkipTLS, UsePathStyle
 //   - local: Path + buffer hints (BufferSizeKiB, Concurrency, DirectIO, FadviseSequential)
 type SyncEndpointConfig struct {
 	Kind string `json:"kind"`
@@ -59,6 +59,10 @@ type SyncEndpointConfig struct {
 	// InsecureSkipTLS disables TLS certificate verification for s3 endpoints.
 	// Use only in dev/test environments without a proper CA cert bundle.
 	InsecureSkipTLS bool `json:"insecureSkipTLS"`
+	// UsePathStyle forces S3 path-style addressing (bucket in URL path).
+	// Required for S3-compatible stores that don't support virtual-hosted
+	// style (e.g. ByteDance TOS, Ceph RGW with no wildcard DNS).
+	UsePathStyle bool `json:"usePathStyle"`
 	// local fields (any host-mounted POSIX path)
 	BufferSizeKiB     int  `json:"bufferSizeKiB"`
 	Concurrency       int  `json:"concurrency"`

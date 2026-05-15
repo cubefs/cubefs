@@ -101,6 +101,7 @@ func (b *backendBuilder) Build(_ context.Context, ep *spec.EndpointConfig) (back
 			SecretKeyEnv:       secretKeyEnv,
 			StorageClass:       storageClass,
 			InsecureSkipVerify: ep.InsecureSkipTLS,
+			UsePathStyle:       ep.UsePathStyle,
 		})
 	case "local":
 		bufKiB := ep.BufferSizeKiB
