@@ -105,10 +105,14 @@ func (c *Cluster) handleSyncNodeTaskResponse(nodeAddr string, task *proto.AdminT
 		default:
 			masterStatus = SyncTaskStatus(rep.Status)
 		}
-		// TaskTerminalReport carries no progress; preserve the last snapshot.
-		var prog SyncTaskProgress
-		if existing := c.syncTaskLedger.Get(rep.TaskID); existing != nil {
-			prog = existing.Progress
+		// Use the progress carried in the terminal report.
+		prog := SyncTaskProgress{
+			FilesTotal:   rep.Progress.FilesTotal,
+			FilesDone:    rep.Progress.FilesDone,
+			FilesSkipped: rep.Progress.FilesSkipped,
+			FilesFailed:  rep.Progress.FilesFailed,
+			BytesTotal:   rep.Progress.BytesTotal,
+			BytesDone:    rep.Progress.BytesDone,
 		}
 		c.recordTaskTerminal(rep.TaskID, masterStatus, rep.Error, prog)
 		log.LogInfof("sn task %s terminal on %s: status=%s err=%s",

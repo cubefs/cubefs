@@ -1172,10 +1172,23 @@ type SyncNodeQuotaReply struct {
 // Status is the executor.Status string ("done" / "failed" / "cancelled").
 // Error is populated when Status == "failed" so master can surface the
 // reason for ops dashboards / alerts.
+// TaskTerminalProgress mirrors executor.Progress as a wire-safe struct
+// that can live in the proto package without importing syncnode/executor.
+type TaskTerminalProgress struct {
+	FilesTotal     int64   `json:"filesTotal"`
+	FilesDone      int64   `json:"filesDone"`
+	FilesSkipped   int64   `json:"filesSkipped"`
+	FilesFailed    int64   `json:"filesFailed"`
+	BytesTotal     int64   `json:"bytesTotal"`
+	BytesDone      int64   `json:"bytesDone"`
+	ThroughputMBps float64 `json:"throughputMBps,omitempty"`
+}
+
 type TaskTerminalReport struct {
-	TaskID string `json:"taskId"`
-	Status string `json:"status"`
-	Error  string `json:"error,omitempty"`
+	TaskID   string               `json:"taskId"`
+	Status   string               `json:"status"`
+	Error    string               `json:"error,omitempty"`
+	Progress TaskTerminalProgress `json:"progress"`
 }
 
 type FlashNodeDiskCacheStat struct {

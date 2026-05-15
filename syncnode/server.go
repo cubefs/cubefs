@@ -569,6 +569,15 @@ func (s *SyncNode) onTaskTerminal(rec *tasks.Record) {
 		TaskID: rec.TaskID,
 		Status: string(rec.Status),
 		Error:  rec.Error,
+		Progress: proto.TaskTerminalProgress{
+			FilesTotal:     rec.Progress.FilesTotal,
+			FilesDone:      rec.Progress.FilesDone,
+			FilesSkipped:   rec.Progress.FilesSkipped,
+			FilesFailed:    rec.Progress.FilesFailed,
+			BytesTotal:     rec.Progress.BytesTotal,
+			BytesDone:      rec.Progress.BytesDone,
+			ThroughputMBps: rec.Progress.ThroughputMBps,
+		},
 	}
 	task := proto.NewAdminTask(proto.OpSyncNodeRunTask, s.masterClient.LocalServerAddr(), nil)
 	task.Response = report
