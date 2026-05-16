@@ -64,6 +64,7 @@ const (
 	defaultHTTPListen         = "17911"
 	defaultExporterPort       = 17912
 	defaultMaxConcurrentTasks = 8
+	defaultMaxQueueSize       = 32 // tasks wait in queue instead of immediate ErrQueueFull
 	defaultTransfersPerTask   = 4
 	defaultBandwidthLimitMBps = 0 // 0 = unlimited
 	defaultMaxDirDepth        = 20

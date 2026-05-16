@@ -160,6 +160,9 @@ func applyDefaults(cfg *SyncConfig) {
 	if cfg.Concurrency.MaxConcurrentTasks == 0 {
 		cfg.Concurrency.MaxConcurrentTasks = defaultMaxConcurrentTasks
 	}
+	if cfg.Concurrency.MaxQueueSize == 0 {
+		cfg.Concurrency.MaxQueueSize = defaultMaxQueueSize
+	}
 	if cfg.Concurrency.TransfersPerTask == 0 {
 		cfg.Concurrency.TransfersPerTask = defaultTransfersPerTask
 	}

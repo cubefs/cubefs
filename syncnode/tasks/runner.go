@@ -830,7 +830,7 @@ func buildTask(rule *rules.Rule, src, dst backend.Backend, taskID string) *execu
 // safe default ("root of the backend").
 func endpointPath(ep *spec.EndpointConfig) string {
 	switch ep.Kind {
-	case "s3":
+	case "s3", "tos", "bos":
 		return ep.Prefix
 	default:
 		return ep.Path
