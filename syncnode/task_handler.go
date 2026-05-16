@@ -192,6 +192,59 @@ func isNilResponder(mc masterResponder) bool {
 	}
 }
 
+// queueFullRetryInterval is how often retryUntilAdmitted re-attempts admission
+// after an ErrQueueFull.
+const queueFullRetryInterval = 5 * time.Second
+
+// queueFullRetryTimeout is the maximum wall time retryUntilAdmitted will wait
+// for queue space before giving up and pushing a failed terminal to master.
+const queueFullRetryTimeout = 5 * time.Minute
+
+// admitOrRetry calls trigger(). If it succeeds or fails with a non-ErrQueueFull
+// error the result is returned directly (ok=true on success, ok=false on error).
+// On ErrQueueFull it spawns retryUntilAdmitted in a background goroutine and
+// returns (true, nil) so handleRunTask can immediately send okReply — master
+// keeps the task as "running" in its ledger while the retry loop works. The
+// background goroutine calls pushFailedTerminal only if it exhausts the timeout.
+func (h *TaskHandler) admitOrRetry(taskID string, trigger func() error) (ok bool, err error) {
+	if err = trigger(); err == nil {
+		return true, nil
+	}
+	if !errors.Is(err, tasks.ErrQueueFull) {
+		return false, err
+	}
+	go h.retryUntilAdmitted(taskID, trigger)
+	return true, nil
+}
+
+// retryUntilAdmitted retries trigger() every queueFullRetryInterval until the
+// task is admitted or queueFullRetryTimeout elapses. On timeout it pushes a
+// failed terminal to master so the ledger entry does not stay "running" forever.
+func (h *TaskHandler) retryUntilAdmitted(taskID string, trigger func() error) {
+	ctx, cancel := context.WithTimeout(context.Background(), queueFullRetryTimeout)
+	defer cancel()
+	ticker := time.NewTicker(queueFullRetryInterval)
+	defer ticker.Stop()
+	log.LogInfof("syncnode: task %q queue full — retrying up to %v", taskID, queueFullRetryTimeout)
+	for {
+		select {
+		case <-ctx.Done():
+			log.LogWarnf("syncnode: task %q queue full retry timed out after %v", taskID, queueFullRetryTimeout)
+			h.pushFailedTerminal(taskID, "queue full: timed out waiting for available slot")
+			return
+		case <-ticker.C:
+			if err := trigger(); err == nil {
+				log.LogInfof("syncnode: task %q admitted after queue full retry", taskID)
+				return
+			} else if !errors.Is(err, tasks.ErrQueueFull) {
+				log.LogWarnf("syncnode: task %q retry failed: %v", taskID, err)
+				h.pushFailedTerminal(taskID, err.Error())
+				return
+			}
+		}
+	}
+}
+
 // pushFailedTerminal sends a synthetic "failed" terminal report to master for
 // taskID. Called when handleRunTask cannot even start the executor (e.g. a
 // backend build failure) so master never receives the normal onTerminal
@@ -347,11 +400,16 @@ func (h *TaskHandler) handleRunTask(ctx context.Context, p *proto.Packet) *proto
 			shardTotal = req.SubTask.ShardTotal
 			prefixes = req.SubTask.Prefixes
 		}
-		if _, err := rar.TriggerWithRule(context.Background(), req.Rule, req.TaskID,
-			shardIdx, shardTotal, prefixes, false); err != nil {
-			log.LogWarnf("syncnode: TriggerWithRule rule=%q task=%q: %v", req.Rule.ID(), req.TaskID, err)
-			h.pushFailedTerminal(req.TaskID, err.Error())
-			return errorReply(p, fmt.Errorf("trigger rule %q (snapshot path): %w", req.Rule.ID(), err))
+		ruleSnapshot, taskID := req.Rule, req.TaskID
+		ok, trigErr := h.admitOrRetry(taskID, func() error {
+			_, e := rar.TriggerWithRule(context.Background(), ruleSnapshot, taskID,
+				shardIdx, shardTotal, prefixes, false)
+			return e
+		})
+		if !ok {
+			log.LogWarnf("syncnode: TriggerWithRule rule=%q task=%q: %v", req.Rule.ID(), taskID, trigErr)
+			h.pushFailedTerminal(taskID, trigErr.Error())
+			return errorReply(p, fmt.Errorf("trigger rule %q (snapshot path): %w", req.Rule.ID(), trigErr))
 		}
 		return okReply(p)
 	}
@@ -372,15 +430,19 @@ func (h *TaskHandler) handleRunTask(ctx context.Context, p *proto.Packet) *proto
 				"sub-task dispatch unsupported by runner: rule=%q parent=%q shard=%d/%d",
 				req.RuleID, req.SubTask.ParentTaskID, req.SubTask.ShardIndex, req.SubTask.ShardTotal))
 		}
-		if _, err := sr.TriggerSubTask(context.Background(),
-			req.RuleID, req.SubTask.ParentTaskID,
-			req.SubTask.ShardIndex, req.SubTask.ShardTotal, false); err != nil {
-			shardTaskID := fmt.Sprintf("%s/%d", req.SubTask.ParentTaskID, req.SubTask.ShardIndex)
+		shardTaskID := fmt.Sprintf("%s/%d", req.SubTask.ParentTaskID, req.SubTask.ShardIndex)
+		ruleID, shardIdx, shardTotal := req.RuleID, req.SubTask.ShardIndex, req.SubTask.ShardTotal
+		parentID := req.SubTask.ParentTaskID
+		ok, trigErr := h.admitOrRetry(shardTaskID, func() error {
+			_, e := sr.TriggerSubTask(context.Background(), ruleID, parentID, shardIdx, shardTotal, false)
+			return e
+		})
+		if !ok {
 			log.LogWarnf("syncnode: TriggerSubTask rule=%q shard=%d/%d task=%q: %v",
-				req.RuleID, req.SubTask.ShardIndex, req.SubTask.ShardTotal, shardTaskID, err)
-			h.pushFailedTerminal(shardTaskID, err.Error())
+				ruleID, shardIdx, shardTotal, shardTaskID, trigErr)
+			h.pushFailedTerminal(shardTaskID, trigErr.Error())
 			return errorReply(p, fmt.Errorf("trigger sub-task %q shard %d/%d: %w",
-				req.RuleID, req.SubTask.ShardIndex, req.SubTask.ShardTotal, err))
+				ruleID, shardIdx, shardTotal, trigErr))
 		}
 		return okReply(p)
 	}
@@ -391,10 +453,16 @@ func (h *TaskHandler) handleRunTask(ctx context.Context, p *proto.Packet) *proto
 	// silently no-op because the local IDs would diverge. An empty TaskID
 	// (older pre-fix masters) falls back to the local idFactory.
 	if req.TaskID != "" {
-		if _, err := h.runner.TriggerWithID(context.Background(), req.RuleID, req.TaskID, false); err != nil {
-			log.LogWarnf("syncnode: TriggerWithID rule=%q task=%q: %v", req.RuleID, req.TaskID, err)
-			h.pushFailedTerminal(req.TaskID, err.Error())
-			return errorReply(p, fmt.Errorf("trigger rule %q taskID %q: %w", req.RuleID, req.TaskID, err))
+		taskID := req.TaskID
+		ruleID := req.RuleID
+		ok, trigErr := h.admitOrRetry(taskID, func() error {
+			_, e := h.runner.TriggerWithID(context.Background(), ruleID, taskID, false)
+			return e
+		})
+		if !ok {
+			log.LogWarnf("syncnode: TriggerWithID rule=%q task=%q: %v", ruleID, taskID, trigErr)
+			h.pushFailedTerminal(taskID, trigErr.Error())
+			return errorReply(p, fmt.Errorf("trigger rule %q taskID %q: %w", ruleID, taskID, trigErr))
 		}
 		return okReply(p)
 	}
