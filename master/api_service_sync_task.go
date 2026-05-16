@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -32,14 +33,16 @@ import (
 // Backed by the LRU SyncTaskLedger (Cluster.syncTaskLedger). The
 // ledger is fed by:
 //   - SyncRuleManager.dispatchHash (cron-driven trigger)
-//   - /syncNode/dispatch handler (legacy external trigger — TODO Phase 4
-//     wire the same recordTaskDispatch hook)
+//   - /syncNode/dispatch handler (manual trigger via recordManualDispatch)
 //   - /syncNode/response terminal callback (recordTaskTerminal)
 //
 // All handlers follow the same auth + envelope conventions as the rule
 // handlers (proto.HTTPReply, requireSyncAdminToken middleware).
 
 // listSyncTasks handles GET /syncTask/list[?status=&ruleID=&owner=].
+// Returns []AggregatedSyncTask — one row per logical task, fan-out shards
+// collapsed. status and owner filters are applied post-aggregation so that
+// fan-out parent records (Owner=="") are not accidentally excluded.
 func (m *Server) listSyncTasks(w http.ResponseWriter, r *http.Request) {
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.SyncTaskList))
 	var err error
@@ -49,8 +52,35 @@ func (m *Server) listSyncTasks(w http.ResponseWriter, r *http.Request) {
 	status := SyncTaskStatus(q.Get("status"))
 	ruleID := q.Get("ruleID")
 	owner := q.Get("owner")
-	out := m.cluster.syncTaskLedger.List(status, ruleID, owner)
-	sendOkReply(w, r, newSuccessHTTPReply(out))
+
+	// Fetch by ruleID only; status + owner are post-aggregation filters.
+	recs := m.cluster.syncTaskLedger.List("", ruleID, "")
+	agg := aggregateTaskRecords(recs)
+
+	if status != "" || owner != "" {
+		filtered := make([]AggregatedSyncTask, 0, len(agg))
+		for _, t := range agg {
+			if status != "" && t.Status != status {
+				continue
+			}
+			if owner != "" {
+				found := false
+				for _, s := range t.Shards {
+					if s.Owner == owner {
+						found = true
+						break
+					}
+				}
+				if !found {
+					continue
+				}
+			}
+			filtered = append(filtered, t)
+		}
+		agg = filtered
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(agg))
 }
 
 // getSyncTask handles GET /syncTask/get?id=.
@@ -229,4 +259,209 @@ func sendSyncCancelTo(c *Cluster, addr, taskID string) error {
 	task := proto.NewAdminTaskEx(proto.OpSyncNodeCancelTask, addr, req, taskID)
 	sn.TaskManager.AddTask(task)
 	return nil
+}
+
+// TaskShardInfo carries per-shard identity, status, and progress inside an
+// AggregatedSyncTask. Single (non-fan-out) tasks have exactly one entry.
+type TaskShardInfo struct {
+	ShardIdx int              `json:"shardIdx"`
+	Owner    string           `json:"owner"`
+	Status   SyncTaskStatus   `json:"status"`
+	Progress SyncTaskProgress `json:"progress"`
+	Error    string           `json:"error,omitempty"`
+}
+
+// AggregatedSyncTask is the response shape returned by /syncTask/list.
+// All shards of a fan-out task are collapsed into one row; per-shard
+// detail is exposed in Shards, and the cross-shard sum in TotalProgress.
+// Single (non-fan-out) tasks have ShardTotal==0 and one Shards entry.
+type AggregatedSyncTask struct {
+	TaskID        string           `json:"taskID"`
+	RuleID        string           `json:"ruleID"`
+	Type          string           `json:"type"`
+	Status        SyncTaskStatus   `json:"status"`
+	ShardTotal    int              `json:"shardTotal"`
+	StartedAt     time.Time        `json:"startedAt"`
+	DoneAt        time.Time        `json:"doneAt,omitempty"`
+	Error         string           `json:"error,omitempty"`
+	Shards        []TaskShardInfo  `json:"shards"`
+	TotalProgress SyncTaskProgress `json:"totalProgress"`
+}
+
+// aggregateTaskRecords groups raw ledger records into per-logical-task rows.
+// Fan-out shards (ShardTotal>0 && Owner!="") are collapsed under their parent.
+// Single tasks (ShardTotal==0) each produce a one-Shard row. Results are
+// sorted by StartedAt descending (most recent first).
+func aggregateTaskRecords(recs []*SyncTaskRecord) []AggregatedSyncTask {
+	type entry struct {
+		parent *SyncTaskRecord
+		shards []*SyncTaskRecord
+	}
+	byID := make(map[string]*entry, len(recs))
+
+	for _, rec := range recs {
+		if rec.ShardTotal == 0 {
+			// Single task — its own parent; Shards built from the record itself.
+			e, ok := byID[rec.TaskID]
+			if !ok {
+				e = &entry{}
+				byID[rec.TaskID] = e
+			}
+			e.parent = rec
+		} else if rec.Owner == "" {
+			// Fan-out parent marker record.
+			e, ok := byID[rec.TaskID]
+			if !ok {
+				e = &entry{}
+				byID[rec.TaskID] = e
+			}
+			e.parent = rec
+		} else {
+			// Fan-out shard — group under parent task ID.
+			pid := stripShardSuffix(rec.TaskID)
+			e, ok := byID[pid]
+			if !ok {
+				e = &entry{}
+				byID[pid] = e
+			}
+			e.shards = append(e.shards, rec)
+		}
+	}
+
+	out := make([]AggregatedSyncTask, 0, len(byID))
+	for pid, e := range byID {
+		agg := AggregatedSyncTask{TaskID: pid}
+
+		// Populate metadata from parent; synthesize from first shard if evicted.
+		if e.parent != nil {
+			agg.RuleID = e.parent.RuleID
+			agg.Type = e.parent.Type
+			agg.ShardTotal = e.parent.ShardTotal
+			agg.StartedAt = e.parent.StartedAt
+		} else if len(e.shards) > 0 {
+			s0 := e.shards[0]
+			agg.RuleID = s0.RuleID
+			agg.Type = s0.Type
+			agg.ShardTotal = s0.ShardTotal
+			agg.StartedAt = s0.StartedAt
+			for _, s := range e.shards[1:] {
+				if s.StartedAt.Before(agg.StartedAt) {
+					agg.StartedAt = s.StartedAt
+				}
+			}
+		}
+
+		if e.parent != nil && e.parent.ShardTotal == 0 {
+			// Single task: wrap the record as a one-entry Shards list.
+			agg.Shards = []TaskShardInfo{{
+				ShardIdx: 0,
+				Owner:    e.parent.Owner,
+				Status:   e.parent.Status,
+				Progress: e.parent.Progress,
+				Error:    e.parent.Error,
+			}}
+			agg.Status = e.parent.Status
+			agg.TotalProgress = e.parent.Progress
+			agg.Error = e.parent.Error
+			agg.DoneAt = e.parent.DoneAt
+		} else {
+			// Fan-out: aggregate shards.
+			shards := make([]TaskShardInfo, 0, len(e.shards))
+			for _, s := range e.shards {
+				shards = append(shards, TaskShardInfo{
+					ShardIdx: s.ShardIdx,
+					Owner:    s.Owner,
+					Status:   s.Status,
+					Progress: s.Progress,
+					Error:    s.Error,
+				})
+				addProgress(&agg.TotalProgress, s.Progress)
+			}
+			sort.Slice(shards, func(i, j int) bool {
+				return shards[i].ShardIdx < shards[j].ShardIdx
+			})
+			agg.Shards = shards
+			agg.Status = aggregateShardStatus(e.shards)
+			if agg.Status.IsTerminal() {
+				for _, s := range e.shards {
+					if s.DoneAt.After(agg.DoneAt) {
+						agg.DoneAt = s.DoneAt
+					}
+				}
+			}
+		}
+
+		out = append(out, agg)
+	}
+
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].StartedAt.After(out[j].StartedAt)
+	})
+	return out
+}
+
+// stripShardSuffix removes the trailing "/<decimal-digits>" fan-out suffix
+// from a child task ID, returning the parent task ID. Returns the input
+// unchanged when no such suffix is present.
+func stripShardSuffix(taskID string) string {
+	idx := strings.LastIndex(taskID, "/")
+	if idx < 0 {
+		return taskID
+	}
+	suffix := taskID[idx+1:]
+	if suffix == "" {
+		return taskID
+	}
+	for _, ch := range suffix {
+		if ch < '0' || ch > '9' {
+			return taskID
+		}
+	}
+	return taskID[:idx]
+}
+
+// aggregateShardStatus returns the combined status from a fan-out task's
+// shard records. Priority: running/queued > failed > cancelled > succeeded.
+func aggregateShardStatus(shards []*SyncTaskRecord) SyncTaskStatus {
+	if len(shards) == 0 {
+		return SyncTaskStatusRunning
+	}
+	var hasRunning, hasFailed, hasCancelled bool
+	allSucceeded := true
+	for _, s := range shards {
+		switch s.Status {
+		case SyncTaskStatusRunning, SyncTaskStatusQueued:
+			hasRunning = true
+			allSucceeded = false
+		case SyncTaskStatusFailed:
+			hasFailed = true
+			allSucceeded = false
+		case SyncTaskStatusCancelled:
+			hasCancelled = true
+			allSucceeded = false
+		}
+	}
+	switch {
+	case hasRunning:
+		return SyncTaskStatusRunning
+	case hasFailed:
+		return SyncTaskStatusFailed
+	case hasCancelled:
+		return SyncTaskStatusCancelled
+	case allSucceeded:
+		return SyncTaskStatusSucceeded
+	default:
+		return SyncTaskStatusRunning
+	}
+}
+
+// addProgress accumulates the numeric fields of src into acc in place.
+func addProgress(acc *SyncTaskProgress, src SyncTaskProgress) {
+	acc.FilesTotal += src.FilesTotal
+	acc.FilesDone += src.FilesDone
+	acc.FilesSkipped += src.FilesSkipped
+	acc.FilesFailed += src.FilesFailed
+	acc.BytesTotal += src.BytesTotal
+	acc.BytesDone += src.BytesDone
+	acc.ThroughputMBps += src.ThroughputMBps
 }

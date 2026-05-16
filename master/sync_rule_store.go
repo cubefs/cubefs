@@ -224,6 +224,34 @@ func (c *Cluster) recordTaskDispatch(taskID string, rule *proto.SyncRule, owner 
 	c.syncTaskLedger.Put(rec)
 }
 
+// recordManualDispatch records a manually-dispatched task in the ledger without
+// requiring a full *proto.SyncRule. Used by /syncNode/dispatch so that manually
+// triggered tasks appear in /syncTask/list. ruleID may be empty for ad-hoc tasks;
+// if non-empty and the rule exists in the cache, its type is also recorded.
+// shardTotal==0 → single task; shardTotal>0 + owner=="" → fan-out parent;
+// shardTotal>0 + owner!="" → fan-out child.
+func (c *Cluster) recordManualDispatch(taskID, ruleID, owner string, shardIdx, shardTotal int) {
+	if c == nil || c.syncTaskLedger == nil || taskID == "" {
+		return
+	}
+	var taskType string
+	if ruleID != "" {
+		if rule := c.syncRuleCache.Get(ruleID); rule != nil {
+			taskType = rule.Config.Type
+		}
+	}
+	c.syncTaskLedger.Put(&SyncTaskRecord{
+		TaskID:     taskID,
+		RuleID:     ruleID,
+		Type:       taskType,
+		Status:     SyncTaskStatusRunning,
+		Owner:      owner,
+		ShardIdx:   shardIdx,
+		ShardTotal: shardTotal,
+		StartedAt:  time.Now(),
+	})
+}
+
 // recordTaskTerminal updates the ledger entry for taskID with its
 // terminal status + error + final progress. Invoked from
 // /syncNode/response (handleSyncNodeTaskResponse) when a worker reports

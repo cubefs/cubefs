@@ -8163,6 +8163,16 @@ func (m *Server) dispatchSyncTask(w http.ResponseWriter, r *http.Request) {
 		ShardTotal int `json:"shardTotal"`
 	}
 	_ = json.Unmarshal(body, &hint)
+
+	// Extract ruleID once for both the fan-out and single-dispatch paths
+	// so /syncTask/list can display manually-dispatched tasks.
+	var ruleHint struct {
+		Request struct {
+			RuleID string `json:"ruleId"`
+		} `json:"Request"`
+	}
+	_ = json.Unmarshal(body, &ruleHint)
+
 	if hint.ShardTotal > 1 {
 		// FIX #7: use the Cluster's persistent SyncFanout so the parents
 		// map survives across HTTP requests — RecordProgress events from
@@ -8172,14 +8182,6 @@ func (m *Server) dispatchSyncTask(w http.ResponseWriter, r *http.Request) {
 		if fo == nil {
 			fo = NewSyncFanout(m.cluster.syncDispatcher) // defensive — should never trigger
 		}
-		// Extract ruleID for parent tracking; tolerate absence (the
-		// fanout only uses it for logging / future per-rule lookups).
-		var ruleHint struct {
-			Request struct {
-				RuleID string `json:"ruleId"`
-			} `json:"Request"`
-		}
-		_ = json.Unmarshal(body, &ruleHint)
 		send := func(addr string, shardIdx int, payload interface{}) error {
 			value, ok := m.cluster.syncNodes.Load(addr)
 			if !ok {
@@ -8222,6 +8224,12 @@ func (m *Server) dispatchSyncTask(w http.ResponseWriter, r *http.Request) {
 				m.cluster.syncFailover.Remember(subID, shardTask)
 			}
 		}
+		// Record parent + each shard in the task ledger so /syncTask/list
+		// shows manually-dispatched fan-out tasks.
+		m.cluster.recordManualDispatch(task.ID, ruleHint.Request.RuleID, "", 0, hint.ShardTotal)
+		for shard, addr := range owners {
+			m.cluster.recordManualDispatch(fmt.Sprintf("%s/%d", task.ID, shard), ruleHint.Request.RuleID, addr, shard, hint.ShardTotal)
+		}
 		sendOkReply(w, r, newSuccessHTTPReply(map[string]interface{}{
 			"taskID":     task.ID,
 			"shardTotal": hint.ShardTotal,
@@ -8258,6 +8266,8 @@ func (m *Server) dispatchSyncTask(w http.ResponseWriter, r *http.Request) {
 	if m.cluster.syncFailover != nil {
 		m.cluster.syncFailover.Remember(task.ID, &task)
 	}
+	// Record in the task ledger so /syncTask/list shows manually-dispatched tasks.
+	m.cluster.recordManualDispatch(task.ID, ruleHint.Request.RuleID, addr, 0, 0)
 	sendOkReply(w, r, newSuccessHTTPReply(map[string]interface{}{
 		"node":   addr,
 		"taskID": task.ID,
