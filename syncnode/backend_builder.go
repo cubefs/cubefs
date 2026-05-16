@@ -99,7 +99,7 @@ func (b *backendBuilder) Build(_ context.Context, ep *spec.EndpointConfig) (back
 			credKey = ep.AccessKey
 		}
 		return b.pool.Acquire(backend.PoolKey{
-			Kind:     ep.Kind,
+			Kind:     "s3", // tos/bos use the s3 constructor; PoolKey.Kind must match a registered kind
 			Endpoint: endpoint,
 			Region:   region,
 			Bucket:   ep.Bucket,
