@@ -216,6 +216,13 @@ func (m *SyncRuleManager) fireRule(ruleID string) {
 		log.LogErrorf("SyncRuleManager.fireRule rule=%q taskID=%q dispatch failed: %v", ruleID, taskID, err)
 		return
 	}
+	// Update LastRunAt in-memory so the list API shows the last dispatch
+	// time immediately. No raft write: this is a best-effort display field;
+	// accurate terminal status arrives via /syncNode/response.
+	updated := *rule
+	updated.LastRunAt = time.Now()
+	updated.LastRunStatus = "dispatched"
+	m.cluster.syncRuleCache.Put(&updated)
 }
 
 // dispatchRule routes a rule fire to the appropriate dispatch backend.
