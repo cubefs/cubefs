@@ -121,13 +121,9 @@ type SyncNode struct {
 	wg sync.WaitGroup
 }
 
-// Build / version info reported by /admin/syncnode/version. Populated at link
-// time in production builds; sane defaults for local builds.
-var (
-	BuildVersion = "dev"
-	BuildCommit  = "unknown"
-	BuildTime    = "unknown"
-)
+// Build / version info reported by /admin/syncnode/version. Delegated to
+// proto.Version/CommitID/BuildTime which are injected at link time via ldflags
+// in build.sh. No separate vars needed here.
 
 // NewServer constructs an empty SyncNode. cmd/cmd.go calls this on
 // `cfs-server -c sync.json` when role=sync.
@@ -681,9 +677,9 @@ func (s *SyncNode) installSIGHUPHandler() {
 func (s *SyncNode) handleVersion(r *http.Request) (interface{}, error) {
 	return map[string]string{
 		"role":        ModuleName,
-		"version":     BuildVersion,
-		"commit":      BuildCommit,
-		"buildTime":   BuildTime,
+		"version":     proto.Version,
+		"commit":      proto.CommitID,
+		"buildTime":   proto.BuildTime,
 		"nodeAddress": s.localServerAddr,
 	}, nil
 }

@@ -468,7 +468,7 @@ func (c *SyncMasterClient) buildHeartbeatPayload() proto.SyncNodeHeartbeatRespon
 	resp.NodeID = c.NodeID()
 	resp.Addr = c.LocalServerAddr()
 	if resp.NodeVersion == "" {
-		resp.NodeVersion = BuildVersion
+		resp.NodeVersion = proto.Version
 	}
 	return resp
 }
