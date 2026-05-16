@@ -8173,6 +8173,21 @@ func (m *Server) dispatchSyncTask(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = json.Unmarshal(body, &ruleHint)
 
+	// Inject the cached rule snapshot so syncnode uses TriggerWithRule (the
+	// P2-6 fast path) instead of falling back to its local rule store, which
+	// only holds rules loaded from the config file and never rules created
+	// through the master API. Without this, manually-dispatched tasks always
+	// fail with "sync rule not found".
+	if ruleHint.Request.RuleID != "" && m.cluster.syncRuleCache != nil {
+		if cachedRule := m.cluster.syncRuleCache.Get(ruleHint.Request.RuleID); cachedRule != nil {
+			if reqMap, ok := task.Request.(map[string]interface{}); ok {
+				if _, hasRule := reqMap["rule"]; !hasRule {
+					reqMap["rule"] = cachedRule
+				}
+			}
+		}
+	}
+
 	if hint.ShardTotal > 1 {
 		// FIX #7: use the Cluster's persistent SyncFanout so the parents
 		// map survives across HTTP requests — RecordProgress events from

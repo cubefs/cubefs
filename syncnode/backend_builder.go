@@ -82,7 +82,10 @@ func (b *backendBuilder) Build(_ context.Context, ep *spec.EndpointConfig) (back
 			Masters: splitMasters(masterAddr),
 			Volume:  ep.Vol,
 		})
-	case "s3":
+	case "s3", "tos", "bos":
+		// "tos" (Volcengine TOS) and "bos" (Baidu BOS) are S3-compatible;
+		// they share the s3 backend implementation. ep.Kind is preserved in
+		// PoolKey so TOS/BOS/S3 entries with identical coordinates don't collide.
 		endpoint := firstNonEmpty(ep.Endpoint, s3Defaults.Endpoint)
 		region := firstNonEmpty(ep.Region, s3Defaults.Region)
 		storageClass := firstNonEmpty(ep.StorageClass, s3Defaults.StorageClass)
@@ -96,7 +99,7 @@ func (b *backendBuilder) Build(_ context.Context, ep *spec.EndpointConfig) (back
 			credKey = ep.AccessKey
 		}
 		return b.pool.Acquire(backend.PoolKey{
-			Kind:     "s3",
+			Kind:     ep.Kind,
 			Endpoint: endpoint,
 			Region:   region,
 			Bucket:   ep.Bucket,

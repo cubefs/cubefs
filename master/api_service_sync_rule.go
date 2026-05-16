@@ -334,9 +334,7 @@ func decodeSyncRuleBody(r *http.Request) (*proto.SyncRule, error) {
 		return nil, fmt.Errorf("read body: %w", err)
 	}
 	cfg := &proto.SyncRuleConfig{}
-	dec := json.NewDecoder(strings.NewReader(string(body)))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(cfg); err != nil {
+	if err := json.Unmarshal(body, cfg); err != nil {
 		return nil, fmt.Errorf("decode body: %w", err)
 	}
 	return &proto.SyncRule{Config: *cfg}, nil
