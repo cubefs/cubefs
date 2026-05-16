@@ -203,6 +203,25 @@ func (m *Server) retrySyncTask(w http.ResponseWriter, r *http.Request) {
 	}))
 }
 
+// deleteSyncTask handles POST /syncTask/delete?id=. Removes the task record
+// from the master ledger. Idempotent — deleting a non-existent task is a
+// no-op success. Does NOT cancel an in-flight task; call /syncTask/cancel first
+// if the task is still running.
+func (m *Server) deleteSyncTask(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.SyncTaskDelete))
+	var err error
+	defer func() { doStatAndMetric(proto.SyncTaskDelete, metric, err, nil) }()
+
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		err = errors.New("missing id query param")
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	m.cluster.syncTaskLedger.Remove(id)
+	sendOkReply(w, r, newSuccessHTTPReply(map[string]string{"taskID": id, "status": "deleted"}))
+}
+
 // exportSyncTasks streams the ledger as NDJSON. Each line is a JSON
 // SyncTaskRecord. Optional ?since=<RFC3339> filters by StartedAt.
 // Bypasses the standard envelope because the body is a stream of

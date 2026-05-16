@@ -249,6 +249,30 @@ func (l *SyncTaskLedger) List(status SyncTaskStatus, ruleID, owner string) []*Sy
 	return out
 }
 
+// UpdateProgress updates the progress snapshot of a non-terminal record.
+// This is called on every heartbeat so the task ledger shows in-flight
+// progress. No-op when the record is absent or already terminal (we
+// never overwrite a completed task's final progress with a stale
+// in-flight reading that arrives after the terminal report).
+func (l *SyncTaskLedger) UpdateProgress(taskID string, progress SyncTaskProgress) {
+	if l == nil || taskID == "" {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	elem, ok := l.records[taskID]
+	if !ok {
+		return
+	}
+	rec := elem.Value.(*SyncTaskRecord)
+	if rec.Status.IsTerminal() {
+		return
+	}
+	updated := *rec
+	updated.Progress = progress
+	elem.Value = &updated
+}
+
 // ListByOwner returns every record assigned to owner addr. Empty filter
 // → all records on that node (regardless of terminal status). Use
 // status="" for an unfiltered snapshot.

@@ -563,6 +563,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.SyncTaskExport).
 		HandlerFunc(requireSyncAdminToken(m.exportSyncTasks))
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.SyncTaskDelete).
+		HandlerFunc(requireSyncAdminToken(m.deleteSyncTask))
 
 	router.NewRoute().Methods(http.MethodPost).
 		Path(proto.SyncNodeDecommission).

@@ -135,6 +135,30 @@ func (s *SyncNode) Snapshot() proto.SyncNodeHeartbeatResponse {
 		resp.BandwidthMBps = math.Float64frombits(s.snapshotCache.bandwidthMBps.Load())
 	}
 
+	// Include per-task in-flight progress so master can update the ledger
+	// each heartbeat without waiting for task terminal.
+	if s.executor != nil {
+		snaps := s.executor.RunningSnapshots()
+		if len(snaps) > 0 {
+			reports := make([]proto.SyncTaskProgressReport, 0, len(snaps))
+			for id, p := range snaps {
+				reports = append(reports, proto.SyncTaskProgressReport{
+					TaskID: id,
+					Progress: proto.TaskTerminalProgress{
+						FilesTotal:     p.FilesTotal,
+						FilesDone:      p.FilesDone,
+						FilesSkipped:   p.FilesSkipped,
+						FilesFailed:    p.FilesFailed,
+						BytesTotal:     p.BytesTotal,
+						BytesDone:      p.BytesDone,
+						ThroughputMBps: p.ThroughputMBps,
+					},
+				})
+			}
+			resp.TaskReports = reports
+		}
+	}
+
 	return resp
 }
 

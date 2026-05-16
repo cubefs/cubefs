@@ -215,6 +215,7 @@ type Executor struct {
 
 	mu       sync.Mutex
 	running  map[string]context.CancelFunc // task_id → cancel
+	progMap  map[string]*Progress          // task_id → in-flight progress pointer
 	resultCh chan Result
 
 	// closed is set by Close(); Run() refuses to start once true. Combined
@@ -299,6 +300,7 @@ func New(opts ...Option) *Executor {
 	return &Executor{
 		opts:     o,
 		running:  make(map[string]context.CancelFunc),
+		progMap:  make(map[string]*Progress),
 		resultCh: make(chan Result, 256),
 	}
 }
@@ -365,6 +367,20 @@ func (e *Executor) Run(ctx context.Context, t *Task, r Reporter) Result {
 		mismatches []Mismatch
 		runErr     error
 	)
+
+	// Register in-flight progress pointer so RunningSnapshots can sample it.
+	e.mu.Lock()
+	if e.progMap != nil {
+		e.progMap[t.ID] = &progress
+	}
+	e.mu.Unlock()
+	defer func() {
+		e.mu.Lock()
+		if e.progMap != nil {
+			delete(e.progMap, t.ID)
+		}
+		e.mu.Unlock()
+	}()
 	progressTicker := time.NewTicker(e.opts.progressInterval)
 	defer progressTicker.Stop()
 	progressDone := make(chan struct{})
@@ -444,6 +460,24 @@ func (e *Executor) RunningCount() int {
 	return len(e.running)
 }
 
+// RunningSnapshots returns a map of taskID → current progress snapshot for
+// every in-flight task. Reads progress atomically from each task's live
+// Progress pointer. Callers receive value copies — safe to use after the
+// lock is released. Returns nil when the executor has been closed.
+func (e *Executor) RunningSnapshots() map[string]Progress {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.progMap == nil || len(e.progMap) == 0 {
+		return nil
+	}
+	now := time.Now()
+	out := make(map[string]Progress, len(e.progMap))
+	for id, p := range e.progMap {
+		out[id] = snapshotProgress(p, now)
+	}
+	return out
+}
+
 // Close cancels all in-flight tasks and releases internal resources.
 //
 // FIX Q2 — sets the closed flag atomically BEFORE clearing the running
@@ -457,6 +491,7 @@ func (e *Executor) Close() error {
 		cancel()
 	}
 	e.running = nil
+	e.progMap = nil
 	e.mu.Unlock()
 	return nil
 }

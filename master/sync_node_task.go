@@ -200,6 +200,25 @@ func (c *Cluster) handleSyncNodeHeartbeatResp(nodeAddr string, resp *proto.SyncN
 		}
 	}
 
+	// Update in-flight task progress from heartbeat reports so the ledger
+	// shows live progress without waiting for task terminal.
+	if len(resp.TaskReports) > 0 && c.syncTaskLedger != nil {
+		for _, report := range resp.TaskReports {
+			if report.TaskID == "" {
+				continue
+			}
+			c.syncTaskLedger.UpdateProgress(report.TaskID, SyncTaskProgress{
+				FilesTotal:     report.Progress.FilesTotal,
+				FilesDone:      report.Progress.FilesDone,
+				FilesSkipped:   report.Progress.FilesSkipped,
+				FilesFailed:    report.Progress.FilesFailed,
+				BytesTotal:     report.Progress.BytesTotal,
+				BytesDone:      report.Progress.BytesDone,
+				ThroughputMBps: report.Progress.ThroughputMBps,
+			})
+		}
+	}
+
 	log.LogInfof("action[handleSyncNodeHeartbeatResp], syncNode[%v], running[%v], queued[%v], rules[%v], bolt[%v]",
 		nodeAddr, resp.RunningTasks, resp.QueuedTasks, resp.ScheduledRules, resp.BoltDBHealthy)
 	return

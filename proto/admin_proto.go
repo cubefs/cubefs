@@ -281,6 +281,7 @@ const (
 	SyncTaskCancel = "/syncTask/cancel" // POST ?id=
 	SyncTaskRetry  = "/syncTask/retry"  // POST ?id=
 	SyncTaskExport = "/syncTask/export" // GET  [?since=RFC3339] NDJSON stream
+	SyncTaskDelete = "/syncTask/delete" // POST ?id=
 
 	// SyncNode lifecycle + observability beyond AddSyncNode / ListSyncNodes.
 	SyncNodeDecommission = "/syncNode/decommission" // POST ?addr=&force=
@@ -1161,6 +1162,20 @@ type SyncNodeHeartbeatResponse struct {
 	// sync.json via SIGHUP reload). A zero entry means "no cap on this
 	// rule — fall back to per-node BandwidthLimitMBps only".
 	Rules []SyncRuleAdvert `json:"rules,omitempty"`
+
+	// TaskReports carries per-task in-flight progress so master can update
+	// the task ledger without waiting for task terminal. Populated by the
+	// syncnode's executor.RunningSnapshots() on every heartbeat tick.
+	// An empty slice means no tasks are currently running on this node.
+	TaskReports []SyncTaskProgressReport `json:"taskReports,omitempty"`
+}
+
+// SyncTaskProgressReport is one entry in SyncNodeHeartbeatResponse.TaskReports.
+// It carries a mid-flight progress snapshot for a single running task so
+// the master ledger can show in-flight progress without waiting for terminal.
+type SyncTaskProgressReport struct {
+	TaskID   string               `json:"taskId"`
+	Progress TaskTerminalProgress `json:"progress"`
 }
 
 // SyncRuleAdvert is the per-rule advertisement piggy-backed on the
