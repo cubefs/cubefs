@@ -27,6 +27,7 @@ import (
 	"github.com/cubefs/cubefs/syncnode/executor"
 	"github.com/cubefs/cubefs/syncnode/rules"
 	"github.com/cubefs/cubefs/syncnode/spec"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 // RuleLookup is the narrow read-only view of the rules.Store the Runner
@@ -415,11 +416,13 @@ func (r *Runner) triggerRule(ctx context.Context, rule *rules.Rule, newID string
 
 	src, err := r.builder.Build(ctx, &rule.Config.Src)
 	if err != nil {
+		log.LogWarnf("tasks: rule=%q task=%q build src backend: %v", rule.Config.ID, newID, err)
 		return nil, fmt.Errorf("build src backend: %w", err)
 	}
 	dst, err := r.builder.Build(ctx, &rule.Config.Dst)
 	if err != nil {
 		_ = src.Close()
+		log.LogWarnf("tasks: rule=%q task=%q build dst backend: %v", rule.Config.ID, newID, err)
 		return nil, fmt.Errorf("build dst backend: %w", err)
 	}
 
@@ -533,6 +536,7 @@ func (r *Runner) run(taskCtx context.Context, task *executor.Task, src, dst back
 	}()
 
 	reporter := r.reporterFactory(task.ID)
+	log.LogInfof("tasks: start task=%q rule=%q type=%q", task.ID, task.RuleID, task.Type)
 	result := r.exec.Run(taskCtx, task, reporter)
 
 	// Reload to avoid losing concurrent updates (none today, but cheap and
@@ -550,6 +554,7 @@ func (r *Runner) run(taskCtx context.Context, task *executor.Task, src, dst back
 	cur.Error = result.Error
 	cur.Mismatches = result.Mismatches
 	_ = r.store.Put(context.Background(), cur)
+	log.LogInfof("tasks: done task=%q rule=%q status=%q error=%q", cur.TaskID, cur.RuleID, cur.Status, cur.Error)
 
 	// Phase G-3 hook: if the run terminated in failure with a class of
 	// error that warrants degradation (vol_not_found / path_not_allowed /

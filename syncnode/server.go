@@ -578,7 +578,9 @@ func (s *SyncNode) onTaskTerminal(rec *tasks.Record) {
 	task := proto.NewAdminTaskEx(proto.OpSyncNodeRunTask, s.masterClient.LocalServerAddr(), nil, rec.TaskID)
 	task.Response = report
 	if err := s.masterClient.ResponseTask(task); err != nil {
-		log.LogWarnf("syncnode: push terminal %q: %v", rec.TaskID, err)
+		log.LogWarnf("syncnode: push terminal %q status=%q: %v", rec.TaskID, rec.Status, err)
+	} else {
+		log.LogInfof("syncnode: pushed terminal %q status=%q", rec.TaskID, rec.Status)
 	}
 }
 

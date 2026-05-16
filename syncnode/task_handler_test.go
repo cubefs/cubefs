@@ -128,6 +128,8 @@ func (s *stubResponder) ResponseTask(task *proto.AdminTask) error {
 	return s.err
 }
 
+func (s *stubResponder) LocalServerAddr() string { return "127.0.0.1:17330" }
+
 // newRunPacket builds an OpSyncNodeRunTask packet whose body is a JSON-encoded
 // AdminTask with the given RunTaskRequest. Helper for the dispatch tests.
 func newRunPacket(t *testing.T, req RunTaskRequest, reqID int64) *proto.Packet {

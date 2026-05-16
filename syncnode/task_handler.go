@@ -62,6 +62,10 @@ type ruleAwareRunner interface {
 // to push task lifecycle envelopes back to master. Tests inject a stub.
 type masterResponder interface {
 	ResponseTask(task *proto.AdminTask) error
+	// LocalServerAddr returns the canonical "ip:port" this syncnode is reachable
+	// at from master's perspective. Used as OperatorAddr when building terminal
+	// push-back AdminTask envelopes so master can look up the sender.
+	LocalServerAddr() string
 }
 
 // RunTaskRequest is the master-pushed instruction inside the AdminTask.Request
@@ -185,6 +189,28 @@ func isNilResponder(mc masterResponder) bool {
 		return v == nil
 	default:
 		return false
+	}
+}
+
+// pushFailedTerminal sends a synthetic "failed" terminal report to master for
+// taskID. Called when handleRunTask cannot even start the executor (e.g. a
+// backend build failure) so master never receives the normal onTerminal
+// push-back — without this the ledger entry stays "running" forever.
+//
+// Best-effort: if masterClient is nil or the HTTP call fails we only log.
+func (h *TaskHandler) pushFailedTerminal(taskID, errMsg string) {
+	if h.masterClient == nil || taskID == "" {
+		return
+	}
+	report := &proto.TaskTerminalReport{
+		TaskID: taskID,
+		Status: "failed",
+		Error:  errMsg,
+	}
+	t := proto.NewAdminTaskEx(proto.OpSyncNodeRunTask, h.masterClient.LocalServerAddr(), nil, taskID)
+	t.Response = report
+	if err := h.masterClient.ResponseTask(t); err != nil {
+		log.LogWarnf("syncnode: pushFailedTerminal %q: %v", taskID, err)
 	}
 }
 
@@ -323,6 +349,8 @@ func (h *TaskHandler) handleRunTask(ctx context.Context, p *proto.Packet) *proto
 		}
 		if _, err := rar.TriggerWithRule(context.Background(), req.Rule, req.TaskID,
 			shardIdx, shardTotal, prefixes, false); err != nil {
+			log.LogWarnf("syncnode: TriggerWithRule rule=%q task=%q: %v", req.Rule.ID(), req.TaskID, err)
+			h.pushFailedTerminal(req.TaskID, err.Error())
 			return errorReply(p, fmt.Errorf("trigger rule %q (snapshot path): %w", req.Rule.ID(), err))
 		}
 		return okReply(p)
@@ -347,6 +375,10 @@ func (h *TaskHandler) handleRunTask(ctx context.Context, p *proto.Packet) *proto
 		if _, err := sr.TriggerSubTask(context.Background(),
 			req.RuleID, req.SubTask.ParentTaskID,
 			req.SubTask.ShardIndex, req.SubTask.ShardTotal, false); err != nil {
+			shardTaskID := fmt.Sprintf("%s/%d", req.SubTask.ParentTaskID, req.SubTask.ShardIndex)
+			log.LogWarnf("syncnode: TriggerSubTask rule=%q shard=%d/%d task=%q: %v",
+				req.RuleID, req.SubTask.ShardIndex, req.SubTask.ShardTotal, shardTaskID, err)
+			h.pushFailedTerminal(shardTaskID, err.Error())
 			return errorReply(p, fmt.Errorf("trigger sub-task %q shard %d/%d: %w",
 				req.RuleID, req.SubTask.ShardIndex, req.SubTask.ShardTotal, err))
 		}
@@ -360,11 +392,14 @@ func (h *TaskHandler) handleRunTask(ctx context.Context, p *proto.Packet) *proto
 	// (older pre-fix masters) falls back to the local idFactory.
 	if req.TaskID != "" {
 		if _, err := h.runner.TriggerWithID(context.Background(), req.RuleID, req.TaskID, false); err != nil {
+			log.LogWarnf("syncnode: TriggerWithID rule=%q task=%q: %v", req.RuleID, req.TaskID, err)
+			h.pushFailedTerminal(req.TaskID, err.Error())
 			return errorReply(p, fmt.Errorf("trigger rule %q taskID %q: %w", req.RuleID, req.TaskID, err))
 		}
 		return okReply(p)
 	}
 	if _, err := h.runner.Trigger(context.Background(), req.RuleID, false); err != nil {
+		log.LogWarnf("syncnode: Trigger rule=%q: %v", req.RuleID, err)
 		return errorReply(p, fmt.Errorf("trigger rule %q: %w", req.RuleID, err))
 	}
 	return okReply(p)
