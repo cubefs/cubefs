@@ -483,4 +483,5 @@ func addProgress(acc *SyncTaskProgress, src SyncTaskProgress) {
 	acc.BytesTotal += src.BytesTotal
 	acc.BytesDone += src.BytesDone
 	acc.ThroughputMBps += src.ThroughputMBps
+	acc.CurrentBandwidthMBps += src.CurrentBandwidthMBps
 }

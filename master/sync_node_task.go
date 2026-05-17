@@ -208,13 +208,14 @@ func (c *Cluster) handleSyncNodeHeartbeatResp(nodeAddr string, resp *proto.SyncN
 				continue
 			}
 			c.syncTaskLedger.UpdateProgress(report.TaskID, SyncTaskProgress{
-				FilesTotal:     report.Progress.FilesTotal,
-				FilesDone:      report.Progress.FilesDone,
-				FilesSkipped:   report.Progress.FilesSkipped,
-				FilesFailed:    report.Progress.FilesFailed,
-				BytesTotal:     report.Progress.BytesTotal,
-				BytesDone:      report.Progress.BytesDone,
-				ThroughputMBps: report.Progress.ThroughputMBps,
+				FilesTotal:           report.Progress.FilesTotal,
+				FilesDone:            report.Progress.FilesDone,
+				FilesSkipped:         report.Progress.FilesSkipped,
+				FilesFailed:          report.Progress.FilesFailed,
+				BytesTotal:           report.Progress.BytesTotal,
+				BytesDone:            report.Progress.BytesDone,
+				ThroughputMBps:       report.Progress.ThroughputMBps,
+				CurrentBandwidthMBps: report.Progress.CurrentBandwidthMBps,
 			})
 		}
 	}

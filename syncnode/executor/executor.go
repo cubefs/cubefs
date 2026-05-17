@@ -181,13 +181,14 @@ const (
 // Progress holds an in-flight snapshot. All fields are written via atomic
 // helpers so Reporter implementations can read without locking.
 type Progress struct {
-	FilesTotal     int64   `json:"filesTotal"`
-	FilesDone      int64   `json:"filesDone"`
-	FilesSkipped   int64   `json:"filesSkipped"`
-	FilesFailed    int64   `json:"filesFailed"`
-	BytesTotal     int64   `json:"bytesTotal"`
-	BytesDone      int64   `json:"bytesDone"`
-	ThroughputMBps float64 `json:"throughputMBps"`
+	FilesTotal           int64   `json:"filesTotal"`
+	FilesDone            int64   `json:"filesDone"`
+	FilesSkipped         int64   `json:"filesSkipped"`
+	FilesFailed          int64   `json:"filesFailed"`
+	BytesTotal           int64   `json:"bytesTotal"`
+	BytesDone            int64   `json:"bytesDone"`
+	ThroughputMBps       float64 `json:"throughputMBps"`
+	CurrentBandwidthMBps float64 `json:"currentBandwidthMBps,omitempty"`
 }
 
 // Reporter receives progress callbacks during task execution. Implementers
@@ -216,6 +217,8 @@ type Executor struct {
 	mu       sync.Mutex
 	running  map[string]context.CancelFunc // task_id → cancel
 	progMap  map[string]*Progress          // task_id → in-flight progress pointer
+	startMap map[string]time.Time          // task_id → task startedAt (for correct ThroughputMBps in snapshots)
+	trackers map[string]*bandwidthTracker  // task_id → rolling-window bandwidth tracker
 	resultCh chan Result
 
 	// closed is set by Close(); Run() refuses to start once true. Combined
@@ -301,6 +304,8 @@ func New(opts ...Option) *Executor {
 		opts:     o,
 		running:  make(map[string]context.CancelFunc),
 		progMap:  make(map[string]*Progress),
+		startMap: make(map[string]time.Time),
+		trackers: make(map[string]*bandwidthTracker),
 		resultCh: make(chan Result, 256),
 	}
 }
@@ -368,16 +373,22 @@ func (e *Executor) Run(ctx context.Context, t *Task, r Reporter) Result {
 		runErr     error
 	)
 
-	// Register in-flight progress pointer so RunningSnapshots can sample it.
+	// Register in-flight progress pointer, startedAt, and bandwidth tracker
+	// so RunningSnapshots can produce accurate per-task snapshots.
+	tracker := &bandwidthTracker{}
 	e.mu.Lock()
 	if e.progMap != nil {
 		e.progMap[t.ID] = &progress
+		e.startMap[t.ID] = startedAt
+		e.trackers[t.ID] = tracker
 	}
 	e.mu.Unlock()
 	defer func() {
 		e.mu.Lock()
 		if e.progMap != nil {
 			delete(e.progMap, t.ID)
+			delete(e.startMap, t.ID)
+			delete(e.trackers, t.ID)
 		}
 		e.mu.Unlock()
 	}()
@@ -391,7 +402,8 @@ func (e *Executor) Run(ctx context.Context, t *Task, r Reporter) Result {
 			case <-taskCtx.Done():
 				return
 			case <-progressTicker.C:
-				snap := snapshotProgress(&progress, startedAt)
+				tracker.record(atomic.LoadInt64(&progress.BytesDone))
+				snap := snapshotProgress(&progress, startedAt, tracker)
 				r.OnProgress(snap)
 			}
 		}
@@ -430,7 +442,7 @@ func (e *Executor) Run(ctx context.Context, t *Task, r Reporter) Result {
 			errMsg = runErr.Error()
 		}
 	}
-	finalProg := snapshotProgress(&progress, startedAt)
+	finalProg := snapshotProgress(&progress, startedAt, tracker)
 	r.OnProgress(finalProg)
 	return Result{
 		TaskID:     t.ID,
@@ -470,10 +482,10 @@ func (e *Executor) RunningSnapshots() map[string]Progress {
 	if e.progMap == nil || len(e.progMap) == 0 {
 		return nil
 	}
-	now := time.Now()
 	out := make(map[string]Progress, len(e.progMap))
 	for id, p := range e.progMap {
-		out[id] = snapshotProgress(p, now)
+		start := e.startMap[id]
+		out[id] = snapshotProgress(p, start, e.trackers[id])
 	}
 	return out
 }
@@ -492,6 +504,8 @@ func (e *Executor) Close() error {
 	}
 	e.running = nil
 	e.progMap = nil
+	e.startMap = nil
+	e.trackers = nil
 	e.mu.Unlock()
 	return nil
 }
@@ -524,7 +538,8 @@ func validateTask(t *Task) error {
 }
 
 // snapshotProgress reads the atomic progress fields and computes throughput.
-func snapshotProgress(p *Progress, startedAt time.Time) Progress {
+// tracker may be nil (tests or tasks that have no bandwidth tracker).
+func snapshotProgress(p *Progress, startedAt time.Time, tracker *bandwidthTracker) Progress {
 	elapsed := time.Since(startedAt).Seconds()
 	out := Progress{
 		FilesTotal:   atomic.LoadInt64(&p.FilesTotal),
@@ -536,6 +551,9 @@ func snapshotProgress(p *Progress, startedAt time.Time) Progress {
 	}
 	if elapsed > 0 {
 		out.ThroughputMBps = float64(out.BytesDone) / 1024.0 / 1024.0 / elapsed
+	}
+	if tracker != nil {
+		out.CurrentBandwidthMBps = tracker.currentMBps()
 	}
 	return out
 }

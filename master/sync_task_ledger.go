@@ -80,7 +80,8 @@ type SyncTaskProgress struct {
 	FilesFailed    int64   `json:"filesFailed"`
 	BytesTotal     int64   `json:"bytesTotal"`
 	BytesDone      int64   `json:"bytesDone"`
-	ThroughputMBps float64 `json:"throughputMBps"`
+	ThroughputMBps       float64 `json:"throughputMBps"`
+	CurrentBandwidthMBps float64 `json:"currentBandwidthMBps,omitempty"`
 }
 
 // SyncTaskRecord is what /syncTask/get and /syncTask/list return. Carries

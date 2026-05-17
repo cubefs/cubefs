@@ -145,13 +145,14 @@ func (s *SyncNode) Snapshot() proto.SyncNodeHeartbeatResponse {
 				reports = append(reports, proto.SyncTaskProgressReport{
 					TaskID: id,
 					Progress: proto.TaskTerminalProgress{
-						FilesTotal:     p.FilesTotal,
-						FilesDone:      p.FilesDone,
-						FilesSkipped:   p.FilesSkipped,
-						FilesFailed:    p.FilesFailed,
-						BytesTotal:     p.BytesTotal,
-						BytesDone:      p.BytesDone,
-						ThroughputMBps: p.ThroughputMBps,
+						FilesTotal:           p.FilesTotal,
+						FilesDone:            p.FilesDone,
+						FilesSkipped:         p.FilesSkipped,
+						FilesFailed:          p.FilesFailed,
+						BytesTotal:           p.BytesTotal,
+						BytesDone:            p.BytesDone,
+						ThroughputMBps:       p.ThroughputMBps,
+						CurrentBandwidthMBps: p.CurrentBandwidthMBps,
 					},
 				})
 			}
