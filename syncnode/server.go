@@ -572,6 +572,7 @@ func (s *SyncNode) onTaskTerminal(rec *tasks.Record) {
 			FilesFailed:    rec.Progress.FilesFailed,
 			BytesTotal:     rec.Progress.BytesTotal,
 			BytesDone:      rec.Progress.BytesDone,
+			BytesSkipped:   rec.Progress.BytesSkipped,
 			ThroughputMBps: rec.Progress.ThroughputMBps,
 		},
 	}

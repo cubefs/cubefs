@@ -151,6 +151,7 @@ func (s *SyncNode) Snapshot() proto.SyncNodeHeartbeatResponse {
 						FilesFailed:          p.FilesFailed,
 						BytesTotal:           p.BytesTotal,
 						BytesDone:            p.BytesDone,
+						BytesSkipped:         p.BytesSkipped,
 						ThroughputMBps:       p.ThroughputMBps,
 						CurrentBandwidthMBps: p.CurrentBandwidthMBps,
 					},

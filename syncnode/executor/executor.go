@@ -187,6 +187,7 @@ type Progress struct {
 	FilesFailed          int64   `json:"filesFailed"`
 	BytesTotal           int64   `json:"bytesTotal"`
 	BytesDone            int64   `json:"bytesDone"`
+	BytesSkipped         int64   `json:"bytesSkipped"`
 	ThroughputMBps       float64 `json:"throughputMBps"`
 	CurrentBandwidthMBps float64 `json:"currentBandwidthMBps,omitempty"`
 }
@@ -546,8 +547,9 @@ func snapshotProgress(p *Progress, startedAt time.Time, tracker *bandwidthTracke
 		FilesDone:    atomic.LoadInt64(&p.FilesDone),
 		FilesSkipped: atomic.LoadInt64(&p.FilesSkipped),
 		FilesFailed:  atomic.LoadInt64(&p.FilesFailed),
-		BytesTotal:   atomic.LoadInt64(&p.BytesTotal),
-		BytesDone:    atomic.LoadInt64(&p.BytesDone),
+		BytesTotal:    atomic.LoadInt64(&p.BytesTotal),
+		BytesDone:     atomic.LoadInt64(&p.BytesDone),
+		BytesSkipped:  atomic.LoadInt64(&p.BytesSkipped),
 	}
 	if elapsed > 0 {
 		out.ThroughputMBps = float64(out.BytesDone) / 1024.0 / 1024.0 / elapsed

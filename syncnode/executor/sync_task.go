@@ -142,6 +142,7 @@ func (e *Executor) runSync(ctx context.Context, t *Task, r Reporter, p *Progress
 				atomic.AddInt64(&p.BytesTotal, entry.Size)
 				if !t.Filter.Match(entry, now) {
 					atomic.AddInt64(&p.FilesSkipped, 1)
+					atomic.AddInt64(&p.BytesSkipped, entry.Size)
 					continue
 				}
 				select {
@@ -210,6 +211,7 @@ func (e *Executor) syncOneFile(
 		if dstSize == entry.Size && entry.ETag != "" && dstETag != "" && entry.ETag == dstETag {
 			fmt.Fprintf(os.Stderr, "DBG syncOneFile SKIP key=%q etag=%q\n", dstKey, entry.ETag)
 			atomic.AddInt64(&p.FilesSkipped, 1)
+			atomic.AddInt64(&p.BytesSkipped, entry.Size)
 			r.OnFileDone(entry.Key, 0, nil)
 			return nil
 		}

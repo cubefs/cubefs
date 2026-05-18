@@ -1217,6 +1217,7 @@ type TaskTerminalProgress struct {
 	FilesFailed          int64   `json:"filesFailed"`
 	BytesTotal           int64   `json:"bytesTotal"`
 	BytesDone            int64   `json:"bytesDone"`
+	BytesSkipped         int64   `json:"bytesSkipped,omitempty"`
 	ThroughputMBps       float64 `json:"throughputMBps,omitempty"`
 	CurrentBandwidthMBps float64 `json:"currentBandwidthMBps,omitempty"`
 }

@@ -104,6 +104,7 @@ func (c *Cluster) handleSyncNodeTaskResponse(nodeAddr string, task *proto.AdminT
 			FilesFailed:  rep.Progress.FilesFailed,
 			BytesTotal:   rep.Progress.BytesTotal,
 			BytesDone:    rep.Progress.BytesDone,
+			BytesSkipped: rep.Progress.BytesSkipped,
 		}
 		// Write this task's (shard or single) terminal record BEFORE checking
 		// fan-out completion, so aggregateFanoutShards sees all shard records.
@@ -214,6 +215,7 @@ func (c *Cluster) handleSyncNodeHeartbeatResp(nodeAddr string, resp *proto.SyncN
 				FilesFailed:          report.Progress.FilesFailed,
 				BytesTotal:           report.Progress.BytesTotal,
 				BytesDone:            report.Progress.BytesDone,
+				BytesSkipped:         report.Progress.BytesSkipped,
 				ThroughputMBps:       report.Progress.ThroughputMBps,
 				CurrentBandwidthMBps: report.Progress.CurrentBandwidthMBps,
 			})
@@ -371,6 +373,7 @@ func (c *Cluster) aggregateFanoutShards(parentID string) (SyncTaskStatus, SyncTa
 		prog.FilesFailed += rec.Progress.FilesFailed
 		prog.BytesTotal += rec.Progress.BytesTotal
 		prog.BytesDone += rec.Progress.BytesDone
+		prog.BytesSkipped += rec.Progress.BytesSkipped
 	}
 	status := SyncTaskStatusSucceeded
 	if anyFailed {
