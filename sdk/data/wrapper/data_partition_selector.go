@@ -51,6 +51,9 @@ type DataPartitionSelector interface {
 	// Count return number of data partitions held by selector.
 	Count() int
 
+	// CountByPoolId return number of data partitions held by selector for a specific pool.
+	CountByPoolId(poolId uint8) int
+
 	// GetAllDp return data partitions held by selector
 	GetAllDp() (dp []*DataPartition)
 }
@@ -134,30 +137,47 @@ func (w *Wrapper) refreshDpSelector(refreshPolicy RefreshDpPolicy, partitions []
 
 	log.LogInfof("[refreshDpSelector] refresh dp, partition count(%v)", len(partitions))
 	if refreshPolicy == UpdateDpPolicy {
-		minDpCount := w.refreshMinDpCount(dpSelector.Count())
-		// NOTE: if decrease more than 1/3 dp at once
-		if len(partitions) < minDpCount {
-			oldDps := dpSelector.GetAllDp()
-			mergeTable := make(map[uint64]int)
-			for _, dp := range oldDps {
-				mergeTable[dp.PartitionID] = 1
-			}
+		oldDps := dpSelector.GetAllDp()
 
-			for _, dp := range partitions {
-				mergeTable[dp.PartitionID] = mergeTable[dp.PartitionID] + 1
-			}
+		newPoolDps := make(map[uint8][]*DataPartition)
+		for _, dp := range partitions {
+			newPoolDps[dp.PoolId] = append(newPoolDps[dp.PoolId], dp)
+		}
 
-			// NOTE: take some old dps and put it back
-			randGen := rand.New(rand.NewSource(time.Now().Unix()))
-			for len(partitions) < minDpCount {
-				index := randGen.Intn(len(oldDps))
-				selectedDp := oldDps[index]
+		oldPoolDps := make(map[uint8][]*DataPartition)
+		for _, dp := range oldDps {
+			oldPoolDps[dp.PoolId] = append(oldPoolDps[dp.PoolId], dp)
+		}
+
+		mergeTable := make(map[uint64]int)
+		for _, dp := range oldDps {
+			mergeTable[dp.PartitionID] = 1
+		}
+
+		for _, dp := range partitions {
+			mergeTable[dp.PartitionID] = mergeTable[dp.PartitionID] + 1
+		}
+
+		// NOTE: take some old dps and put it back
+		randGen := rand.New(rand.NewSource(time.Now().Unix()))
+		for poolId, oldDpsInPool := range oldPoolDps {
+			if len(oldDpsInPool) == 0 {
+				continue
+			}
+			newDps := newPoolDps[poolId]
+			minDpCount := w.refreshMinDpCount(dpSelector.CountByPoolId(poolId))
+
+			poolNewDpCount := len(newDps)
+			for poolNewDpCount < minDpCount {
+				index := randGen.Intn(len(oldDpsInPool))
+				selectedDp := oldDpsInPool[index]
 				if mergeTable[selectedDp.PartitionID] == 2 {
 					continue
 				}
 				mergeTable[selectedDp.PartitionID] = 2
 				partitions = append(partitions, selectedDp)
-				log.LogWarnf("[refreshDpSelector] put dp(%v) to rw dp table, dp(%v) maybe readonly", selectedDp.PartitionID, selectedDp.PartitionID)
+				poolNewDpCount++
+				log.LogWarnf("[refreshDpSelector] put dp(%v) pool(%v) to rw dp table, dp(%v) maybe readonly", selectedDp.PartitionID, selectedDp.PoolId, selectedDp.PartitionID)
 			}
 		}
 	} else if refreshPolicy == MergeDpPolicy {
@@ -192,14 +212,15 @@ func (w *Wrapper) GetDataPartitionForWrite(exclude map[string]struct{}, poolId u
 	return dpSelector.Select(exclude, poolId, ehID)
 }
 
-func (w *Wrapper) RemoveDataPartitionForWrite(partitionID uint64) {
+func (w *Wrapper) RemoveDataPartitionForWrite(partitionID uint64, poolId uint8) error {
 	w.Lock.RLock()
 	dpSelector := w.dpSelector
 	w.Lock.RUnlock()
 
-	if dpSelector.Count() <= 1 {
-		return
+	if dpSelector.CountByPoolId(poolId) <= 1 {
+		return errors.New("not enough data partitions")
 	}
 
 	dpSelector.RemoveDP(partitionID)
+	return nil
 }

@@ -164,6 +164,18 @@ func (s *KFasterRandomSelector) Count() int {
 	return len(s.partitions)
 }
 
+func (s *KFasterRandomSelector) CountByPoolId(poolId uint8) int {
+	s.RLock()
+	defer s.RUnlock()
+	count := 0
+	for _, dp := range s.partitions {
+		if dp.PoolId == poolId {
+			count++
+		}
+	}
+	return count
+}
+
 func swap(s []*DataPartition, i int, j int) {
 	s[i], s[j] = s[j], s[i]
 }

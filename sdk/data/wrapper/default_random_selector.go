@@ -150,6 +150,18 @@ func (s *DefaultRandomSelector) Count() int {
 	return len(s.partitions)
 }
 
+func (s *DefaultRandomSelector) CountByPoolId(poolId uint8) int {
+	s.RLock()
+	defer s.RUnlock()
+	count := 0
+	for _, dp := range s.partitions {
+		if dp.PoolId == poolId {
+			count++
+		}
+	}
+	return count
+}
+
 func (s *DefaultRandomSelector) getLocalLeaderDataPartition(exclude map[string]struct{}, poolId uint8, ehID uint64) *DataPartition {
 	s.RLock()
 	localLeaderPartitions := s.localLeaderPartitions

@@ -821,7 +821,7 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 				}
 				log.LogWarnf("allocateExtent: exclude dp(%v) mediaType(%v) for write caused by create extent failed, eh(%v) err(%v) exclude(%v)",
 					dp.PartitionID, proto.MediaTypeString(dp.MediaType), eh, err, exclude)
-				eh.stream.client.dataWrapper.RemoveDataPartitionForWrite(dp.PartitionID)
+				eh.stream.client.dataWrapper.RemoveDataPartitionForWrite(dp.PartitionID, eh.poolId)
 				dp.CheckAllHostsIsAvail(exclude)
 				continue
 			}
