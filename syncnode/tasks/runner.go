@@ -414,6 +414,20 @@ func (r *Runner) triggerRule(ctx context.Context, rule *rules.Rule, newID string
 		return nil, errors.New("runner: closed")
 	}
 
+	// Idempotency guard: when a specific ID is requested and that task is
+	// already non-terminal, return the existing record instead of spawning
+	// a second goroutine. This handles master re-dispatch (e.g. after a
+	// brief heartbeat gap that caused master to believe the node was dead
+	// and re-send OpSyncNodeRunTask for the same ID). Running two goroutines
+	// for the same task resets progress to zero on each restart.
+	if newID != "" {
+		if existing, getErr := r.store.Get(ctx, newID); getErr == nil &&
+			existing.Status == executor.StatusRunning {
+			log.LogInfof("tasks: task=%q already running, ignoring duplicate trigger", newID)
+			return cloneRecord(existing), nil
+		}
+	}
+
 	src, err := r.builder.Build(ctx, &rule.Config.Src)
 	if err != nil {
 		log.LogWarnf("tasks: rule=%q task=%q build src backend: %v", rule.Config.ID, newID, err)

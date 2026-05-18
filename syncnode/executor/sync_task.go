@@ -203,12 +203,14 @@ func (e *Executor) syncOneFile(
 	}
 
 	// Idempotency check: skip if dst already has a verified match.
-	// We require BOTH sides to have an ETag and for them to agree; when
-	// either side lacks an ETag (e.g. local POSIX backend) we cannot verify
-	// content equality and must re-upload to avoid silently skipping
-	// same-size mutations.
+	// When both sides have an ETag we require them to agree (catches
+	// same-size mutations). When either side lacks an ETag (e.g. local
+	// POSIX backend never returns one) we fall back to size-only, matching
+	// the behaviour of load_task.go and accepting rare same-size mutations
+	// as the cost of idempotency on ETag-less backends.
 	if dstSize, dstETag, _, herr := t.Dst.Head(ctx, dstKey); herr == nil {
-		if dstSize == entry.Size && entry.ETag != "" && dstETag != "" && entry.ETag == dstETag {
+		etagMatch := entry.ETag != "" && dstETag != "" && entry.ETag == dstETag
+		if dstSize == entry.Size && (etagMatch || dstETag == "") {
 			atomic.AddInt64(&p.FilesSkipped, 1)
 			atomic.AddInt64(&p.BytesSkipped, entry.Size)
 			if p.Sampler != nil {
