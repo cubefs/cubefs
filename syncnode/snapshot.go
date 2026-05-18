@@ -154,6 +154,7 @@ func (s *SyncNode) Snapshot() proto.SyncNodeHeartbeatResponse {
 						BytesSkipped:         p.BytesSkipped,
 						ThroughputMBps:       p.ThroughputMBps,
 						CurrentBandwidthMBps: p.CurrentBandwidthMBps,
+						SkippedSamples:       p.SkippedSamples,
 					},
 				})
 			}

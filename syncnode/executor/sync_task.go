@@ -19,7 +19,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -143,6 +142,9 @@ func (e *Executor) runSync(ctx context.Context, t *Task, r Reporter, p *Progress
 				if !t.Filter.Match(entry, now) {
 					atomic.AddInt64(&p.FilesSkipped, 1)
 					atomic.AddInt64(&p.BytesSkipped, entry.Size)
+					if p.Sampler != nil {
+						p.Sampler.add(entry.Key)
+					}
 					continue
 				}
 				select {
@@ -206,12 +208,12 @@ func (e *Executor) syncOneFile(
 	// content equality and must re-upload to avoid silently skipping
 	// same-size mutations.
 	if dstSize, dstETag, _, herr := t.Dst.Head(ctx, dstKey); herr == nil {
-		fmt.Fprintf(os.Stderr, "DBG syncOneFile head key=%q srcSize=%d dstSize=%d srcETag=%q dstETag=%q\n",
-			dstKey, entry.Size, dstSize, entry.ETag, dstETag)
 		if dstSize == entry.Size && entry.ETag != "" && dstETag != "" && entry.ETag == dstETag {
-			fmt.Fprintf(os.Stderr, "DBG syncOneFile SKIP key=%q etag=%q\n", dstKey, entry.ETag)
 			atomic.AddInt64(&p.FilesSkipped, 1)
 			atomic.AddInt64(&p.BytesSkipped, entry.Size)
+			if p.Sampler != nil {
+				p.Sampler.add(entry.Key)
+			}
 			r.OnFileDone(entry.Key, 0, nil)
 			return nil
 		}

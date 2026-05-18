@@ -218,6 +218,7 @@ func (c *Cluster) handleSyncNodeHeartbeatResp(nodeAddr string, resp *proto.SyncN
 				BytesSkipped:         report.Progress.BytesSkipped,
 				ThroughputMBps:       report.Progress.ThroughputMBps,
 				CurrentBandwidthMBps: report.Progress.CurrentBandwidthMBps,
+				SkippedSamples:       report.Progress.SkippedSamples,
 			})
 		}
 	}

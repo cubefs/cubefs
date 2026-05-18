@@ -201,6 +201,9 @@ func (e *Executor) loadOne(ctx context.Context, t *Task, entry backend.Entry, p 
 		if dstSize == entry.Size {
 			atomic.AddInt64(&p.FilesSkipped, 1)
 			atomic.AddInt64(&p.BytesSkipped, entry.Size)
+			if p.Sampler != nil {
+				p.Sampler.add(entry.Key)
+			}
 			r.OnFileDone(entry.Key, 0, nil)
 			return
 		}

@@ -39,6 +39,10 @@ import (
 // All handlers follow the same auth + envelope conventions as the rule
 // handlers (proto.HTTPReply, requireSyncAdminToken middleware).
 
+// maxSkipSamplesPerTask is the cap on aggregated skipped-file keys kept
+// per parent task (fan-out shards contribute up to this total).
+const maxSkipSamplesPerTask = 200
+
 // listSyncTasks handles GET /syncTask/list[?status=&ruleID=&owner=].
 // Returns []AggregatedSyncTask — one row per logical task, fan-out shards
 // collapsed. status and owner filters are applied post-aggregation so that
@@ -486,6 +490,7 @@ func aggregateShardStatus(shards []*SyncTaskRecord) SyncTaskStatus {
 }
 
 // addProgress accumulates the numeric fields of src into acc in place.
+// SkippedSamples are appended up to maxSkipSamples total across all shards.
 func addProgress(acc *SyncTaskProgress, src SyncTaskProgress) {
 	acc.FilesTotal += src.FilesTotal
 	acc.FilesDone += src.FilesDone
@@ -496,4 +501,10 @@ func addProgress(acc *SyncTaskProgress, src SyncTaskProgress) {
 	acc.BytesSkipped += src.BytesSkipped
 	acc.ThroughputMBps += src.ThroughputMBps
 	acc.CurrentBandwidthMBps += src.CurrentBandwidthMBps
+	for _, k := range src.SkippedSamples {
+		if len(acc.SkippedSamples) >= maxSkipSamplesPerTask {
+			break
+		}
+		acc.SkippedSamples = append(acc.SkippedSamples, k)
+	}
 }

@@ -178,8 +178,42 @@ const (
 	MismatchMtimeNewer MismatchReason = "src_newer"
 )
 
-// Progress holds an in-flight snapshot. All fields are written via atomic
-// helpers so Reporter implementations can read without locking.
+// maxSkipSamples is the per-task cap on collected skipped-file keys sent
+// to the master. Enough to show a representative sample without inflating
+// heartbeat payloads.
+const maxSkipSamples = 200
+
+// skipSampler collects up to maxSkipSamples skipped-file keys under a
+// mutex. Only the live Progress holds a Sampler; snapshot copies carry
+// SkippedSamples []string instead.
+type skipSampler struct {
+	mu      sync.Mutex
+	samples []string
+}
+
+func (s *skipSampler) add(key string) {
+	s.mu.Lock()
+	if len(s.samples) < maxSkipSamples {
+		s.samples = append(s.samples, key)
+	}
+	s.mu.Unlock()
+}
+
+func (s *skipSampler) snapshot() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.samples) == 0 {
+		return nil
+	}
+	out := make([]string, len(s.samples))
+	copy(out, s.samples)
+	return out
+}
+
+// Progress holds an in-flight snapshot. All numeric fields are written via
+// atomic helpers so Reporter implementations can read without locking.
+// Sampler is a pointer so Progress can be copied as a value type (used by
+// snapshotProgress); snapshot copies populate SkippedSamples instead.
 type Progress struct {
 	FilesTotal           int64   `json:"filesTotal"`
 	FilesDone            int64   `json:"filesDone"`
@@ -190,6 +224,13 @@ type Progress struct {
 	BytesSkipped         int64   `json:"bytesSkipped"`
 	ThroughputMBps       float64 `json:"throughputMBps"`
 	CurrentBandwidthMBps float64 `json:"currentBandwidthMBps,omitempty"`
+
+	// SkippedSamples is populated only in snapshot copies (not in the live
+	// Progress held by Run). It carries up to maxSkipSamples skipped keys.
+	SkippedSamples []string `json:"skippedSamples,omitempty"`
+
+	// Sampler is not serialised; only the live Progress initialises it.
+	Sampler *skipSampler `json:"-"`
 }
 
 // Reporter receives progress callbacks during task execution. Implementers
@@ -373,6 +414,7 @@ func (e *Executor) Run(ctx context.Context, t *Task, r Reporter) Result {
 		mismatches []Mismatch
 		runErr     error
 	)
+	progress.Sampler = &skipSampler{}
 
 	// Register in-flight progress pointer, startedAt, and bandwidth tracker
 	// so RunningSnapshots can produce accurate per-task snapshots.
@@ -547,15 +589,18 @@ func snapshotProgress(p *Progress, startedAt time.Time, tracker *bandwidthTracke
 		FilesDone:    atomic.LoadInt64(&p.FilesDone),
 		FilesSkipped: atomic.LoadInt64(&p.FilesSkipped),
 		FilesFailed:  atomic.LoadInt64(&p.FilesFailed),
-		BytesTotal:    atomic.LoadInt64(&p.BytesTotal),
-		BytesDone:     atomic.LoadInt64(&p.BytesDone),
-		BytesSkipped:  atomic.LoadInt64(&p.BytesSkipped),
+		BytesTotal:   atomic.LoadInt64(&p.BytesTotal),
+		BytesDone:    atomic.LoadInt64(&p.BytesDone),
+		BytesSkipped: atomic.LoadInt64(&p.BytesSkipped),
 	}
 	if elapsed > 0 {
 		out.ThroughputMBps = float64(out.BytesDone) / 1024.0 / 1024.0 / elapsed
 	}
 	if tracker != nil {
 		out.CurrentBandwidthMBps = tracker.currentMBps()
+	}
+	if p.Sampler != nil {
+		out.SkippedSamples = p.Sampler.snapshot()
 	}
 	return out
 }

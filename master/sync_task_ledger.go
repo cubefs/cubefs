@@ -74,15 +74,16 @@ func (s SyncTaskStatus) IsTerminal() bool {
 // syncnode/executor.Progress so JSON travels through the heartbeat reply
 // + /syncNode/response without re-marshal.
 type SyncTaskProgress struct {
-	FilesTotal     int64   `json:"filesTotal"`
-	FilesDone      int64   `json:"filesDone"`
-	FilesSkipped   int64   `json:"filesSkipped"`
-	FilesFailed    int64   `json:"filesFailed"`
-	BytesTotal     int64   `json:"bytesTotal"`
-	BytesDone      int64   `json:"bytesDone"`
-	BytesSkipped   int64   `json:"bytesSkipped,omitempty"`
-	ThroughputMBps       float64 `json:"throughputMBps"`
-	CurrentBandwidthMBps float64 `json:"currentBandwidthMBps,omitempty"`
+	FilesTotal           int64    `json:"filesTotal"`
+	FilesDone            int64    `json:"filesDone"`
+	FilesSkipped         int64    `json:"filesSkipped"`
+	FilesFailed          int64    `json:"filesFailed"`
+	BytesTotal           int64    `json:"bytesTotal"`
+	BytesDone            int64    `json:"bytesDone"`
+	BytesSkipped         int64    `json:"bytesSkipped,omitempty"`
+	ThroughputMBps       float64  `json:"throughputMBps"`
+	CurrentBandwidthMBps float64  `json:"currentBandwidthMBps,omitempty"`
+	SkippedSamples       []string `json:"skippedSamples,omitempty"`
 }
 
 // SyncTaskRecord is what /syncTask/get and /syncTask/list return. Carries
