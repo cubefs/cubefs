@@ -121,8 +121,14 @@ func (c *Cluster) handleSyncNodeTaskResponse(nodeAddr string, task *proto.AdminT
 					c.recordTaskTerminal(parentID, parentStatus, "", parentProg)
 					c.syncFanout.Clear(parentID)
 					log.LogInfof("sn syncFanout: parent %s complete; status=%s", parentID, parentStatus)
+					c.updateRuleLastRun(parentID, parentStatus, "")
 				}
+			} else {
+				// Single (non-fan-out) task — write back rule's last run status.
+				c.updateRuleLastRun(rep.TaskID, masterStatus, rep.Error)
 			}
+		} else {
+			c.updateRuleLastRun(rep.TaskID, masterStatus, rep.Error)
 		}
 	default:
 		log.LogInfof("sn handleSyncNodeTaskResponse: unknown opcode %v, ignored", task.OpCode)
@@ -383,4 +389,41 @@ func (c *Cluster) aggregateFanoutShards(parentID string) (SyncTaskStatus, SyncTa
 		status = SyncTaskStatusCancelled
 	}
 	return status, prog
+}
+
+// updateRuleLastRun writes back the terminal status of a root task (single or
+// fan-out parent) to the rule cache and persists via raft. rootTaskID is the
+// parent/single task ID (format "<ruleID>/<nanoseconds>"); ruleID is derived
+// by stripping the trailing timestamp suffix. No-op when the rule is evicted.
+func (c *Cluster) updateRuleLastRun(rootTaskID string, status SyncTaskStatus, errMsg string) {
+	if c == nil || c.syncRuleCache == nil {
+		return
+	}
+	ruleID := stripShardSuffix(rootTaskID)
+	if ruleID == rootTaskID || ruleID == "" {
+		return
+	}
+	rule := c.syncRuleCache.Get(ruleID)
+	if rule == nil {
+		return
+	}
+	updated := *rule
+	updated.LastRunAt = time.Now()
+	switch status {
+	case SyncTaskStatusSucceeded:
+		updated.LastRunStatus = "succeeded"
+		updated.LastRunError = ""
+	case SyncTaskStatusFailed:
+		updated.LastRunStatus = "failed"
+		updated.LastRunError = errMsg
+	case SyncTaskStatusCancelled:
+		updated.LastRunStatus = "cancelled"
+		updated.LastRunError = ""
+	default:
+		updated.LastRunStatus = string(status)
+	}
+	c.syncRuleCache.Put(&updated)
+	if rerr := c.syncUpdateSyncRule(&updated); rerr != nil {
+		log.LogWarnf("updateRuleLastRun: raft persist rule=%q: %v", ruleID, rerr)
+	}
 }
