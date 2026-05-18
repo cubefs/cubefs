@@ -206,7 +206,9 @@ func (m *Server) retrySyncTask(w http.ResponseWriter, r *http.Request) {
 // deleteSyncTask handles POST /syncTask/delete?id=. Removes the task record
 // from the master ledger. Idempotent — deleting a non-existent task is a
 // no-op success. Does NOT cancel an in-flight task; call /syncTask/cancel first
-// if the task is still running.
+// if the task is still running. Fan-out child shard records (taskID prefix
+// "<id>/") are also removed so they cannot resurface in /syncTask/list
+// aggregation after the parent is deleted.
 func (m *Server) deleteSyncTask(w http.ResponseWriter, r *http.Request) {
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.SyncTaskDelete))
 	var err error
@@ -219,6 +221,12 @@ func (m *Server) deleteSyncTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	m.cluster.syncTaskLedger.Remove(id)
+	// Cascade: remove child shard records so they don't resurface in aggregation.
+	for _, c := range m.cluster.syncTaskLedger.List("", "", "") {
+		if stripShardSuffix(c.TaskID) == id && c.TaskID != id {
+			m.cluster.syncTaskLedger.Remove(c.TaskID)
+		}
+	}
 	sendOkReply(w, r, newSuccessHTTPReply(map[string]string{"taskID": id, "status": "deleted"}))
 }
 
@@ -283,6 +291,7 @@ func sendSyncCancelTo(c *Cluster, addr, taskID string) error {
 // TaskShardInfo carries per-shard identity, status, and progress inside an
 // AggregatedSyncTask. Single (non-fan-out) tasks have exactly one entry.
 type TaskShardInfo struct {
+	TaskID   string           `json:"taskID"`
 	ShardIdx int              `json:"shardIdx"`
 	Owner    string           `json:"owner"`
 	Status   SyncTaskStatus   `json:"status"`
@@ -373,6 +382,7 @@ func aggregateTaskRecords(recs []*SyncTaskRecord) []AggregatedSyncTask {
 		if e.parent != nil && e.parent.ShardTotal == 0 {
 			// Single task: wrap the record as a one-entry Shards list.
 			agg.Shards = []TaskShardInfo{{
+				TaskID:   e.parent.TaskID,
 				ShardIdx: 0,
 				Owner:    e.parent.Owner,
 				Status:   e.parent.Status,
@@ -388,6 +398,7 @@ func aggregateTaskRecords(recs []*SyncTaskRecord) []AggregatedSyncTask {
 			shards := make([]TaskShardInfo, 0, len(e.shards))
 			for _, s := range e.shards {
 				shards = append(shards, TaskShardInfo{
+					TaskID:   s.TaskID,
 					ShardIdx: s.ShardIdx,
 					Owner:    s.Owner,
 					Status:   s.Status,
