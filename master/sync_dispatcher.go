@@ -291,14 +291,12 @@ func (d *SyncDispatcher) Candidates(staleThreshold time.Duration) []string {
 		if !bolt {
 			return true
 		}
-		// Saturation gate: prefer the per-node ceiling when the heartbeat
-		// snapshot carries one; otherwise fall back to the cluster-wide
-		// default (legacy syncnode builds).
-		cap := maxConc
-		if cap <= 0 {
-			cap = defaultMaxConcurrentTasks
-		}
-		if cap > 0 && running >= int64(cap) {
+		// Saturation gate: only apply when the node advertises an explicit
+		// concurrency ceiling (MaxConcurrentTasks > 0). A zero value means the
+		// syncnode runs in unlimited mode — applying the defaultMaxConcurrentTasks
+		// fallback would wrongly block dispatch once RunningTasks reaches 8 even
+		// though the node can handle arbitrarily many tasks.
+		if maxConc > 0 && running >= int64(maxConc) {
 			return true
 		}
 		cands = append(cands, scored{
