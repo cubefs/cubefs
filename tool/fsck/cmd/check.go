@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -41,7 +42,10 @@ const (
 	DentryCheckOpt
 )
 
-var mpCheckLog *os.File
+var (
+	mpCheckLog      *os.File
+	checkHTTPClient = &http.Client{}
+)
 
 type MpMap struct {
 	Imap map[uint64]*metanode.Inode
@@ -323,7 +327,7 @@ func importAndAnalyzePartitionData(mpId uint64, addrs []string, dirPath string) 
 
 	// addrs := mp.Members
 	for _, addr := range addrs {
-		resp, err := http.Get(fmt.Sprintf("http://%s:%s/getRaftStatus?id=%d", strings.Split(addr, ":")[0], MetaPort, mpId))
+		resp, err := checkHTTPClient.Get(fmt.Sprintf("http://%s:%s/getRaftStatus?id=%d", strings.Split(addr, ":")[0], MetaPort, mpId))
 		if err != nil {
 			return fmt.Errorf("Get request failed: %v", err)
 		}
@@ -379,6 +383,11 @@ func importAndAnalyzePartitionData(mpId uint64, addrs []string, dirPath string) 
 			}
 		}
 	}
+
+	for _, addr := range addrs {
+		mpCheckLog.WriteString(fmt.Sprintf("mp %v in %v have %v inodes and %v dentries\n", mpId, addr, len(mpMap[addr].Imap), len(mpMap[addr].Dmap)))
+	}
+
 	for i, addr1 := range addrs {
 		for j := i + 1; j < len(addrs); j++ {
 			addr2 := addrs[j]
@@ -400,7 +409,7 @@ func importAndAnalyzePartitionData(mpId uint64, addrs []string, dirPath string) 
 }
 
 func getInodes(mpId uint64, imap map[uint64]*metanode.Inode, addr string) (err error) {
-	resp, err := http.Get(fmt.Sprintf("http://%s:%s/getInodeSnapshot?pid=%d", strings.Split(addr, ":")[0], MetaPort, mpId))
+	resp, err := checkHTTPClient.Get(fmt.Sprintf("http://%s:%s/getInodeSnapshot?pid=%d", strings.Split(addr, ":")[0], MetaPort, mpId))
 	if err != nil {
 		return fmt.Errorf("Get request failed: %v", err)
 	}
@@ -410,33 +419,34 @@ func getInodes(mpId uint64, imap map[uint64]*metanode.Inode, addr string) (err e
 		return fmt.Errorf("Invalid status code: %v", resp.StatusCode)
 	}
 
-	reader := bufio.NewReaderSize(resp.Body, 4*1024*1024)
-	inoBuf := make([]byte, 4)
-	for {
-		inoBuf = inoBuf[:4]
-		// first read length
-		_, err = io.ReadFull(reader, inoBuf)
-		if err != nil {
-			if err == io.EOF {
-				err = nil
-				return
-			}
-			err = errors.NewErrorf("[loadInode] ReadHeader: %s", err.Error())
-			return
-		}
-		length := binary.BigEndian.Uint32(inoBuf)
+	defer func() {
+		mpCheckLog.WriteString(fmt.Sprintf("getInodes from %v have %v inodes, err %v\n", addr, len(imap), err))
+	}()
 
-		// next read body
-		if uint32(cap(inoBuf)) >= length {
-			inoBuf = inoBuf[:length]
-		} else {
-			inoBuf = make([]byte, length)
-		}
-		_, err = io.ReadFull(reader, inoBuf)
-		if err != nil {
-			err = errors.NewErrorf("[loadInode] ReadBody: %s", err.Error())
+	data, err := io.ReadAll(bufio.NewReaderSize(resp.Body, 4*1024*1024))
+	if err != nil {
+		err = errors.NewErrorf("[loadInode] ReadAll: %s", err.Error())
+		return
+	}
+
+	offset := 0
+	total := len(data)
+	for offset < total {
+		if total-offset < 4 {
+			err = errors.NewErrorf("[loadInode] ReadHeader: truncated header, remain=%d", total-offset)
 			return
 		}
+
+		length := int(binary.BigEndian.Uint32(data[offset : offset+4]))
+		offset += 4
+		if length < 0 || total-offset < length {
+			err = errors.NewErrorf("[loadInode] ReadBody: invalid body length=%d, remain=%d", length, total-offset)
+			return
+		}
+
+		inoBuf := data[offset : offset+length]
+		offset += length
+
 		inode := &metanode.Inode{}
 		if err = inode.Unmarshal(inoBuf); err != nil {
 			err = errors.NewErrorf("[loadInode] Unmarshal: %s", err.Error())
@@ -444,10 +454,11 @@ func getInodes(mpId uint64, imap map[uint64]*metanode.Inode, addr string) (err e
 		}
 		imap[inode.Inode] = inode
 	}
+	return
 }
 
 func getDentries(mpId uint64, dmap map[string]*metanode.Dentry, addr string) (err error) {
-	resp, err := http.Get(fmt.Sprintf("http://%s:%s/getDentrySnapshot?pid=%d", strings.Split(addr, ":")[0], MetaPort, mpId))
+	resp, err := checkHTTPClient.Get(fmt.Sprintf("http://%s:%s/getDentrySnapshot?pid=%d", strings.Split(addr, ":")[0], MetaPort, mpId))
 	if err != nil {
 		return fmt.Errorf("Get request failed: %v %v", resp, err)
 	}
@@ -490,7 +501,7 @@ func getDentries(mpId uint64, dmap map[string]*metanode.Dentry, addr string) (er
 			err = errors.NewErrorf("[loadDentry] Unmarshal: %s", err.Error())
 			return
 		}
-		key := fmt.Sprintf("%d/%s", den.Inode, den.Name)
+		key := fmt.Sprintf("%d/%d/%s", den.ParentId, den.Inode, den.Name)
 		dmap[key] = den
 	}
 }
@@ -648,7 +659,25 @@ func compareDentries(v1, v2 *metanode.Dentry) *bytes.Buffer {
 }
 
 func analyzeInode(imap1, imap2 map[uint64]*metanode.Inode, addr1, addr2 string) error {
-	for k, v1 := range imap1 {
+	arr1 := make([]uint64, 0)
+	arr2 := make([]uint64, 0)
+
+	for k := range imap1 {
+		arr1 = append(arr1, k)
+	}
+	for k := range imap2 {
+		arr2 = append(arr2, k)
+	}
+
+	sort.Slice(arr1, func(i, j int) bool {
+		return arr1[i] < arr1[j]
+	})
+	sort.Slice(arr2, func(i, j int) bool {
+		return arr2[i] < arr2[j]
+	})
+
+	for _, k := range arr1 {
+		v1 := imap1[k]
 		v2, ok2 := imap2[k]
 		if !ok2 {
 			if _, err := mpCheckLog.WriteString(fmt.Sprintf("Inode %v Exists in %v but not exist in %v \n", k, addr1, addr2)); err != nil {
@@ -670,8 +699,9 @@ func analyzeInode(imap1, imap2 map[uint64]*metanode.Inode, addr1, addr2 string) 
 		}
 	}
 
-	for k := range imap2 {
-		if _, ok1 := imap1[k]; !ok1 {
+	for _, k := range arr2 {
+		_, ok1 := imap1[k]
+		if !ok1 {
 			if _, err := mpCheckLog.WriteString(fmt.Sprintf("Inode %v Exists in %v but not exist in %v \n", k, addr2, addr1)); err != nil {
 				return err
 			}
@@ -681,7 +711,22 @@ func analyzeInode(imap1, imap2 map[uint64]*metanode.Inode, addr1, addr2 string) 
 }
 
 func analyzeDentry(dmap1, dmap2 map[string]*metanode.Dentry, addr1, addr2 string) error {
-	for k, v1 := range dmap1 {
+	arr1 := make([]string, 0)
+	arr2 := make([]string, 0)
+	for k := range dmap1 {
+		arr1 = append(arr1, k)
+	}
+	for k := range dmap2 {
+		arr2 = append(arr2, k)
+	}
+	sort.Slice(arr1, func(i, j int) bool {
+		return arr1[i] < arr1[j]
+	})
+	sort.Slice(arr2, func(i, j int) bool {
+		return arr2[i] < arr2[j]
+	})
+	for _, k := range arr1 {
+		v1 := dmap1[k]
 		v2, ok2 := dmap2[k]
 		if !ok2 {
 			if _, err := mpCheckLog.WriteString(fmt.Sprintf("Dentry %v Exists in %v but not exist in %v \n", k, addr1, addr2)); err != nil {
@@ -836,7 +881,7 @@ func dumpObsoleteDentry(dlist []*Dentry, name string) error {
 }
 
 func getMetaPartitions(addr, name string) ([]*proto.MetaPartitionView, error) {
-	resp, err := http.Get(fmt.Sprintf("http://%s%s?name=%s", addr, proto.ClientMetaPartitions, name))
+	resp, err := checkHTTPClient.Get(fmt.Sprintf("http://%s%s?name=%s", addr, proto.ClientMetaPartitions, name))
 	if err != nil {
 		return nil, fmt.Errorf("Get meta partitions failed: %v", err)
 	}
@@ -859,7 +904,7 @@ func getMetaPartitions(addr, name string) ([]*proto.MetaPartitionView, error) {
 }
 
 func getMetaPartitionById(addr string, id uint64) (*proto.MetaPartitionInfo, error) {
-	resp, err := http.Get(fmt.Sprintf("http://%s%s?id=%d", addr, proto.ClientMetaPartition, id))
+	resp, err := checkHTTPClient.Get(fmt.Sprintf("http://%s%s?id=%d", addr, proto.ClientMetaPartition, id))
 	if err != nil {
 		return nil, fmt.Errorf("Get meta partitions failed: %v", err)
 	}
