@@ -36,11 +36,13 @@ else
   TESTS="${PJD_TESTS}"
 fi
 
-# Run prove. --merge folds stderr into stdout. --exec ensures bash is used so
-# the test scripts' shebangs are respected even on minimal images.
+# Run prove with -v (verbose) so each test emits an "ok N" or "not ok N"
+# TAP line that the dashboard's TAP parser can pick up. --merge folds stderr
+# into stdout. --exec ensures bash is used so the test scripts' shebangs
+# are respected even on minimal images.
 # Test failures must NOT propagate as a non-zero exit (we want the Job to
 # Succeed so the dashboard can fetch the TAP output).
-prove -r --merge --timer --exec 'bash -x' ${TESTS} || true
+prove -r -v --merge --timer --exec 'bash -x' ${TESTS} || true
 
 # Tidy up the working dir; if the test left files behind (some tests do on
 # failure) the cleanup is best-effort and never blocks Job success.
