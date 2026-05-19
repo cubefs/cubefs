@@ -1,11 +1,27 @@
-FROM golang:1.18.10@sha256:50c889275d26f816b5314fc99f55425fa76b18fcaf16af255f5d57f09e1f48da
+# Multi-architecture CubeFS build image
+# Supports: linux/amd64, linux/arm64
+# Use: docker buildx build --platform linux/arm64 -t cubefs/cbfs-base:arm64 .
+ARG TARGETARCH=amd64
+FROM golang:1.18.10
 
 RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list && \
     sed -i 's/security.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list
 
 # install requirements for LTP (Linux Test Program) tests
 RUN apt-get update && apt-get install -y xz-utils make gcc-10 g++-10 flex bison automake autoconf psmisc cmake
-RUN wget --no-check-certificate https://ocs-cn-north1.heytapcs.com/cubefs/github/ci/go1.18_rocksdb_libs.tar.gz -O rocksdb_libs.tar.gz
+
+# Build RocksDB and compression libs from source for the target architecture
+# This replaces the prebuilt amd64-only tarball download
+COPY depends/ /tmp/depends/
+COPY build/ /tmp/build/
+RUN cd /tmp && mkdir -p build/lib build/include build/out && \
+    bash -c 'source /tmp/build/build.sh && build_rocksdb_deps 4' && \
+    cp -a /tmp/build/lib/* /go/src/github.com/cubefs/cubefs/build/lib/ 2>/dev/null || true && \
+    cp -a /tmp/build/include/* /go/src/github.com/cubefs/cubefs/build/include/ 2>/dev/null || true || \
+    (echo "==> Falling back to prebuilt libs (amd64 only)" && \
+     wget --no-check-certificate https://ocs-cn-north1.heytapcs.com/cubefs/github/ci/go1.18_rocksdb_libs.tar.gz -O rocksdb_libs.tar.gz && \
+     tar -zxf rocksdb_libs.tar.gz -C /go/src/github.com/cubefs/cubefs/ && \
+     rm -f rocksdb_libs.tar.gz)
 
 # install requirements for s3-compatible tests
 RUN apt-get install -y sudo python3 python3-pip

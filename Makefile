@@ -11,6 +11,29 @@ all: build
 phony += build server authtool client cli libsdkpre libsdk fsck fdstore bcache blobstore deploy
 build: server authtool client cli libsdk fsck fdstore bcache blobstore deploy
 
+phony += linux-arm64 linux-amd64
+linux-arm64:
+	@CPUTYPE=arm64_native build/build.sh server $(GOMOD) --threads=$(threads)
+	@CPUTYPE=arm64_native build/build.sh client $(GOMOD) --threads=$(threads)
+	@CPUTYPE=arm64_native build/build.sh cli $(GOMOD) --threads=$(threads)
+	@CPUTYPE=arm64_native build/build.sh authtool $(GOMOD) --threads=$(threads)
+	@CPUTYPE=arm64_native build/build.sh fsck $(GOMOD) --threads=$(threads)
+	@CPUTYPE=arm64_native build/build.sh fdstore $(GOMOD) --threads=$(threads)
+	@CPUTYPE=arm64_native build/build.sh bcache $(GOMOD) --threads=$(threads)
+	@CPUTYPE=arm64_native build/build.sh blobstore $(GOMOD) --threads=$(threads)
+	@CPUTYPE=arm64_native build/build.sh deploy $(GOMOD) --threads=$(threads)
+
+linux-amd64:
+	@CPUTYPE=amd64 build/build.sh server $(GOMOD) --threads=$(threads)
+	@CPUTYPE=amd64 build/build.sh client $(GOMOD) --threads=$(threads)
+	@CPUTYPE=amd64 build/build.sh cli $(GOMOD) --threads=$(threads)
+	@CPUTYPE=amd64 build/build.sh authtool $(GOMOD) --threads=$(threads)
+	@CPUTYPE=amd64 build/build.sh fsck $(GOMOD) --threads=$(threads)
+	@CPUTYPE=amd64 build/build.sh fdstore $(GOMOD) --threads=$(threads)
+	@CPUTYPE=amd64 build/build.sh bcache $(GOMOD) --threads=$(threads)
+	@CPUTYPE=amd64 build/build.sh blobstore $(GOMOD) --threads=$(threads)
+	@CPUTYPE=amd64 build/build.sh deploy $(GOMOD) --threads=$(threads)
+
 server:
 	@build/build.sh server $(GOMOD) --threads=$(threads)
 
