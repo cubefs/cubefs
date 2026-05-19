@@ -1363,3 +1363,56 @@ func TestShouldDisableDiskDirectlyForDataNodeDecommission(t *testing.T) {
 		require.False(t, shouldDisableDiskDirectlyForDataNodeDecommission(0, "/data1", dpToDecommissionByDisk))
 	})
 }
+
+func TestCheckDecommissionDiskResetsSuccessfulDiskWithRemainingPartitions(t *testing.T) {
+	const (
+		nodeAddr = "127.0.0.1:17310"
+		diskPath = "/data-reset-success"
+		volName  = "vol-reset-success"
+	)
+
+	dataNode := &DataNode{
+		Addr:              nodeAddr,
+		DecommissionLimit: 1,
+	}
+	partition := newDataPartition(1, 1, volName, 1, proto.PartitionTypeNormal, defaultMediaType, defaultPoolId)
+	partition.Replicas = []*DataReplica{{
+		DataReplica: proto.DataReplica{
+			Addr:     nodeAddr,
+			DiskPath: diskPath,
+		},
+	}}
+
+	dpMap := newDataPartitionMap(volName)
+	dpMap.partitions = append(dpMap.partitions, partition)
+	dpMap.partitionMap[partition.PartitionID] = partition
+
+	c := &Cluster{
+		partition: &mockPartition{isLeader: true},
+		ClusterVolSubItem: ClusterVolSubItem{
+			vols: map[string]*Vol{
+				volName: {
+					Name:           volName,
+					dataPartitions: dpMap,
+				},
+			},
+		},
+	}
+	c.dataNodes.Store(nodeAddr, dataNode)
+	dataNode.DecommissionedDisks.Store(diskPath, struct{}{})
+
+	disk := &DecommissionDisk{
+		SrcAddr:             nodeAddr,
+		DiskPath:            diskPath,
+		DecommissionStatus:  DecommissionSuccess,
+		DecommissionDpTotal: 1,
+	}
+	c.DecommissionDisks.Store(disk.GenerateKey(), disk)
+
+	c.checkDecommissionDisk()
+
+	require.Equal(t, DecommissionInitial, disk.GetDecommissionStatus())
+	require.False(t, dataNode.checkDecommissionedDisks(diskPath))
+	_, exists := dataNode.DecommissionSuccessDisks.Load(diskPath)
+	require.False(t, exists)
+}
