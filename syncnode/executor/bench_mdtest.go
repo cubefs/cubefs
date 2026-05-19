@@ -53,7 +53,7 @@ func runBenchMdtest(ctx context.Context, rule *spec.BenchRule, taskID string, sh
 		return result, fmt.Errorf(result.Error)
 	}
 
-	workDir := filepath.Join(rule.MountPath, fmt.Sprintf("bench-%s-shard-%d", taskID, shardIdx))
+	workDir := filepath.Join(rule.MountPath, fmt.Sprintf("bench-%s-shard-%d", strings.ReplaceAll(taskID, "/", "_"), shardIdx))
 	if err := os.MkdirAll(workDir, 0o755); err != nil {
 		result.Status = "failed"
 		result.Error = fmt.Sprintf("mkdir workDir: %v", err)

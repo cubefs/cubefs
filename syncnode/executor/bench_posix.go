@@ -40,7 +40,11 @@ func runBenchPosix(ctx context.Context, rule *spec.BenchRule, taskID string, sha
 		StartedAt: time.Now().UnixMilli(),
 	}
 
-	workDir := filepath.Join(rule.MountPath, fmt.Sprintf("bench-%s-shard-%d", taskID, shardIdx))
+	// Fan-out shard task IDs are "<parent>/<N>" — strip the slash so the
+	// workdir / fio result file paths don't introduce a phantom subdir.
+	safeID := strings.ReplaceAll(taskID, "/", "_")
+
+	workDir := filepath.Join(rule.MountPath, fmt.Sprintf("bench-%s-shard-%d", safeID, shardIdx))
 	if err := os.MkdirAll(workDir, 0o755); err != nil {
 		result.Status = "failed"
 		result.Error = fmt.Sprintf("mkdir workDir: %v", err)
@@ -86,7 +90,8 @@ func runBenchPosix(ctx context.Context, rule *spec.BenchRule, taskID string, sha
 // removed after parsing.
 func runFIOStage(ctx context.Context, defaults spec.FIOConfig, stage spec.FIOStage, workDir, taskID string, shardIdx, pushIntervalSec int) (*spec.BenchStageResult, error) {
 	t0 := time.Now()
-	resultFile := filepath.Join(os.TempDir(), fmt.Sprintf("fio-%s-%d-%s.json", taskID, shardIdx, stage.Name))
+	safeID := strings.ReplaceAll(taskID, "/", "_")
+	resultFile := filepath.Join(os.TempDir(), fmt.Sprintf("fio-%s-%d-%s.json", safeID, shardIdx, stage.Name))
 	defer os.Remove(resultFile)
 
 	si := pushIntervalSec
