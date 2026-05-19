@@ -50,6 +50,10 @@ type SyncConfig struct {
 	// in applyDefaults.
 	TCP   TCPConfig    `json:"tcp"`
 	Rules []RuleConfig `json:"rules"`
+	// Bench holds global configuration for the distributed benchmark
+	// feature (P0). Pushgateway settings are optional; zero values are
+	// replaced by applyDefaults.
+	Bench BenchGlobalConfig `json:"bench"`
 }
 
 type S3DefaultsConfig struct {
@@ -71,6 +75,14 @@ type ConcurrencyConfig struct {
 	MaxQueueSize       int `json:"maxQueueSize"`
 	TransfersPerTask   int `json:"transfersPerTask"`
 	BandwidthLimitMBps int `json:"bandwidthLimitMBps"`
+}
+
+// BenchGlobalConfig carries optional Pushgateway settings for the bench
+// feature. PushgatewayURL is the Prometheus Pushgateway endpoint; an
+// empty value disables metric pushing. PushIntervalSec defaults to 5.
+type BenchGlobalConfig struct {
+	PushgatewayURL  string `json:"pushgatewayURL"`
+	PushIntervalSec int    `json:"pushIntervalSec"`
 }
 
 // TCPConfig bounds the master-dispatched task listener. Defaults are sane
@@ -180,6 +192,9 @@ func applyDefaults(cfg *SyncConfig) {
 	}
 	if cfg.TCP.ReadIdleTimeout == "" {
 		cfg.TCP.ReadIdleTimeout = fmt.Sprintf("%ds", DefaultTCPReadIdleTimeout)
+	}
+	if cfg.Bench.PushIntervalSec == 0 {
+		cfg.Bench.PushIntervalSec = 5
 	}
 }
 

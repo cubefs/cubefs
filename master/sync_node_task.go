@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/syncnode/spec"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -111,6 +112,45 @@ func (c *Cluster) handleSyncNodeTaskResponse(nodeAddr string, task *proto.AdminT
 		c.recordTaskTerminal(rep.TaskID, masterStatus, rep.Error, prog)
 		log.LogInfof("sn task %s terminal on %s: status=%s err=%s",
 			rep.TaskID, nodeAddr, rep.Status, rep.Error)
+		// Update the bench task ledger with the terminal status so records
+		// don't stay "running" forever. Handles three cases:
+		//   1. Task completed with a bench result → Complete (stores metrics).
+		//   2. Task cancelled without a result    → Cancel.
+		//   3. Task failed without a result       → Fail (e.g. executor crash).
+		// After updating the shard, CompleteShardAndAggregate checks whether
+		// all sibling shards are done and rolls up the parent record if so.
+		if c.benchTaskLedger != nil {
+			if rep.BenchResult != nil {
+				if raw, merr := json.Marshal(rep.BenchResult); merr == nil {
+					var shardResult spec.BenchShardResult
+					if merr = json.Unmarshal(raw, &shardResult); merr == nil {
+						c.benchTaskLedger.Complete(rep.TaskID, shardResult)
+					} else {
+						log.LogWarnf("sn benchTaskLedger: unmarshal bench result for task %s: %v", rep.TaskID, merr)
+						c.benchTaskLedger.Fail(rep.TaskID, "result decode error: "+merr.Error())
+					}
+				} else {
+					log.LogWarnf("sn benchTaskLedger: marshal bench result for task %s: %v", rep.TaskID, merr)
+					c.benchTaskLedger.Fail(rep.TaskID, "result marshal error: "+merr.Error())
+				}
+			} else {
+				// Terminal without a bench result — executor failure or cancel.
+				if rep.Status == "cancelled" {
+					c.benchTaskLedger.Cancel(rep.TaskID)
+				} else {
+					errMsg := rep.Error
+					if errMsg == "" {
+						errMsg = "task ended without a bench result"
+					}
+					c.benchTaskLedger.Fail(rep.TaskID, errMsg)
+				}
+			}
+			// For fan-out bench tasks, aggregate the shard into the parent.
+			// No-op when the task ID is not a known bench shard record.
+			if parentID, allDone := c.benchTaskLedger.CompleteShardAndAggregate(rep.TaskID); allDone {
+				log.LogInfof("sn bench shard aggregate: parent %s fully done", parentID)
+			}
+		}
 		// Fan-out: when the terminal report carries a shard sub-task ID
 		// ("<parent>/<N>"), mark it done and — once every shard reports —
 		// aggregate into the parent record and release in-memory state.

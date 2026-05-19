@@ -430,13 +430,17 @@ func sendRunTask(cluster *Cluster, addr string, payload interface{}) error {
 // the syncnode doesn't need a local rule store. The syncnode's
 // task_handler.go is updated in Phase 6 to read this field instead of
 // looking up by RuleID locally.
+//
+// BenchRule is the bench dispatch extension: when non-nil the syncnode
+// routes through TriggerBench instead of the sync/load/check paths.
 type SyncRunTaskRequest struct {
-	TaskID   string                 `json:"taskId,omitempty"`
-	RuleID   string                 `json:"ruleId"`
-	Type     string                 `json:"type,omitempty"`
-	Rule     *proto.SyncRule        `json:"rule,omitempty"`
-	SubTask  *SyncRunSubTaskInfo    `json:"subTask,omitempty"`
-	Override map[string]interface{} `json:"override,omitempty"`
+	TaskID    string                 `json:"taskId,omitempty"`
+	RuleID    string                 `json:"ruleId"`
+	Type      string                 `json:"type,omitempty"`
+	Rule      *proto.SyncRule        `json:"rule,omitempty"`
+	SubTask   *SyncRunSubTaskInfo    `json:"subTask,omitempty"`
+	Override  map[string]interface{} `json:"override,omitempty"`
+	BenchRule interface{}            `json:"benchRule,omitempty"`
 }
 
 // SyncRunSubTaskInfo mirrors syncnode/task_handler.go::RunSubTaskInfo.

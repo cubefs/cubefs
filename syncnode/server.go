@@ -576,6 +576,9 @@ func (s *SyncNode) onTaskTerminal(rec *tasks.Record) {
 			ThroughputMBps: rec.Progress.ThroughputMBps,
 		},
 	}
+	if rec.BenchResult != nil {
+		report.BenchResult = rec.BenchResult
+	}
 	task := proto.NewAdminTaskEx(proto.OpSyncNodeRunTask, s.masterClient.LocalServerAddr(), nil, rec.TaskID)
 	task.Response = report
 	if err := s.masterClient.ResponseTask(task); err != nil {

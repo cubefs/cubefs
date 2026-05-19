@@ -232,6 +232,14 @@ type Cluster struct {
 	// /syncNode/response on terminal. Capacity defaults to
 	// SyncTaskLedgerCap.
 	syncTaskLedger *SyncTaskLedger
+
+	// benchRuleStore holds the in-memory bench rule configurations
+	// (P0 — no raft persistence; rules are lost on leader restart).
+	benchRuleStore *BenchRuleStore
+
+	// benchTaskLedger is a bounded LRU view of bench task records, used
+	// by /benchTask/*. Capacity defaults to BenchTaskLedgerCap.
+	benchTaskLedger *BenchTaskLedger
 }
 
 type cTask struct {
@@ -540,6 +548,8 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.syncRuleCache = NewSyncRuleCache()
 	c.syncRuleMgr = NewSyncRuleManager(c)
 	c.syncTaskLedger = NewSyncTaskLedger(SyncTaskLedgerCap)
+	c.benchRuleStore = NewBenchRuleStore()
+	c.benchTaskLedger = NewBenchTaskLedger(BenchTaskLedgerCap)
 	initSyncMetrics()
 	// SEC1: install the /syncNode/* admin token from master config
 	// (key "syncAdminToken"). Empty value = middleware passthrough,

@@ -580,6 +580,40 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.SyncNodeTasks).
 		HandlerFunc(requireSyncAdminToken(m.listSyncNodeTasks))
 
+	// Bench rule + task admin surface (P0 — in-memory, no raft persistence).
+	// Auth gated by the same shared admin token as sync rule handlers.
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.BenchRuleList).
+		HandlerFunc(requireSyncAdminToken(m.listBenchRules))
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.BenchRuleCreate).
+		HandlerFunc(requireSyncAdminToken(m.createBenchRule))
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.BenchRuleGet).
+		HandlerFunc(requireSyncAdminToken(m.getBenchRule))
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.BenchRuleUpdate).
+		HandlerFunc(requireSyncAdminToken(m.updateBenchRule))
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.BenchRuleDelete).
+		HandlerFunc(requireSyncAdminToken(m.deleteBenchRule))
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.BenchRuleTrigger).
+		HandlerFunc(requireSyncAdminToken(m.triggerBenchRule))
+
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.BenchTaskList).
+		HandlerFunc(requireSyncAdminToken(m.listBenchTasks))
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.BenchTaskGet).
+		HandlerFunc(requireSyncAdminToken(m.getBenchTask))
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.BenchTaskCancel).
+		HandlerFunc(requireSyncAdminToken(m.cancelBenchTask))
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.BenchTaskRetry).
+		HandlerFunc(requireSyncAdminToken(m.retryBenchTask))
+
 	// node task response APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.GetDataNodeTaskResponse).

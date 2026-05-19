@@ -30,6 +30,7 @@ import (
 
 	"github.com/cubefs/cubefs/syncnode/backend"
 	"github.com/cubefs/cubefs/syncnode/ratelimit"
+	"github.com/cubefs/cubefs/syncnode/spec"
 )
 
 // TaskType identifies which data-path the executor runs for a Task.
@@ -39,6 +40,7 @@ const (
 	TaskTypeSync  TaskType = "sync"  // src → dst, retention on dst
 	TaskTypeLoad  TaskType = "load"  // src → dst with temp_rename, strict verify
 	TaskTypeCheck TaskType = "check" // both-sided integrity check, no data move
+	TaskTypeBench TaskType = "bench" // distributed benchmark (S3 or POSIX/fio)
 )
 
 // Status is the terminal state of a Task. Pending / Running are tracked by
@@ -140,6 +142,13 @@ type Task struct {
 	// (explicit mode) or from an OpSyncNodeListPrefixes probe (auto
 	// mode). Empty (nil or len==0) preserves hash-mode behaviour.
 	ShardPrefixes []string
+
+	// BenchRule carries the benchmark configuration for TaskTypeBench tasks.
+	// Nil for all other task types.
+	BenchRule *spec.BenchRule
+	// benchBackend is the pre-built backend for S3/SDK bench tasks.
+	// Built by the Runner before the Task is submitted to the executor.
+	benchBackend backend.Backend
 }
 
 // Result reports the terminal outcome of a Task run.
@@ -154,6 +163,10 @@ type Result struct {
 	// For Check tasks: the mismatches found. Empty on success / for
 	// non-check task types.
 	Mismatches []Mismatch
+
+	// For Bench tasks: the shard result returned by the benchmark runner.
+	// Nil for non-bench task types.
+	BenchResult *spec.BenchShardResult
 }
 
 // Mismatch is one entry returned by a Check task.
@@ -452,6 +465,7 @@ func (e *Executor) Run(ctx context.Context, t *Task, r Reporter) Result {
 		}
 	}()
 
+	var benchResult *spec.BenchShardResult
 	switch t.Type {
 	case TaskTypeSync:
 		runErr = e.runSync(taskCtx, t, r, &progress)
@@ -467,6 +481,8 @@ func (e *Executor) Run(ctx context.Context, t *Task, r Reporter) Result {
 		if runErr == nil && t.OnMismatch == OnMismatchAutoFix && len(mismatches) > 0 {
 			runErr = e.runAutoFix(taskCtx, t, mismatches, r, &progress)
 		}
+	case TaskTypeBench:
+		benchResult, runErr = e.runBench(taskCtx, t)
 	default:
 		runErr = fmt.Errorf("unknown task type: %q", t.Type)
 	}
@@ -488,13 +504,14 @@ func (e *Executor) Run(ctx context.Context, t *Task, r Reporter) Result {
 	finalProg := snapshotProgress(&progress, startedAt, tracker)
 	r.OnProgress(finalProg)
 	return Result{
-		TaskID:     t.ID,
-		Status:     status,
-		StartedAt:  startedAt,
-		DoneAt:     doneAt,
-		Progress:   finalProg,
-		Error:      errMsg,
-		Mismatches: mismatches,
+		TaskID:      t.ID,
+		Status:      status,
+		StartedAt:   startedAt,
+		DoneAt:      doneAt,
+		Progress:    finalProg,
+		Error:       errMsg,
+		Mismatches:  mismatches,
+		BenchResult: benchResult,
 	}
 }
 
@@ -569,11 +586,12 @@ func validateTask(t *Task) error {
 	if t.ID == "" {
 		return errors.New("task.ID required")
 	}
-	if t.Src == nil || t.Dst == nil {
+	// Bench tasks do not use Src/Dst backends; all other types require them.
+	if t.Type != TaskTypeBench && (t.Src == nil || t.Dst == nil) {
 		return errors.New("task.Src and task.Dst must be non-nil")
 	}
 	switch t.Type {
-	case TaskTypeSync, TaskTypeLoad, TaskTypeCheck:
+	case TaskTypeSync, TaskTypeLoad, TaskTypeCheck, TaskTypeBench:
 	default:
 		return fmt.Errorf("invalid task.Type: %q", t.Type)
 	}
@@ -603,6 +621,33 @@ func snapshotProgress(p *Progress, startedAt time.Time, tracker *bandwidthTracke
 		out.SkippedSamples = p.Sampler.snapshot()
 	}
 	return out
+}
+
+// SetBenchBackend sets the pre-built backend for S3/SDK bench tasks.
+func (t *Task) SetBenchBackend(b backend.Backend) { t.benchBackend = b }
+
+// runBench is the dispatch point for bench tasks. The actual benchmark logic
+// lives in bench_posix.go and bench_s3.go. Bench tasks do not use the
+// executor's Src/Dst backend fields — they carry their own configuration
+// via BenchRule, and S3/SDK tasks receive a pre-built backend via benchBackend.
+func (e *Executor) runBench(ctx context.Context, t *Task) (*spec.BenchShardResult, error) {
+	if t.BenchRule == nil {
+		return nil, fmt.Errorf("bench task has nil BenchRule")
+	}
+	rule := t.BenchRule
+	pushIntervalSec := 5 // default; could be wired from config in future
+
+	switch rule.StorageType {
+	case spec.BenchStoragePosix:
+		return runBenchPosix(ctx, rule, t.ID, t.ShardIndex, pushIntervalSec)
+	case spec.BenchStorageS3, spec.BenchStorageSDK:
+		if t.benchBackend == nil {
+			return nil, fmt.Errorf("bench task for storage type %q has nil backend", rule.StorageType)
+		}
+		return runBenchS3(ctx, rule, t.ID, t.ShardIndex, t.benchBackend, pushIntervalSec)
+	default:
+		return nil, fmt.Errorf("unknown bench storage type: %q", rule.StorageType)
+	}
 }
 
 // buildTransferLimiter composes the per-transfer bandwidth limiter from

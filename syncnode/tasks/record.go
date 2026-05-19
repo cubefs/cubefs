@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/syncnode/executor"
+	"github.com/cubefs/cubefs/syncnode/spec"
 )
 
 // Record is the persisted view of one task run. It is created with
@@ -48,6 +49,7 @@ type Record struct {
 	Error      string               `json:"error,omitempty"`  // populated on failed
 	Progress   executor.Progress    `json:"progress"`         // last snapshot
 	Mismatches []executor.Mismatch  `json:"mismatches,omitempty"` // only for check task
+	BenchResult *spec.BenchShardResult `json:"benchResult,omitempty"` // only for bench task
 }
 
 // cloneRecord returns a deep copy of r. Mismatches is the only slice field —
@@ -60,6 +62,14 @@ func cloneRecord(r *Record) *Record {
 	if len(r.Mismatches) > 0 {
 		cp.Mismatches = make([]executor.Mismatch, len(r.Mismatches))
 		copy(cp.Mismatches, r.Mismatches)
+	}
+	if r.BenchResult != nil {
+		br := *r.BenchResult
+		if len(r.BenchResult.Stages) > 0 {
+			br.Stages = make([]spec.BenchStageResult, len(r.BenchResult.Stages))
+			copy(br.Stages, r.BenchResult.Stages)
+		}
+		cp.BenchResult = &br
 	}
 	return &cp
 }

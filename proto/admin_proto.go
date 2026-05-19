@@ -289,6 +289,21 @@ const (
 	SyncNodeRestore      = "/syncNode/restore"      // POST ?addr=
 	SyncNodeTasks        = "/syncNode/tasks"        // GET  ?addr=[&status=]
 
+	// BenchRule CRUD + state transitions. Body / query params documented
+	// in master/api_service_bench.go.
+	BenchRuleList    = "/benchRule/list"    // GET  [?id=]
+	BenchRuleCreate  = "/benchRule/create"  // POST body: spec.BenchRule
+	BenchRuleGet     = "/benchRule/get"     // GET  ?id=
+	BenchRuleUpdate  = "/benchRule/update"  // POST body: spec.BenchRule
+	BenchRuleDelete  = "/benchRule/delete"  // POST ?id=
+	BenchRuleTrigger = "/benchRule/trigger" // POST ?id=
+
+	// BenchTask observability + lifecycle.
+	BenchTaskList   = "/benchTask/list"   // GET  [?ruleID=&status=]
+	BenchTaskGet    = "/benchTask/get"    // GET  ?id=
+	BenchTaskCancel = "/benchTask/cancel" // POST ?id=
+	BenchTaskRetry  = "/benchTask/retry"  // POST ?id=
+
 	QueryDisableDisk             = "/dataNode/queryDisableDisk"
 	QueryDecommissionSuccessDisk = "/dataNode/queryDecommissionSuccessDisk"
 	// Operation response
@@ -1224,10 +1239,11 @@ type TaskTerminalProgress struct {
 }
 
 type TaskTerminalReport struct {
-	TaskID   string               `json:"taskId"`
-	Status   string               `json:"status"`
-	Error    string               `json:"error,omitempty"`
-	Progress TaskTerminalProgress `json:"progress"`
+	TaskID      string               `json:"taskId"`
+	Status      string               `json:"status"`
+	Error       string               `json:"error,omitempty"`
+	Progress    TaskTerminalProgress `json:"progress"`
+	BenchResult interface{}          `json:"benchResult,omitempty"` // *spec.BenchShardResult for bench tasks
 }
 
 type FlashNodeDiskCacheStat struct {

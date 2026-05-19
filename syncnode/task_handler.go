@@ -26,6 +26,7 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/syncnode/rules"
+	"github.com/cubefs/cubefs/syncnode/spec"
 	"github.com/cubefs/cubefs/syncnode/tasks"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -58,6 +59,12 @@ type ruleAwareRunner interface {
 		shardIndex, shardTotal int, prefixes []string, wait bool) (*tasks.Record, error)
 }
 
+// benchRunner is implemented by runners that support bench task dispatch.
+// The production *tasks.Runner satisfies this via TriggerBench.
+type benchRunner interface {
+	TriggerBench(ctx context.Context, rule *spec.BenchRule, taskID string, shardIdx int, wait bool) (*tasks.Record, error)
+}
+
 // masterResponder is the slim contract TaskHandler needs from SyncMasterClient
 // to push task lifecycle envelopes back to master. Tests inject a stub.
 type masterResponder interface {
@@ -77,12 +84,13 @@ type masterResponder interface {
 // lookup path. SubTask is the P1-7 fan-out hook; SubTask.Prefixes (P2-5)
 // is the prefix-mode shard descriptor.
 type RunTaskRequest struct {
-	TaskID   string                 `json:"taskId,omitempty"`
-	RuleID   string                 `json:"ruleId"`
-	Type     string                 `json:"type,omitempty"`
-	Rule     *proto.SyncRule        `json:"rule,omitempty"`
-	SubTask  *RunSubTaskInfo        `json:"subTask,omitempty"`
-	Override map[string]interface{} `json:"override,omitempty"`
+	TaskID    string                 `json:"taskId,omitempty"`
+	RuleID    string                 `json:"ruleId"`
+	Type      string                 `json:"type,omitempty"`
+	Rule      *proto.SyncRule        `json:"rule,omitempty"`
+	SubTask   *RunSubTaskInfo        `json:"subTask,omitempty"`
+	Override  map[string]interface{} `json:"override,omitempty"`
+	BenchRule *spec.BenchRule        `json:"benchRule,omitempty"`
 }
 
 // RunSubTaskInfo describes one shard of a fan-out task. ShardIndex /
@@ -382,8 +390,8 @@ func (h *TaskHandler) handleRunTask(ctx context.Context, p *proto.Packet) *proto
 	if err != nil {
 		return errorReply(p, fmt.Errorf("decode run task: %w", err))
 	}
-	if req.RuleID == "" && req.Rule == nil {
-		return errorReply(p, errors.New("missing ruleID and rule snapshot in RunTaskRequest"))
+	if req.RuleID == "" && req.Rule == nil && req.BenchRule == nil {
+		return errorReply(p, errors.New("missing ruleID, rule snapshot, and benchRule in RunTaskRequest"))
 	}
 
 	// P2-6 fast path: master shipped the rule snapshot. Use it directly.
@@ -410,6 +418,31 @@ func (h *TaskHandler) handleRunTask(ctx context.Context, p *proto.Packet) *proto
 			log.LogWarnf("syncnode: TriggerWithRule rule=%q task=%q: %v", req.Rule.ID(), taskID, trigErr)
 			h.pushFailedTerminal(taskID, trigErr.Error())
 			return errorReply(p, fmt.Errorf("trigger rule %q (snapshot path): %w", req.Rule.ID(), trigErr))
+		}
+		return okReply(p)
+	}
+
+	// Bench task path: BenchRule carries the full benchmark configuration.
+	// The master pre-resolves BackendEndpoint from BackendID before dispatch.
+	if req.BenchRule != nil {
+		br, ok := h.runner.(benchRunner)
+		if !ok {
+			return errorReply(p, errors.New("bench dispatch unsupported by this runner"))
+		}
+		var shardIdx int
+		if req.SubTask != nil {
+			shardIdx = req.SubTask.ShardIndex
+		}
+		benchRule := req.BenchRule
+		taskID := req.TaskID
+		ok2, trigErr := h.admitOrRetry(taskID, func() error {
+			_, e := br.TriggerBench(context.Background(), benchRule, taskID, shardIdx, false)
+			return e
+		})
+		if !ok2 {
+			log.LogWarnf("syncnode: TriggerBench rule=%q task=%q: %v", benchRule.ID, taskID, trigErr)
+			h.pushFailedTerminal(taskID, trigErr.Error())
+			return errorReply(p, fmt.Errorf("trigger bench task %q: %w", taskID, trigErr))
 		}
 		return okReply(p)
 	}

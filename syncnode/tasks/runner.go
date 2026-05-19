@@ -539,8 +539,12 @@ func (r *Runner) run(taskCtx context.Context, task *executor.Task, src, dst back
 		// the cap is under-utilised while the next waiter still blocks
 		// in slots <-).
 		r.release()
-		_ = src.Close()
-		_ = dst.Close()
+		if src != nil {
+			_ = src.Close()
+		}
+		if dst != nil {
+			_ = dst.Close()
+		}
 		r.mu.Lock()
 		delete(r.waiters, task.ID)
 		r.mu.Unlock()
@@ -567,6 +571,7 @@ func (r *Runner) run(taskCtx context.Context, task *executor.Task, src, dst back
 	cur.Progress = result.Progress
 	cur.Error = result.Error
 	cur.Mismatches = result.Mismatches
+	cur.BenchResult = result.BenchResult
 	_ = r.store.Put(context.Background(), cur)
 	log.LogInfof("tasks: done task=%q rule=%q status=%q error=%q", cur.TaskID, cur.RuleID, cur.Status, cur.Error)
 
@@ -658,8 +663,12 @@ func (r *Runner) runAfterWait(taskCtx context.Context, task *executor.Task, src,
 func (r *Runner) abortQueued(task *executor.Task, src, dst backend.Backend, done chan struct{}, reason string) {
 	defer func() {
 		r.queueLen.Add(-1)
-		_ = src.Close()
-		_ = dst.Close()
+		if src != nil {
+			_ = src.Close()
+		}
+		if dst != nil {
+			_ = dst.Close()
+		}
 		r.mu.Lock()
 		delete(r.waiters, task.ID)
 		r.mu.Unlock()
@@ -791,6 +800,90 @@ func (r *Runner) Close() error {
 	}
 	r.wg.Wait()
 	return nil
+}
+
+// TriggerBench queues a bench task for execution. For S3/SDK storage types,
+// rule.BackendEndpoint must be non-nil (pre-resolved by the dispatch caller).
+// taskID is the master-assigned identifier; shardIdx is the shard index for
+// multi-node fan-out (0 for single-node runs).
+func (r *Runner) TriggerBench(ctx context.Context, rule *spec.BenchRule, taskID string, shardIdx int, wait bool) (*Record, error) {
+	if rule == nil {
+		return nil, errors.New("TriggerBench: nil rule")
+	}
+	if r.closed.Load() {
+		return nil, errors.New("runner: closed")
+	}
+	if taskID == "" {
+		taskID = r.idFactory()
+	}
+
+	task := &executor.Task{
+		ID:         taskID,
+		Type:       executor.TaskTypeBench,
+		BenchRule:  rule,
+		ShardIndex: shardIdx,
+	}
+
+	// For S3/SDK bench, build a backend from the pre-resolved endpoint config.
+	if rule.StorageType == spec.BenchStorageS3 || rule.StorageType == spec.BenchStorageSDK {
+		if rule.BackendEndpoint == nil {
+			return nil, fmt.Errorf("TriggerBench: rule %q requires BackendEndpoint (BackendID=%q) but it is nil", rule.ID, rule.BackendID)
+		}
+		b, err := r.builder.Build(ctx, rule.BackendEndpoint)
+		if err != nil {
+			return nil, fmt.Errorf("TriggerBench: build backend for rule %q: %w", rule.ID, err)
+		}
+		task.SetBenchBackend(b)
+	}
+
+	// Persist an initial running record.
+	rec := &Record{
+		TaskID:    taskID,
+		Type:      executor.TaskTypeBench,
+		Status:    executor.StatusRunning,
+		StartedAt: time.Now(),
+	}
+	if err := r.store.Put(ctx, rec); err != nil {
+		return nil, fmt.Errorf("persist bench record: %w", err)
+	}
+
+	done := make(chan struct{})
+	r.mu.Lock()
+	r.waiters[taskID] = done
+	r.mu.Unlock()
+
+	taskCtx, taskCancel := context.WithCancel(context.Background())
+	r.cancellersMu.Lock()
+	r.cancellers[taskID] = taskCancel
+	r.cancellersMu.Unlock()
+
+	admitted, queued := r.tryAdmit()
+	if !admitted && !queued {
+		// Cap + queue full: persist failure and return.
+		r.mu.Lock()
+		delete(r.waiters, taskID)
+		r.mu.Unlock()
+		r.deregisterCanceller(taskID)
+		taskCancel()
+		close(done)
+		rec.Status = executor.StatusFailed
+		rec.DoneAt = time.Now()
+		rec.Error = ErrQueueFull.Error()
+		_ = r.store.Put(context.Background(), rec)
+		return cloneRecord(rec), ErrQueueFull
+	}
+
+	r.wg.Add(1)
+	if admitted {
+		go r.run(taskCtx, task, nil, nil, done)
+	} else {
+		go r.runAfterWait(taskCtx, task, nil, nil, done)
+	}
+
+	if !wait {
+		return cloneRecord(rec), nil
+	}
+	return r.waitForRecord(ctx, taskID, done)
 }
 
 // On ctx cancellation the task keeps running; only explicit Runner.Cancel
