@@ -549,6 +549,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.syncRuleMgr = NewSyncRuleManager(c)
 	c.syncTaskLedger = NewSyncTaskLedger(SyncTaskLedgerCap)
 	c.benchRuleStore = NewBenchRuleStore()
+	c.benchRuleStore.BindCluster(c)
 	c.benchTaskLedger = NewBenchTaskLedger(BenchTaskLedgerCap)
 	initSyncMetrics()
 	// SEC1: install the /syncNode/* admin token from master config

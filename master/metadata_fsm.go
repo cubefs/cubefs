@@ -143,7 +143,7 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 			case opSyncDeleteDataNode, opSyncDeleteMetaNode, opSyncDeleteVol, opSyncDeleteDataPartition, opSyncDeleteMetaPartition,
 				opSyncDeleteUserInfo, opSyncDeleteAKUser, opSyncDeleteVolUser, opSyncDeleteQuota, opSyncDeleteLcNode,
 				opSyncDeleteLcConf, opSyncDeleteLcTask, opSyncDeleteLcResult, opSyncS3QosDelete, opSyncDeleteDecommissionDisk,
-				opSyncDeleteSyncNode, opSyncDeleteSyncRule:
+				opSyncDeleteSyncNode, opSyncDeleteSyncRule, opSyncDeleteBenchRule:
 				deleteSet[cmdK] = util.Null{}
 			// NOTE: opSyncPutFollowerApiLimiterInfo, opSyncPutApiLimiterInfo need special handle?
 			default:
@@ -158,7 +158,7 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 		opSyncDeleteUserInfo, opSyncDeleteAKUser, opSyncDeleteVolUser, opSyncDeleteQuota, opSyncDeleteLcNode,
 		opSyncDeleteLcConf, opSyncDeleteLcTask, opSyncDeleteLcResult, opSyncS3QosDelete, opSyncDeleteDecommissionDisk,
 		opSyncDeleteFlashNode, opSyncDeleteFlashGroup, opSyncDeleteFlashManualTask,
-		opSyncDeleteSyncNode, opSyncDeleteSyncRule:
+		opSyncDeleteSyncNode, opSyncDeleteSyncRule, opSyncDeleteBenchRule:
 		if err = mf.delKeyAndPutIndex(cmd.K, cmdMap); err != nil {
 			panic(err)
 		}

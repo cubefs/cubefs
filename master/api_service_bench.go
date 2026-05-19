@@ -72,6 +72,11 @@ func (m *Server) listBenchRules(w http.ResponseWriter, r *http.Request) {
 
 // createBenchRule handles POST /benchRule/create.
 // Body must be a JSON-encoded spec.BenchRule with a non-empty ID.
+//
+// Persistence: BenchRuleStore.Create is raft-backed (Phase 1, see
+// docs/plan/master/bench-rule-persistence.md). Raft submit failures
+// surface as HTTP 503 + ErrCodePersistenceByRaft so dashboards / CLI
+// clients can retry; validation failures stay on 500.
 func (m *Server) createBenchRule(w http.ResponseWriter, r *http.Request) {
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.BenchRuleCreate))
 	var err error
@@ -88,7 +93,7 @@ func (m *Server) createBenchRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err = m.cluster.benchRuleStore.Create(&rule); err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		sendErrReply(w, r, &proto.HTTPReply{Code: benchRuleErrCode(err), Msg: err.Error()})
 		return
 	}
 	created, _ := m.cluster.benchRuleStore.Get(rule.ID)
@@ -135,7 +140,7 @@ func (m *Server) updateBenchRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err = m.cluster.benchRuleStore.Update(&rule); err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		sendErrReply(w, r, &proto.HTTPReply{Code: benchRuleErrCode(err), Msg: err.Error()})
 		return
 	}
 	updated, _ := m.cluster.benchRuleStore.Get(rule.ID)
@@ -155,10 +160,23 @@ func (m *Server) deleteBenchRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err = m.cluster.benchRuleStore.Delete(id); err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		sendErrReply(w, r, &proto.HTTPReply{Code: benchRuleErrCode(err), Msg: err.Error()})
 		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(map[string]string{"id": id, "status": "deleted"}))
+}
+
+// benchRuleErrCode maps a BenchRuleStore.Create/Update/Delete error to
+// the HTTP reply code. Validation errors stay as InternalError (current
+// dashboard contract); anything else is treated as a raft submit failure
+// and surfaces as ErrCodePersistenceByRaft so callers retry.
+func benchRuleErrCode(err error) int32 {
+	switch {
+	case errors.Is(err, ErrBenchRuleExists), errors.Is(err, ErrBenchRuleNotFound):
+		return proto.ErrCodeInternalError
+	default:
+		return proto.ErrCodePersistenceByRaft
+	}
 }
 
 // triggerBenchRule handles POST /benchRule/trigger?id=.

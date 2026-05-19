@@ -319,6 +319,20 @@ func (m *Server) loadMetadata() {
 	}
 	log.LogInfof("action[loadSyncRules] end, loaded %d rule(s)", m.cluster.syncRuleCache.Len())
 
+	// Phase 1: bench rule master raft persistence.
+	// See docs/plan/master/bench-rule-persistence.md. benchRuleStore is
+	// constructed in Cluster.start (NewBenchRuleStore + BindCluster); on
+	// every cold start / leader switch we replace the cache contents by
+	// allocating a fresh store, re-binding it to the cluster, and
+	// rebuilding from rocksdb. Mirrors the loadSyncRules lifecycle.
+	log.LogInfo("action[loadBenchRules] begin")
+	m.cluster.benchRuleStore = NewBenchRuleStore()
+	m.cluster.benchRuleStore.BindCluster(m.cluster)
+	if err = m.cluster.loadBenchRules(); err != nil {
+		panic(err)
+	}
+	log.LogInfof("action[loadBenchRules] end, loaded %d rule(s)", m.cluster.benchRuleStore.Len())
+
 	// FIX #7: rebuild the fan-out parents map from the dispatcher's
 	// ownership ledger. After loadSyncNodes the syncnode table is
 	// populated, so any heartbeat-driven Dispatch records that arrive
