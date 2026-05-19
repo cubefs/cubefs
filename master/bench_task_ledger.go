@@ -52,11 +52,13 @@ func (s BenchTaskStatus) IsTerminal() bool {
 // BenchShardResult carries one shard's summary produced by a bench
 // executor. Populated when the node reports back; empty until then.
 type BenchShardResult struct {
-	ShardIdx  int    `json:"shardIdx"`
-	NodeAddr  string `json:"nodeAddr"`
-	Output    string `json:"output,omitempty"`    // raw fio / s3bench JSON output
-	Error     string `json:"error,omitempty"`
-	Duration  int64  `json:"duration,omitempty"`  // milliseconds
+	ShardIdx int                      `json:"shardIdx"`
+	NodeAddr string                   `json:"nodeAddr"`
+	Output   string                   `json:"output,omitempty"`   // raw fio / s3bench JSON output
+	Error    string                   `json:"error,omitempty"`
+	Duration int64                    `json:"duration,omitempty"` // milliseconds
+	Status   string                   `json:"status,omitempty"`   // shard terminal status
+	Stages   []spec.BenchStageResult  `json:"stages,omitempty"`   // copied from the shard's BenchResult so the parent record carries per-shard per-stage metrics (throughput / IOPS / latency) for fan-out visualisation
 }
 
 // BenchTaskRecord is the master-side view of one bench task (or shard).
@@ -297,7 +299,7 @@ func (l *BenchTaskLedger) CompleteShardAndAggregate(shardID string) (parentID st
 		}
 		if rec.Status.IsTerminal() {
 			doneSoFar++
-			summary := BenchShardResult{Error: rec.Error}
+			summary := BenchShardResult{Error: rec.Error, Status: string(rec.Status)}
 			// Derive ShardIdx from the "<parent>/<N>" task ID suffix.
 			if slash := strings.LastIndex(rec.TaskID, "/"); slash >= 0 {
 				if idx, aerr := strconv.Atoi(rec.TaskID[slash+1:]); aerr == nil {
@@ -308,6 +310,11 @@ func (l *BenchTaskLedger) CompleteShardAndAggregate(shardID string) (parentID st
 				summary.NodeAddr = rec.BenchResult.NodeAddr
 				if rec.BenchResult.DoneAt > rec.BenchResult.StartedAt {
 					summary.Duration = rec.BenchResult.DoneAt - rec.BenchResult.StartedAt
+				}
+				// Carry per-stage metrics up so the parent record holds the
+				// data the dashboard needs for shard × stage visualisation.
+				if len(rec.BenchResult.Stages) > 0 {
+					summary.Stages = rec.BenchResult.Stages
 				}
 			}
 			shardSummaries = append(shardSummaries, summary)
