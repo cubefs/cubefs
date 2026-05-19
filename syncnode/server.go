@@ -577,7 +577,14 @@ func (s *SyncNode) onTaskTerminal(rec *tasks.Record) {
 		},
 	}
 	if rec.BenchResult != nil {
-		report.BenchResult = rec.BenchResult
+		// Fill in the local node address on terminal report so the master
+		// ledger / dashboard can attribute results to a specific syncnode
+		// (the bench executor itself has no notion of "self").
+		br := *rec.BenchResult
+		if br.NodeAddr == "" {
+			br.NodeAddr = s.masterClient.LocalServerAddr()
+		}
+		report.BenchResult = &br
 	}
 	task := proto.NewAdminTaskEx(proto.OpSyncNodeRunTask, s.masterClient.LocalServerAddr(), nil, rec.TaskID)
 	task.Response = report

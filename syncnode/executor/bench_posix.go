@@ -223,10 +223,18 @@ type fioJSONResult struct {
 type fioJobStats struct {
 	IOPS    float64 `json:"iops"`
 	BWBytes int64   `json:"bw_bytes"`
-	LatNs   struct {
+	// lat_ns aggregates submission + completion latency, percentile usually
+	// absent unless --lat_percentiles=1 is set. clat_ns is the completion
+	// latency only and its percentile map is populated by fio by default —
+	// we read percentiles from clat_ns and fall back to lat_ns if missing.
+	LatNs struct {
 		Mean       float64            `json:"mean"`
 		Percentile map[string]float64 `json:"percentile"`
 	} `json:"lat_ns"`
+	ClatNs struct {
+		Mean       float64            `json:"mean"`
+		Percentile map[string]float64 `json:"percentile"`
+	} `json:"clat_ns"`
 	TotalIOs int64 `json:"total_ios"`
 }
 
@@ -254,20 +262,28 @@ func parseFIOResult(resultFile, stageName string) (*spec.BenchStageResult, error
 
 		// Use whichever side (read/write) has higher mean latency.
 		latSrc := j.Read.LatNs
+		clatSrc := j.Read.ClatNs
 		if j.Write.LatNs.Mean > j.Read.LatNs.Mean {
 			latSrc = j.Write.LatNs
+			clatSrc = j.Write.ClatNs
 		}
 		sr.Latency.Mean = latSrc.Mean / 1000 // ns → µs
-		if v, ok := latSrc.Percentile["50.000000"]; ok {
+		// Prefer clat_ns.percentile (populated by fio by default) and fall
+		// back to lat_ns.percentile if available (--lat_percentiles=1).
+		pct := clatSrc.Percentile
+		if len(pct) == 0 {
+			pct = latSrc.Percentile
+		}
+		if v, ok := pct["50.000000"]; ok {
 			sr.Latency.P50 = v / 1000
 		}
-		if v, ok := latSrc.Percentile["95.000000"]; ok {
+		if v, ok := pct["95.000000"]; ok {
 			sr.Latency.P95 = v / 1000
 		}
-		if v, ok := latSrc.Percentile["99.000000"]; ok {
+		if v, ok := pct["99.000000"]; ok {
 			sr.Latency.P99 = v / 1000
 		}
-		if v, ok := latSrc.Percentile["99.900000"]; ok {
+		if v, ok := pct["99.900000"]; ok {
 			sr.Latency.P999 = v / 1000
 		}
 	}
