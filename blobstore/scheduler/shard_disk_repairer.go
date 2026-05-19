@@ -182,10 +182,26 @@ func (mgr *ShardDiskRepairMgr) acquireBrokenDisk(ctx context.Context) (*client.S
 	if err != nil {
 		return nil, err
 	}
+
+	busyHosts := make(map[string]struct{})
+	for _, d := range mgr.repairingDisks.list() {
+		busyHosts[d.Host] = struct{}{}
+	}
+
+	hostDisks := make(map[string][]*client.ShardNodeDiskInfo)
 	for _, disk := range diskInfos {
 		if _, exist := mgr.repairingDisks.get(disk.DiskID); !exist {
-			return disk, nil
+			hostDisks[disk.Host] = append(hostDisks[disk.Host], disk)
 		}
+	}
+
+	for host, ds := range hostDisks {
+		if _, busy := busyHosts[host]; !busy {
+			return ds[0], nil
+		}
+	}
+	for _, ds := range hostDisks {
+		return ds[0], nil
 	}
 	return nil, nil
 }

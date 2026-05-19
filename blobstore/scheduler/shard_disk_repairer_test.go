@@ -15,6 +15,7 @@
 package scheduler
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -116,6 +117,63 @@ func TestShardDiskRepairCollectionTask(t *testing.T) {
 		mgr.collectionTask()
 		require.True(t, mgr.repairingDisks.size() == 1)
 	}
+}
+
+func TestAcquireBrokenShardDisk(t *testing.T) {
+	hostA1 := &client.ShardNodeDiskInfo{DiskID: 10, Host: "host-a", Status: proto.DiskStatusBroken}
+	hostA2 := &client.ShardNodeDiskInfo{DiskID: 11, Host: "host-a", Status: proto.DiskStatusBroken}
+	hostB1 := &client.ShardNodeDiskInfo{DiskID: 20, Host: "host-b", Status: proto.DiskStatusBroken}
+	hostC1 := &client.ShardNodeDiskInfo{DiskID: 30, Host: "host-c", Status: proto.DiskStatusBroken}
+
+	t.Run("no broken disks: return nil", func(t *testing.T) {
+		mgr := newMockShardDiskRepairerMgr(t)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListBrokenShardDisk(any).Return(nil, nil)
+		got, err := mgr.acquireBrokenDisk(context.Background())
+		require.NoError(t, err)
+		require.Nil(t, got)
+	})
+
+	t.Run("all candidates already repairing: return nil", func(t *testing.T) {
+		mgr := newMockShardDiskRepairerMgr(t)
+		mgr.repairingDisks.add(hostA1.DiskID, hostA1)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListBrokenShardDisk(any).Return([]*client.ShardNodeDiskInfo{hostA1}, nil)
+		got, err := mgr.acquireBrokenDisk(context.Background())
+		require.NoError(t, err)
+		require.Nil(t, got)
+	})
+
+	t.Run("prefer host not already busy", func(t *testing.T) {
+		mgr := newMockShardDiskRepairerMgr(t)
+		mgr.repairingDisks.add(hostA1.DiskID, hostA1) // host-a is busy
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListBrokenShardDisk(any).Return(
+			[]*client.ShardNodeDiskInfo{hostA2, hostB1}, nil)
+		got, err := mgr.acquireBrokenDisk(context.Background())
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		require.Equal(t, "host-b", got.Host)
+	})
+
+	t.Run("all hosts busy: fallback to any candidate", func(t *testing.T) {
+		mgr := newMockShardDiskRepairerMgr(t)
+		mgr.repairingDisks.add(hostA1.DiskID, hostA1)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListBrokenShardDisk(any).Return(
+			[]*client.ShardNodeDiskInfo{hostA2}, nil)
+		got, err := mgr.acquireBrokenDisk(context.Background())
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		require.Equal(t, hostA2.DiskID, got.DiskID)
+	})
+
+	t.Run("multiple idle hosts: pick one of them", func(t *testing.T) {
+		mgr := newMockShardDiskRepairerMgr(t)
+		mgr.repairingDisks.add(hostA1.DiskID, hostA1) // host-a busy
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListBrokenShardDisk(any).Return(
+			[]*client.ShardNodeDiskInfo{hostA2, hostB1, hostC1}, nil)
+		got, err := mgr.acquireBrokenDisk(context.Background())
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		require.NotEqual(t, "host-a", got.Host)
+	})
 }
 
 func TestCheckRepaired(t *testing.T) {
