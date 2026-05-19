@@ -284,10 +284,25 @@ func (mgr *DiskRepairMgr) acquireBrokenDisk(ctx context.Context) (*client.DiskIn
 }
 
 func (mgr *DiskRepairMgr) getUnRepairingDisk(disks []*client.DiskInfoSimple) *client.DiskInfoSimple {
+	hostDisks := make(map[string][]*client.DiskInfoSimple)
 	for _, v := range disks {
 		if _, ok := mgr.repairingDisks.get(v.DiskID); !ok {
-			return v
+			hostDisks[v.Host] = append(hostDisks[v.Host], v)
 		}
+	}
+
+	busyHosts := make(map[string]struct{})
+	for _, d := range mgr.repairingDisks.list() {
+		busyHosts[d.Host] = struct{}{}
+	}
+
+	for host, ds := range hostDisks {
+		if _, busy := busyHosts[host]; !busy {
+			return ds[0]
+		}
+	}
+	for _, ds := range hostDisks {
+		return ds[0]
 	}
 	return nil
 }
