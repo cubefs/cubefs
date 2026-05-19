@@ -18,9 +18,10 @@ package spec
 type BenchStorageType string
 
 const (
-	BenchStorageS3    BenchStorageType = "s3"
-	BenchStoragePosix BenchStorageType = "posix"
-	BenchStorageSDK   BenchStorageType = "sdk"
+	BenchStorageS3     BenchStorageType = "s3"
+	BenchStoragePosix  BenchStorageType = "posix"
+	BenchStorageSDK    BenchStorageType = "sdk"
+	BenchStorageMdtest BenchStorageType = "mdtest"
 )
 
 // BenchRule is the persisted configuration for a distributed benchmark task.
@@ -44,6 +45,11 @@ type BenchRule struct {
 	MountPath   string     `json:"mountPath,omitempty"`
 	FIODefaults FIOConfig  `json:"fioDefaults,omitempty"`
 	FIOStages   []FIOStage `json:"fioStages,omitempty"`
+
+	// Mdtest only — distributed metadata benchmark via MPI.
+	// MountPath above is reused as the working directory root.
+	MdtestDefaults *MdtestConfig `json:"mdtestDefaults,omitempty"`
+	MdtestStages   []MdtestStage `json:"mdtestStages,omitempty"`
 
 	// BackendEndpoint is resolved at dispatch time by the master / dashboard
 	// from BackendID. The syncnode uses it to build the actual backend client.
@@ -112,4 +118,35 @@ type FIOStage struct {
 // BenchOutput specifies which percentiles to include in the reported results.
 type BenchOutput struct {
 	Percentiles []float64 `json:"percentiles"`
+}
+
+// MdtestConfig holds default mdtest parameters applied to all mdtest stages
+// unless a stage provides its own override value. MpiBin / MdtestBin default
+// to PATH lookup ("mpirun" / "mdtest"). NumTasks is the MPI process count
+// (mpirun -n) and should typically equal the number of CPU cores or above.
+type MdtestConfig struct {
+	MpiBin    string `json:"mpiBin,omitempty"`
+	MdtestBin string `json:"mdtestBin,omitempty"`
+	NumTasks  int    `json:"numTasks,omitempty"`
+	ExtraArgs string `json:"extraArgs,omitempty"`
+}
+
+// MdtestStage is one mdtest workload phase. Non-zero / non-empty fields
+// override the corresponding MdtestDefaults value; unset fields fall back
+// to mdtest's own built-in defaults.
+type MdtestStage struct {
+	Name        string `json:"name"`
+	Skip        bool   `json:"skip,omitempty"`
+	Iterations  int    `json:"iterations,omitempty"`  // -i
+	NumItems    int    `json:"numItems,omitempty"`    // -n (per task)
+	ItemsPerDir int    `json:"itemsPerDir,omitempty"` // -I
+	Depth       int    `json:"depth,omitempty"`       // -z
+	Branching   int    `json:"branching,omitempty"`   // -b
+	WriteBytes  int64  `json:"writeBytes,omitempty"`  // -w
+	ReadBytes   int64  `json:"readBytes,omitempty"`   // -e
+	OnlyFiles   bool   `json:"onlyFiles,omitempty"`   // -F (file-only)
+	OnlyDirs    bool   `json:"onlyDirs,omitempty"`    // -d (dir-only)
+	UniqueDir   bool   `json:"uniqueDir,omitempty"`   // -u
+	NumTasks    int    `json:"numTasks,omitempty"`    // overrides defaults
+	ExtraArgs   string `json:"extraArgs,omitempty"`
 }

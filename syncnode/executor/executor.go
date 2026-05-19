@@ -645,6 +645,8 @@ func (e *Executor) runBench(ctx context.Context, t *Task) (*spec.BenchShardResul
 			return nil, fmt.Errorf("bench task for storage type %q has nil backend", rule.StorageType)
 		}
 		return runBenchS3(ctx, rule, t.ID, t.ShardIndex, t.benchBackend, pushIntervalSec)
+	case spec.BenchStorageMdtest:
+		return runBenchMdtest(ctx, rule, t.ID, t.ShardIndex, pushIntervalSec)
 	default:
 		return nil, fmt.Errorf("unknown bench storage type: %q", rule.StorageType)
 	}
