@@ -259,6 +259,20 @@ func (mr *MockBlobNodeManagerAPIMockRecorder) ListDroppingDisk(arg0 interface{})
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListDroppingDisk", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).ListDroppingDisk), arg0)
 }
 
+// ListNodes mocks base method.
+func (m *MockBlobNodeManagerAPI) ListNodes(arg0 context.Context, arg1 proto.NodeStatus) []clustermgr.BlobNodeInfo {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListNodes", arg0, arg1)
+	ret0, _ := ret[0].([]clustermgr.BlobNodeInfo)
+	return ret0
+}
+
+// ListNodes indicates an expected call of ListNodes.
+func (mr *MockBlobNodeManagerAPIMockRecorder) ListNodes(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListNodes", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).ListNodes), arg0, arg1)
+}
+
 // RefreshExpireTime mocks base method.
 func (m *MockBlobNodeManagerAPI) RefreshExpireTime() {
 	m.ctrl.T.Helper()

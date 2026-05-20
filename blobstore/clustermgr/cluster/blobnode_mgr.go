@@ -43,6 +43,9 @@ const (
 type BlobNodeManagerAPI interface {
 	// GetNodeInfo return node info with specified node id, it return ErrCMNodeNotFound if node not found
 	GetNodeInfo(ctx context.Context, nodeID proto.NodeID) (*clustermgr.BlobNodeInfo, error)
+	// ListNodes returns nodes filtered by status.
+	// Pass NodeStatusInvalid (0) to return all nodes.
+	ListNodes(ctx context.Context, status proto.NodeStatus) []clustermgr.BlobNodeInfo
 	// GetDiskInfo return disk info, it return ErrDiskNotFound if disk not found
 	GetDiskInfo(ctx context.Context, id proto.DiskID) (*clustermgr.BlobNodeDiskInfo, error)
 	AddDisk(ctx context.Context, args *clustermgr.BlobNodeDiskInfo) error
@@ -445,6 +448,30 @@ func (b *BlobNodeManager) GetNodeInfo(ctx context.Context, nodeID proto.NodeID) 
 	})
 
 	return nodeInfo, nil
+}
+
+// ListNodes returns nodes filtered by the given status.
+// When status is 0, all nodes are returned.
+// NodeStatusNormal matches nodes whose persisted status is Normal (including those in dropping).
+// NodeStatusDropped matches nodes whose persisted status is Dropped.
+func (b *BlobNodeManager) ListNodes(ctx context.Context, status proto.NodeStatus) []clustermgr.BlobNodeInfo {
+	b.metaLock.RLock()
+	nodes := make([]*nodeItem, 0, len(b.allNodes))
+	for _, ni := range b.allNodes {
+		nodes = append(nodes, ni)
+	}
+	b.metaLock.RUnlock()
+
+	result := make([]clustermgr.BlobNodeInfo, 0)
+	for _, ni := range nodes {
+		ni.withRLocked(func() error {
+			if status == proto.NodeStatusInvalid || ni.info.Status == status {
+				result = append(result, clustermgr.BlobNodeInfo{NodeInfo: ni.info.NodeInfo})
+			}
+			return nil
+		})
+	}
+	return result
 }
 
 func (b *BlobNodeManager) AllocChunks(ctx context.Context, policy AllocPolicy) ([]proto.DiskID, []proto.Vuid, error) {

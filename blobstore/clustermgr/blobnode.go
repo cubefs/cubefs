@@ -140,6 +140,32 @@ func (s *Service) NodeInfo(c *rpc.Context) {
 	c.RespondJSON(ret)
 }
 
+func (s *Service) NodeList(c *rpc.Context) {
+	ctx := c.Request.Context()
+	span := trace.SpanFromContextSafe(ctx)
+	args := new(clustermgr.ListNodesArgs)
+	if err := c.ParseArgs(args); err != nil {
+		c.RespondError(err)
+		return
+	}
+	span.Infof("accept NodeList request, args: %v", args)
+
+	if args.Status >= proto.NodeStatusMax {
+		span.Warnf("invalid node status: %d", args.Status)
+		c.RespondError(apierrors.ErrIllegalArguments)
+		return
+	}
+
+	// linear read
+	if err := s.raftNode.ReadIndex(ctx); err != nil {
+		span.Errorf("node list read index error: %v", err)
+		c.RespondError(apierrors.ErrRaftReadIndex)
+		return
+	}
+
+	c.RespondJSON(&clustermgr.ListNodesRet{Nodes: s.BlobNodeMgr.ListNodes(ctx, args.Status)})
+}
+
 func (s *Service) TopoInfo(c *rpc.Context) {
 	ctx := c.Request.Context()
 	span := trace.SpanFromContextSafe(ctx)
