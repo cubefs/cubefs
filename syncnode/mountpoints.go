@@ -27,11 +27,15 @@ import (
 // the underlying fs type by scanning /proc/self/mountinfo (longest-prefix
 // match — covers nested mounts and subdir-of-mount cases).
 //
-// Output is the same length and order as allowedRoots so master sees a
-// stable list. Entries whose fs type can't be determined (e.g. when
-// /proc/self/mountinfo isn't readable on this kernel) keep an empty
-// FSType — consoles still get the path string and can fall back to a
-// "unknown" classification.
+// Output preserves the order of allowedRoots so master sees a stable list.
+// Entries are dropped when the resolved fs type is one of the kernel's
+// pseudo / container-internal types (overlay, tmpfs, proc, …) — those
+// surfaces are useless as bench targets and only cluttered the dashboard
+// dropdown. Real filesystems (fuse.cubefs, ext4, xfs, gpfs, nfs, lustre,
+// ceph, …) and unknown fs types pass through. Entries whose fs type can't
+// be determined (e.g. when /proc/self/mountinfo isn't readable on this
+// kernel) keep an empty FSType — consoles still get the path string and
+// can fall back to a "unknown" classification.
 //
 // The result is intentionally a plain slice, not a map: bench rule
 // targets must round-trip through allowedRoots verbatim, so preserving
@@ -46,12 +50,77 @@ func detectMountPoints(allowedRoots []string) []proto.SyncNodeMountPoint {
 	out := make([]proto.SyncNodeMountPoint, 0, len(allowedRoots))
 	for _, root := range allowedRoots {
 		clean := filepath.Clean(root)
+		fsType := longestPrefixMountType(mounts, clean)
+		if isPseudoFSType(fsType) {
+			// Drop overlay rootfs subdirs, tmpfs, /proc, /sys, cgroup,
+			// etc. — they exist inside every container but make zero
+			// sense as bench targets and only pollute the dashboard
+			// dropdown. The path is still kept inside the syncnode's
+			// allowedRoots so an explicit BenchRule referencing it is
+			// not blocked at validation time; only auto-discovery
+			// hides it.
+			continue
+		}
 		out = append(out, proto.SyncNodeMountPoint{
 			Path:   clean,
-			FSType: longestPrefixMountType(mounts, clean),
+			FSType: fsType,
 		})
 	}
 	return out
+}
+
+// pseudoFSTypes lists the kernel filesystems that are NEVER real bench
+// targets. These come in two flavours:
+//
+//   - virtual / kernel-only: proc, sysfs, cgroup(2), bpf, tracefs,
+//     securityfs, debugfs, configfs, fusectl, mqueue, pstore, ramfs,
+//     hugetlbfs, autofs, binfmt_misc, nsfs, rpc_pipefs, selinuxfs,
+//     devtmpfs, devpts — entirely synthesised by the kernel
+//   - container plumbing: overlay/overlay2 (the container's own root
+//     overlay), tmpfs (always backed by RAM, often used for /run, /dev/shm),
+//     squashfs (read-only image layers)
+//
+// Real filesystems intentionally NOT listed (so they DO surface in the
+// dropdown): fuse.cubefs, ext4, xfs, btrfs, zfs, nfs(4), gpfs, lustre,
+// cifs/smbfs/smb3, glusterfs, ceph/cephfs, fuse.* (other fuse impls),
+// 9p, virtiofs.
+var pseudoFSTypes = map[string]struct{}{
+	"overlay":     {},
+	"overlay2":    {},
+	"tmpfs":       {},
+	"proc":        {},
+	"sysfs":       {},
+	"cgroup":      {},
+	"cgroup2":     {},
+	"devtmpfs":    {},
+	"devpts":      {},
+	"mqueue":      {},
+	"pstore":      {},
+	"ramfs":       {},
+	"bpf":         {},
+	"tracefs":     {},
+	"securityfs":  {},
+	"debugfs":     {},
+	"fusectl":     {},
+	"configfs":    {},
+	"hugetlbfs":   {},
+	"autofs":      {},
+	"binfmt_misc": {},
+	"squashfs":    {},
+	"nsfs":        {},
+	"rpc_pipefs":  {},
+	"selinuxfs":   {},
+}
+
+// isPseudoFSType reports whether fsType should be hidden from the
+// dashboard mount dropdown. Empty string returns false — unknown types
+// are kept so an operator can still spot them and decide.
+func isPseudoFSType(fsType string) bool {
+	if fsType == "" {
+		return false
+	}
+	_, ok := pseudoFSTypes[fsType]
+	return ok
 }
 
 // mountInfoEntry is one row from /proc/self/mountinfo we care about.
