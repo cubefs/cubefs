@@ -143,10 +143,25 @@ func buildFIOArgs(defaults spec.FIOConfig, stage spec.FIOStage, workDir string) 
 	direct := orDefaultInt(stage.Direct, defaults.Direct, 1)
 	bs := orDefaultStr(stage.BS, defaults.BS, "4k")
 
+	// reuseFiles + sourceStage tell fio "this stage reads back files
+	// written by an earlier stage". A common UX trap is configuring
+	// sourceStage without flipping reuseFiles — fio then creates empty
+	// files named after THIS stage and "reads" 54M empty ops in 30s with
+	// zero bytes / zero latency (the symptom that prompted this fix).
+	//
+	// So if sourceStage is set we coerce reuse semantics on, regardless
+	// of what the rule's reuseFiles bool says. Logging the auto-coercion
+	// keeps the behaviour observable; the rule itself is not rewritten.
+	reuseFiles := stage.ReuseFiles
+	if stage.SourceStage != "" && !reuseFiles {
+		log.LogWarnf("bench posix: stage %q has sourceStage=%q but reuseFiles=false — forcing reuse semantics so the read actually hits the previous stage's files", stage.Name, stage.SourceStage)
+		reuseFiles = true
+	}
+
 	// When reuseFiles is true, fio reuses the files written by SourceStage by
 	// using the same job name (which determines the filename pattern).
 	jobName := stage.Name
-	if stage.ReuseFiles && stage.SourceStage != "" {
+	if reuseFiles && stage.SourceStage != "" {
 		jobName = stage.SourceStage
 	}
 
@@ -165,7 +180,7 @@ func buildFIOArgs(defaults spec.FIOConfig, stage spec.FIOStage, workDir string) 
 	if runtime > 0 {
 		args = append(args, "--runtime="+strconv.Itoa(runtime), "--time_based")
 	}
-	if !stage.ReuseFiles {
+	if !reuseFiles {
 		args = append(args, "--create_on_open=1", "--fallocate=none")
 	}
 	if stage.RW == "randrw" && stage.RWMixRead > 0 {
