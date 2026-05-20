@@ -913,6 +913,67 @@ func TestDiskMgr_ValidateAllocRet(t *testing.T) {
 	require.NoError(t, mgr.validateAllocRet([]proto.DiskID{1, 2, 3}))
 }
 
+// TestBlobNodeManager_ListNodes verifies ListNodes with status filters:
+// 0 (all), NodeStatusNormal, and NodeStatusDropped.
+func TestBlobNodeManager_ListNodes(t *testing.T) {
+	mgr, closeMgr := initTestBlobNodeMgr(t)
+	defer closeMgr()
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+
+	// Add 4 nodes with one disk each (specifyNodeID=true → disk i belongs to node i).
+	initTestBlobNodeMgrNodes(t, mgr, 1, 4, testIdcs[0])
+	initTestBlobNodeMgrDisks(t, mgr, 1, 4, true, testIdcs[0])
+
+	// ── initial state: all 4 nodes are Normal ──────────────────────────────
+	all := mgr.ListNodes(ctx, 0)
+	require.Equal(t, 4, len(all))
+
+	normals := mgr.ListNodes(ctx, proto.NodeStatusNormal)
+	require.Equal(t, 4, len(normals))
+
+	dropped := mgr.ListNodes(ctx, proto.NodeStatusDropped)
+	require.Equal(t, 0, len(dropped))
+
+	// ── put node 2 into Dropping state (disk 2 readonly → applyDroppingNode) ──
+	// Dropping nodes keep NodeStatusNormal as their persisted status, so they
+	// still appear in the Normal filter result.
+	require.NoError(t, mgr.applySwitchReadonly(proto.DiskID(2), true))
+	_, err := mgr.applyDroppingNode(ctx, proto.NodeID(2), true)
+	require.NoError(t, err)
+
+	// Dropping nodes keep NodeStatusNormal as persisted status, so they still appear.
+	normals = mgr.ListNodes(ctx, proto.NodeStatusNormal)
+	require.Equal(t, 4, len(normals))
+
+	// ── fully drop node 1 ─────────────────────────────────────────────────
+	require.NoError(t, mgr.applySwitchReadonly(proto.DiskID(1), true))
+	_, err = mgr.applyDroppingNode(ctx, proto.NodeID(1), true)
+	require.NoError(t, err)
+	require.NoError(t, mgr.applyDroppedDisk(ctx, proto.DiskID(1)))
+	require.NoError(t, mgr.applyDroppedNode(ctx, proto.NodeID(1)))
+
+	all = mgr.ListNodes(ctx, 0)
+	require.Equal(t, 4, len(all)) // node 1 is still in allNodes, just Dropped
+
+	dropped = mgr.ListNodes(ctx, proto.NodeStatusDropped)
+	require.Equal(t, 1, len(dropped))
+	require.Equal(t, proto.NodeID(1), dropped[0].NodeID)
+	require.Equal(t, proto.NodeStatusDropped, dropped[0].Status)
+
+	// node 2 (dropping) + node 3 + node 4 all have NodeStatusNormal
+	normals = mgr.ListNodes(ctx, proto.NodeStatusNormal)
+	require.Equal(t, 3, len(normals))
+
+	normalIDs := make(map[proto.NodeID]struct{}, 3)
+	for _, n := range normals {
+		normalIDs[n.NodeID] = struct{}{}
+	}
+	require.Contains(t, normalIDs, proto.NodeID(2))
+	require.Contains(t, normalIDs, proto.NodeID(3))
+	require.Contains(t, normalIDs, proto.NodeID(4))
+	require.NotContains(t, normalIDs, proto.NodeID(1)) // node 1 is Dropped
+}
+
 // TestDiskMgr_DroppingNode covers applyDroppingNode/applyDroppedNode corner cases:
 // node not found, dropping propagation, and dropped without disks.
 func TestDiskMgr_DroppingNode(t *testing.T) {

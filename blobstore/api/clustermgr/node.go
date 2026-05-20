@@ -16,6 +16,7 @@ package clustermgr
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
@@ -53,6 +54,16 @@ type NodeIDAllocRet struct {
 	NodeID proto.NodeID `json:"node_id"`
 }
 
+// ListNodesArgs holds optional filter parameters for listing blob nodes.
+// When Status is 0 (unset), all nodes are returned regardless of status.
+type ListNodesArgs struct {
+	Status proto.NodeStatus `json:"status,omitempty"`
+}
+
+type ListNodesRet struct {
+	Nodes []BlobNodeInfo `json:"nodes"`
+}
+
 type NodeSetInfo struct {
 	ID       proto.NodeSetID                    `json:"id"`
 	Number   int                                `json:"number"`
@@ -86,6 +97,14 @@ func (c *Client) DropNode(ctx context.Context, id proto.NodeID) (err error) {
 func (c *Client) NodeInfo(ctx context.Context, id proto.NodeID) (ret *BlobNodeInfo, err error) {
 	ret = &BlobNodeInfo{}
 	err = c.GetWith(ctx, "/node/info?node_id="+id.ToString(), ret)
+	return
+}
+
+// ListNodes lists blob nodes filtered by status.
+// Pass proto.NodeStatusInvalid to return all nodes, or proto.NodeStatusNormal / NodeStatusDropped to filter.
+func (c *Client) ListNodes(ctx context.Context, status proto.NodeStatus) (ret *ListNodesRet, err error) {
+	ret = &ListNodesRet{}
+	err = c.GetWith(ctx, fmt.Sprintf("/node/list?status=%d", status), ret)
 	return
 }
 

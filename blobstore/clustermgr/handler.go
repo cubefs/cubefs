@@ -58,12 +58,15 @@ func NewHandler(service *Service) *rpc.Router {
 
 	//=====================blobnode==========================
 	rpc.RegisterArgsParser(&clustermgr.NodeInfoArgs{}, "json")
+	rpc.RegisterArgsParser(&clustermgr.ListNodesArgs{}, "json")
 
 	rpc.POST("/node/add", service.NodeAdd, rpc.OptArgsBody())
 
 	rpc.POST("/node/drop", service.NodeDrop, rpc.OptArgsBody())
 
 	rpc.GET("/node/info", service.NodeInfo, rpc.OptArgsQuery())
+
+	rpc.GET("/node/list", service.NodeList, rpc.OptArgsQuery())
 
 	rpc.GET("/topo/info", service.TopoInfo)
 
