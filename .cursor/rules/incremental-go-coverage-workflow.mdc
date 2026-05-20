@@ -14,6 +14,11 @@ alwaysApply: true
   - `incremental-coverage-autofix <valid_commit> [target_coverage]`
   - `incremental-coverage-autofix [target_coverage]`（不带 commit 时只检查未提交改动）
 - 优先走**最小变更包范围**的 `go test -coverprofile`，不要默认整仓 `bash build/build.sh testcover`。
+- 测试依赖 RocksDB CGO 的包（如 `metanode`、`master` 等）前，必须先加载 CGO 环境：
+  ```bash
+  source build/cgo_env.sh
+  ```
+  再执行 `go test`；未 `source` 时常见报错为 `rocksdb/c.h: No such file or directory`。
 - 用 `.cursor/skills/incremental-go-coverage/scripts/check_incremental_go_coverage.py` 做 changed-line 覆盖率计算。
 - 低于阈值时，优先补已有 `_test.go` 中的 focused tests，再重新执行覆盖率校验。
 - 汇报结果时明确说明：

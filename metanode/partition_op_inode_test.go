@@ -385,17 +385,21 @@ func TestOpUpdateExtentKeyAfterMigrationRejectsLeaseExpireMismatch(t *testing.T)
 	mp.SetEnableAuditLog(true)
 
 	resp := prepareInodeForInodeTest(t, mp, FileModeType)
+	stored, err := mp.inodeTree.Get(&Inode{Inode: resp.Info.Inode})
+	require.NoError(t, err)
+	require.NotNil(t, stored)
+
 	req := &proto.UpdateExtentKeyAfterMigrationRequest{
 		PartitionID:      mp.GetBaseConfig().PartitionId,
 		Inode:            resp.Info.Inode,
-		LeaseExpire:      resp.Info.Generation + 1,
+		LeaseExpire:      stored.LeaseExpireTime + 1,
 		StorageClass:     proto.StorageClass_Replica_HDD,
 		PoolId:           proto.DefaultHDDPoolId,
 		NewObjExtentKeys: nil,
 	}
 	p := &Packet{}
 
-	err := mp.UpdateExtentKeyAfterMigration(req, p, "127.0.0.1")
+	err = mp.UpdateExtentKeyAfterMigration(req, p, "127.0.0.1")
 	require.NoError(t, err)
 	require.EqualValues(t, proto.OpLeaseGenerationNotMatch, p.ResultCode)
 }
@@ -424,6 +428,21 @@ func TestOpAppendExtentWithAuditLogForMigration(t *testing.T) {
 	err := mp.ExtentAppendWithCheck(req, p, "127.0.0.1")
 	require.NoError(t, err)
 	require.EqualValues(t, proto.OpOk, p.ResultCode)
+}
+
+func TestUpdateInodeMetaAuditDeferOnInodeNotExist(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mp := mockPartitionRaftForFsmInodeTest(t, ctrl, proto.StoreModeMem)
+	mp.SetEnableAuditLog(true)
+
+	pkt := &Packet{}
+	err := mp.UpdateInodeMeta(&proto.UpdateInodeMetaRequest{
+		Inode:       99999,
+		PartitionID: mp.config.PartitionId,
+	}, pkt, "127.0.0.1")
+	require.NoError(t, err)
+	require.EqualValues(t, proto.OpNotExistErr, pkt.ResultCode)
 }
 
 func TestUpdateInodeMetaSuccess(t *testing.T) {
@@ -523,4 +542,255 @@ func TestUpdateInodeMetaSubmitError(t *testing.T) {
 	}, pkt, "127.0.0.1")
 	require.Error(t, err)
 	require.EqualValues(t, proto.OpAgain, pkt.ResultCode)
+}
+
+func TestInodeOpAuditErr(t *testing.T) {
+	t.Run("returns err when set", func(t *testing.T) {
+		baseErr := fmt.Errorf("submit failed")
+		require.Equal(t, baseErr, inodeOpAuditErr(baseErr, &Packet{}))
+	})
+
+	t.Run("returns nil when packet ok", func(t *testing.T) {
+		p := &Packet{}
+		p.PacketOkReply()
+		require.NoError(t, inodeOpAuditErr(nil, p))
+	})
+
+	t.Run("maps non-OK packet result", func(t *testing.T) {
+		p := &Packet{}
+		p.PacketErrorWithBody(proto.OpNotExistErr, []byte("inode not exist"))
+		opErr := inodeOpAuditErr(nil, p)
+		require.Error(t, opErr)
+		require.Contains(t, opErr.Error(), "result")
+	})
+
+	t.Run("nil packet", func(t *testing.T) {
+		require.NoError(t, inodeOpAuditErr(nil, nil))
+	})
+}
+
+func TestScanInodeByPoolReturnsInodeIDs(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mp := mockPartitionRaftForFsmInodeTest(t, ctrl, proto.StoreModeMem)
+
+	const (
+		inoSmall = uint64(41001)
+		inoMatch = uint64(41002)
+	)
+	for _, spec := range []struct {
+		ino    uint64
+		size   uint64
+		poolID uint8
+	}{
+		{ino: inoSmall, size: 10, poolID: proto.DefaultSSDPoolId},
+		{ino: inoMatch, size: 4096, poolID: proto.DefaultSSDPoolId},
+	} {
+		handle, err := mp.inodeTree.CreateBatchWriteHandle()
+		require.NoError(t, err)
+		inode := NewInodeTest(spec.ino, FileModeType)
+		inode.PoolId = spec.poolID
+		inode.Size = spec.size
+		inode.StorageClass = proto.StorageClass_Replica_SSD
+		status, err := mp.fsmCreateInode(handle, inode)
+		require.NoError(t, err)
+		require.EqualValues(t, proto.OpOk, status)
+		err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+		require.NoError(t, err)
+	}
+
+	resp := &proto.ScanInodeByPoolResponse{}
+	err := mp.ScanInodeByPool(&proto.ScanInodeByPoolRequest{
+		PartitionID: mp.config.PartitionId,
+		PoolId:      proto.DefaultSSDPoolId,
+		PageSize:    10,
+		MinSize:     1024,
+		CheckLease:  false,
+	}, resp)
+	require.NoError(t, err)
+	require.Equal(t, []uint64{inoMatch}, resp.Inodes)
+	require.Positive(t, resp.TotalScanned)
+}
+
+func TestOpUpdateExtentKeyAfterMigrationLeaseMatchIgnoresGenerationDrift(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mp := mockPartitionRaftForFsmInodeTest(t, ctrl, proto.StoreModeMem)
+
+	resp := prepareInodeForInodeTest(t, mp, FileModeType)
+	ino, err := mp.inodeTree.Get(&Inode{Inode: resp.Info.Inode})
+	require.NoError(t, err)
+	require.NotNil(t, ino)
+
+	beforeGen := ino.Generation
+	ino.Generation += 100
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	err = mp.inodeTree.Update(handle, ino)
+	require.NoError(t, err)
+	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
+
+	p := &Packet{}
+	err = mp.UpdateExtentKeyAfterMigration(&proto.UpdateExtentKeyAfterMigrationRequest{
+		PartitionID:      mp.GetBaseConfig().PartitionId,
+		Inode:            resp.Info.Inode,
+		LeaseExpire:      ino.LeaseExpireTime,
+		StorageClass:     proto.StorageClass_Replica_HDD,
+		PoolId:           proto.DefaultHDDPoolId,
+		NewObjExtentKeys: nil,
+	}, p, "127.0.0.1")
+	require.NoError(t, err)
+	require.NotEqual(t, proto.OpLeaseGenerationNotMatch, p.ResultCode,
+		"generation drift alone must not fail lease check; got %s", p.GetResultMsg())
+
+	after, getErr := mp.inodeTree.Get(&Inode{Inode: resp.Info.Inode})
+	require.NoError(t, getErr)
+	require.Equal(t, beforeGen+100, after.Generation)
+}
+
+func TestInodeOpAuditDeferOnErrors(t *testing.T) {
+	const remote = "127.0.0.1"
+	pid := func(mp *metaPartition) uint64 { return mp.GetBaseConfig().PartitionId }
+	vol := func(mp *metaPartition) string { return mp.GetBaseConfig().VolName }
+
+	cases := []struct {
+		name string
+		run  func(mp *metaPartition)
+	}{
+		{
+			name: "UnlinkInode not exist",
+			run: func(mp *metaPartition) {
+				p := &Packet{}
+				_ = mp.UnlinkInode(&UnlinkInoReq{
+					VolName: vol(mp), PartitionID: pid(mp), Inode: 99999,
+				}, p, remote)
+			},
+		},
+		{
+			name: "UnlinkInodeBatch",
+			run: func(mp *metaPartition) {
+				p := &Packet{}
+				_ = mp.UnlinkInodeBatch(&BatchUnlinkInoReq{
+					VolName: vol(mp), PartitionID: pid(mp), Inodes: []uint64{99998},
+				}, p, remote)
+			},
+		},
+		{
+			name: "EvictInode not exist",
+			run: func(mp *metaPartition) {
+				p := &Packet{}
+				_ = mp.EvictInode(&EvictInodeReq{
+					VolName: vol(mp), PartitionID: pid(mp), Inode: 99997,
+				}, p, remote)
+			},
+		},
+		{
+			name: "EvictInodeBatch",
+			run: func(mp *metaPartition) {
+				p := &Packet{}
+				_ = mp.EvictInodeBatch(&BatchEvictInodeReq{
+					VolName: vol(mp), PartitionID: pid(mp), Inodes: []uint64{99996},
+				}, p, remote)
+			},
+		},
+		{
+			name: "CreateInodeLink not exist",
+			run: func(mp *metaPartition) {
+				p := &Packet{}
+				_ = mp.CreateInodeLink(&LinkInodeReq{
+					VolName: vol(mp), PartitionID: pid(mp), Inode: 99995,
+				}, p, remote)
+			},
+		},
+		{
+			name: "DeleteInode",
+			run: func(mp *metaPartition) {
+				p := &Packet{}
+				_ = mp.DeleteInode(&proto.DeleteInodeRequest{
+					VolName: vol(mp), PartitionId: pid(mp), Inode: 99994,
+				}, p, remote)
+			},
+		},
+		{
+			name: "DeleteInodeBatch",
+			run: func(mp *metaPartition) {
+				p := &Packet{}
+				_ = mp.DeleteInodeBatch(&proto.DeleteInodeBatchRequest{
+					VolName: vol(mp), PartitionId: pid(mp), Inodes: []uint64{99993},
+				}, p, remote)
+			},
+		},
+		{
+			name: "TxUnlinkInode not exist",
+			run: func(mp *metaPartition) {
+				p := &Packet{}
+				_ = mp.TxUnlinkInode(&proto.TxUnlinkInodeRequest{
+					VolName: vol(mp), PartitionID: pid(mp), Inode: 99992,
+					TxInfo: &proto.TransactionInfo{TxID: "tx-unlink"},
+				}, p, remote)
+			},
+		},
+		{
+			name: "TxCreateInodeLink not exist",
+			run: func(mp *metaPartition) {
+				p := &Packet{}
+				_ = mp.TxCreateInodeLink(&proto.TxLinkInodeRequest{
+					VolName: vol(mp), PartitionID: pid(mp), Inode: 99991,
+					TxInfo: &proto.TransactionInfo{TxID: "tx-link"},
+				}, p, remote)
+			},
+		},
+		{
+			name: "QuotaCreateInode",
+			run: func(mp *metaPartition) {
+				p := &Packet{}
+				_ = mp.QuotaCreateInode(&proto.QuotaCreateInodeRequest{
+					VolName: vol(mp), PartitionID: pid(mp), Mode: FileModeType,
+					PoolId: proto.DefaultSSDPoolId,
+				}, p, remote)
+			},
+		},
+		{
+			name: "DeleteMigrationExtentKey not exist",
+			run: func(mp *metaPartition) {
+				p := &Packet{}
+				_ = mp.DeleteMigrationExtentKey(&proto.DeleteMigrationExtentKeyRequest{
+					PartitionID: pid(mp), Inode: 99990,
+				}, p, remote)
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			mp := mockPartitionRaftForFsmInodeTest(t, ctrl, proto.StoreModeMem)
+			mp.SetEnableAuditLog(true)
+			tc.run(mp)
+		})
+	}
+}
+
+func TestDeleteMigrationExtentKeyAuditDefer(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mp := mockPartitionRaftForFsmInodeTest(t, ctrl, proto.StoreModeMem)
+	mp.SetEnableAuditLog(true)
+
+	const ino = uint64(42050)
+	prepareInodeForFsmInodeTest(t, mp, ino)
+	inode, err := mp.inodeTree.Get(&Inode{Inode: ino})
+	require.NoError(t, err)
+	inode.SetDeleteMigrationExtentKeyImmediately()
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	require.NoError(t, mp.inodeTree.Update(handle, inode))
+	require.NoError(t, mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false))
+
+	p := &Packet{}
+	err = mp.DeleteMigrationExtentKey(&proto.DeleteMigrationExtentKeyRequest{
+		PartitionID: mp.config.PartitionId, Inode: ino,
+	}, p, "127.0.0.1")
+	require.NoError(t, err)
 }

@@ -2174,8 +2174,9 @@ func newVolGetInodeByIdCmd(client *master.MasterClient) *cobra.Command {
 			}
 
 			metaConfig := &meta.MetaConfig{
-				Volume:  volName,
-				Masters: client.Nodes(),
+				Volume:   volName,
+				Masters:  client.Nodes(),
+				InnerReq: true,
 			}
 			mw, err := meta.NewMetaWrapper(metaConfig)
 			if err != nil {

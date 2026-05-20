@@ -35,7 +35,7 @@ Preferred targeted workflow in this repository:
 ```bash
 base=<commit>
 threshold=80
-. build/cgo_env.sh
+source build/cgo_env.sh
 pkgs=$(
   {
     git diff --name-only "$base" -- '*.go'

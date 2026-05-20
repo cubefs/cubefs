@@ -32,6 +32,7 @@ func TestScanDentryJSONRoundTrip(t *testing.T) {
 
 	data, err := json.Marshal(dentry)
 	require.NoError(t, err)
+	require.NotContains(t, string(data), `"generation"`)
 
 	var decoded ScanDentry
 	require.NoError(t, json.Unmarshal(data, &decoded))

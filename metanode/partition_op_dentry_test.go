@@ -195,3 +195,120 @@ func TestUpdateDentry_Rocksdb(t *testing.T) {
 	mp := mockPartitionRaftForFsmDentryTest(t, ctrl, proto.StoreModeRocksDb)
 	testUpdateDentry(t, mp)
 }
+
+func TestDentryOpAuditDeferOnErrors(t *testing.T) {
+	const remote = "127.0.0.1"
+	vol := func(mp *metaPartition) string { return mp.GetBaseConfig().VolName }
+	pid := func(mp *metaPartition) uint64 { return mp.GetBaseConfig().PartitionId }
+
+	cases := []struct {
+		name string
+		run  func(mp *metaPartition)
+	}{
+		{
+			name: "CreateDentry parent not exist",
+			run: func(mp *metaPartition) {
+				p := &Packet{}
+				_ = mp.CreateDentry(&CreateDentryReq{
+					VolName: vol(mp), PartitionID: pid(mp), ParentID: 99999,
+					Name: "missing-parent", Inode: 1,
+				}, p, remote)
+			},
+		},
+		{
+			name: "CreateDentry parent equals inode",
+			run: func(mp *metaPartition) {
+				p := &Packet{}
+				_ = mp.CreateDentry(&CreateDentryReq{
+					VolName: vol(mp), PartitionID: pid(mp), ParentID: 10,
+					Name: "bad", Inode: 10,
+				}, p, remote)
+			},
+		},
+		{
+			name: "DeleteDentry not exist",
+			run: func(mp *metaPartition) {
+				p := &Packet{}
+				_ = mp.DeleteDentry(&DeleteDentryReq{
+					VolName: vol(mp), PartitionID: pid(mp), ParentID: 1, Name: "no-such-dentry",
+				}, p, remote)
+			},
+		},
+		{
+			name: "UpdateDentry parent equals inode",
+			run: func(mp *metaPartition) {
+				p := &Packet{}
+				_ = mp.UpdateDentry(&UpdateDentryReq{
+					VolName: vol(mp), PartitionID: pid(mp), ParentID: 20,
+					Name: "x", Inode: 20,
+				}, p, remote)
+			},
+		},
+		{
+			name: "DeleteDentryBatch",
+			run: func(mp *metaPartition) {
+				p := &Packet{}
+				_ = mp.DeleteDentryBatch(&BatchDeleteDentryReq{
+					VolName: vol(mp), PartitionID: pid(mp), ParentID: 1,
+					Dens: []proto.Dentry{{Name: "batch-miss", Inode: 99}},
+				}, p, remote)
+			},
+		},
+		{
+			name: "TxCreateDentry parent not exist",
+			run: func(mp *metaPartition) {
+				p := &Packet{}
+				_ = mp.TxCreateDentry(&proto.TxCreateDentryRequest{
+					VolName: vol(mp), PartitionID: pid(mp), ParentID: 99998,
+					Name: "tx-miss", Inode: 2, TxInfo: &proto.TransactionInfo{TxID: "tx1"},
+				}, p, remote)
+			},
+		},
+		{
+			name: "QuotaCreateDentry parent not exist",
+			run: func(mp *metaPartition) {
+				p := &Packet{}
+				_ = mp.QuotaCreateDentry(&proto.QuotaCreateDentryRequest{
+					VolName: vol(mp), PartitionID: pid(mp), ParentID: 99997,
+					Name: "quota-miss", Inode: 3,
+				}, p, remote)
+			},
+		},
+		{
+			name: "TxDeleteDentry not exist",
+			run: func(mp *metaPartition) {
+				p := &Packet{}
+				_ = mp.TxDeleteDentry(&proto.TxDeleteDentryRequest{
+					VolName: vol(mp), PartitionID: pid(mp), ParentID: 1,
+					Name: "tx-del-miss", Ino: 4, TxInfo: &proto.TransactionInfo{TxID: "tx2"},
+				}, p, remote)
+			},
+		},
+		{
+			name: "TxUpdateDentry parent equals inode",
+			run: func(mp *metaPartition) {
+				p := &Packet{}
+				_ = mp.TxUpdateDentry(&proto.TxUpdateDentryRequest{
+					VolName: vol(mp), PartitionID: pid(mp), ParentID: 30,
+					Name: "tx-upd", Inode: 30, TxInfo: &proto.TransactionInfo{TxID: "tx3"},
+				}, p, remote)
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			mp := mockPartitionRaftForFsmDentryTest(t, ctrl, proto.StoreModeMem)
+			mp.SetEnableAuditLog(true)
+			tc.run(mp)
+		})
+	}
+}
+
+func TestOpDeleteDentryCoversFsmCopyGet(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mp := mockPartitionRaftForFsmDentryTest(t, ctrl, proto.StoreModeMem)
+	testOpDeleteDentry(t, mp)
+}

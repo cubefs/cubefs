@@ -79,6 +79,22 @@ func TestUpdateExtentKeyAfterMigrationRequestFields(t *testing.T) {
 }
 
 // Covers operation.go lookup passing parentID into sendToMetaPartition for dirty-inode near-read suppression.
+func TestUpdateExtentKeyAfterMigrationPartitionNotFound(t *testing.T) {
+	mw := &MetaWrapper{
+		volname:         "test-vol",
+		metaSendTimeout: 30,
+		conns:           util.NewConnectPool(),
+		partitions:      make(map[uint64]*MetaPartition),
+		ranges:          btree.New(32),
+	}
+	t.Cleanup(func() { mw.conns.Close() })
+
+	err := mw.UpdateExtentKeyAfterMigration(42, proto.StorageClass_Replica_HDD, nil,
+		proto.DefaultHDDPoolId, 1, 0, "/missing")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not found mp")
+}
+
 func TestLookupSkipsNearReadWhenParentInodeDirty(t *testing.T) {
 	chLeader := make(chan *proto.Packet, 1)
 	addr, cleanup := startMockMetaPacketListener(t, mockLookupOKHandler(chLeader))

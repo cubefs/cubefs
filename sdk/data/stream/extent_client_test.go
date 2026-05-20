@@ -5,9 +5,32 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/stretchr/testify/require"
 )
+
+func TestForceRefreshExtentsCacheUsesForceRefresh(t *testing.T) {
+	const inode = uint64(6601)
+	client := &ExtentClient{
+		streamers: make(map[uint64]*Streamer),
+		getExtents: func(ino uint64, isCache, openForWrite, isMigration bool) (uint64, uint64, []proto.ExtentKey, error) {
+			return 2, 100, nil, nil
+		},
+	}
+	cache := NewExtentCache(inode)
+	cache.gen = 5
+	s := &Streamer{
+		inode:   inode,
+		client:  client,
+		extents: cache,
+	}
+	client.streamers[inode] = s
+
+	require.NoError(t, client.ForceRefreshExtentsCache(inode))
+	require.Equal(t, uint64(2), s.extents.gen,
+		"force refresh must update cache even when remote gen is lower than local")
+}
 
 func TestOpenStreamReuseReadToWriteTriggersForbiddenMigration(t *testing.T) {
 	client := &ExtentClient{

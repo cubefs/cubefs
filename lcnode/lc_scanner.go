@@ -707,6 +707,7 @@ func isSkipErr(err error) bool {
 
 func (s *LcScanner) inodeExpired(info *proto.InodeInfo, condE *proto.Expiration, condT []*proto.Transition, dentry *proto.ScanDentry) (op string) {
 	if info == nil {
+		log.LogInfof("inodeExpired: inode not found, dentry: %+v", dentry)
 		return
 	}
 
@@ -714,7 +715,7 @@ func (s *LcScanner) inodeExpired(info *proto.InodeInfo, condE *proto.Expiration,
 	dentry.StorageClass = info.StorageClass
 	dentry.LeaseExpire = info.LeaseExpireTime
 	dentry.HasMek = info.HasMigrationEk
-	
+	dentry.InodeInfo = info
 
 	if info.ForbiddenLc {
 		log.LogWarnf("ForbiddenLc, lease is occupied, inode: %+v, LeaseExpireTime(%v)", info.Inode, info.LeaseExpireTime)
@@ -1054,9 +1055,7 @@ func (s *LcScanner) clearFileChan() {
 	}
 }
 
-// batchGetFileInodeInfo batch gets inode info for file-type dentries from ReadDirLimit_ll result
-// It processes all dentries (files and dirs), batch calls BatchInodeGet for files only,
-// and returns ScanDentry list. Dir-type dentries have HasInodeInfo set to false
+// batchGetFileInodeInfo builds ScanDentry list from ReadDirLimit_ll result without prefetching inode info.
 func (s *LcScanner) batchGetFileInodeInfo(parentId uint64, dentries []proto.Dentry, parentPath string) []*proto.ScanDentry {
 	if len(dentries) == 0 {
 		return make([]*proto.ScanDentry, 0)
