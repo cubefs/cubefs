@@ -303,6 +303,7 @@ const (
 	BenchTaskGet    = "/benchTask/get"    // GET  ?id=
 	BenchTaskCancel = "/benchTask/cancel" // POST ?id=
 	BenchTaskRetry  = "/benchTask/retry"  // POST ?id=
+	BenchTaskDelete = "/benchTask/delete" // POST ?id=
 
 	QueryDisableDisk             = "/dataNode/queryDisableDisk"
 	QueryDecommissionSuccessDisk = "/dataNode/queryDecommissionSuccessDisk"

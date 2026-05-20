@@ -179,6 +179,24 @@ func (l *BenchTaskLedger) Cancel(taskID string) bool {
 	return true
 }
 
+// Remove deletes a single task record from the ledger. Idempotent — a no-op
+// when the task is absent. Caller is responsible for cascading to fan-out
+// shard records ("<parentID>/<N>") separately.
+func (l *BenchTaskLedger) Remove(taskID string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if _, ok := l.tasks[taskID]; !ok {
+		return
+	}
+	delete(l.tasks, taskID)
+	for i, id := range l.order {
+		if id == taskID {
+			l.order = append(l.order[:i], l.order[i+1:]...)
+			break
+		}
+	}
+}
+
 // Fail transitions a running task to failed with the given error message.
 // Returns true if the status was actually changed, false if the task is
 // absent or already terminal.

@@ -613,6 +613,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodPost).
 		Path(proto.BenchTaskRetry).
 		HandlerFunc(requireSyncAdminToken(m.retryBenchTask))
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.BenchTaskDelete).
+		HandlerFunc(requireSyncAdminToken(m.deleteBenchTask))
 
 	// node task response APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

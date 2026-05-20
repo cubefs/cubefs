@@ -378,3 +378,31 @@ func (m *Server) retryBenchTask(w http.ResponseWriter, r *http.Request) {
 	m.cluster.benchTaskLedger.Add(rec)
 	sendOkReply(w, r, newSuccessHTTPReply(map[string]string{"taskID": newTaskID, "status": string(BenchTaskStatusRunning)}))
 }
+
+// deleteBenchTask handles POST /benchTask/delete?id=. Removes the task
+// record (and its fan-out shard children "<id>/<N>") from the ledger.
+// Idempotent — deleting a non-existent task is a no-op success. Does NOT
+// stop an in-flight task on the executor; call /benchTask/cancel first if
+// the task is still running.
+func (m *Server) deleteBenchTask(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.BenchTaskDelete))
+	var err error
+	defer func() { doStatAndMetric(proto.BenchTaskDelete, metric, err, nil) }()
+
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		err = errors.New("missing id query param")
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	m.cluster.benchTaskLedger.Remove(id)
+	// Cascade fan-out shard records ("<parentID>/<N>") so they don't resurface
+	// in /benchTask/list aggregation after the parent is gone.
+	prefix := id + "/"
+	for _, c := range m.cluster.benchTaskLedger.List("", "") {
+		if len(c.TaskID) > len(prefix) && c.TaskID[:len(prefix)] == prefix {
+			m.cluster.benchTaskLedger.Remove(c.TaskID)
+		}
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(map[string]string{"taskID": id, "status": "deleted"}))
+}
