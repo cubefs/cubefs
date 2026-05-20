@@ -8067,6 +8067,7 @@ func (m *Server) listSyncNodes(w http.ResponseWriter, r *http.Request) {
 			MaxConcurrentTasks:  sn.MaxConcurrentTasks,
 			BandwidthMBpsLimit:  sn.BandwidthMBpsLimit,
 			LastTaskFailureRate: sn.LastTaskFailureRate,
+			MountPoints:         sn.MountPoints,
 		}
 		sn.RUnlock()
 		if scores != nil {

@@ -1103,6 +1103,29 @@ type SyncNodeInfo struct {
 	// Lower is better; +Inf means the node is stale or unhealthy. Computed
 	// by SyncDispatcher.LoadScore at /syncNode/list time.
 	LoadScore float64 `json:"loadScore"`
+
+	// MountPoints lists every POSIX path the syncnode container can read /
+	// write — mirror of cfg.Posix.AllowedRoots filtered through
+	// /proc/self/mountinfo so consumers see real fs types (fuse.cubefs,
+	// ext4, gpfs, …). Empty when the syncnode predates this field.
+	//
+	// Surfaced on /syncNode/list so the dashboard can populate the
+	// BenchRule create dialog's mountPath dropdown — distinguishing
+	// CubeFS volumes (fuse.cubefs) from external host mounts.
+	MountPoints []SyncNodeMountPoint `json:"mountPoints,omitempty"`
+}
+
+// SyncNodeMountPoint is one entry in SyncNodeInfo.MountPoints /
+// SyncNodeHeartbeatResponse.MountPoints.
+//
+//   - Path  : container-side absolute path (matches cfg.Posix.allowedRoots)
+//   - FSType: lowercase fs type as reported by /proc/self/mountinfo
+//             (e.g. "fuse.cubefs", "ext4", "gpfs", "nfs"). Empty when the
+//             path was not found in mountinfo (e.g. allowedRoots entry
+//             that's a subdir of a container fs root).
+type SyncNodeMountPoint struct {
+	Path   string `json:"path"`
+	FSType string `json:"fsType,omitempty"`
 }
 
 // SyncNodeHeartbeatRequest is sent FROM master TO syncnode (master pushes
@@ -1184,6 +1207,13 @@ type SyncNodeHeartbeatResponse struct {
 	// syncnode's executor.RunningSnapshots() on every heartbeat tick.
 	// An empty slice means no tasks are currently running on this node.
 	TaskReports []SyncTaskProgressReport `json:"taskReports,omitempty"`
+
+	// MountPoints lists the syncnode container's POSIX mount points
+	// (the cfg.Posix.AllowedRoots set, intersected with
+	// /proc/self/mountinfo so each entry carries its real fs type).
+	// Master copies this into SyncNode.MountPoints on every heartbeat,
+	// /syncNode/list re-emits it to consoles.
+	MountPoints []SyncNodeMountPoint `json:"mountPoints,omitempty"`
 }
 
 // SyncTaskProgressReport is one entry in SyncNodeHeartbeatResponse.TaskReports.

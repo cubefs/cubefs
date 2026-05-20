@@ -94,6 +94,13 @@ type SyncNode struct {
 	BandwidthMBpsLimit  float64
 	LastTaskFailureRate float64
 
+	// MountPoints is the syncnode container's POSIX path inventory
+	// (mirror of cfg.Posix.AllowedRoots, with fs types resolved via
+	// /proc/self/mountinfo). Refreshed each heartbeat — empty when the
+	// syncnode predates this field. Read by /syncNode/list to populate
+	// the dashboard's BenchRule mountPath dropdown.
+	MountPoints []proto.SyncNodeMountPoint
+
 	sync.RWMutex
 }
 

@@ -220,6 +220,7 @@ func (c *Cluster) handleSyncNodeHeartbeatResp(nodeAddr string, resp *proto.SyncN
 	sn.MaxConcurrentTasks = resp.MaxConcurrentTasks
 	sn.BandwidthMBpsLimit = resp.BandwidthMBpsLimit
 	sn.LastTaskFailureRate = resp.LastTaskFailureRate
+	sn.MountPoints = resp.MountPoints
 	addr := sn.Addr
 	sn.Unlock()
 

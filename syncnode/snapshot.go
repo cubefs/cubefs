@@ -54,6 +54,7 @@ const snapshotCacheRefresh = 30 * time.Second
 type snapshotCache struct {
 	failureRate atomic.Value // float64; nil-load before first refresh
 	rules       atomic.Pointer[[]proto.SyncRuleAdvert]
+	mountPoints atomic.Pointer[[]proto.SyncNodeMountPoint]
 	updatedAt   atomic.Int64 // unix nanos of last successful refresh
 
 	// System gauges sampled by the refresh goroutine and read by Snapshot().
@@ -127,6 +128,12 @@ func (s *SyncNode) Snapshot() proto.SyncNodeHeartbeatResponse {
 		// emitted with their ID so master can clear stale caps.
 		if r := s.snapshotCache.rules.Load(); r != nil {
 			resp.Rules = *r
+		}
+		// MountPoints: cached once on cfg load (and refreshed every
+		// snapshotCacheRefresh in case the operator hot-mounted something
+		// without a SIGHUP). Empty pre-cache returns no entries.
+		if mp := s.snapshotCache.mountPoints.Load(); mp != nil {
+			resp.MountPoints = *mp
 		}
 		resp.CPUPercent = math.Float64frombits(s.snapshotCache.cpuPercent.Load())
 		resp.MemPercent = math.Float64frombits(s.snapshotCache.memPercent.Load())
@@ -209,6 +216,20 @@ func (s *SyncNode) refreshSnapshotCache() {
 	s.snapshotCache.failureRate.Store(fr)
 	rs := s.advertiseRules()
 	s.snapshotCache.rules.Store(&rs)
+
+	// MountPoints: cheap read of cfg.Posix.AllowedRoots intersected with
+	// /proc/self/mountinfo. We do it here (refresh loop) instead of on
+	// cfg reload because the hot config reload path is reused on every
+	// SIGHUP and we want the dashboard to also see kernel-side mount
+	// changes (e.g. csi node remount) within snapshotCacheRefresh.
+	s.cfgMu.RLock()
+	var allowed []string
+	if s.cfg != nil {
+		allowed = append(allowed, s.cfg.Posix.AllowedRoots...)
+	}
+	s.cfgMu.RUnlock()
+	mp := detectMountPoints(allowed)
+	s.snapshotCache.mountPoints.Store(&mp)
 
 	// CPU utilisation. interval=0 returns differential since the last
 	// gopsutil call (non-blocking); safe to call every 30s.
