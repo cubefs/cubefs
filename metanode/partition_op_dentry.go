@@ -35,7 +35,7 @@ func (mp *metaPartition) TxCreateDentry(req *proto.TxCreateDentryRequest, p *Pac
 			if req.TxInfo != nil {
 				opMsg = fmt.Sprintf("%s_%s", opMsg, req.TxInfo.TxID)
 			}
-			auditlog.LogDentryOp(remoteAddr, mp.GetVolName(), opMsg, req.Name, req.GetFullPath(), err, time.Since(start).Milliseconds(), req.Inode, 0)
+			auditlog.LogDentryOp(remoteAddr, mp.GetVolName(), opMsg, req.Name, req.GetFullPath(), inodeOpAuditErr(err, p), time.Since(start).Milliseconds(), req.Inode, 0)
 		}()
 	}
 	if req.ParentID == req.Inode {
@@ -94,7 +94,7 @@ func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet, remoteAdd
 	start := time.Now()
 	if mp.IsEnableAuditLog() {
 		defer func() {
-			auditlog.LogDentryOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.Name, req.GetFullPath(), err, time.Since(start).Milliseconds(), req.Inode, req.ParentID)
+			auditlog.LogDentryOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.Name, req.GetFullPath(), inodeOpAuditErr(err, p), time.Since(start).Milliseconds(), req.Inode, req.ParentID)
 		}()
 	}
 	if req.ParentID == req.Inode {
@@ -145,7 +145,7 @@ func (mp *metaPartition) QuotaCreateDentry(req *proto.QuotaCreateDentryRequest, 
 	start := time.Now()
 	if mp.IsEnableAuditLog() {
 		defer func() {
-			auditlog.LogDentryOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.Name, req.GetFullPath(), err, time.Since(start).Milliseconds(), req.Inode, req.ParentID)
+			auditlog.LogDentryOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.Name, req.GetFullPath(), inodeOpAuditErr(err, p), time.Since(start).Milliseconds(), req.Inode, req.ParentID)
 		}()
 	}
 	if req.ParentID == req.Inode {
@@ -210,7 +210,7 @@ func (mp *metaPartition) TxDeleteDentry(req *proto.TxDeleteDentryRequest, p *Pac
 			if req.TxInfo != nil {
 				opMsg = fmt.Sprintf("%s_%s", opMsg, req.TxInfo.TxID)
 			}
-			auditlog.LogDentryOp(remoteAddr, mp.GetVolName(), opMsg, req.Name, req.GetFullPath(), err, time.Since(start).Milliseconds(), req.Ino, req.ParentID)
+			auditlog.LogDentryOp(remoteAddr, mp.GetVolName(), opMsg, req.Name, req.GetFullPath(), inodeOpAuditErr(err, p), time.Since(start).Milliseconds(), req.Ino, req.ParentID)
 		}()
 	}
 	txInfo := req.TxInfo.GetCopy()
@@ -304,7 +304,7 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet, remoteAdd
 	start := time.Now()
 	if mp.IsEnableAuditLog() {
 		defer func() {
-			auditlog.LogDentryOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.Name, req.GetFullPath(), err, time.Since(start).Milliseconds(), dentry.Inode, req.ParentID)
+			auditlog.LogDentryOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.Name, req.GetFullPath(), inodeOpAuditErr(err, p), time.Since(start).Milliseconds(), dentry.Inode, req.ParentID)
 		}()
 	}
 	if req.InodeCreateTime > 0 {
@@ -367,7 +367,7 @@ func (mp *metaPartition) DeleteDentryBatch(req *BatchDeleteDentryReq, p *Packet,
 		}
 		if mp.IsEnableAuditLog() {
 			defer func() {
-				auditlog.LogDentryOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), den.Name, fullPath, err, time.Since(start).Milliseconds(), den.Inode, req.ParentID)
+				auditlog.LogDentryOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), den.Name, fullPath, inodeOpAuditErr(err, p), time.Since(start).Milliseconds(), den.Inode, req.ParentID)
 			}()
 		}
 	}
@@ -430,7 +430,7 @@ func (mp *metaPartition) TxUpdateDentry(req *proto.TxUpdateDentryRequest, p *Pac
 			if req.TxInfo != nil {
 				opMsg = fmt.Sprintf("%s_%s", opMsg, req.TxInfo.TxID)
 			}
-			auditlog.LogDentryOp(remoteAddr, mp.GetVolName(), opMsg, req.Name, req.GetFullPath(), err, time.Since(start).Milliseconds(), req.Inode, req.ParentID)
+			auditlog.LogDentryOp(remoteAddr, mp.GetVolName(), opMsg, req.Name, req.GetFullPath(), inodeOpAuditErr(err, p), time.Since(start).Milliseconds(), req.Inode, req.ParentID)
 		}()
 	}
 	if req.ParentID == req.Inode {
@@ -513,7 +513,7 @@ func (mp *metaPartition) UpdateDentry(req *UpdateDentryReq, p *Packet, remoteAdd
 	start := time.Now()
 	if mp.IsEnableAuditLog() {
 		defer func() {
-			auditlog.LogDentryOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.Name, req.GetFullPath(), err, time.Since(start).Milliseconds(), req.Inode, req.ParentID)
+			auditlog.LogDentryOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.Name, req.GetFullPath(), inodeOpAuditErr(err, p), time.Since(start).Milliseconds(), req.Inode, req.ParentID)
 		}()
 	}
 	if req.ParentID == req.Inode {

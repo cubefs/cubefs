@@ -24,7 +24,6 @@ import (
 
 type MockMetaWrapper struct {
 	mu                     sync.Mutex
-	updateGenerationCalls  []uint64
 	updateLeaseExpireCalls []uint64
 }
 
@@ -48,11 +47,12 @@ func (*MockMetaWrapper) InodeGet_ll(inode uint64, isAsync bool) (*proto.InodeInf
 	switch inode {
 	case 1:
 		return &proto.InodeInfo{
-			Inode:      1,
-			AccessTime: time.Now().AddDate(0, 0, -2),
-			Size:       100,
-			PoolId:     proto.DefaultSSDPoolId,
-			Generation: 101,
+			Inode:           1,
+			AccessTime:      time.Now().AddDate(0, 0, -2),
+			Size:            100,
+			PoolId:          proto.DefaultSSDPoolId,
+			Generation:      101,
+			LeaseExpireTime: 101,
 		}, nil
 	case 2:
 		return &proto.InodeInfo{
@@ -89,21 +89,20 @@ func (*MockMetaWrapper) Evict(inode uint64, fullPath string, isAsync bool) error
 	return nil
 }
 
-func (m *MockMetaWrapper) UpdateExtentKeyAfterMigration(inode uint64, storageType uint32, extentKeys []proto.ObjExtentKey, poolId uint8, leaseExpireTime uint64, delayDelMinute uint64, fullPath string, generation uint64) error {
+func (m *MockMetaWrapper) UpdateExtentKeyAfterMigration(inode uint64, storageType uint32, extentKeys []proto.ObjExtentKey, poolId uint8, leaseExpireTime uint64, delayDelMinute uint64, fullPath string) error {
 	m.mu.Lock()
-	m.updateGenerationCalls = append(m.updateGenerationCalls, generation)
 	m.updateLeaseExpireCalls = append(m.updateLeaseExpireCalls, leaseExpireTime)
 	m.mu.Unlock()
 	return nil
 }
 
-func (m *MockMetaWrapper) LastUpdateGeneration() (uint64, bool) {
+func (m *MockMetaWrapper) LastUpdateLeaseExpire() (uint64, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if len(m.updateGenerationCalls) == 0 {
+	if len(m.updateLeaseExpireCalls) == 0 {
 		return 0, false
 	}
-	return m.updateGenerationCalls[len(m.updateGenerationCalls)-1], true
+	return m.updateLeaseExpireCalls[len(m.updateLeaseExpireCalls)-1], true
 }
 
 func (*MockMetaWrapper) DeleteMigrationExtentKey(inode uint64, fullPath string) error {
@@ -158,7 +157,7 @@ func (*MockMetaWrapper) ReadDirLimit_ll(parentID uint64, from string, limit uint
 
 func (*MockMetaWrapper) ScanInodeByPool(req *proto.ScanInodeByPoolRequest) (*proto.ScanInodeByPoolResponse, error) {
 	return &proto.ScanInodeByPoolResponse{
-		Inodes:       []*proto.InodeInfo{},
+		Inodes:       []uint64{},
 		NextInode:    0,
 		HasMore:      false,
 		TotalScanned: 0,

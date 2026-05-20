@@ -1125,7 +1125,6 @@ type UpdateExtentKeyAfterMigrationRequest struct {
 	Inode             uint64         `json:"ino"`
 	StorageClass      uint32         `json:"storageClass"`
 	PoolId            uint8          `json:"poolId"`
-	Generation        uint64         `json:"generation"`
 	NewObjExtentKeys  []ObjExtentKey `json:"newObjExtentKeys"`
 	LeaseExpire       uint64         `json:"leaseExpireTime"`
 	DelayDeleteMinute uint64         `json:"delayDeleteMinute"`

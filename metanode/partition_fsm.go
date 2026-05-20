@@ -72,6 +72,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	defer func() {
 		if err != nil {
 			_ = mp.inodeTree.ReleaseBatchWriteHandle(dbWriteHandle)
+			log.LogWarnf("[Apply] mp(%v) commit write handle failed, err(%v)", mp.config.PartitionId, err)
 			return
 		}
 

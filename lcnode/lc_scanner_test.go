@@ -109,7 +109,7 @@ func TestLcScanner(t *testing.T) {
 	require.False(t, res)
 }
 
-func TestLcScannerInodeExpiredSetsGeneration(t *testing.T) {
+func TestLcScannerInodeExpiredSetsLeaseExpire(t *testing.T) {
 	scanner := &LcScanner{
 		now: time.Now(),
 	}
@@ -119,19 +119,17 @@ func TestLcScannerInodeExpiredSetsGeneration(t *testing.T) {
 		Size:            4096,
 		StorageClass:    proto.StorageClass_Replica_SSD,
 		LeaseExpireTime: 200,
-		Generation:      321,
 	}
 	dentry := &proto.ScanDentry{}
 
 	op := scanner.inodeExpired(info, nil, nil, dentry)
 	require.Equal(t, "", op)
-	require.Equal(t, info.Generation, dentry.Generation)
 	require.Equal(t, info.LeaseExpireTime, dentry.LeaseExpire)
 	require.Equal(t, info.StorageClass, dentry.StorageClass)
 	require.Equal(t, info.Size, dentry.Size)
 }
 
-func TestLcScannerHandleFilePassesGenerationToMetaWrapper(t *testing.T) {
+func TestLcScannerHandleFilePassesLeaseExpireToMetaWrapper(t *testing.T) {
 	lcScanRoutineNumPerTask = 1
 	maxDirChanNum = 0
 	scanCheckInterval = 1
@@ -179,7 +177,7 @@ func TestLcScannerHandleFilePassesGenerationToMetaWrapper(t *testing.T) {
 		Type:     0,
 	})
 
-	lastGeneration, ok := mockMw.LastUpdateGeneration()
+	lastLeaseExpire, ok := mockMw.LastUpdateLeaseExpire()
 	require.True(t, ok, "expected UpdateExtentKeyAfterMigration to be called")
-	require.Equal(t, uint64(101), lastGeneration)
+	require.Equal(t, uint64(101), lastLeaseExpire)
 }

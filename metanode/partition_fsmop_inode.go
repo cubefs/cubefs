@@ -1262,9 +1262,9 @@ func (mp *metaPartition) fsmUpdateExtentKeyAfterMigration(inoParam *Inode) (resp
 		return
 	}
 
-	if i.LeaseExpireTime != inoParam.LeaseExpireTime || i.Generation != inoParam.Generation {
-		log.LogWarnf("fsmUpdateExtentKeyAfterMigration: inode is forbidden to migrate. leaseExpireTime %d, reqLeaseExpireTime %d, generation %d, reqGeneration %d, ino %d",
-			i.LeaseExpireTime, inoParam.LeaseExpireTime, i.Generation, inoParam.Generation, i.Inode)
+	if i.LeaseExpireTime != inoParam.LeaseExpireTime {
+		log.LogWarnf("fsmUpdateExtentKeyAfterMigration: inode is forbidden to migrate. leaseExpireTime %d, reqLeaseExpireTime %d, ino %d",
+			i.LeaseExpireTime, inoParam.LeaseExpireTime, i.Inode)
 		resp.Status = proto.OpLeaseOccupiedByOthers
 		return
 	}

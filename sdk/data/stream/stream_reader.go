@@ -178,10 +178,6 @@ func (s *Streamer) GetExtents(isMigration bool) error {
 	return s.extents.Refresh(s.inode, s.client.getExtents, s.isCache, s.openForWrite, isMigration)
 }
 
-func (s *Streamer) GetExtentsForce() error {
-	return s.extents.RefreshForce(s.inode, false, s.client.getExtents, s.isCache, s.openForWrite, false)
-}
-
 func (s *Streamer) GetExtentsForceRefresh() error {
 	return s.extents.RefreshForce(s.inode, true, s.client.getExtents, s.isCache, s.openForWrite, false)
 }

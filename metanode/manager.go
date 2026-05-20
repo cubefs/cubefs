@@ -773,7 +773,7 @@ func (m *metadataManager) loadPartitions() (err error) {
 	for _, fileInfo := range fileInfoList {
 		if IsMetaPartitionDirectory(fileInfo) {
 			if isExpiredPartition(fileInfo.Name(), metaNodeInfo.PersistenceMetaPartitions) {
-				log.LogErrorf("loadPartitions: find expired partition[%s], rename it and you can delete it manually",
+				log.LogWarnf("loadPartitions: find expired partition[%s], rename it and you can delete it manually",
 					fileInfo.Name())
 				err = m.CheckRocksdbMetaPartition(fileInfo.Name())
 				if err != nil {

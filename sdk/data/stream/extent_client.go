@@ -699,7 +699,7 @@ func (client *ExtentClient) ForceRefreshExtentsCache(inode uint64) error {
 	if s == nil {
 		return nil
 	}
-	return s.GetExtentsForce()
+	return s.GetExtentsForceRefresh()
 }
 
 // GetExtentCacheGen return extent generation

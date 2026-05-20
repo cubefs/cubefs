@@ -425,7 +425,7 @@ func (s *LcScanner) scanInodesByMpAndPool(partitionID uint64, poolId uint8, minS
 			partitionID, poolId, len(resp.Inodes), resp.String())
 
 		// Convert InodeInfo to ScanDentry and send to fileChan
-		for _, inodeInfo := range resp.Inodes {
+		for _, inode := range resp.Inodes {
 			// Check if we should stop
 			select {
 			case <-s.stopC:
@@ -436,15 +436,8 @@ func (s *LcScanner) scanInodesByMpAndPool(partitionID uint64, poolId uint8, minS
 
 			// Create ScanDentry from InodeInfo
 			dentry := &proto.ScanDentry{
-				Inode:        inodeInfo.Inode,
-				Type:         inodeInfo.Mode,
-				Size:         inodeInfo.Size,
-				StorageClass: inodeInfo.StorageClass,
-				LeaseExpire:  inodeInfo.LeaseExpireTime,
-				HasMek:       inodeInfo.HasMigrationEk,
-				HasInodeInfo: true,
-				InodeInfo:    inodeInfo,
-				Path:         "",
+				Inode: inode,
+				Path:  "",
 			}
 
 			// Send to fileChan
@@ -548,17 +541,11 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 	s.limiter.Wait(context.Background())
 	start := time.Now()
 
-	var info *proto.InodeInfo
-	var err error
-
-	if dentry.HasInodeInfo {
-		info = dentry.InodeInfo
-	} else {
-		info, err = s.mw.InodeGet_ll(dentry.Inode, true)
-		if err != nil {
-			log.LogWarnf("handleFile InodeGet_ll err: %v, dentry: %+v", err, dentry)
-			return
-		}
+	// Get inode info from meta again
+	info, err := s.mw.InodeGet_ll(dentry.Inode, true)
+	if err != nil {
+		log.LogWarnf("handleFile InodeGet_ll err: %v, dentry: %+v", err, dentry)
+		return
 	}
 
 	if info != nil && info.Size < s.rule.MinSize() {
@@ -628,7 +615,7 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 		if delayDel == 0 {
 			delayDel = delayDelMinute // Use system default from config
 		}
-		err = s.mw.UpdateExtentKeyAfterMigration(dentry.Inode, proto.OpTypeToStorageType(op), nil, dentry.DstPoolId, dentry.LeaseExpire, delayDel, dentry.Path, dentry.Generation)
+		err = s.mw.UpdateExtentKeyAfterMigration(dentry.Inode, proto.OpTypeToStorageType(op), nil, dentry.DstPoolId, dentry.LeaseExpire, delayDel, dentry.Path)
 		if err != nil {
 			if isSkipErr(err) {
 				err = fmt.Errorf("skip (%v)", err)
@@ -673,7 +660,7 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 		if delayDel == 0 {
 			delayDel = delayDelMinute // Use system default from config
 		}
-		err = s.mw.UpdateExtentKeyAfterMigration(dentry.Inode, proto.OpTypeToStorageType(op), oek, dentry.DstPoolId, dentry.LeaseExpire, delayDel, dentry.Path, dentry.Generation)
+		err = s.mw.UpdateExtentKeyAfterMigration(dentry.Inode, proto.OpTypeToStorageType(op), oek, dentry.DstPoolId, dentry.LeaseExpire, delayDel, dentry.Path)
 		if err != nil {
 			if isSkipErr(err) {
 				err = fmt.Errorf("skip (%v)", err)
@@ -726,8 +713,8 @@ func (s *LcScanner) inodeExpired(info *proto.InodeInfo, condE *proto.Expiration,
 	dentry.Size = info.Size
 	dentry.StorageClass = info.StorageClass
 	dentry.LeaseExpire = info.LeaseExpireTime
-	dentry.Generation = info.Generation
 	dentry.HasMek = info.HasMigrationEk
+	
 
 	if info.ForbiddenLc {
 		log.LogWarnf("ForbiddenLc, lease is occupied, inode: %+v, LeaseExpireTime(%v)", info.Inode, info.LeaseExpireTime)
@@ -1075,27 +1062,6 @@ func (s *LcScanner) batchGetFileInodeInfo(parentId uint64, dentries []proto.Dent
 		return make([]*proto.ScanDentry, 0)
 	}
 
-	// Separate file-type and dir-type dentries
-	fileInodes := make([]uint64, 0)
-
-	for i := range dentries {
-		child := &dentries[i]
-		// Collect file-type inodes for batch get
-		if !os.FileMode(child.Type).IsDir() {
-			fileInodes = append(fileInodes, child.Inode)
-		}
-	}
-
-	// Batch get inode info for file-type inodes only
-
-	inodeInfos := s.mw.BatchInodeGet(fileInodes)
-	inodeInfoMap := make(map[uint64]*proto.InodeInfo, len(fileInodes))
-	for _, info := range inodeInfos {
-		if info != nil {
-			inodeInfoMap[info.Inode] = info
-		}
-	}
-
 	// Build ScanDentry list for all dentries (files and dirs)
 	result := make([]*proto.ScanDentry, 0, len(dentries))
 	for i := range dentries {
@@ -1108,15 +1074,6 @@ func (s *LcScanner) batchGetFileInodeInfo(parentId uint64, dentries []proto.Dent
 			Name:     child.Name,
 			Path:     childPath,
 			Type:     child.Type,
-		}
-
-		// Check if it's a file and if inode info was successfully retrieved
-		isFile := !os.FileMode(child.Type).IsDir()
-		info, hasInfo := inodeInfoMap[child.Inode]
-		if isFile && hasInfo && info != nil {
-			// Fill inode info fields for files
-			scanDentry.InodeInfo = info
-			scanDentry.HasInodeInfo = true
 		}
 
 		result = append(result, scanDentry)

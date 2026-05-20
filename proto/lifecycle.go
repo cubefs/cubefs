@@ -591,9 +591,7 @@ type ScanDentry struct {
 	SrcPoolId      uint8      `json:"srcPoolId"`      // for migrate: pool id of the current dentry
 	DstPoolId      uint8      `json:"dstPoolId"`      // for migrate: pool id of the destination dentry
 	LeaseExpire    uint64     `json:"leaseExpire"`    // for migrate: used to determine whether a file is modified
-	Generation     uint64     `json:"generation"`     // for migrate: generation of the current dentry
 	HasMek         bool       `json:"mek"`            // for migrate: if HasMek, call DeleteMigrationExtentKey instead of migrating
-	HasInodeInfo   bool       `json:"hasInodeInfo"`   // indicates whether inode info was successfully retrieved
 	InodeInfo      *InodeInfo `json:"inodeInfo"`      // inode info of the current dentry
 	DelayDelMinute uint64     `json:"delayDelMinute"` // delay delete in minutes after migration
 }

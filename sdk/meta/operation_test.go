@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Covers sdk/meta/api.go UpdateExtentKeyAfterMigration (generation arg) and sdk/meta/operation.go request construction (Generation field).
-func TestUpdateExtentKeyAfterMigrationCarriesGenerationToRequest(t *testing.T) {
+// Covers sdk/meta/api.go UpdateExtentKeyAfterMigration and sdk/meta/operation.go request construction.
+func TestUpdateExtentKeyAfterMigrationRequestFields(t *testing.T) {
 	reqCh := make(chan *proto.UpdateExtentKeyAfterMigrationRequest, 1)
 
 	addr, cleanup := startMockMetaPacketListener(t, func(conn net.Conn) error {
@@ -56,10 +56,7 @@ func TestUpdateExtentKeyAfterMigrationCarriesGenerationToRequest(t *testing.T) {
 	}
 	mw.addPartition(mp)
 
-	const (
-		inode      = uint64(1024)
-		generation = uint64(12345)
-	)
+	const inode = uint64(1024)
 
 	err := mw.UpdateExtentKeyAfterMigration(
 		inode,
@@ -69,13 +66,11 @@ func TestUpdateExtentKeyAfterMigrationCarriesGenerationToRequest(t *testing.T) {
 		100,
 		5,
 		"/migrate/file",
-		generation,
 	)
 	require.NoError(t, err)
 
 	select {
 	case req := <-reqCh:
-		require.Equal(t, generation, req.Generation)
 		require.Equal(t, inode, req.Inode)
 		require.Equal(t, uint64(100), req.LeaseExpire)
 	case <-time.After(5 * time.Second):

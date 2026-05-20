@@ -378,7 +378,7 @@ func TestOpUnlinkFile_Rocksdb(t *testing.T) {
 	os.RemoveAll(mp.config.RocksDBDir)
 }
 
-func TestOpUpdateExtentKeyAfterMigrationRejectsGenerationMismatch(t *testing.T) {
+func TestOpUpdateExtentKeyAfterMigrationRejectsLeaseExpireMismatch(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	mp := mockPartitionRaftForFsmInodeTest(t, ctrl, proto.StoreModeMem)
@@ -388,8 +388,7 @@ func TestOpUpdateExtentKeyAfterMigrationRejectsGenerationMismatch(t *testing.T) 
 	req := &proto.UpdateExtentKeyAfterMigrationRequest{
 		PartitionID:      mp.GetBaseConfig().PartitionId,
 		Inode:            resp.Info.Inode,
-		LeaseExpire:      0,
-		Generation:       resp.Info.Generation + 1,
+		LeaseExpire:      resp.Info.Generation + 1,
 		StorageClass:     proto.StorageClass_Replica_HDD,
 		PoolId:           proto.DefaultHDDPoolId,
 		NewObjExtentKeys: nil,
@@ -438,7 +437,7 @@ func TestUpdateInodeMetaSuccess(t *testing.T) {
 	err := mp.UpdateInodeMeta(&proto.UpdateInodeMetaRequest{
 		Inode:       ino,
 		PartitionID: mp.config.PartitionId,
-	}, pkt)
+	}, pkt, "127.0.0.1")
 	require.NoError(t, err)
 	require.EqualValues(t, proto.OpOk, pkt.ResultCode)
 }
@@ -457,7 +456,7 @@ func TestUpdateInodeMetaSuccess_Rocksdb(t *testing.T) {
 	err = mp.UpdateInodeMeta(&proto.UpdateInodeMetaRequest{
 		Inode:       ino,
 		PartitionID: mp.config.PartitionId,
-	}, pkt)
+	}, pkt, "127.0.0.1")
 	require.NoError(t, err)
 	require.EqualValues(t, proto.OpOk, pkt.ResultCode)
 
@@ -476,7 +475,7 @@ func TestUpdateInodeMetaInodeNotExist(t *testing.T) {
 	err := mp.UpdateInodeMeta(&proto.UpdateInodeMetaRequest{
 		Inode:       99999,
 		PartitionID: mp.config.PartitionId,
-	}, pkt)
+	}, pkt, "127.0.0.1")
 	require.NoError(t, err)
 	require.EqualValues(t, proto.OpNotExistErr, pkt.ResultCode)
 }
@@ -502,7 +501,7 @@ func TestUpdateInodeMetaMarkedDelete(t *testing.T) {
 	err = mp.UpdateInodeMeta(&proto.UpdateInodeMetaRequest{
 		Inode:       ino,
 		PartitionID: mp.config.PartitionId,
-	}, pkt)
+	}, pkt, "127.0.0.1")
 	require.NoError(t, err)
 	require.EqualValues(t, proto.OpNotExistErr, pkt.ResultCode)
 }
@@ -521,7 +520,7 @@ func TestUpdateInodeMetaSubmitError(t *testing.T) {
 	err := mp.UpdateInodeMeta(&proto.UpdateInodeMetaRequest{
 		Inode:       1,
 		PartitionID: mp.config.PartitionId,
-	}, pkt)
+	}, pkt, "127.0.0.1")
 	require.Error(t, err)
 	require.EqualValues(t, proto.OpAgain, pkt.ResultCode)
 }

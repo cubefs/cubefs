@@ -162,12 +162,7 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 	if mp.IsEnableAuditLog() {
 		appendMsg := req.EkString()
 		defer func() {
-			opErr := err
-			if opErr == nil && p.ResultCode != proto.OpOk {
-				opErr = fmt.Errorf("result %s", p.GetResultMsg())
-			}
-
-			auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), appendMsg, opErr, time.Since(start).Milliseconds(), req.Inode, 0)
+			auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), appendMsg, inodeOpAuditErr(err, p), time.Since(start).Milliseconds(), req.Inode, 0)
 		}()
 	}
 
@@ -603,7 +598,7 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet, rem
 	start := time.Now()
 	if mp.IsEnableAuditLog() {
 		defer func() {
-			auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.GetFullPath(), err, time.Since(start).Milliseconds(), req.Inode, fileSize)
+			auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.GetFullPath(), inodeOpAuditErr(err, p), time.Since(start).Milliseconds(), req.Inode, fileSize)
 		}()
 	}
 	ino := NewInode(req.Inode, proto.Mode(os.ModePerm))

@@ -295,10 +295,10 @@ func (req *ScanInodeByPoolRequest) String() string {
 
 // ScanInodeByPoolResponse defines the response to ScanInodeByPoolRequest
 type ScanInodeByPoolResponse struct {
-	Inodes       []*InodeInfo `json:"inodes"`        // List of inode info
-	NextInode    uint64       `json:"next_inode"`    // Next inode ID for pagination (0 if no more)
-	HasMore      bool         `json:"has_more"`      // Whether there are more inodes to scan
-	TotalScanned uint64       `json:"total_scanned"` // Total number of inodes scanned in this request
+	Inodes       []uint64 `json:"inodes"`        // List of inode info
+	NextInode    uint64   `json:"next_inode"`    // Next inode ID for pagination (0 if no more)
+	HasMore      bool     `json:"has_more"`      // Whether there are more inodes to scan
+	TotalScanned uint64   `json:"total_scanned"` // Total number of inodes scanned in this request
 }
 
 func (resp *ScanInodeByPoolResponse) String() string {

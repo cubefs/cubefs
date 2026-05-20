@@ -383,7 +383,7 @@ func (mp *metaPartition) fsmDeleteDentry(dbHandle interface{}, denParm *Dentry, 
 		return
 	} else {
 		var parentIno *Inode
-		parentIno, err = mp.inodeTree.Get(&Inode{Inode: denParm.ParentId})
+		parentIno, err = mp.inodeTree.CopyGet(&Inode{Inode: denParm.ParentId})
 		if err != nil {
 			log.LogErrorf("[fsmDeleteDentry] mp(%v) err(%v)", mp.config.PartitionId, err)
 			return

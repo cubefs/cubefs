@@ -2524,7 +2524,7 @@ func (m *metadataManager) opMetaUpdateInodeMeta(conn net.Conn, p *Packet,
 	if err != nil || handledByProxy {
 		return
 	}
-	err = mp.UpdateInodeMeta(req, p)
+	err = mp.UpdateInodeMeta(req, p, remoteAddr)
 	m.respondToClient(conn, p)
 	log.LogDebugf("%s [UpdateInodeMeta] err [%v] req: %d - %v; resp: %v, body: %s",
 		remoteAddr, err, p.GetReqID(), req, p.GetResultMsg(), p.Data)
