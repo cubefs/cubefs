@@ -129,7 +129,7 @@ func (trash *Trash) ensureChildDir(parentPath, name string, isAsync bool) (strin
 	if err != nil {
 		return "", nil, err
 	}
-	created, err := trash.CreateDirectory(parentInfo.Inode, name, parentInfo.Mode, parentInfo.Uid, parentInfo.Gid, full, true, isAsync)
+	created, err := trash.CreateDirectory(parentInfo.Inode, name, parentInfo.Mode, parentInfo.Uid, parentInfo.Gid, full, isAsync)
 	if err != nil && err != syscall.EEXIST {
 		return "", nil, err
 	}
@@ -150,7 +150,7 @@ func (trash *Trash) ensureChildDir(parentPath, name string, isAsync bool) (strin
 // ensureBucketDir prepares the bucket directory under Current (or provided root).
 func (trash *Trash) ensureBucketDir(bucketName string, isAsync bool) (string, *proto.InodeInfo, error) {
 	currentPath := path.Join(trash.trashRoot, CurrentName)
-	if err := trash.createCurrent(true, isAsync); err != nil {
+	if err := trash.createCurrent(isAsync); err != nil {
 		return "", nil, err
 	}
 	bucketRoot, _, err := trash.ensureChildDir(currentPath, BucketRootPrefix, isAsync)
@@ -195,7 +195,7 @@ func (trash *Trash) InitTrashRoot() (err error) {
 		return err
 	}
 	_, err = trash.CreateDirectory(parentDirInfo.Inode, TrashPrefix,
-		parentDirInfo.Mode, parentDirInfo.Uid, parentDirInfo.Gid, TrashPrefix, false, false)
+		parentDirInfo.Mode, parentDirInfo.Uid, parentDirInfo.Gid, TrashPrefix, false)
 	if err != nil {
 		log.LogErrorf("action[InitTrashRoot]create trash root failed: %v", err.Error())
 		return err
@@ -215,7 +215,7 @@ func (trash *Trash) initTrashRootInodeInfo() error {
 	return nil
 }
 
-func (trash *Trash) createCurrent(ignoreExist bool, isAsync bool) (err error) {
+func (trash *Trash) createCurrent(isAsync bool) (err error) {
 	trashCurrent := path.Join(trash.trashRoot, CurrentName)
 	log.LogDebugf("action[createCurrent] enter")
 	exists, err := trash.pathIsExist(trashCurrent, isAsync)
@@ -238,7 +238,7 @@ func (trash *Trash) createCurrent(ignoreExist bool, isAsync bool) (err error) {
 		return nil
 	}
 	inodeInfo, err := trash.CreateDirectory(trash.trashRootIno, CurrentName,
-		trash.trashRootMode, trash.trashRootUid, trash.trashRootGid, path.Join(TrashPrefix, CurrentName), ignoreExist, isAsync)
+		trash.trashRootMode, trash.trashRootUid, trash.trashRootGid, path.Join(TrashPrefix, CurrentName), isAsync)
 	if err != nil {
 		if err != syscall.EEXIST {
 			log.LogErrorf("action[createCurrent]create trash current failed: %v", err.Error())
@@ -763,10 +763,10 @@ func (trash *Trash) pathIsExistInTrash(filePath string, isAsync bool) (bool, err
 	}
 }
 
-func (trash *Trash) CreateDirectory(pino uint64, name string, mode, uid, gid uint32, fullName string, ignoreExist bool, isAsync bool) (info *proto.InodeInfo, err error) {
+func (trash *Trash) CreateDirectory(pino uint64, name string, mode, uid, gid uint32, fullName string, isAsync bool) (info *proto.InodeInfo, err error) {
 	fuseMode := mode & 0o777
 	fuseMode |= uint32(os.ModeDir)
-	return trash.mw.Create_ll(pino, name, fuseMode, uid, gid, nil, fullName, ignoreExist, isAsync)
+	return trash.mw.Create_ll(pino, name, fuseMode, uid, gid, nil, fullName, isAsync)
 }
 
 func (trash *Trash) LookupEntry(parentID uint64, name string, isAsync bool) (*proto.InodeInfo, error) {
@@ -811,7 +811,7 @@ func (trash *Trash) createParentPathInTrash(parentPath, rootDir string) (err err
 	var trashCurrent string
 	if rootDir == CurrentName {
 		trashCurrent = path.Join(trash.trashRoot, CurrentName)
-		if err = trash.createCurrent(true, true); err != nil {
+		if err = trash.createCurrent(true); err != nil {
 			return
 		}
 	} else {
@@ -870,7 +870,7 @@ func (trash *Trash) createParentPathInTrash(parentPath, rootDir string) (err err
 		if info == nil {
 			panic(fmt.Sprintf("info should not be nil for parentPath %v", parentPath))
 		}
-		parentInfo, err = trash.CreateDirectory(parentIno, sub, info.Mode, info.Uid, info.Gid, path.Join(parentPath, sub), true, true)
+		parentInfo, err = trash.CreateDirectory(parentIno, sub, info.Mode, info.Uid, info.Gid, path.Join(parentPath, sub), true)
 		if err != nil {
 			if err == syscall.EEXIST {
 				log.LogDebugf("action[createParentPathInTrash] CreateDirectory  %v may be created by other routine", cur)

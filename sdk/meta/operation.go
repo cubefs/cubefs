@@ -282,7 +282,7 @@ func (mw *MetaWrapper) sendToMetaPartitionWithTx(mp *MetaPartition, req *proto.P
 }
 
 func (mw *MetaWrapper) SendTxPack(req proto.TxPack, resp interface{}, Opcode uint8, mp *MetaPartition,
-	checkStatusFunc func(int, *proto.Packet) error, ignoreExistError bool,
+	checkStatusFunc func(int, *proto.Packet) error,
 ) (status int, err error, packet *proto.Packet) {
 	packet = proto.NewPacketReqID()
 	packet.Opcode = Opcode
@@ -308,11 +308,9 @@ func (mw *MetaWrapper) SendTxPack(req proto.TxPack, resp interface{}, Opcode uin
 			return
 		}
 	} else if status != statusOK {
-		if status == statusExist && !ignoreExistError {
-			err = errors.New(packet.GetResultMsg())
-			log.LogWarnf("SendTxPack: packet(%v) mp(%v) req(%v) txInfo(%v) result(%v)",
-				packet, mp, packet.GetOpMsg(), req.GetInfo(), packet.GetResultMsg())
-		}
+		err = errors.New(packet.GetResultMsg())
+		log.LogWarnf("SendTxPack: packet(%v) mp(%v) req(%v) txInfo(%v) result(%v)",
+			packet, mp, packet.GetOpMsg(), req.GetInfo(), packet.GetResultMsg())
 		return
 	}
 
@@ -349,7 +347,7 @@ func (mw *MetaWrapper) txIunlink(tx *Transaction, mp *MetaPartition, inode uint6
 	}()
 
 	var packet *proto.Packet
-	if status, err, packet = mw.SendTxPack(req, resp, proto.OpMetaTxUnlinkInode, mp, nil, false); err != nil {
+	if status, err, packet = mw.SendTxPack(req, resp, proto.OpMetaTxUnlinkInode, mp, nil); err != nil {
 		log.LogErrorf("txIunlink: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
@@ -515,7 +513,7 @@ func (mw *MetaWrapper) ievict(mp *MetaPartition, inode uint64, fullPath string, 
 }
 
 func (mw *MetaWrapper) txDcreate(tx *Transaction, mp *MetaPartition, parentID uint64, name string, inode uint64,
-	mode uint32, quotaIds []uint32, fullPath string, ignoreExist bool, isAsync bool,
+	mode uint32, quotaIds []uint32, fullPath string, isAsync bool,
 ) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
@@ -566,7 +564,7 @@ func (mw *MetaWrapper) txDcreate(tx *Transaction, mp *MetaPartition, parentID ui
 	}
 
 	var packet *proto.Packet
-	if status, err, packet = mw.SendTxPack(req, nil, opcode, mp, nil, ignoreExist); err != nil {
+	if status, err, packet = mw.SendTxPack(req, nil, opcode, mp, nil); err != nil {
 		log.LogErrorf("txDcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
@@ -576,7 +574,7 @@ func (mw *MetaWrapper) txDcreate(tx *Transaction, mp *MetaPartition, parentID ui
 }
 
 func (mw *MetaWrapper) quotaDcreate(mp *MetaPartition, parentID uint64, name string, inode uint64, mode uint32,
-	quotaIds []uint32, fullPath string, ignoreExistError bool, isAsync bool,
+	quotaIds []uint32, fullPath string, isAsync bool,
 ) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
@@ -630,7 +628,7 @@ func (mw *MetaWrapper) quotaDcreate(mp *MetaPartition, parentID uint64, name str
 	if (status != statusOK) && (status != statusExist) {
 		err = errors.New(packet.GetResultMsg())
 		log.LogErrorf("quotaDcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
-	} else if status == statusExist && !ignoreExistError {
+	} else if status == statusExist {
 		log.LogWarnf("quotaDcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 	}
 	log.LogDebugf("quotaDcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
@@ -638,7 +636,7 @@ func (mw *MetaWrapper) quotaDcreate(mp *MetaPartition, parentID uint64, name str
 }
 
 func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, inode uint64, mode uint32,
-	fullPath string, ignoreExistError bool, isAsync bool,
+	fullPath string, isAsync bool,
 ) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
@@ -692,7 +690,7 @@ func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, 
 	if (status != statusOK) && (status != statusExist) {
 		err = errors.New(packet.GetResultMsg())
 		log.LogErrorf("dcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
-	} else if status == statusExist && !ignoreExistError {
+	} else if status == statusExist {
 		log.LogWarnf("dcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 	}
 	if proto.IsDir(mode) {
@@ -734,7 +732,7 @@ func (mw *MetaWrapper) txDupdate(tx *Transaction, mp *MetaPartition, parentID ui
 	}()
 
 	var packet *proto.Packet
-	if status, err, packet = mw.SendTxPack(req, resp, proto.OpMetaTxUpdateDentry, mp, nil, false); err != nil {
+	if status, err, packet = mw.SendTxPack(req, resp, proto.OpMetaTxUpdateDentry, mp, nil); err != nil {
 		log.LogErrorf("txDupdate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
@@ -837,7 +835,7 @@ func (mw *MetaWrapper) txCreateTX(tx *Transaction, mp *MetaPartition, isAsync bo
 	} else {
 		opcode = proto.OpMetaTxCreate
 	}
-	if status, err, packet = mw.SendTxPack(req, resp, opcode, mp, nil, false); err != nil {
+	if status, err, packet = mw.SendTxPack(req, resp, opcode, mp, nil); err != nil {
 		log.LogErrorf("txCreateTX: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
@@ -916,7 +914,7 @@ func (mw *MetaWrapper) txDdelete(tx *Transaction, mp *MetaPartition, parentID, i
 	}()
 
 	var packet *proto.Packet
-	if status, err, packet = mw.SendTxPack(req, resp, proto.OpMetaTxDeleteDentry, mp, nil, false); err != nil {
+	if status, err, packet = mw.SendTxPack(req, resp, proto.OpMetaTxDeleteDentry, mp, nil); err != nil {
 		log.LogErrorf("txDdelete: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}
@@ -1599,7 +1597,7 @@ func (mw *MetaWrapper) txIlink(tx *Transaction, mp *MetaPartition, inode uint64,
 	}()
 
 	var packet *proto.Packet
-	if status, err, packet = mw.SendTxPack(req, resp, proto.OpMetaTxLinkInode, mp, nil, false); err != nil {
+	if status, err, packet = mw.SendTxPack(req, resp, proto.OpMetaTxLinkInode, mp, nil); err != nil {
 		log.LogErrorf("txIlink: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		return
 	}

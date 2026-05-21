@@ -382,7 +382,7 @@ func cfs_symlink(id C.int64_t, src_path *C.char, dst_path *C.char) C.int {
 	}
 
 	parentIno := info.Inode
-	info, err = c.mw.Create_ll(parentIno, filename, proto.Mode(os.ModeSymlink|os.ModePerm), 0, 0, []byte(fullSrcPath), fullDstPath, false, false)
+	info, err = c.mw.Create_ll(parentIno, filename, proto.Mode(os.ModeSymlink|os.ModePerm), 0, 0, []byte(fullSrcPath), fullDstPath, false)
 	if err != nil {
 		log.LogErrorf("Symlink: parent(%v) NewName(%v) err(%v)\n", parentIno, filename, err)
 		return errorToStatus(err)
@@ -1745,13 +1745,13 @@ func (c *client) setattr(info *proto.InodeInfo, valid uint32, mode, uid, gid uin
 
 func (c *client) create(pino uint64, name string, mode uint32, fullPath string) (info *proto.InodeInfo, err error) {
 	fuseMode := mode & 0o777
-	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil, fullPath, false, false)
+	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil, fullPath, false)
 }
 
 func (c *client) mkdir(pino uint64, name string, mode uint32, fullPath string) (info *proto.InodeInfo, err error) {
 	fuseMode := mode & 0o777
 	fuseMode |= uint32(os.ModeDir)
-	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil, fullPath, false, false)
+	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil, fullPath, false)
 }
 
 func (c *client) openStream(f *file, fullPath string) {

@@ -126,7 +126,7 @@ func (mw *MetaWrapper) Statfs() (total, used, inodeCount uint64) {
 	return
 }
 
-func (mw *MetaWrapper) Create_ll(parentID uint64, name string, mode, uid, gid uint32, target []byte, fullPath string, ignoreExist bool, isAsync bool) (info *proto.InodeInfo, err error) {
+func (mw *MetaWrapper) Create_ll(parentID uint64, name string, mode, uid, gid uint32, target []byte, fullPath string, isAsync bool) (info *proto.InodeInfo, err error) {
 	// if mw.EnableTransaction {
 	var txMask proto.TxOpMask
 	if proto.IsRegular(mode) {
@@ -140,14 +140,14 @@ func (mw *MetaWrapper) Create_ll(parentID uint64, name string, mode, uid, gid ui
 	}
 	txType := proto.TxMaskToType(txMask)
 	if mw.enableTx(txMask) && txType != proto.TxTypeUndefined {
-		return mw.txCreate_ll(parentID, name, mode, uid, gid, target, txType, fullPath, ignoreExist, isAsync)
+		return mw.txCreate_ll(parentID, name, mode, uid, gid, target, txType, fullPath, isAsync)
 	} else {
-		return mw.create_ll(parentID, name, mode, uid, gid, target, fullPath, ignoreExist, isAsync)
+		return mw.create_ll(parentID, name, mode, uid, gid, target, fullPath, isAsync)
 	}
 }
 
 func (mw *MetaWrapper) txCreate_ll(parentID uint64, name string, mode, uid, gid uint32, target []byte, txType uint32,
-	fullPath string, ignoreExist bool, isAsync bool,
+	fullPath string, isAsync bool,
 ) (info *proto.InodeInfo, err error) {
 	var (
 		status int
@@ -229,7 +229,7 @@ create_dentry:
 		log.LogDebugf("txCreate_ll: tx.txInfo(%v)", tx.txInfo)
 	}
 
-	status, err = mw.txDcreate(tx, parentMP, parentID, name, info.Inode, mode, quotaIds, fullPath, ignoreExist, false)
+	status, err = mw.txDcreate(tx, parentMP, parentID, name, info.Inode, mode, quotaIds, fullPath, false)
 	if err != nil || status != statusOK {
 		return nil, statusErrToErrno(status, err)
 	}
@@ -242,7 +242,7 @@ create_dentry:
 }
 
 func (mw *MetaWrapper) create_ll(parentID uint64, name string, mode, uid, gid uint32, target []byte,
-	fullPath string, ignoreExist bool, isAsync bool,
+	fullPath string, isAsync bool,
 ) (*proto.InodeInfo, error) {
 	var (
 		status       int
@@ -350,9 +350,9 @@ get_rwmp:
 create_dentry:
 	log.LogDebugf("Create_ll name %v ino %v", name, info.Inode)
 	if mw.EnableQuota {
-		status, err = mw.quotaDcreate(parentMP, parentID, name, info.Inode, mode, quotaIds, fullPath, ignoreExist, isAsync)
+		status, err = mw.quotaDcreate(parentMP, parentID, name, info.Inode, mode, quotaIds, fullPath, isAsync)
 	} else {
-		status, err = mw.dcreate(parentMP, parentID, name, info.Inode, mode, fullPath, ignoreExist, isAsync)
+		status, err = mw.dcreate(parentMP, parentID, name, info.Inode, mode, fullPath, isAsync)
 	}
 	if err != nil {
 		if status == statusOpDirQuota || status == statusNoSpace {
@@ -1311,7 +1311,7 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 		funcs = append(funcs, func() (int, error) {
 			var newSt int
 			var newErr error
-			newSt, newErr = mw.txDcreate(tx, dstParentMP, dstParentID, dstName, srcInode, srcMode, []uint32{}, dstFullPath, false, false)
+			newSt, newErr = mw.txDcreate(tx, dstParentMP, dstParentID, dstName, srcInode, srcMode, []uint32{}, dstFullPath, false)
 			return newSt, newErr
 		})
 	} else {
@@ -1420,7 +1420,7 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 	}
 
 	// create dentry in dst parent
-	status, err = mw.dcreate(dstParentMP, dstParentID, dstName, inode, mode, dstFullPath, false, isAsync)
+	status, err = mw.dcreate(dstParentMP, dstParentID, dstName, inode, mode, dstFullPath, isAsync)
 	if err != nil {
 		if status == statusOpDirQuota {
 			log.LogErrorf("Rename_ll:dcreate srcParentID %v srcFullPath(%v) failed %v ", srcParentID, srcFullPath, err)
@@ -1566,7 +1566,7 @@ func (mw *MetaWrapper) DentryCreate_ll(parentID uint64, name string, inode uint6
 	}
 	var err error
 	var status int
-	if status, err = mw.dcreate(parentMP, parentID, name, inode, mode, fullPath, false, false); err != nil || status != statusOK {
+	if status, err = mw.dcreate(parentMP, parentID, name, inode, mode, fullPath, false); err != nil || status != statusOK {
 		return statusToErrno(status)
 	}
 	return nil
@@ -1811,7 +1811,7 @@ func (mw *MetaWrapper) txLink(parentID uint64, name string, ino uint64, fullPath
 			return newSt, newErr
 		}
 
-		newSt, newErr = mw.txDcreate(tx, parentMP, parentID, name, ino, ifo.Mode, quotaIds, fullPath, false, false)
+		newSt, newErr = mw.txDcreate(tx, parentMP, parentID, name, ino, ifo.Mode, quotaIds, fullPath, false)
 		return newSt, newErr
 	})
 
@@ -1886,9 +1886,9 @@ func (mw *MetaWrapper) link(parentID uint64, name string, ino uint64, fullPath s
 			quotaIds = append(quotaIds, quotaId)
 		}
 		// create new dentry and refer to the inode
-		status, err = mw.quotaDcreate(parentMP, parentID, name, ino, info.Mode, quotaIds, fullPath, false, false)
+		status, err = mw.quotaDcreate(parentMP, parentID, name, ino, info.Mode, quotaIds, fullPath, false)
 	} else {
-		status, err = mw.dcreate(parentMP, parentID, name, ino, info.Mode, fullPath, false, false)
+		status, err = mw.dcreate(parentMP, parentID, name, ino, info.Mode, fullPath, false)
 	}
 	if err != nil {
 		return nil, statusToErrno(status)
