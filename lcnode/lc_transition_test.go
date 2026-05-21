@@ -1,86 +1,158 @@
-// Copyright 2023 The CubeFS Authors.
+// Copyright 2026 The CubeFS Authors.
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
+// Licensed under the Apache License, Version 2.0 (the License);
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
 //     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
-// implied. See the License for the specific language governing
-// permissions and limitations under the License.
 
 package lcnode
 
 import (
-	"context"
-	"crypto/md5"
-	"io"
-	"io/ioutil"
+	"errors"
+	"testing"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
+	"github.com/stretchr/testify/require"
 )
 
-type MockExtentClient struct {
-	data []byte
+type md5ClassifyMW struct {
+	*MockMetaWrapper
+	inodeGet func(uint64, bool) (*proto.InodeInfo, error)
 }
 
-func NewMockExtentClient() *MockExtentClient {
-	return &MockExtentClient{}
+func (m *md5ClassifyMW) InodeGet_ll(inode uint64, isAsync bool) (*proto.InodeInfo, error) {
+	if m.inodeGet != nil {
+		return m.inodeGet(inode, isAsync)
+	}
+	return m.MockMetaWrapper.InodeGet_ll(inode, isAsync)
 }
 
-func (m *MockExtentClient) OpenStream(inode uint64, openForWrite bool, isCache bool, fullPath string) error {
-	return nil
-}
+func TestClassifyMd5Mismatch(t *testing.T) {
+	t.Parallel()
+	baseTime := time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC)
+	e := &proto.ScanDentry{
+		Inode: 9001,
+		InodeInfo: &proto.InodeInfo{
+			Inode:      9001,
+			ModifyTime: baseTime,
+		},
+	}
+	mgr := &TransitionMgr{meta: &md5ClassifyMW{MockMetaWrapper: NewMockMetaWrapper()}}
 
-func (m *MockExtentClient) CloseStream(inode uint64) error {
-	return nil
-}
-
-func (m *MockExtentClient) Read(inode uint64, data []byte, offset int, size int, poolId uint8, isMigration bool) (read int, err error) {
-	if isMigration {
-		for i := 0; i < size; i++ {
-			data[i] = m.data[i]
+	t.Run("inode get error", func(t *testing.T) {
+		t.Parallel()
+		m := mgr
+		m.meta = &md5ClassifyMW{
+			MockMetaWrapper: NewMockMetaWrapper(),
+			inodeGet: func(uint64, bool) (*proto.InodeInfo, error) {
+				return nil, errors.New("inode gone")
+			},
 		}
-		return len(data), io.EOF
+		err := m.classifyMd5Mismatch(e, "dst", "aaa", "bbb")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "get inode failed after check md5")
+	})
+
+	t.Run("modify time advanced", func(t *testing.T) {
+		t.Parallel()
+		m := &TransitionMgr{meta: &md5ClassifyMW{
+			MockMetaWrapper: NewMockMetaWrapper(),
+			inodeGet: func(uint64, bool) (*proto.InodeInfo, error) {
+				return &proto.InodeInfo{
+					Inode:      e.Inode,
+					ModifyTime: baseTime.Add(time.Second),
+				}, nil
+			},
+		}}
+		err := m.classifyMd5Mismatch(e, "src", "deadbeef", "expected")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "file modified when migrating")
+	})
+
+	t.Run("pure md5 mismatch", func(t *testing.T) {
+		t.Parallel()
+		stale := baseTime.Add(-time.Second)
+		m := &TransitionMgr{meta: &md5ClassifyMW{
+			MockMetaWrapper: NewMockMetaWrapper(),
+			inodeGet: func(uint64, bool) (*proto.InodeInfo, error) {
+				return &proto.InodeInfo{Inode: e.Inode, ModifyTime: stale}, nil
+			},
+		}}
+		err := m.classifyMd5Mismatch(e, "dst", "got", "want")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "check dst md5 inconsistent")
+	})
+
+	t.Run("nil inode info falls through to md5 mismatch", func(t *testing.T) {
+		t.Parallel()
+		m := &TransitionMgr{meta: &md5ClassifyMW{
+			MockMetaWrapper: NewMockMetaWrapper(),
+			inodeGet: func(uint64, bool) (*proto.InodeInfo, error) {
+				return nil, nil
+			},
+		}}
+		err := m.classifyMd5Mismatch(e, "src", "a", "b")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "check src md5 inconsistent")
+	})
+}
+
+// zeroReadExtent always returns zero bytes (src path).
+type zeroReadExtent struct{ *MockExtentClient }
+
+func (z *zeroReadExtent) Read(_ uint64, data []byte, _ int, size int, _ uint8, _ bool) (int, error) {
+	if size <= 0 {
+		return 0, nil
 	}
-	for i := 0; i < size; i++ {
-		data[i] = 'a'
+	n := size
+	if n > len(data) {
+		n = len(data)
 	}
-	return len(data), io.EOF
+	return n, nil
 }
 
-func (m *MockExtentClient) Write(inode uint64, offset int, data []byte, flags int, checkFunc func() error, poolId uint8, storageClass uint32, isMigration, waitForFlush bool) (write int, err error) {
-	m.data = data
-	return
+// ffReadExtent returns 0xff bytes (dst migration extent path).
+type ffReadExtent struct{ *MockExtentClient }
+
+func (f *ffReadExtent) Read(_ uint64, data []byte, _ int, size int, _ uint8, _ bool) (int, error) {
+	if size <= 0 {
+		return 0, nil
+	}
+	n := size
+	if n > len(data) {
+		n = len(data)
+	}
+	for i := 0; i < n; i++ {
+		data[i] = 0xff
+	}
+	return n, nil
 }
 
-func (m *MockExtentClient) Flush(inode uint64) error {
-	return nil
-}
-
-func (m *MockExtentClient) Close() error {
-	return nil
-}
-
-type MockEbsClient struct {
-	data []byte
-}
-
-func NewMockEbsClient() *MockEbsClient {
-	return &MockEbsClient{}
-}
-
-func (m *MockEbsClient) Put(ctx context.Context, volName string, f io.Reader, size uint64) (oek []proto.ObjExtentKey, _md5 [][]byte, err error) {
-	m.data, _ = ioutil.ReadAll(f)
-	md5Hash := md5.New()
-	md5Hash.Write(m.data)
-	_md5 = append(_md5, md5Hash.Sum(nil))
-	return
-}
-
-func (m *MockEbsClient) Get(ctx context.Context, volName string, offset uint64, size uint64, oek proto.ObjExtentKey) (body io.ReadCloser, err error) {
-	return
+func TestMigrate_dstMd5MismatchUsesClassify(t *testing.T) {
+	t.Parallel()
+	baseTime := time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC)
+	e := &proto.ScanDentry{
+		Inode: 9100,
+		Size:  util.BlockSize,
+		InodeInfo: &proto.InodeInfo{
+			Inode:      9100,
+			ModifyTime: baseTime,
+		},
+	}
+	mgr := &TransitionMgr{
+		ec:     &zeroReadExtent{NewMockExtentClient()},
+		ecForW: &ffReadExtent{NewMockExtentClient()},
+		meta: &md5ClassifyMW{
+			MockMetaWrapper: NewMockMetaWrapper(),
+			inodeGet: func(uint64, bool) (*proto.InodeInfo, error) {
+				return &proto.InodeInfo{Inode: e.Inode, ModifyTime: baseTime}, nil
+			},
+		},
+	}
+	err := mgr.migrate(e)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "check dst md5 inconsistent")
 }

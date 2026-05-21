@@ -159,8 +159,7 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 	log.LogInfof("check: read src file finished, inode(%v), srcmd5: %v", e.Inode, srcMd5)
 
 	if srcMd5 != md5Value {
-		err = fmt.Errorf("check src md5 inconsistent, inode(%v), srcMd5(%v), md5Value(%v)", e.Inode, srcMd5, md5Value)
-		return
+		return t.classifyMd5Mismatch(e, "src", srcMd5, md5Value)
 	}
 
 	// check read from dst migration extent
@@ -175,25 +174,26 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 	log.LogInfof("check: read dst file finished, inode(%v), dstMd5: %v", e.Inode, dstMd5)
 
 	if dstMd5 != md5Value {
-		var info *proto.InodeInfo
-		info, err = t.meta.InodeGet_ll(e.Inode, true)
-		if err != nil {
-			err = fmt.Errorf("get inode failed after check md5, maybe deleted, inode %d, err %s", e.Inode, err.Error())
-			return
-		}
-
-		if info != nil && info.ModifyTime.After(e.InodeInfo.ModifyTime) {
-			err = fmt.Errorf("file modified when migrating, inode(%v), dstMd5(%v), md5Value(%v), info(%v), modifyTime(%v)", e.Inode, dstMd5, md5Value, info, info.ModifyTime)
-			return
-		}
-
-		err = fmt.Errorf("check dst md5 inconsistent after inodeGet, inode(%v), dstMd5(%v), md5Value(%v)", e.Inode, dstMd5, md5Value)
-		return
+		return t.classifyMd5Mismatch(e, "dst", dstMd5, md5Value)
 	}
 
 	log.LogInfof("migrate and check md5 finished, vol(%v) inode(%v) path(%v), will do UpdateExtentKeyAfterMigration",
 		t.volume, e.Inode, e.Path)
 	return
+}
+
+// classifyMd5Mismatch explains MD5 verify failure: inode gone, concurrent write, or data mismatch.
+func (t *TransitionMgr) classifyMd5Mismatch(e *proto.ScanDentry, side, gotMd5, expectedMd5 string) error {
+	info, err := t.meta.InodeGet_ll(e.Inode, true)
+	if err != nil {
+		return fmt.Errorf("get inode failed after check md5, maybe deleted, inode %d, err %s", e.Inode, err.Error())
+	}
+	if info != nil && info.ModifyTime.After(e.InodeInfo.ModifyTime) {
+		return fmt.Errorf("file modified when migrating, inode(%v), %sMd5(%v), md5Value(%v), modifyTime(%v)",
+			e.Inode, side, gotMd5, expectedMd5, info.ModifyTime)
+	}
+	return fmt.Errorf("check %s md5 inconsistent, inode(%v), %sMd5(%v), md5Value(%v)",
+		side, e.Inode, side, gotMd5, expectedMd5)
 }
 
 func (t *TransitionMgr) readFromExtentClient(e *proto.ScanDentry, writer io.Writer, isMigrationExtent bool, from, size int) (err error) {

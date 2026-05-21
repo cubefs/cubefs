@@ -219,6 +219,10 @@ func (s *Streamer) server() {
 	// only file opened with write request needs to forbidden migration
 	renewalTimer := time.NewTicker(proto.ForbiddenMigrationRenewalPeriod / 5)
 	defer renewalTimer.Stop()
+
+	loadInodeInfoTimer := time.NewTicker(proto.MinDelayDelMinute * time.Minute / 3)
+	defer loadInodeInfoTimer.Stop()
+
 	log.LogDebugf("start server: streamer(%v)", s)
 	for {
 		select {
@@ -272,14 +276,27 @@ func (s *Streamer) server() {
 
 		case <-renewalTimer.C:
 			if !s.openForWrite {
-				renewalTimer.Stop()
+				continue
+			}
+			// renewal forbidden migration
+			err := s.client.renewalForbiddenMigration(s.inode)
+			if err != nil {
+				log.LogWarnf("ino(%v) renewalForbiddenMigration failed err %v", s.inode, err.Error())
+				s.setError()
 			} else {
-				// renewal forbidden migration
-				err := s.client.renewalForbiddenMigration(s.inode)
-				if err != nil {
-					log.LogWarnf("ino(%v) renewalForbiddenMigration failed err %v", s.inode, err.Error())
-					s.setError()
-				}
+				log.LogDebugf("ino(%v) renewalForbiddenMigration success", s.inode)
+			}
+		case <-loadInodeInfoTimer.C:
+			if s.client == nil || s.client.loadInodeInfo == nil {
+				continue
+			}
+			_, err := s.client.loadInodeInfo(s.inode)
+			if err != nil {
+				log.LogErrorf("ino(%v) loadInodeInfo failed err %v", s.inode, err.Error())
+				s.markNeedReloadInode()
+			} else {
+				s.clearNeedReloadInode()
+				log.LogDebugf("ino(%v) loadInodeInfo success", s.inode)
 			}
 		}
 	}

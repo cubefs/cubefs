@@ -32,34 +32,33 @@ const (
 
 func (s *Super) InodeGet(ino uint64) (info *proto.InodeInfo, err error) {
 	info = s.ic.Get(ino)
-
 	if info != nil {
 		return info, nil
 	}
+	return s.LoadInodeInfo(ino)
+}
 
-	if s.metaCacheAcceleration {
-		info, err = s.mw.InodeGet_ll(ino, false)
-	} else {
-		info, err = s.mw.InodeGet_ll(ino, false)
-	}
+// LoadInodeInfo fetches inode metadata on cache miss, updates node caches, and refreshes extent cache when needed.
+func (s *Super) LoadInodeInfo(ino uint64) (info *proto.InodeInfo, err error) {
+	info, err = s.mw.InodeGet_ll(ino, false)
 	if err != nil || info == nil {
 		log.LogErrorf("InodeGet: ino(%v) err(%v) info(%v)", ino, err, info)
 		if err != nil {
 			return nil, ParseError(err)
-		} else {
-			return nil, fuse.ENOENT
 		}
+		return nil, fuse.ENOENT
 	}
 	s.ic.Put(info)
 	s.fslock.Lock()
 	node, isFind := s.nodeCache[ino]
 	s.fslock.Unlock()
+	migrated := false
 	if isFind {
 		dir, ok := node.(*Dir)
 		if ok {
 			dir.info = info
 		} else {
-			migrated := info.PoolId != node.(*File).info.PoolId
+			migrated = info.PoolId != node.(*File).info.PoolId
 			// the first time storage class change to blob store
 			if migrated && proto.IsStorageClassBlobStore(info.StorageClass) {
 				ebsc, err := s.getBlobStoreClient(info.PoolId)
@@ -84,7 +83,7 @@ func (s *Super) InodeGet(ino uint64) (info *proto.InodeInfo, err error) {
 					ReadConcurrency: f.super.readThreads,
 					FileCache:       false,
 					FileSize:        uint64(fileSize),
-					PoolId:          f.info.PoolId,
+					PoolId:          info.PoolId,
 				}
 				f.fWriter.FreeCache()
 				switch f.flag & 0x0f {
@@ -111,17 +110,24 @@ func (s *Super) InodeGet(ino uint64) (info *proto.InodeInfo, err error) {
 			log.LogDebugf("InodeGet: ino(%v) migrate(%v) info(%v)", ino, migrated, info)
 		}
 	}
+
 	if proto.IsStorageClassBlobStore(info.StorageClass) {
 		return info, nil
 	}
-	if !info.HasExtents() {
+
+	if migrated {
+		if err = s.ec.ForceRefreshExtentsCache(ino); err != nil {
+			log.LogErrorf("[InodeGet] get ino(%v) inode(%v) err: %v", ino, info, err)
+			return info, err
+		}
+	} else {
 		if err = s.ec.RefreshExtentsCache(ino); err != nil {
 			log.LogErrorf("[InodeGet] get ino(%v) inode(%v) err: %v", ino, info, err)
-			// TODO:tangjingyu return ParseError(err)?
 			return info, err
 		}
 	}
-	log.LogInfof("[InodeGet] get ino(%v) inode(%v)", ino, info)
+
+	log.LogInfof("[InodeGet] get ino(%v) inode(%v), migrated(%v)", ino, info, migrated)
 	return info, nil
 }
 

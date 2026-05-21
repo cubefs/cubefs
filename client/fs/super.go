@@ -334,6 +334,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		OnForbiddenMigration:        s.mw.ForbiddenMigration,
 
 		OnGetInodeInfo:      s.InodeGet,
+		OnLoadInodeInfo:     s.LoadInodeInfo,
 		BcacheOnlyForNotSSD: opt.BcacheOnlyForNotSSD,
 
 		AheadReadEnable:       opt.AheadReadEnable,

@@ -87,6 +87,9 @@ type Streamer struct {
 	waitForFlush       bool
 	// minimum file size to trigger ahead read (bytes)
 	minReadAheadSize uint64
+
+	// needReloadInode is set when periodic loadInodeInfo fails; the next read retries once.
+	needReloadInode int32
 }
 
 type bcacheKey struct {
@@ -208,6 +211,34 @@ func (s *Streamer) GetExtentReader(ek *proto.ExtentKey, poolId uint8) (*ExtentRe
 	return reader, nil
 }
 
+func (s *Streamer) markNeedReloadInode() {
+	atomic.StoreInt32(&s.needReloadInode, 1)
+}
+
+func (s *Streamer) clearNeedReloadInode() {
+	atomic.StoreInt32(&s.needReloadInode, 0)
+}
+
+// reloadInodeIfNeeded retries loadInodeInfo once when periodic refresh failed.
+func (s *Streamer) reloadInodeIfNeeded() error {
+	if atomic.LoadInt32(&s.needReloadInode) == 0 {
+		return nil
+	}
+	if s.client == nil || s.client.loadInodeInfo == nil {
+		atomic.StoreInt32(&s.needReloadInode, 0)
+		log.LogWarnf("ino(%v) reloadInodeIfNeeded loadInodeInfo is nil", s.inode)
+		return nil
+	}
+	_, err := s.client.loadInodeInfo(s.inode)
+	if err != nil {
+		log.LogErrorf("ino(%v) reloadInodeIfNeeded loadInodeInfo failed err %v", s.inode, err)
+		return err
+	}
+	atomic.StoreInt32(&s.needReloadInode, 0)
+	log.LogDebugf("ino(%v) reloadInodeIfNeeded loadInodeInfo success", s.inode)
+	return nil
+}
+
 func (s *Streamer) read(data []byte, offset int, size int, poolId uint8) (total int, err error) {
 	var (
 		readBytes       int
@@ -216,6 +247,9 @@ func (s *Streamer) read(data []byte, offset int, size int, poolId uint8) (total 
 		revisedRequests []*ExtentRequest
 		inodeInfo       *proto.InodeInfo
 	)
+	if err = s.reloadInodeIfNeeded(); err != nil {
+		return 0, err
+	}
 	log.LogDebugf("action[streamer.read] ino(%v) offset %v size %v", s.inode, offset, size)
 	defer log.LogDebugf("streamer read ino(%v) offset %v size %v", s.inode, offset, size)
 	ctx := context.Background()

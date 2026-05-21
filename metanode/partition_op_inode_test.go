@@ -402,6 +402,7 @@ func TestOpUpdateExtentKeyAfterMigrationRejectsLeaseExpireMismatch(t *testing.T)
 	err = mp.UpdateExtentKeyAfterMigration(req, p, "127.0.0.1")
 	require.NoError(t, err)
 	require.EqualValues(t, proto.OpLeaseGenerationNotMatch, p.ResultCode)
+	require.Contains(t, string(p.Data), "lease not match")
 }
 
 func TestOpAppendExtentWithAuditLogForMigration(t *testing.T) {

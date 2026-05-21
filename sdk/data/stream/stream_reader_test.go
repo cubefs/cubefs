@@ -3,6 +3,7 @@ package stream
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"hash/crc32"
 	"io"
 	"net"
@@ -10,6 +11,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -18,6 +20,7 @@ import (
 	"github.com/cubefs/cubefs/sdk/data/wrapper"
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/time/rate"
 )
 
@@ -607,4 +610,71 @@ func assertRemoteCacheRoutingByPool(t *testing.T, defaultPool, inodePool uint8, 
 			t.Fatalf("expected datanode OpStreamRead when flash path skipped, got stream=%d", streamCnt)
 		}
 	}
+}
+
+func TestReloadInodeIfNeeded(t *testing.T) {
+	t.Run("no flag", func(t *testing.T) {
+		s := &Streamer{}
+		require.NoError(t, s.reloadInodeIfNeeded())
+	})
+
+	t.Run("flag set load fails", func(t *testing.T) {
+		s := &Streamer{
+			inode: 100,
+			client: &ExtentClient{
+				loadInodeInfo: func(uint64) (*proto.InodeInfo, error) {
+					return nil, errors.New("load failed")
+				},
+			},
+		}
+		s.markNeedReloadInode()
+		err := s.reloadInodeIfNeeded()
+		require.Error(t, err)
+		require.Equal(t, int32(1), atomic.LoadInt32(&s.needReloadInode))
+	})
+
+	t.Run("flag set load succeeds clears flag", func(t *testing.T) {
+		s := &Streamer{
+			inode: 101,
+			client: &ExtentClient{
+				loadInodeInfo: func(uint64) (*proto.InodeInfo, error) {
+					return &proto.InodeInfo{Inode: 101}, nil
+				},
+			},
+		}
+		s.markNeedReloadInode()
+		require.NoError(t, s.reloadInodeIfNeeded())
+		require.Equal(t, int32(0), atomic.LoadInt32(&s.needReloadInode))
+	})
+
+	t.Run("nil loadInodeInfo clears flag", func(t *testing.T) {
+		s := &Streamer{
+			inode:  102,
+			client: &ExtentClient{},
+		}
+		s.markNeedReloadInode()
+		require.NoError(t, s.reloadInodeIfNeeded())
+		require.Equal(t, int32(0), atomic.LoadInt32(&s.needReloadInode))
+	})
+}
+
+func TestReadReloadInodeBeforeReadClearsFlag(t *testing.T) {
+	t.Parallel()
+	var loadCount int32
+	client := &ExtentClient{
+		readLimiter: rate.NewLimiter(rate.Inf, 128),
+		loadInodeInfo: func(uint64) (*proto.InodeInfo, error) {
+			atomic.AddInt32(&loadCount, 1)
+			return &proto.InodeInfo{Inode: 3001, Size: 0}, nil
+		},
+	}
+	s := &Streamer{
+		inode:   3001,
+		client:  client,
+		extents: NewExtentCache(3001),
+	}
+	s.markNeedReloadInode()
+	require.NoError(t, s.reloadInodeIfNeeded())
+	require.Equal(t, int32(1), atomic.LoadInt32(&loadCount))
+	require.Equal(t, int32(0), atomic.LoadInt32(&s.needReloadInode))
 }

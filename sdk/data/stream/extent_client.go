@@ -62,6 +62,7 @@ type (
 	RenewalForbiddenMigrationFunc func(inode uint64) error
 	ForbiddenMigrationFunc        func(inode uint64) error
 	GetInodeInfoFunc              func(ino uint64) (*proto.InodeInfo, error)
+	LoadInodeInfoFunc             func(ino uint64) (*proto.InodeInfo, error)
 )
 
 const (
@@ -158,6 +159,7 @@ type ExtentConfig struct {
 	VolAllowedStorageClass []uint32
 
 	OnGetInodeInfo      GetInodeInfoFunc
+	OnLoadInodeInfo     LoadInodeInfoFunc
 	BcacheOnlyForNotSSD bool
 
 	AheadReadEnable       bool
@@ -216,6 +218,7 @@ type ExtentClient struct {
 	renewalForbiddenMigration RenewalForbiddenMigrationFunc
 	forbiddenMigration        ForbiddenMigrationFunc
 	getInodeInfo              GetInodeInfoFunc
+	loadInodeInfo             LoadInodeInfoFunc
 	bcacheOnlyForNotSSD       bool
 	AheadRead                 *AheadReadCache
 
@@ -361,6 +364,7 @@ retry:
 	client.renewalForbiddenMigration = config.OnRenewalForbiddenMigration
 	client.forbiddenMigration = config.OnForbiddenMigration
 	client.getInodeInfo = config.OnGetInodeInfo
+	client.loadInodeInfo = config.OnLoadInodeInfo
 	client.forceRemoteCache = config.ForceRemoteCache
 	client.enableAsyncFlush = config.EnableAsyncFlush
 	client.metaAcceleration = config.MetaAcceleration
@@ -549,6 +553,15 @@ func (client *ExtentClient) OpenStream(inode uint64, openForWrite, isCache bool,
 			if err != nil {
 				log.LogWarnf("ino(%v) forbiddenMigration failed err %v", s.inode, err.Error())
 				s.setError()
+				return err
+			}
+
+			// load inode info to update extent cache
+			_, err = s.client.loadInodeInfo(s.inode)
+			if err != nil {
+				log.LogErrorf("action[OpenStream] inode(%v) loadInodeInfo failed err %v", s.inode, err.Error())
+				s.setError()
+				return err
 			}
 		}
 

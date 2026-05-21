@@ -21,15 +21,21 @@ func TestForceRefreshExtentsCacheUsesForceRefresh(t *testing.T) {
 	cache := NewExtentCache(inode)
 	cache.gen = 5
 	s := &Streamer{
-		inode:   inode,
-		client:  client,
-		extents: cache,
+		inode:     inode,
+		client:    client,
+		extents:   cache,
+		dirtylist: NewDirtyExtentList(),
+		isOpen:    true, // avoid GetStreamer starting server() on a partial streamer
 	}
 	client.streamers[inode] = s
 
 	require.NoError(t, client.ForceRefreshExtentsCache(inode))
 	require.Equal(t, uint64(2), s.extents.gen,
 		"force refresh must update cache even when remote gen is lower than local")
+}
+
+func noopLoadInodeInfo(uint64) (*proto.InodeInfo, error) {
+	return nil, nil
 }
 
 func TestOpenStreamReuseReadToWriteTriggersForbiddenMigration(t *testing.T) {
@@ -39,6 +45,7 @@ func TestOpenStreamReuseReadToWriteTriggersForbiddenMigration(t *testing.T) {
 		renewalForbiddenMigration: func(inode uint64) error {
 			return nil
 		},
+		loadInodeInfo: noopLoadInodeInfo,
 	}
 
 	var callCount int32
@@ -57,6 +64,57 @@ func TestOpenStreamReuseReadToWriteTriggersForbiddenMigration(t *testing.T) {
 	require.NoError(t, client.EvictStream(inode))
 }
 
+func TestOpenStreamReadToWriteCallsLoadInodeInfo(t *testing.T) {
+	var loadCount int32
+	client := &ExtentClient{
+		streamers:                 make(map[uint64]*Streamer),
+		multiVerMgr:               &MultiVerMgr{},
+		renewalForbiddenMigration: func(uint64) error { return nil },
+		forbiddenMigration:        func(uint64) error { return nil },
+		loadInodeInfo: func(uint64) (*proto.InodeInfo, error) {
+			atomic.AddInt32(&loadCount, 1)
+			return nil, nil
+		},
+	}
+
+	const inode = uint64(7789)
+	require.NoError(t, client.OpenStream(inode, false, false, "/ro"))
+	require.NoError(t, client.OpenStream(inode, true, false, "/rw"))
+	require.Equal(t, int32(1), atomic.LoadInt32(&loadCount))
+
+	require.NoError(t, client.CloseStream(inode))
+	require.NoError(t, client.CloseStream(inode))
+	require.NoError(t, client.EvictStream(inode))
+}
+
+func TestOpenStreamReadToWriteLoadInodeInfoErrorSetsStreamerError(t *testing.T) {
+	client := &ExtentClient{
+		streamers:                 make(map[uint64]*Streamer),
+		multiVerMgr:               &MultiVerMgr{},
+		renewalForbiddenMigration: func(uint64) error { return nil },
+		forbiddenMigration:        func(uint64) error { return nil },
+		loadInodeInfo: func(uint64) (*proto.InodeInfo, error) {
+			return nil, errors.New("load inode failed")
+		},
+	}
+
+	const inode = uint64(7790)
+	// Reuse an existing read streamer without starting server() (NewStreamer is not called).
+	client.streamers[inode] = &Streamer{
+		inode:        inode,
+		client:       client,
+		openForWrite: false,
+		extents:      NewExtentCache(inode),
+		dirtylist:    NewDirtyExtentList(),
+	}
+	err := client.OpenStream(inode, true, false, "/rw")
+	require.Error(t, err)
+
+	s, ok := client.streamers[inode]
+	require.True(t, ok)
+	require.Equal(t, int32(StreamerError), atomic.LoadInt32(&s.status))
+}
+
 func TestOpenStreamReuseReadToWriteForbiddenMigrationErrorSetsStreamerError(t *testing.T) {
 	client := &ExtentClient{
 		streamers:   make(map[uint64]*Streamer),
@@ -64,6 +122,7 @@ func TestOpenStreamReuseReadToWriteForbiddenMigrationErrorSetsStreamerError(t *t
 		renewalForbiddenMigration: func(inode uint64) error {
 			return nil
 		},
+		loadInodeInfo: noopLoadInodeInfo,
 	}
 
 	client.forbiddenMigration = func(inode uint64) error {
@@ -71,16 +130,19 @@ func TestOpenStreamReuseReadToWriteForbiddenMigrationErrorSetsStreamerError(t *t
 	}
 
 	const inode = uint64(8899)
-	require.NoError(t, client.OpenStream(inode, false, false, "/test-error-file"))
-	require.NoError(t, client.OpenStream(inode, true, false, "/test-error-file"))
+	client.streamers[inode] = &Streamer{
+		inode:        inode,
+		client:       client,
+		openForWrite: false,
+		extents:      NewExtentCache(inode),
+		dirtylist:    NewDirtyExtentList(),
+	}
+	err := client.OpenStream(inode, true, false, "/test-error-file")
+	require.Error(t, err)
 
 	s, ok := client.streamers[inode]
 	require.True(t, ok)
 	require.Equal(t, int32(StreamerError), atomic.LoadInt32(&s.status))
-
-	require.NoError(t, client.CloseStream(inode))
-	require.NoError(t, client.CloseStream(inode))
-	require.NoError(t, client.EvictStream(inode))
 }
 
 // Exercises OpenStream read->write reuse with log.Debug enabled (EnableDebug branch) and forbiddenMigration error (LogWarnf + setError).
@@ -94,20 +156,24 @@ func TestOpenStreamReadThenWriteForbiddenMigrationErrWithDebugEnabled(t *testing
 		renewalForbiddenMigration: func(inode uint64) error {
 			return nil
 		},
+		loadInodeInfo: noopLoadInodeInfo,
 	}
 	client.forbiddenMigration = func(inode uint64) error {
 		return errors.New("mock forbiddenMigration error")
 	}
 
 	const inode = uint64(9901)
-	require.NoError(t, client.OpenStream(inode, false, false, "/cov-file"))
-	require.NoError(t, client.OpenStream(inode, true, false, "/cov-file"))
+	client.streamers[inode] = &Streamer{
+		inode:        inode,
+		client:       client,
+		openForWrite: false,
+		extents:      NewExtentCache(inode),
+		dirtylist:    NewDirtyExtentList(),
+	}
+	err = client.OpenStream(inode, true, false, "/cov-file")
+	require.Error(t, err)
 
 	s, ok := client.streamers[inode]
 	require.True(t, ok)
 	require.Equal(t, int32(StreamerError), atomic.LoadInt32(&s.status))
-
-	require.NoError(t, client.CloseStream(inode))
-	require.NoError(t, client.CloseStream(inode))
-	require.NoError(t, client.EvictStream(inode))
 }
