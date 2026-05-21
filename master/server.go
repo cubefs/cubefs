@@ -61,6 +61,7 @@ const (
 	cfgRaftRecvBufSize       = "raftRecvBufSize"
 	cfgElectionTick          = "electionTick"
 	SecretKey                = "masterServiceKey"
+	cfgSyncAdminToken        = "syncAdminToken"
 	cfgEnableDirectDeleteVol = "enableDirectDeleteVol"
 	Stat                     = "stat"
 	Authenticate             = "authenticate"
@@ -405,6 +406,12 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	}
 
 	m.config.MonitorPushAddr = cfg.GetString(cfgMonitorPushAddr)
+
+	// SEC1: /syncNode/* admin token. Empty value = middleware
+	// passthrough; operators opt in by setting "syncAdminToken" in
+	// master.json. Plaintext in master config (same posture as
+	// existing lcnode credentials).
+	m.config.SyncAdminToken = cfg.GetString(cfgSyncAdminToken)
 
 	m.config.volForceDeletion = cfg.GetBoolWithDefault(cfgVolForceDeletion, true)
 

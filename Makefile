@@ -15,6 +15,10 @@ build: server authtool client cli libsdk fsck fdstore bcache blobstore deploy cf
 server:
 	@build/build.sh server $(GOMOD) --threads=$(threads)
 
+phony += server-notrdma
+server-notrdma:
+	@RDMA=0 build/build.sh server $(GOMOD) --threads=$(threads)
+
 
 deploy:
 	@build/build.sh deploy $(GOMOD) --threads=$(threads)
@@ -104,11 +108,76 @@ docker:
 	@docker/run_docker.sh --build
 	@docker/run_docker.sh --clean
 
-IMAGE_NAME?=hub.shiyak-office.com/storage/cubefs:v3.5.3.rc1
+# ── 镜像构建 / 推送 ──────────────────────────────────────────────────
+#
+# 用法：
+#   make image version=v3.5.3.rc90              # 构建 cubefs 主镜像
+#   make image version=v3.5.3.rc90 push=1       # 构建 + 推送
+#   make image-push version=v3.5.3.rc90         # 等价于 push=1
+#   make pjd-image                              # 构建 pjd-fstest 镜像（tag=20090130）
+#   make pjd-image push=1                       # 构建 + 推送 pjd
+#   make pjd-image pjd_version=20090130-rc1     # 自定义 pjd tag
+#
+# 变量（命令行覆盖优先）：
+#   version     主镜像 tag — 必填，无默认值
+#   pjd_version pjd-fstest tag，默认 20090130
+#   registry    仓库前缀，默认 hub.shiyak-office.com/storage
+#   image       主镜像名，默认 cubefs
+#   platform    docker --platform，默认 linux/amd64
+#   push        =1 时构建后 docker push
+#
+# 兼容旧用法：仍可 IMAGE_NAME=完整路径:tag 显式覆盖整条镜像名。
+#
+# 注意：Dockerfile COPY build/bin/，docker build 前请先 make build
+#       (或对应单组件如 make server)。
+
+registry    ?= hub.shiyak-office.com/storage
+image       ?= cubefs
+platform    ?= linux/amd64
+pjd_version ?= 20090130
+
+# 主镜像名：显式 IMAGE_NAME 优先；否则 registry/image:version
+ifeq ($(origin IMAGE_NAME), undefined)
+IMAGE_FULL = $(registry)/$(image):$(version)
+else
+IMAGE_FULL = $(IMAGE_NAME)
+endif
+
+PJD_IMAGE_FULL = $(registry)/pjd-fstest:$(pjd_version)
 
 phony += image
 image:
-	docker build --platform linux/amd64 -t $(IMAGE_NAME) -f Dockerfile .
-	@echo "Built linux/amd64 image: $(IMAGE_NAME)"
+ifeq ($(origin IMAGE_NAME), undefined)
+ifeq ($(strip $(version)),)
+	$(error version is required. Usage: make image version=vX.Y.Z.rcN [push=1])
+endif
+endif
+	@echo "==> building $(IMAGE_FULL) (platform=$(platform))"
+	docker build --platform $(platform) -t $(IMAGE_FULL) -f Dockerfile .
+	@echo "==> built $(IMAGE_FULL)"
+ifeq ($(push),1)
+	@echo "==> pushing $(IMAGE_FULL)"
+	docker push $(IMAGE_FULL)
+	@echo "==> pushed $(IMAGE_FULL)"
+endif
+
+phony += image-push
+image-push:
+	@$(MAKE) image push=1
+
+phony += pjd-image
+pjd-image:
+	@echo "==> building $(PJD_IMAGE_FULL) (platform=$(platform))"
+	docker build --platform $(platform) -t $(PJD_IMAGE_FULL) -f docker/pjd-fstest/Dockerfile docker/pjd-fstest/
+	@echo "==> built $(PJD_IMAGE_FULL)"
+ifeq ($(push),1)
+	@echo "==> pushing $(PJD_IMAGE_FULL)"
+	docker push $(PJD_IMAGE_FULL)
+	@echo "==> pushed $(PJD_IMAGE_FULL)"
+endif
+
+phony += pjd-image-push
+pjd-image-push:
+	@$(MAKE) pjd-image push=1
 
 .PHONY: $(phony)

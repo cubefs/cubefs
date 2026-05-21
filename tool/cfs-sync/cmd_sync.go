@@ -67,15 +67,16 @@ func runSync(args []string, deleteByDefault bool) {
 	logDir := fs.String("log-dir", "/tmp/cfs-sync-logs", "SDK log directory")
 	logLevel := fs.String("log-level", "WARN", "Log level")
 
-	_ = fs.Parse(args)
+	flagArgs, positionals := separateArgs(fs, args)
+	_ = fs.Parse(flagArgs)
 
-	if fs.NArg() < 2 {
+	if len(positionals) < 2 {
 		fmt.Fprintf(os.Stderr, "error: src and dst are required\n\nUsage: cfs-sync sync <src> <dst> [flags]\n")
 		fs.Usage()
 		os.Exit(2)
 	}
-	srcURI := fs.Arg(0)
-	dstURI := fs.Arg(1)
+	srcURI := positionals[0]
+	dstURI := positionals[1]
 
 	opts := SyncOptions{
 		SizeOnly:          *sizeOnly,
@@ -165,7 +166,7 @@ func runSync(args []string, deleteByDefault bool) {
 	syncer := NewSyncer(src, dst, opts)
 	failed := syncer.Run(ctx)
 
-	if failed > 0 {
+	if failed > 0 && !opts.IgnoreErrors {
 		os.Exit(1)
 	}
 }
@@ -237,6 +238,7 @@ func parseSize(s string) (int64, error) {
 		return 0, nil
 	}
 	multipliers := map[string]int64{
+		"B":                               1,
 		"K": 1024, "KB": 1024,
 		"M": 1024 * 1024, "MB": 1024 * 1024, "MIB": 1024 * 1024,
 		"G": 1024 * 1024 * 1024, "GB": 1024 * 1024 * 1024, "GIB": 1024 * 1024 * 1024,
@@ -258,4 +260,50 @@ func parseSize(s string) (int64, error) {
 		return 0, fmt.Errorf("invalid size %q", s)
 	}
 	return n, nil
+}
+
+// separateArgs splits args into flag-value pairs and positional arguments,
+// allowing flags to appear anywhere (before or after positionals).
+// Go's flag package stops at the first non-flag argument, so flags placed
+// after positional src/dst would otherwise be silently ignored.
+func separateArgs(fs *flag.FlagSet, args []string) (flagArgs []string, positionals []string) {
+	type boolFlag interface{ IsBoolFlag() bool }
+	i := 0
+	for i < len(args) {
+		arg := args[i]
+		if !strings.HasPrefix(arg, "-") {
+			positionals = append(positionals, arg)
+			i++
+			continue
+		}
+		name := strings.TrimLeft(arg, "-")
+		if idx := strings.Index(name, "="); idx >= 0 {
+			// --flag=value: self-contained, consume one token
+			flagArgs = append(flagArgs, arg)
+			i++
+			continue
+		}
+		f := fs.Lookup(name)
+		if f == nil {
+			// unknown flag: pass through and let Parse report the error
+			flagArgs = append(flagArgs, arg)
+			i++
+			continue
+		}
+		if bf, ok := f.Value.(boolFlag); ok && bf.IsBoolFlag() {
+			// boolean flag: no following value token
+			flagArgs = append(flagArgs, arg)
+			i++
+		} else {
+			// regular flag: consume the next token as its value
+			flagArgs = append(flagArgs, arg)
+			if i+1 < len(args) {
+				flagArgs = append(flagArgs, args[i+1])
+				i += 2
+			} else {
+				i++
+			}
+		}
+	}
+	return
 }

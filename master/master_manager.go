@@ -83,6 +83,13 @@ func (m *Server) handleLeaderChange(leader uint64) {
 		m.cluster.lcMgr.startLcScanHandleLeaderChange()
 		m.cluster.flashManMgr.startFlashScanHandleLeaderChange()
 		m.cluster.followerReadManager.reSet()
+		// P2-6: master is now the authoritative scheduler for sync
+		// rules. loadMetadata above already populated the rule cache
+		// from raft; arm the cron entries here. Stop+rebuild on lose-
+		// leader below symmetrically clears state.
+		if m.cluster.syncRuleMgr != nil {
+			m.cluster.syncRuleMgr.Start()
+		}
 	} else {
 		Warn(m.clusterName, fmt.Sprintf("clusterID[%v] leader is changed to %v",
 			m.clusterName, m.leaderInfo.addr))
@@ -95,6 +102,13 @@ func (m *Server) handleLeaderChange(leader uint64) {
 		if m.cluster.flashManMgr != nil {
 			close(m.cluster.flashManMgr.exitCh)
 			m.cluster.flashManMgr = newFlashManualTaskManager(m.cluster)
+		}
+		// P2-6: stop cron so the old leader doesn't double-fire while
+		// the new leader is coming up. Rebuild the manager so the
+		// next leader gain starts from a clean slate.
+		if m.cluster.syncRuleMgr != nil {
+			m.cluster.syncRuleMgr.Stop()
+			m.cluster.syncRuleMgr = NewSyncRuleManager(m.cluster)
 		}
 		m.metaReady = false
 		m.cluster.metaReady = false
@@ -288,6 +302,47 @@ func (m *Server) loadMetadata() {
 		panic(err)
 	}
 	log.LogInfo("action[loadLcNodes] end")
+
+	log.LogInfo("action[loadSyncNodes] begin")
+	if err = m.cluster.loadSyncNodes(); err != nil {
+		panic(err)
+	}
+	log.LogInfo("action[loadSyncNodes] end")
+
+	// P2: master owns the sync rule store. loadSyncRules rebuilds the
+	// in-memory rule cache from rocksdb on every cold start AND on every
+	// leader switch (loadMetadata is called from handleLeaderChange).
+	log.LogInfo("action[loadSyncRules] begin")
+	m.cluster.syncRuleCache = NewSyncRuleCache()
+	if err = m.cluster.loadSyncRules(); err != nil {
+		panic(err)
+	}
+	log.LogInfof("action[loadSyncRules] end, loaded %d rule(s)", m.cluster.syncRuleCache.Len())
+
+	// Phase 1: bench rule master raft persistence.
+	// See docs/plan/master/bench-rule-persistence.md. benchRuleStore is
+	// constructed in Cluster.start (NewBenchRuleStore + BindCluster); on
+	// every cold start / leader switch we replace the cache contents by
+	// allocating a fresh store, re-binding it to the cluster, and
+	// rebuilding from rocksdb. Mirrors the loadSyncRules lifecycle.
+	log.LogInfo("action[loadBenchRules] begin")
+	m.cluster.benchRuleStore = NewBenchRuleStore()
+	m.cluster.benchRuleStore.BindCluster(m.cluster)
+	if err = m.cluster.loadBenchRules(); err != nil {
+		panic(err)
+	}
+	log.LogInfof("action[loadBenchRules] end, loaded %d rule(s)", m.cluster.benchRuleStore.Len())
+
+	// FIX #7: rebuild the fan-out parents map from the dispatcher's
+	// ownership ledger. After loadSyncNodes the syncnode table is
+	// populated, so any heartbeat-driven Dispatch records that arrive
+	// next will see the recovered parent state.
+	if m.cluster.syncFanout != nil {
+		recovered := m.cluster.syncFanout.Recover()
+		if recovered > 0 {
+			log.LogInfof("action[loadSyncNodes] recovered %d fan-out parent(s) from ownership ledger", recovered)
+		}
+	}
 
 	log.LogInfo("action[loadFlashManualTasks] begin")
 	if err = m.cluster.loadFlashManualTasks(); err != nil {

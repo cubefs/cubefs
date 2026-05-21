@@ -398,21 +398,34 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		log.LogDebugf("processReply recover packet: handler is in recovery status, inflight(%v) from eh(%v) to recoverHandler(%v) packet(%v)", atomic.LoadInt32(&eh.inflight), eh, eh.recoverHandler, packet)
 		return
 	}
-	var verUpdate bool
 	reply := NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
 	err := reply.ReadFromConnWithVer(eh.conn, proto.ReadDeadlineTime)
 	if err != nil {
 		eh.processReplyError(packet, err.Error())
 		return
 	}
+	eh.handleWriteReply(packet, reply)
+}
 
+// handleWriteReply runs all post-read validation and ExtentKey
+// bookkeeping for a write reply. Extracted from processReply so the
+// RDMA send path (sender(), which uses rdmaRoundTrip to get the
+// reply synchronously instead of going through the receiver) can
+// reuse the exact same semantics without a duplicated copy.
+//
+// Caller is responsible for the status check and inflight decrement
+// — both of those wrap the call site. The TCP path (processReply)
+// reads `reply` from eh.conn before calling; the RDMA path passes
+// the already-decoded response from rdmaRoundTrip.
+func (eh *ExtentHandler) handleWriteReply(packet *Packet, reply *Packet) {
+	var verUpdate bool
 	if reply.VerSeq > atomic.LoadUint64(&eh.stream.verSeq) || (eh.key != nil && reply.VerSeq > eh.key.GetSeq()) {
 		log.LogDebugf("processReply.UpdateLatestVer update verseq according to data rsp from version %v to %v", eh.stream.verSeq, reply.VerSeq)
-		if err = eh.stream.client.UpdateLatestVer(&proto.VolVersionInfoList{VerList: reply.VerList}); err != nil {
+		if err := eh.stream.client.UpdateLatestVer(&proto.VolVersionInfoList{VerList: reply.VerList}); err != nil {
 			eh.processReplyError(packet, err.Error())
 			return
 		}
-		if err = eh.appendExtentKey(); err != nil {
+		if err := eh.appendExtentKey(); err != nil {
 			eh.processReplyError(packet, err.Error())
 			return
 		}

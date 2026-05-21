@@ -226,6 +226,12 @@ type clusterConfig struct {
 	SingleNodeMode     bool
 
 	MaxWritableDataPartitionCnt int
+
+	// SyncAdminToken is the shared bearer token enforced by the
+	// /syncNode/* admin middleware (master/sync_node_auth.go). Empty
+	// string disables the check, preserving zero-config dev/test
+	// behavior. Sourced from the master config key "syncAdminToken".
+	SyncAdminToken string
 }
 
 func newClusterConfig() (cfg *clusterConfig) {

@@ -273,7 +273,7 @@ func (s *Streamer) server() {
 		case <-renewalTimer.C:
 			if !s.openForWrite {
 				renewalTimer.Stop()
-			} else {
+			} else if s.client.renewalForbiddenMigration != nil {
 				// renewal forbidden migration
 				err := s.client.renewalForbiddenMigration(s.inode)
 				if err != nil {

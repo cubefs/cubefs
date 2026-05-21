@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -79,11 +80,13 @@ func DefaultSyncOptions() SyncOptions {
 
 // Task is a unit of work produced by the diff phase.
 type Task struct {
-	SrcKey string
-	DstKey string
-	Size   int64
-	Mtime  time.Time
-	Op     TaskOp
+	SrcKey  string
+	DstKey  string
+	Size    int64
+	DstSize int64
+	Mtime   time.Time
+	DstMtime time.Time
+	Op      TaskOp
 }
 
 // TaskOp is the operation type for a sync task.
@@ -116,6 +119,25 @@ func NewSyncer(src, dst storage.Storage, opts SyncOptions) *Syncer {
 
 // Run executes the sync and returns the number of failed files.
 func (s *Syncer) Run(ctx context.Context) int64 {
+	statsInterval := s.opts.Stats
+	if s.opts.Progress && statsInterval <= 0 {
+		statsInterval = 5 * time.Second
+	}
+	if statsInterval > 0 {
+		go func() {
+			ticker := time.NewTicker(statsInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					s.stats.print()
+				}
+			}
+		}()
+	}
+
 	if s.opts.FilesFrom != "" {
 		return s.runFilesFrom(ctx)
 	}
@@ -192,7 +214,7 @@ func (s *Syncer) mergeDiff(
 		default:
 			// same key on both sides → checker decides
 			if !srcObj.IsDir && s.filter.Allow(srcObj.Key, srcObj.Size, srcObj.Mtime) {
-				if !emit(Task{SrcKey: srcObj.Key, DstKey: dstObj.Key, Size: srcObj.Size, Mtime: srcObj.Mtime, Op: OpCopy}) {
+				if !emit(Task{SrcKey: srcObj.Key, DstKey: dstObj.Key, Size: srcObj.Size, DstSize: dstObj.Size, Mtime: srcObj.Mtime, DstMtime: dstObj.Mtime, Op: OpCopy}) {
 					return
 				}
 			}
@@ -236,7 +258,21 @@ func (s *Syncer) runCheckers(ctx context.Context, in <-chan Task, out chan<- Tas
 				return
 			}
 
-			// By default forward all copy tasks; size/mtime comparison would go here.
+			// Size-only comparison: skip if both sides report a positive equal size.
+			if s.opts.SizeOnly && task.Size > 0 && task.DstSize > 0 && task.Size == task.DstSize {
+				s.stats.FilesSkipped.Add(1)
+				return
+			}
+
+			// Default: skip if size and mtime both match (within 1-second tolerance for
+			// filesystems with coarse timestamp resolution).
+			if !s.opts.Checksum && task.Size == task.DstSize &&
+				!task.DstMtime.IsZero() && absDuration(task.Mtime.Sub(task.DstMtime)) < time.Second {
+				s.stats.FilesSkipped.Add(1)
+				return
+			}
+
+			// By default forward all copy tasks; checksum comparison would go here.
 			select {
 			case <-ctx.Done():
 			case out <- task:
@@ -262,7 +298,11 @@ func (s *Syncer) runWorkers(ctx context.Context, in <-chan Task) int64 {
 				defer func() { <-sem; wg.Done() }()
 				var err error
 				if s.opts.DryRun {
-					fmt.Printf("[dry-run] %s %s\n", opName(task.Op), task.SrcKey)
+					target := task.SrcKey
+					if task.Op == OpDelete {
+						target = task.DstKey
+					}
+					fmt.Printf("[dry-run] %s %s\n", opName(task.Op), target)
 				} else {
 					err = s.executeWithRetry(ctx, task)
 				}
@@ -276,10 +316,14 @@ func (s *Syncer) runWorkers(ctx context.Context, in <-chan Task) int64 {
 	var failed int64
 	for r := range results {
 		if r.err != nil {
-			failed++
-			s.stats.FilesFailed.Add(1)
-			if !s.opts.IgnoreErrors {
-				fmt.Fprintf(os.Stderr, "error: %v\n", r.err)
+			if errors.Is(r.err, context.Canceled) || errors.Is(r.err, context.DeadlineExceeded) {
+				s.stats.FilesSkipped.Add(1)
+			} else {
+				failed++
+				s.stats.FilesFailed.Add(1)
+				if !s.opts.IgnoreErrors {
+					fmt.Fprintf(os.Stderr, "error: %v\n", r.err)
+				}
 			}
 		}
 	}
@@ -326,12 +370,19 @@ func (s *Syncer) copyFile(ctx context.Context, task Task) error {
 	}
 	defer r.Close()
 
-	if err = s.dst.Put(ctx, task.DstKey, r, task.Size); err != nil {
+	if err = s.dst.PutWithMtime(ctx, task.DstKey, r, task.Size, task.Mtime); err != nil {
 		return fmt.Errorf("put %s: %w", task.DstKey, err)
 	}
 	s.stats.FilesTransferred.Add(1)
 	s.stats.BytesTransferred.Add(task.Size)
 	return nil
+}
+
+func absDuration(d time.Duration) time.Duration {
+	if d < 0 {
+		return -d
+	}
+	return d
 }
 
 func (s *Syncer) runFilesFrom(ctx context.Context) int64 {

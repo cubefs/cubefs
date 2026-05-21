@@ -63,6 +63,7 @@ type ClusterTopoSubItem struct {
 	dataNodes sync.Map
 	metaNodes sync.Map
 	lcNodes   sync.Map
+	syncNodes sync.Map
 
 	idAlloc            *IDAllocator
 	t                  *topology
@@ -185,6 +186,60 @@ type Cluster struct {
 	mu          sync.Mutex
 	PlanRun     bool
 	flashManMgr *flashManualTaskManager
+
+	// syncDispatcher is the master-side syncnode scheduler (Phase P1).
+	// Passive reader of syncNodes — see sync_dispatcher.go.
+	syncDispatcher *SyncDispatcher
+
+	// syncFailover orchestrates redispatch of in-flight syncnode tasks
+	// when their owning node dies (Phase P1-4). Wires its hook into
+	// syncDispatcher at construction; see sync_failover.go.
+	syncFailover *SyncFailover
+
+	// syncQuota computes per-node bandwidth quotas (per-rule + per-backend)
+	// from cluster-wide caps and the live syncnode fleet (Phase P1-8 + P1-9).
+	// Compute() is called from checkSyncNodeHeartbeat so the per-node maps
+	// stay in lock-step with the heartbeat round. Quota delivery to
+	// syncnodes goes via the GetSyncNodeQuota HTTP endpoint
+	// (syncnode polls every heartbeat tick — see syncnode/master_client.go).
+	syncQuota *SyncQuotaCalculator
+
+	// syncFanout tracks parent → sub-task state for file-level fan-out
+	// dispatches (Phase P1-7). Promoted to a Cluster field so the parents
+	// map survives across HTTP requests: RecordProgress events from
+	// sub-tasks arrive over time and need the same instance that
+	// DispatchN created the parent on. Recover() rebuilds the map from
+	// the dispatcher's ownership ledger on master leader transition.
+	syncFanout *SyncFanout
+
+	// syncRuleCache is the master's in-memory view of every persisted
+	// sync rule (P2). Reads (admin handlers, scheduler) are lock-free
+	// against this cache; writes go through c.syncAddSyncRule (raft) and
+	// then update the cache. Reset on leader switch by master_manager's
+	// loadMetadata.
+	syncRuleCache *SyncRuleCache
+
+	// syncRuleMgr is the master-side cron + dispatch engine for sync
+	// rules (Phase P2-3). The manager Start/Stop pair is driven by raft
+	// leader gain/loss in master_manager.go (Phase 6 wires the call —
+	// Phase 3 only constructs the manager so admin handlers can call
+	// Register/Unregister without nil checks).
+	syncRuleMgr *SyncRuleManager
+
+	// syncTaskLedger is the bounded LRU view of task ownership +
+	// terminal status, used by /syncTask/* and /syncNode/tasks (P2-4).
+	// Populated by Dispatch / DispatchN on send and by
+	// /syncNode/response on terminal. Capacity defaults to
+	// SyncTaskLedgerCap.
+	syncTaskLedger *SyncTaskLedger
+
+	// benchRuleStore holds the in-memory bench rule configurations
+	// (P0 — no raft persistence; rules are lost on leader restart).
+	benchRuleStore *BenchRuleStore
+
+	// benchTaskLedger is a bounded LRU view of bench task records, used
+	// by /benchTask/*. Capacity defaults to BenchTaskLedgerCap.
+	benchTaskLedger *BenchTaskLedger
 }
 
 type cTask struct {
@@ -486,6 +541,25 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.cleanTask = make(map[string]*CleanTask)
 	c.PlanRun = false
 	c.flashManMgr = newFlashManualTaskManager(c)
+	c.syncDispatcher = NewSyncDispatcher(c)
+	c.syncFailover = NewSyncFailover(c, c.syncDispatcher)
+	c.syncQuota = NewSyncQuotaCalculator(c)
+	c.syncFanout = NewSyncFanout(c.syncDispatcher)
+	c.syncRuleCache = NewSyncRuleCache()
+	c.syncRuleMgr = NewSyncRuleManager(c)
+	c.syncTaskLedger = NewSyncTaskLedger(SyncTaskLedgerCap)
+	c.benchRuleStore = NewBenchRuleStore()
+	c.benchRuleStore.BindCluster(c)
+	c.benchTaskLedger = NewBenchTaskLedger(BenchTaskLedgerCap)
+	initSyncMetrics()
+	// SEC1: install the /syncNode/* admin token from master config
+	// (key "syncAdminToken"). Empty value = middleware passthrough,
+	// preserving zero-config dev/test behavior; operators opt in by
+	// setting the key in master.json. Master has no SIGHUP reload
+	// path today — TODO(master-config): wire SetSyncAdminToken into
+	// a reload hook if/when one is added so rotation doesn't require
+	// a restart.
+	SetSyncAdminToken(c.cfg.SyncAdminToken)
 	return
 }
 
@@ -887,6 +961,18 @@ func (c *Cluster) scheduleToCheckHeartbeat() {
 			},
 		})
 
+	c.runTask(
+		&cTask{
+			tickTime: time.Second * defaultIntervalToCheckHeartbeat,
+			name:     "scheduleToCheckHeartbeat_checkSyncNodeHeartbeat",
+			function: func() (fin bool) {
+				if c.partition != nil && c.partition.IsRaftLeader() {
+					c.checkSyncNodeHeartbeat()
+				}
+				return
+			},
+		})
+
 	go func() {
 		ticker := time.NewTicker(time.Second * defaultIntervalToCheckHeartbeat)
 		defer ticker.Stop()
@@ -1014,6 +1100,91 @@ func (c *Cluster) checkLcNodeHeartbeat() {
 	for _, node := range diedNodes {
 		log.LogInfof("checkLcNodeHeartbeat: deregister node(%v)", node)
 		_ = c.delLcNode(node)
+	}
+}
+
+// Sync-master lock ordering (lowest → highest, must acquire top-down):
+//
+//  1. Cluster.syncNodes      (sync.Map — no explicit lock needed)
+//  2. SyncNode.RWMutex       (per-node runtime fields)
+//  3. SyncDispatcher.mu      (ownership ledger; held briefly)
+//  4. SyncFailover.mu        (history ring + payload map)
+//
+// Code paths that touch multiple levels MUST acquire and release in this
+// order. checkSyncNodeHeartbeat reads SyncNode under RLock, releases,
+// then calls into the dispatcher / failover chain — it must NEVER hold
+// SyncNode's lock across a dispatcher call. The dispatcher's failover
+// hook fans out to sendFn → sn.TaskManager.AddTask, which would deadlock
+// or race against handleSyncNodeHeartbeatResp (also acquiring SyncNode.Lock)
+// if we entered the chain while still holding the source node's lock.
+//
+// checkSyncNodeHeartbeat ticks each registered SyncNode, marks stale nodes
+// inactive, and queues a fresh heartbeat AdminTask for live ones. Unlike
+// LcNode, syncnode entries are NOT auto-deregistered on liveness loss in
+// P0 — IsActive=false is enough; the operator decides when to evict.
+//
+// S4 fix: the previous shape read node.IsActive (unlocked) before and after
+// node.checkLiveness() — both reads raced against handleSyncNodeHeartbeatResp.
+// The current shape acquires SyncNode.RLock to snapshot the pre-flip state,
+// releases, calls checkLiveness (which takes Lock internally), then re-reads
+// post-flip state under RLock again — all SyncNode locks are released BEFORE
+// invoking c.syncDispatcher.handleNodeDeath so we respect the canonical
+// lock order and never hold SyncNode across the dispatcher / failover chain.
+func (c *Cluster) checkSyncNodeHeartbeat() {
+	tasks := make([]*proto.AdminTask, 0)
+	deadAddrs := make([]string, 0)
+	c.syncNodes.Range(func(addr, syncNode interface{}) bool {
+		node := syncNode.(*SyncNode)
+
+		// Snapshot pre-flip state under RLock (level 2). Released before
+		// any further work on this node.
+		node.RLock()
+		wasActive := node.IsActive
+		node.RUnlock()
+
+		// checkLiveness internally acquires SyncNode.Lock and may flip
+		// IsActive. We do NOT hold any SyncNode lock across this call.
+		node.checkLiveness()
+
+		// Re-read post-flip state under RLock. Released immediately so
+		// we never enter the dispatcher / failover chain while holding
+		// SyncNode's lock.
+		node.RLock()
+		nowActive := node.IsActive
+		node.RUnlock()
+
+		if !nowActive {
+			log.LogInfof("checkSyncNodeHeartbeat: syncnode(%v) is inactive", node.Addr)
+			if wasActive {
+				deadAddrs = append(deadAddrs, node.Addr)
+			}
+			return true
+		}
+		task := node.createHeartbeatTask(c.masterAddr())
+		// TODO(P1-8+9 wiring): once createHeartbeatTask exposes a
+		// quota-injection hook (or once the SDK adds a typed-reply path
+		// for ResponseSyncNodeTask) attach c.syncQuota.QuotasFor(node.Addr)
+		// to the outgoing AdminTask's response body. The math + Registry
+		// plumbing on the syncnode side is already in place — only the
+		// on-wire glue remains. See docs/plan/syncnode/design.md §12.4.2.
+		tasks = append(tasks, task)
+		return true
+	})
+	// Refresh per-node quota snapshots so the next tick can inject them
+	// (and so /admin/sync/quota inspection endpoints return fresh data).
+	if c.syncQuota != nil {
+		c.syncQuota.Compute()
+	}
+	c.addSyncNodeTasks(tasks)
+	// Tell the dispatcher about freshly-dead nodes so any task ownership
+	// it tracked for them is cleared. NO SyncNode lock is held here —
+	// handleNodeDeath fires failoverHook → redispatch → sendFn →
+	// sn.TaskManager.AddTask on the OTHER (healthy) node, which would
+	// race against this loop if we still held the source node's lock.
+	if c.syncDispatcher != nil {
+		for _, addr := range deadAddrs {
+			c.syncDispatcher.handleNodeDeath(addr)
+		}
 	}
 }
 
@@ -2330,6 +2501,16 @@ func (c *Cluster) lcNode(addr string) (lcNode *LcNode, err error) {
 		return
 	}
 	lcNode = value.(*LcNode)
+	return
+}
+
+func (c *Cluster) syncNode(addr string) (sn *SyncNode, err error) {
+	value, ok := c.syncNodes.Load(addr)
+	if !ok {
+		err = errors.Trace(syncNodeNotFound(addr), "%v not found", addr)
+		return
+	}
+	sn = value.(*SyncNode)
 	return
 }
 
@@ -5791,6 +5972,121 @@ errHandler:
 	err = fmt.Errorf("action[addLcNode], clusterID[%v], lcNodeAddr: %v, err: %v ", c.Name, nodeAddr, err.Error())
 	log.LogError(errors.Stack(err))
 	Warn(c.Name, err.Error())
+	return
+}
+
+// addSyncNode registers a syncnode by address. Mirrors addLcNode:
+// idempotent on addr — second call with the same addr returns the
+// existing ID. State change is raft-replicated before the in-memory
+// map is updated.
+func (c *Cluster) addSyncNode(nodeAddr string) (id uint64, err error) {
+	var sn *SyncNode
+	if value, ok := c.syncNodes.Load(nodeAddr); ok {
+		sn = value.(*SyncNode)
+		sn.ReportTime = time.Now()
+		sn.clean()
+		sn.TaskManager = newAdminTaskManager(sn.Addr, c.Name)
+		log.LogInfof("action[addSyncNode] already add nodeAddr: %v, id: %v", nodeAddr, sn.ID)
+	} else {
+		// allocate SyncNode id first; if this is slow we still want a fresh
+		// ReportTime so the very-first liveness tick doesn't mark inactive.
+		if id, err = c.idAlloc.allocateCommonID(); err != nil {
+			goto errHandler
+		}
+		sn = newSyncNode(nodeAddr, c.Name)
+		sn.ID = id
+		log.LogInfof("action[addSyncNode] add nodeAddr: %v, allocateCommonID: %v", nodeAddr, id)
+	}
+
+	if err = c.syncAddSyncNode(sn); err != nil {
+		goto errHandler
+	}
+	c.syncNodes.Store(nodeAddr, sn)
+	log.LogInfof("action[addSyncNode], clusterID[%v], syncNodeAddr: %v, id: %v, success", c.Name, nodeAddr, sn.ID)
+	return sn.ID, nil
+
+errHandler:
+	err = fmt.Errorf("action[addSyncNode], clusterID[%v], syncNodeAddr: %v, err: %v ", c.Name, nodeAddr, err.Error())
+	log.LogError(errors.Stack(err))
+	Warn(c.Name, err.Error())
+	return
+}
+
+// addSyncNodeTasks dispatches each AdminTask to the addressed SyncNode's
+// TaskManager. Unknown addresses are logged and skipped (the syncnode may
+// have just been removed).
+func (c *Cluster) addSyncNodeTasks(tasks []*proto.AdminTask) {
+	for _, t := range tasks {
+		if t == nil {
+			continue
+		}
+		if node, err := c.syncNode(t.OperatorAddr); err != nil {
+			log.LogWarnf("action[addSyncNodeTasks],nodeAddr:%s,taskID:%s,err:%v", t.OperatorAddr, t.ID, err)
+		} else {
+			node.TaskManager.AddTask(t)
+		}
+	}
+}
+
+// syncAddSyncNode raft-replicates an Add op for the supplied SyncNode.
+// Mirrors syncAddLcNode + syncPutLcNodeInfo.
+func (c *Cluster) syncAddSyncNode(sn *SyncNode) (err error) {
+	return c.syncPutSyncNodeInfo(opSyncAddSyncNode, sn)
+}
+
+// syncDeleteSyncNode raft-replicates a Delete op. Kept for parity with
+// the lcnode path even though P0 does not auto-evict syncnodes.
+func (c *Cluster) syncDeleteSyncNode(sn *SyncNode) (err error) {
+	return c.syncPutSyncNodeInfo(opSyncDeleteSyncNode, sn)
+}
+
+// syncUpdateSyncNode raft-replicates an Update op for the SyncNode's
+// state (P2). Used by the decommission / drain / restore admin endpoints
+// so the State field survives leader switch.
+func (c *Cluster) syncUpdateSyncNode(sn *SyncNode) (err error) {
+	return c.syncPutSyncNodeInfo(opSyncUpdateSyncNode, sn)
+}
+
+func (c *Cluster) syncPutSyncNodeInfo(opType uint32, sn *SyncNode) (err error) {
+	metadata := new(RaftCmd)
+	metadata.Op = opType
+	metadata.K = syncNodePrefix + sn.Addr
+	snv := newSyncNodeValue(sn)
+	metadata.V, err = json.Marshal(snv)
+	if err != nil {
+		return errors.New(err.Error())
+	}
+	return c.submit(metadata)
+}
+
+// loadSyncNodes reconstructs the in-memory syncNodes map from the raft
+// store on master start (cold load) and on leader switch. Mirrors
+// loadLcNodes. A fresh cluster with no persisted records yields an empty
+// map and no error.
+func (c *Cluster) loadSyncNodes() (err error) {
+	result, err := c.fsm.store.SeekForPrefix([]byte(syncNodePrefix))
+	if err != nil {
+		err = fmt.Errorf("action[loadSyncNodes],err:%v", err.Error())
+		return err
+	}
+	log.LogInfof("action[loadSyncNodes], result count %v", len(result))
+	for _, value := range result {
+		snv := &syncNodeValue{}
+		if err = json.Unmarshal(value, snv); err != nil {
+			err = fmt.Errorf("action[loadSyncNodes],value:%v,unmarshal err:%v", string(value), err)
+			return
+		}
+		sn := newSyncNode(snv.Addr, c.Name)
+		sn.ID = snv.ID
+		// Pre-P2 records have no State field; default to active.
+		if snv.State == "" {
+			sn.State = SyncNodeStateActive
+		} else {
+			sn.State = snv.State
+		}
+		c.syncNodes.Store(sn.Addr, sn)
+		log.LogInfof("action[loadSyncNodes], store syncNode[%v], id[%v], state[%v]", sn.Addr, sn.ID, sn.State)
+	}
 	return
 }
 

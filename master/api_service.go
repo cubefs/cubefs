@@ -7993,6 +7993,315 @@ func (m *Server) addLcNode(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(id))
 }
 
+// addSyncNode is the master HTTP entry point for syncnode self-registration.
+// Mirrors addLcNode shape (POST /syncNode/add?addr=...). Returns the
+// allocated nodeID on success; idempotent on addr.
+func (m *Server) addSyncNode(w http.ResponseWriter, r *http.Request) {
+	var (
+		nodeAddr string
+		id       uint64
+		err      error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AddSyncNode))
+	defer func() {
+		doStatAndMetric(proto.AddSyncNode, metric, err, nil)
+		AuditLog(r, proto.AddSyncNode, fmt.Sprintf("node(%v) id(%d)", nodeAddr, id), err)
+	}()
+
+	if nodeAddr, err = parseAndExtractNodeAddr(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if !checkIp(nodeAddr) {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Errorf("addr not legal").Error()})
+		return
+	}
+	if id, err = m.cluster.addSyncNode(nodeAddr); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(id))
+}
+
+// listSyncNodes returns the master's current view of every registered
+// syncnode, in arbitrary order. Includes the per-node identity record
+// plus the dispatcher load score (P1-1) so operators / external schedulers
+// can see relative pressure across the fleet without scraping individual
+// syncnode endpoints.
+//
+// P3 fix: scores are pulled via SyncDispatcher.LoadScoreAll() — one
+// pass over syncNodes — instead of LoadScore-per-node, which made the
+// endpoint O(N²) and unusable past ~1k syncnodes. The endpoint is now
+// O(N): single Range over syncNodes plus a map lookup per node.
+func (m *Server) listSyncNodes(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.ListSyncNodes))
+	var err error
+	defer func() {
+		doStatAndMetric(proto.ListSyncNodes, metric, err, nil)
+	}()
+	out := make([]*proto.SyncNodeInfo, 0)
+	var scores map[string]float64
+	if m.cluster.syncDispatcher != nil {
+		scores = m.cluster.syncDispatcher.LoadScoreAll()
+	}
+	m.cluster.syncNodes.Range(func(_, v interface{}) bool {
+		sn := v.(*SyncNode)
+		sn.RLock()
+		info := &proto.SyncNodeInfo{
+			NodeID:              sn.ID,
+			Addr:                sn.Addr,
+			Version:             sn.Version,
+			RegisteredAt:        sn.ReportTime.Unix(),
+			State:               string(sn.State),
+			UptimeSeconds:       sn.UptimeSeconds,
+			RunningTasks:        sn.RunningTasks,
+			QueuedTasks:         sn.QueuedTasks,
+			ScheduledRules:      sn.ScheduledRules,
+			BoltDBHealthy:       sn.BoltDBHealthy,
+			BandwidthMBps:       sn.BandwidthMBps,
+			CPUPercent:          sn.CPUPercent,
+			MemPercent:          sn.MemPercent,
+			MemTotalMB:          sn.MemTotalMB,
+			CPUCores:            sn.CPUCores,
+			ReloadFailures:      sn.ReloadFailures,
+			MaxConcurrentTasks:  sn.MaxConcurrentTasks,
+			BandwidthMBpsLimit:  sn.BandwidthMBpsLimit,
+			LastTaskFailureRate: sn.LastTaskFailureRate,
+			MountPoints:         sn.MountPoints,
+		}
+		sn.RUnlock()
+		if scores != nil {
+			// LoadScoreAll returns +Inf for stale / unhealthy nodes
+			// (see sync_dispatcher.go contract). encoding/json refuses
+			// to marshal +Inf or NaN — emitting one stale node would
+			// fail the entire /syncNode/list reply with
+			// "json: unsupported value: +Inf" and surface as HTTP 400
+			// to the dashboard. Clamp to MaxFloat64 here so the
+			// "lower is better" ordering still puts stale nodes at the
+			// bottom, but the wire format stays valid JSON.
+			s := scores[info.Addr]
+			if math.IsInf(s, 0) || math.IsNaN(s) {
+				s = math.MaxFloat64
+			}
+			info.LoadScore = s
+		}
+		out = append(out, info)
+		return true
+	})
+	sendOkReply(w, r, newSuccessHTTPReply(out))
+}
+
+// dispatchMaxBodyBytes caps the dispatchSyncTask request body. The
+// payload is an AdminTask envelope (task.ID + task.Request); 1 MB is
+// orders of magnitude beyond anything legitimate sync rules produce
+// and keeps a hostile multi-GB POST from OOMing master.
+const dispatchMaxBodyBytes = 1 << 20 // 1 MB
+
+// dispatchSyncTask is the master entry point that other services call to
+// ask master to fan-out a sync task. The request body is an AdminTask
+// envelope (task.ID + task.Request payload); master picks the
+// lowest-load syncnode and forwards an OpSyncNodeRunTask packet to it.
+// On nack/failure the dispatcher retries with the next-best candidate
+// up to 3 times (P1-2 acceptance criterion).
+//
+// P1-7: when the request body carries a top-level "parallelism" > 1
+// (alongside the AdminTask envelope), master fans the work out to
+// parallelism distinct nodes via SyncFanout instead of single-Dispatch.
+// The shard descriptor is injected into each shard's RunTaskRequest
+// payload as the "subTask" field that the syncnode side already decodes.
+//
+// Response (single dispatch): { "node": "<addr>", "taskID": "<id>" }
+// Response (fan-out):         { "owners": {"0":"<addr>", ...}, "taskID": "<id>", "shardTotal": N }
+func (m *Server) dispatchSyncTask(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.SyncNodeDispatch))
+	var err error
+	defer func() {
+		doStatAndMetric(proto.SyncNodeDispatch, metric, err, nil)
+	}()
+
+	// SEC3 fix: cap the request body so a hostile multi-GB POST can't
+	// OOM master. MaxBytesReader makes the next read return an error
+	// once the cap is exceeded; io.ReadAll surfaces it cleanly.
+	r.Body = http.MaxBytesReader(w, r.Body, dispatchMaxBodyBytes)
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Errorf("read body: %v", err).Error()})
+		return
+	}
+	var task proto.AdminTask
+	if err = json.Unmarshal(body, &task); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Errorf("decode task: %v", err).Error()})
+		return
+	}
+	if task.ID == "" {
+		err = fmt.Errorf("task.ID is required")
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	// FIX Q4: reject task IDs whose last "/<digits>" suffix would make
+	// splitSubTaskID mis-parse this single task as a fan-out shard. We
+	// still ALLOW arbitrary "/" in parent IDs (operators commonly use
+	// "job/2026-05-14"-style stamps), but a literal trailing "/<digits>"
+	// IS the shard suffix the fan-out builder synthesises — so a caller
+	// who hands us "job/0" creates a parent that's indistinguishable
+	// from sub-task #0 of parent "job". The dispatch path treats this as
+	// a parent (no fan-out routing), but downstream the terminal handler
+	// would see "job/0" as a shard report. Be strict here to keep the
+	// invariant clean.
+	if slash := strings.LastIndex(task.ID, "/"); slash > 0 {
+		if suffix := task.ID[slash+1:]; suffix != "" {
+			if _, atoiErr := strconv.Atoi(suffix); atoiErr == nil {
+				err = fmt.Errorf("task.ID %q ends with /<digits>; that shape is reserved for fan-out sub-task ids", task.ID)
+				sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+				return
+			}
+		}
+	}
+	if m.cluster.syncDispatcher == nil {
+		err = fmt.Errorf("syncDispatcher not initialised")
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	// P1-7 fan-out detection: the request body MAY include a top-level
+	// "shardTotal" int alongside the AdminTask. When > 1, route through
+	// SyncFanout.DispatchN so master spreads the parent task across N
+	// syncnodes. Older callers that don't set the field stay on the
+	// single-Dispatch path.
+	//
+	// We re-decode the body into a tiny side struct rather than reaching
+	// into task.Request (which is interface{}); this keeps the existing
+	// AdminTask shape unchanged.
+	var hint struct {
+		ShardTotal int `json:"shardTotal"`
+	}
+	_ = json.Unmarshal(body, &hint)
+
+	// Extract ruleID once for both the fan-out and single-dispatch paths
+	// so /syncTask/list can display manually-dispatched tasks.
+	var ruleHint struct {
+		Request struct {
+			RuleID string `json:"ruleId"`
+		} `json:"Request"`
+	}
+	_ = json.Unmarshal(body, &ruleHint)
+
+	// Inject the cached rule snapshot so syncnode uses TriggerWithRule (the
+	// P2-6 fast path) instead of falling back to its local rule store, which
+	// only holds rules loaded from the config file and never rules created
+	// through the master API. Without this, manually-dispatched tasks always
+	// fail with "sync rule not found".
+	if ruleHint.Request.RuleID != "" && m.cluster.syncRuleCache != nil {
+		if cachedRule := m.cluster.syncRuleCache.Get(ruleHint.Request.RuleID); cachedRule != nil {
+			if reqMap, ok := task.Request.(map[string]interface{}); ok {
+				if _, hasRule := reqMap["rule"]; !hasRule {
+					reqMap["rule"] = cachedRule
+				}
+			}
+		}
+	}
+
+	if hint.ShardTotal > 1 {
+		// FIX #7: use the Cluster's persistent SyncFanout so the parents
+		// map survives across HTTP requests — RecordProgress events from
+		// sub-tasks arrive after this handler returns and need the same
+		// instance that DispatchN registered the parent on.
+		fo := m.cluster.syncFanout
+		if fo == nil {
+			fo = NewSyncFanout(m.cluster.syncDispatcher) // defensive — should never trigger
+		}
+		send := func(addr string, shardIdx int, payload interface{}) error {
+			value, ok := m.cluster.syncNodes.Load(addr)
+			if !ok {
+				return fmt.Errorf("syncnode %s not registered", addr)
+			}
+			sn, ok := value.(*SyncNode)
+			if !ok || sn == nil {
+				return fmt.Errorf("syncnode %s entry invalid", addr)
+			}
+			runTask := proto.NewAdminTaskEx(proto.OpSyncNodeRunTask, addr, payload,
+				fmt.Sprintf("%s/%d", task.ID, shardIdx))
+			sn.TaskManager.AddTask(runTask)
+			return nil
+		}
+		owners, dispErr := fo.DispatchN(task.ID, ruleHint.Request.RuleID, hint.ShardTotal,
+			task.Request, jsonRoundTripFanoutCloner, send, 3)
+		if dispErr != nil {
+			err = dispErr
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+		// Bug #2 fix: stash the per-shard RunTask payload so the failover
+		// orchestrator can rebuild + redispatch it when a shard's owner
+		// dies. The dispatcher's failoverHook drives Remember-lookup via
+		// the same sub-task ID DispatchN allocated.
+		if m.cluster.syncFailover != nil {
+			for shard, addr := range owners {
+				subID := fmt.Sprintf("%s/%d", task.ID, shard)
+				shardPayload, cloneErr := jsonRoundTripFanoutCloner.CloneWithSubTask(task.Request, SubTaskInfo{
+					ParentTaskID: task.ID,
+					ShardIndex:   shard,
+					ShardTotal:   hint.ShardTotal,
+				})
+				if cloneErr != nil {
+					log.LogWarnf("syncFailover: clone shard %d for Remember: %v", shard, cloneErr)
+					continue
+				}
+				shardTask := proto.NewAdminTask(proto.OpSyncNodeRunTask, addr, shardPayload)
+				shardTask.ID = subID
+				m.cluster.syncFailover.Remember(subID, shardTask)
+			}
+		}
+		// Record parent + each shard in the task ledger so /syncTask/list
+		// shows manually-dispatched fan-out tasks.
+		m.cluster.recordManualDispatch(task.ID, ruleHint.Request.RuleID, "", 0, hint.ShardTotal)
+		for shard, addr := range owners {
+			m.cluster.recordManualDispatch(fmt.Sprintf("%s/%d", task.ID, shard), ruleHint.Request.RuleID, addr, shard, hint.ShardTotal)
+		}
+		sendOkReply(w, r, newSuccessHTTPReply(map[string]interface{}{
+			"taskID":     task.ID,
+			"shardTotal": hint.ShardTotal,
+			"owners":     owners,
+		}))
+		return
+	}
+
+	sendFn := func(addr string) error {
+		value, ok := m.cluster.syncNodes.Load(addr)
+		if !ok {
+			return fmt.Errorf("syncnode %s not registered", addr)
+		}
+		sn, ok := value.(*SyncNode)
+		if !ok || sn == nil {
+			return fmt.Errorf("syncnode %s entry invalid", addr)
+		}
+		// Build a fresh OpSyncNodeRunTask carrying the original Request
+		// payload, addressed to this candidate.
+		runTask := proto.NewAdminTaskEx(proto.OpSyncNodeRunTask, addr, task.Request, task.ID)
+		sn.TaskManager.AddTask(runTask)
+		return nil
+	}
+	addr, dispErr := m.cluster.syncDispatcher.Dispatch(task.ID, sendFn, 3)
+	if dispErr != nil {
+		err = dispErr
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	// Bug #2 fix: stash the original RunTask payload so the failover
+	// orchestrator can rebuild + redispatch it on owner death. Without
+	// this Remember, the failover hook always logs "no saved payload"
+	// and zero failover actually happens.
+	if m.cluster.syncFailover != nil {
+		m.cluster.syncFailover.Remember(task.ID, &task)
+	}
+	// Record in the task ledger so /syncTask/list shows manually-dispatched tasks.
+	m.cluster.recordManualDispatch(task.ID, ruleHint.Request.RuleID, addr, 0, 0)
+	sendOkReply(w, r, newSuccessHTTPReply(map[string]interface{}{
+		"node":   addr,
+		"taskID": task.ID,
+	}))
+}
+
 // handle tasks such as heartbeat，expiration scanning, etc.
 func (m *Server) handleLcNodeTaskResponse(w http.ResponseWriter, r *http.Request) {
 	var (
@@ -8011,6 +8320,60 @@ func (m *Server) handleLcNodeTaskResponse(w http.ResponseWriter, r *http.Request
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("%v", http.StatusOK)))
 	m.cluster.handleLcNodeTaskResponse(tr.OperatorAddr, tr)
+}
+
+// handleSyncNodeTaskResponse is the inbound endpoint for syncnode →
+// master push (heartbeats + task-terminal reports). Mirror of
+// handleLcNodeTaskResponse but with one enhancement: the HTTP response
+// body carries the master-computed bandwidth quotas for the reporting
+// node so syncnode can apply them inline (FIX P4 — replaces the
+// separate GET /syncNode/getQuota poll).
+//
+// Wire shape: master replies with newSuccessHTTPReply(*SyncNodeQuotaReply)
+// — SDK's ResponseSyncNodeTask decodes Data into the typed reply via
+// requestWith.
+//
+// FIX S7 (newly discovered): the route was NEVER WIRED in http_server.go
+// before this commit. handleSyncNodeTaskResponse was dead code. Master
+// never received heartbeats or terminal pushbacks — runtime gauges on
+// master/SyncNode struct stayed zero. Wiring + this endpoint together
+// close the loop.
+func (m *Server) handleSyncNodeTaskResponse(w http.ResponseWriter, r *http.Request) {
+	var (
+		tr  *proto.AdminTask
+		err error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.GetSyncNodeTaskResponse))
+	defer func() {
+		doStatAndMetric(proto.GetSyncNodeTaskResponse, metric, err, nil)
+	}()
+
+	tr, err = parseRequestToGetTaskResponse(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	// Drive state updates BEFORE building the reply so the load-score
+	// inputs (RunningTasks, BoltDBHealthy) are fresh for any subsequent
+	// dispatch decision. The reply body itself only needs quotas — those
+	// are computed from syncQuota.QuotasFor(addr), which Compute() refreshes
+	// on the heartbeat-tick goroutine independently.
+	m.cluster.handleSyncNodeTaskResponse(tr.OperatorAddr, tr)
+
+	reply := &proto.SyncNodeQuotaReply{Addr: tr.OperatorAddr}
+	if snI, ok := m.cluster.syncNodes.Load(tr.OperatorAddr); ok {
+		sn := snI.(*SyncNode)
+		sn.RLock()
+		reply.NodeID = sn.ID
+		sn.RUnlock()
+	}
+	if m.cluster.syncQuota != nil {
+		nq := m.cluster.syncQuota.QuotasFor(tr.OperatorAddr)
+		reply.RuleQuotas = nq.Rules
+		reply.BackendQuotas = nq.Backends
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(reply))
 }
 
 func (m *Server) SetBucketLifecycle(w http.ResponseWriter, r *http.Request) {

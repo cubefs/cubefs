@@ -176,6 +176,45 @@ func (api *NodeAPI) ResponseLcNodeTask(task *proto.AdminTask) (err error) {
 	return api.mc.request(newRequest(post, proto.GetLcNodeTaskResponse).Header(api.h).Body(task))
 }
 
+// AddSyncNode registers a syncnode with master. Mirrors AddLcNode.
+// Returns the master-allocated nodeID; syncnode persists this id locally.
+func (api *NodeAPI) AddSyncNode(serverAddr string) (id uint64, err error) {
+	request := newRequest(get, proto.AddSyncNode).Header(api.h).addParam("addr", serverAddr)
+	var data []byte
+	if data, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	id, err = strconv.ParseUint(string(data), 10, 64)
+	return
+}
+
+// ResponseSyncNodeTask is the syncnode → master push for task lifecycle
+// transitions (started / progress / done). Master uses this to maintain the
+// task ownership table in raft.
+//
+// FIX P4: the response body now carries the master-computed
+// SyncNodeQuotaReply (rule + backend quotas) so syncnode applies quotas
+// inline without a separate /syncNode/getQuota poll. Returns (nil, err)
+// on transport / decode failure; an empty reply (no quotas configured
+// for this addr) is returned as a non-nil zero-value struct.
+func (api *NodeAPI) ResponseSyncNodeTask(task *proto.AdminTask) (reply *proto.SyncNodeQuotaReply, err error) {
+	reply = &proto.SyncNodeQuotaReply{}
+	err = api.mc.requestWith(reply, newRequest(post, proto.GetSyncNodeTaskResponse).Header(api.h).Body(task))
+	return
+}
+
+// GetSyncNodeQuota is RETAINED but DEPRECATED as of FIX P4. The
+// production heartbeat path (ResponseSyncNodeTask) now carries quotas
+// inline on the response body, eliminating the per-tick 2nd round-trip
+// this method used to drive. Keep this exported one release so any
+// out-of-tree caller has time to migrate; remove after the next minor
+// bump.
+func (api *NodeAPI) GetSyncNodeQuota(addr string) (reply *proto.SyncNodeQuotaReply, err error) {
+	reply = &proto.SyncNodeQuotaReply{}
+	err = api.mc.requestWith(reply, newRequest(get, proto.GetSyncNodeQuota).Header(api.h).addParam("addr", addr))
+	return
+}
+
 func (api *NodeAPI) QueryDecommissionedDisks(addr string) (disks *proto.DecommissionedDisks, err error) {
 	disks = &proto.DecommissionedDisks{}
 	err = api.mc.requestWith(disks, newRequest(get, proto.QueryDisableDisk).Header(api.h).addParam("addr", addr))

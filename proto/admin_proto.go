@@ -248,6 +248,63 @@ const (
 
 	AddLcNode = "/lcNode/add"
 
+	// SyncNode admin (Phase B). Mirror of /lcNode/add — master keeps a
+	// node table and replies to heartbeats with task dispatch metadata.
+	AddSyncNode             = "/syncNode/add"
+	ListSyncNodes           = "/syncNode/list"
+	SyncNodeDispatch        = "/syncNode/dispatch" // Method: 'POST' — master picks a syncnode for the task and forwards OpSyncNodeRunTask
+	GetSyncNodeTaskResponse = "/syncNode/response" // Method: 'POST'
+	// GetSyncNodeQuota returns the per-node rule + backend bandwidth
+	// quotas computed by master's SyncQuotaCalculator. Syncnode polls
+	// this every heartbeat tick (P1-8 + P1-9). 'GET ?addr=<self-addr>'.
+	GetSyncNodeQuota = "/syncNode/getQuota"
+
+	// Phase P2-4 — master-owned sync rule, task, and node admin
+	// surface. Replaces the per-syncnode /admin/sync/* endpoints; the
+	// console talks to master only.
+
+	// SyncRule CRUD + state transitions. Body / query params documented
+	// in master/api_service_sync_rule.go.
+	SyncRuleCreate  = "/syncRule/create"  // POST body: proto.SyncRule
+	SyncRuleUpdate  = "/syncRule/update"  // POST body: proto.SyncRule
+	SyncRuleDelete  = "/syncRule/delete"  // POST ?id=
+	SyncRulePause   = "/syncRule/pause"   // POST ?id=
+	SyncRuleResume  = "/syncRule/resume"  // POST ?id=
+	SyncRuleList    = "/syncRule/list"    // GET  [?state=active|paused|degraded]
+	SyncRuleGet     = "/syncRule/get"     // GET  ?id=
+	SyncRuleTrigger = "/syncRule/trigger" // POST ?id=  — synchronous fire (ops + tests)
+
+	// SyncTask observability + lifecycle. Master-side ledger answers
+	// list / get; cancel + retry hit the dispatch layer.
+	SyncTaskList   = "/syncTask/list"   // GET  [?status=&ruleID=&owner=]
+	SyncTaskGet    = "/syncTask/get"    // GET  ?id=
+	SyncTaskCancel = "/syncTask/cancel" // POST ?id=
+	SyncTaskRetry  = "/syncTask/retry"  // POST ?id=
+	SyncTaskExport = "/syncTask/export" // GET  [?since=RFC3339] NDJSON stream
+	SyncTaskDelete = "/syncTask/delete" // POST ?id=
+
+	// SyncNode lifecycle + observability beyond AddSyncNode / ListSyncNodes.
+	SyncNodeDecommission = "/syncNode/decommission" // POST ?addr=&force=
+	SyncNodeDrain        = "/syncNode/drain"        // POST ?addr=
+	SyncNodeRestore      = "/syncNode/restore"      // POST ?addr=
+	SyncNodeTasks        = "/syncNode/tasks"        // GET  ?addr=[&status=]
+
+	// BenchRule CRUD + state transitions. Body / query params documented
+	// in master/api_service_bench.go.
+	BenchRuleList    = "/benchRule/list"    // GET  [?id=]
+	BenchRuleCreate  = "/benchRule/create"  // POST body: spec.BenchRule
+	BenchRuleGet     = "/benchRule/get"     // GET  ?id=
+	BenchRuleUpdate  = "/benchRule/update"  // POST body: spec.BenchRule
+	BenchRuleDelete  = "/benchRule/delete"  // POST ?id=
+	BenchRuleTrigger = "/benchRule/trigger" // POST ?id=
+
+	// BenchTask observability + lifecycle.
+	BenchTaskList   = "/benchTask/list"   // GET  [?ruleID=&status=]
+	BenchTaskGet    = "/benchTask/get"    // GET  ?id=
+	BenchTaskCancel = "/benchTask/cancel" // POST ?id=
+	BenchTaskRetry  = "/benchTask/retry"  // POST ?id=
+	BenchTaskDelete = "/benchTask/delete" // POST ?id=
+
 	QueryDisableDisk             = "/dataNode/queryDisableDisk"
 	QueryDecommissionSuccessDisk = "/dataNode/queryDecommissionSuccessDisk"
 	// Operation response
@@ -281,8 +338,14 @@ const (
 	// graphql api for header
 	HeadAuthorized  = "Authorization"
 	ParamAuthorized = "_authorization"
-	UserKey         = ContextUserKey("_user_key")
-	UserInfoKey     = ContextUserKey("_user_info_key")
+	// AuthorizationHeader is an alias for the standard Authorization
+	// header used by the /syncNode/* admin token middleware. Bearer
+	// scheme is preferred; X-Sync-Token is a fallback for callers
+	// that can't easily set Authorization.
+	AuthorizationHeader = "Authorization"
+	SyncTokenHeader     = "X-Sync-Token"
+	UserKey             = ContextUserKey("_user_key")
+	UserInfoKey         = ContextUserKey("_user_info_key")
 	// quota
 	QuotaCreate = "/quota/create"
 	QuotaUpdate = "/quota/update"
@@ -1000,6 +1063,221 @@ type LcNodeHeartbeatResponse struct {
 	LcTaskCountLimit      int
 	LcScanningTasks       map[string]*LcNodeRuleTaskResponse
 	SnapshotScanningTasks map[string]*SnapshotVerDelTaskResponse
+}
+
+// -----------------------------------------------------------------------
+// SyncNode protocol — Phase B.
+// -----------------------------------------------------------------------
+
+// SyncNodeInfo is the static + slowly-changing identity record. Mirrors
+// what /admin/syncnode/version reports plus the node's load score (P0
+// computes locally; P1 master aggregates across nodes).
+type SyncNodeInfo struct {
+	NodeID       uint64   `json:"nodeId"`
+	Addr         string   `json:"addr"`
+	Version      string   `json:"version"`
+	Commit       string   `json:"commit"`
+	Capabilities []string `json:"capabilities,omitempty"` // e.g. ["s3", "cfs", "local"]
+	RegisteredAt int64    `json:"registeredAt"`           // unix seconds
+	State        string   `json:"state"`                  // active | draining
+
+	// Latest heartbeat snapshot copied from master's in-memory SyncNode.
+	// Exposed on /syncNode/list so consoles do not need N extra
+	// /admin/syncnode/stat calls just to render a fleet table.
+	UptimeSeconds       int64   `json:"uptimeSeconds"`
+	RunningTasks        int64   `json:"runningTasks"`
+	QueuedTasks         int64   `json:"queuedTasks"`
+	ScheduledRules      int     `json:"scheduledRules"`
+	BoltDBHealthy       bool    `json:"boltDBHealthy"`
+	BandwidthMBps       float64 `json:"bandwidthMBps"`
+	CPUPercent          float64 `json:"cpuPercent"`
+	MemPercent          float64 `json:"memPercent"`
+	MemTotalMB          uint64  `json:"memTotalMB"`
+	CPUCores            int     `json:"cpuCores"`
+	ReloadFailures      uint64  `json:"reloadFailures"`
+	MaxConcurrentTasks  int     `json:"maxConcurrentTasks"`
+	BandwidthMBpsLimit  float64 `json:"bandwidthMBpsLimit"`
+	LastTaskFailureRate float64 `json:"lastTaskFailureRate"`
+
+	// LoadScore is the master-side scheduler score per design.md §6.3.1.
+	// Lower is better. Stale / unhealthy nodes get math.MaxFloat64 on the
+	// wire — the internal dispatcher uses +Inf, but encoding/json rejects
+	// that, so listSyncNodes clamps to MaxFloat64 at the JSON boundary and
+	// "lower is better" ordering is preserved. Computed by
+	// SyncDispatcher.LoadScore at /syncNode/list time.
+	LoadScore float64 `json:"loadScore"`
+
+	// MountPoints lists every POSIX path the syncnode container can read /
+	// write — mirror of cfg.Posix.AllowedRoots filtered through
+	// /proc/self/mountinfo so consumers see real fs types (fuse.cubefs,
+	// ext4, gpfs, …). Empty when the syncnode predates this field.
+	//
+	// Surfaced on /syncNode/list so the dashboard can populate the
+	// BenchRule create dialog's mountPath dropdown — distinguishing
+	// CubeFS volumes (fuse.cubefs) from external host mounts.
+	MountPoints []SyncNodeMountPoint `json:"mountPoints,omitempty"`
+}
+
+// SyncNodeMountPoint is one entry in SyncNodeInfo.MountPoints /
+// SyncNodeHeartbeatResponse.MountPoints.
+//
+//   - Path  : container-side absolute path (matches cfg.Posix.allowedRoots)
+//   - FSType: lowercase fs type as reported by /proc/self/mountinfo
+//             (e.g. "fuse.cubefs", "ext4", "gpfs", "nfs"). Empty when the
+//             path was not found in mountinfo (e.g. allowedRoots entry
+//             that's a subdir of a container fs root).
+type SyncNodeMountPoint struct {
+	Path   string `json:"path"`
+	FSType string `json:"fsType,omitempty"`
+}
+
+// SyncNodeHeartbeatRequest is sent FROM master TO syncnode (master pushes
+// task dispatch metadata in the same envelope). For the P0 syncnode-side
+// register loop this is the request packet shape the syncnode responds to.
+type SyncNodeHeartbeatRequest struct {
+	Addr        string `json:"addr"`        // master's view of this syncnode's address
+	LeaderAddr  string `json:"leaderAddr"`  // current master leader (for reconnection)
+	HeartbeatID string `json:"heartbeatId"` // optional correlation id
+}
+
+// SyncNodeHeartbeatResponse is the heartbeat reply. Includes the local
+// snapshot needed by master for load-score / health calculation.
+type SyncNodeHeartbeatResponse struct {
+	Status uint8  `json:"status"`
+	Result string `json:"result"`
+
+	NodeID uint64 `json:"nodeId"`
+	Addr   string `json:"addr"`
+
+	// Live runtime gauges — used by master for load score (§6.3.1) and
+	// alerting. All counts are point-in-time snapshots at heartbeat send.
+	UptimeSeconds  int64   `json:"uptimeSeconds"`
+	RunningTasks   int64   `json:"runningTasks"`
+	QueuedTasks    int64   `json:"queuedTasks"`
+	ScheduledRules int     `json:"scheduledRules"`
+	BoltDBHealthy  bool    `json:"boltDBHealthy"`
+	BandwidthMBps  float64 `json:"bandwidthMBps"` // last-1m average egress
+	CPUPercent     float64 `json:"cpuPercent"`
+	MemPercent     float64 `json:"memPercent"`
+	MemTotalMB     uint64  `json:"memTotalMB"`
+	CPUCores       int     `json:"cpuCores"`
+	ReloadFailures uint64  `json:"reloadFailures"`
+	NodeVersion    string  `json:"version"`
+
+	// RuleQuotas / BackendQuotas are master → syncnode quota assignments
+	// piggy-backed on the heartbeat reply (§12.4 / P1-8 + P1-9). Values are
+	// MB/s ceilings the syncnode should apply locally via
+	// ratelimit.Registry.SetRuleLimit / SetBackendLimit.
+	//
+	//   - RuleQuotas    : keyed by rule.ID; value = per-node MB/s for that
+	//                     rule (cluster cap divided across active nodes).
+	//   - BackendQuotas : keyed by BackendKey.String() format
+	//                     ("kind|endpoint|region"); value = per-node MB/s
+	//                     for that backend.
+	//
+	// A zero / missing entry means "no cluster quota for this rule/backend".
+	// On the syncnode side a zero value removes the bucket (unlimited).
+	RuleQuotas    map[string]float64 `json:"ruleQuotas,omitempty"`
+	BackendQuotas map[string]float64 `json:"backendQuotas,omitempty"`
+
+	// Load-score inputs (§6.3.1). Used by master.computeLoadScore so the
+	// full 4-term formula has real divisors instead of zero substitutions.
+	//   - MaxConcurrentTasks   : per-node concurrency ceiling from
+	//                            ConcurrencyConfig.MaxConcurrentTasks. 0
+	//                            means "treat as unlimited" → the capacity
+	//                            term contributes 0.
+	//   - BandwidthMBpsLimit   : per-node bandwidth ceiling in MB/s from
+	//                            ConcurrencyConfig.BandwidthLimitMBps. 0
+	//                            means "no local cap" → bandwidth term
+	//                            contributes 0 (avoids divide-by-zero).
+	//   - LastTaskFailureRate  : failed/total over the last 5 minutes of
+	//                            terminal task records, clamped to [0,1].
+	MaxConcurrentTasks  int     `json:"maxConcurrentTasks"`
+	BandwidthMBpsLimit  float64 `json:"bandwidthMBpsLimit"`
+	LastTaskFailureRate float64 `json:"lastTaskFailureRate"`
+
+	// Rules advertises the local rule store's per-rule
+	// AggregateBandwidthLimitMBps caps. Master's quota calculator (P1-8)
+	// reads this to know the cluster-wide ceiling per rule. Master takes
+	// the latest non-zero value across reporting nodes as the
+	// authoritative cap (operators set the same cap on every node's
+	// sync.json via SIGHUP reload). A zero entry means "no cap on this
+	// rule — fall back to per-node BandwidthLimitMBps only".
+	Rules []SyncRuleAdvert `json:"rules,omitempty"`
+
+	// TaskReports carries per-task in-flight progress so master can update
+	// the task ledger without waiting for task terminal. Populated by the
+	// syncnode's executor.RunningSnapshots() on every heartbeat tick.
+	// An empty slice means no tasks are currently running on this node.
+	TaskReports []SyncTaskProgressReport `json:"taskReports,omitempty"`
+
+	// MountPoints lists the syncnode container's POSIX mount points
+	// (the cfg.Posix.AllowedRoots set, intersected with
+	// /proc/self/mountinfo so each entry carries its real fs type).
+	// Master copies this into SyncNode.MountPoints on every heartbeat,
+	// /syncNode/list re-emits it to consoles.
+	MountPoints []SyncNodeMountPoint `json:"mountPoints,omitempty"`
+}
+
+// SyncTaskProgressReport is one entry in SyncNodeHeartbeatResponse.TaskReports.
+// It carries a mid-flight progress snapshot for a single running task so
+// the master ledger can show in-flight progress without waiting for terminal.
+type SyncTaskProgressReport struct {
+	TaskID   string               `json:"taskId"`
+	Progress TaskTerminalProgress `json:"progress"`
+}
+
+// SyncRuleAdvert is the per-rule advertisement piggy-backed on the
+// heartbeat response. Carries the bits master needs for quota math
+// without forcing master to fetch the full RuleConfig.
+type SyncRuleAdvert struct {
+	ID                          string `json:"id"`
+	AggregateBandwidthLimitMBps int    `json:"aggregateBandwidthLimitMBps"`
+}
+
+// SyncNodeQuotaReply is the response shape of GetSyncNodeQuota. The
+// syncnode's heartbeat goroutine polls this endpoint per tick (10s
+// default) and applies the resulting maps to ratelimit.Registry. This
+// is the wire mechanism for §12.4.1's layer-2 + layer-4 cross-node
+// quotas (P1-8 + P1-9 delivery side).
+type SyncNodeQuotaReply struct {
+	NodeID        uint64             `json:"nodeId"`
+	Addr          string             `json:"addr"`
+	RuleQuotas    map[string]float64 `json:"ruleQuotas,omitempty"`
+	BackendQuotas map[string]float64 `json:"backendQuotas,omitempty"`
+}
+
+// TaskTerminalReport is the syncnode → master push payload carried inside
+// an OpSyncNodeRunTask AdminTask.Response field when a task hits a terminal
+// status (done / failed / cancelled). The master decodes this in
+// handleSyncNodeTaskResponse to drive SyncDispatcher.Release +
+// SyncFailover.Forget so the ownership ledger and the saved-payload map
+// don't grow unbounded.
+//
+// Status is the executor.Status string ("done" / "failed" / "cancelled").
+// Error is populated when Status == "failed" so master can surface the
+// reason for ops dashboards / alerts.
+// TaskTerminalProgress mirrors executor.Progress as a wire-safe struct
+// that can live in the proto package without importing syncnode/executor.
+type TaskTerminalProgress struct {
+	FilesTotal           int64    `json:"filesTotal"`
+	FilesDone            int64    `json:"filesDone"`
+	FilesSkipped         int64    `json:"filesSkipped"`
+	FilesFailed          int64    `json:"filesFailed"`
+	BytesTotal           int64    `json:"bytesTotal"`
+	BytesDone            int64    `json:"bytesDone"`
+	BytesSkipped         int64    `json:"bytesSkipped,omitempty"`
+	ThroughputMBps       float64  `json:"throughputMBps,omitempty"`
+	CurrentBandwidthMBps float64  `json:"currentBandwidthMBps,omitempty"`
+	SkippedSamples       []string `json:"skippedSamples,omitempty"`
+}
+
+type TaskTerminalReport struct {
+	TaskID      string               `json:"taskId"`
+	Status      string               `json:"status"`
+	Error       string               `json:"error,omitempty"`
+	Progress    TaskTerminalProgress `json:"progress"`
+	BenchResult interface{}          `json:"benchResult,omitempty"` // *spec.BenchShardResult for bench tasks
 }
 
 type FlashNodeDiskCacheStat struct {

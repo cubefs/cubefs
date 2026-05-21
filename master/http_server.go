@@ -503,6 +503,120 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminLcNode).
 		HandlerFunc(m.adminLcNode)
 
+	// syncnode management APIs — gated by the shared admin token
+	// middleware (SEC1). Empty token disables the check, preserving
+	// dev/test defaults.
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AddSyncNode).
+		HandlerFunc(requireSyncAdminToken(m.addSyncNode))
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.ListSyncNodes).
+		HandlerFunc(requireSyncAdminToken(m.listSyncNodes))
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.SyncNodeDispatch).
+		HandlerFunc(requireSyncAdminToken(m.dispatchSyncTask))
+	// /syncNode/getQuota route was removed in favour of the inline quota
+	// reply on /syncNode/response (FIX P4). The URL constant is retained
+	// in proto/admin_proto.go for one release as a deprecation grace
+	// window — clients on older builds get a 404, which surfaces a clean
+	// "upgrade syncnode" signal rather than a silent fall-through.
+
+	// P2-4: sync rule + task + node admin surface. Auth gated by the
+	// same shared admin token as AddSyncNode.
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.SyncRuleCreate).
+		HandlerFunc(requireSyncAdminToken(m.createSyncRule))
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.SyncRuleUpdate).
+		HandlerFunc(requireSyncAdminToken(m.updateSyncRule))
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.SyncRuleDelete).
+		HandlerFunc(requireSyncAdminToken(m.deleteSyncRule))
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.SyncRulePause).
+		HandlerFunc(requireSyncAdminToken(m.pauseSyncRule))
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.SyncRuleResume).
+		HandlerFunc(requireSyncAdminToken(m.resumeSyncRule))
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.SyncRuleList).
+		HandlerFunc(requireSyncAdminToken(m.listSyncRules))
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.SyncRuleGet).
+		HandlerFunc(requireSyncAdminToken(m.getSyncRule))
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.SyncRuleTrigger).
+		HandlerFunc(requireSyncAdminToken(m.triggerSyncRule))
+
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.SyncTaskList).
+		HandlerFunc(requireSyncAdminToken(m.listSyncTasks))
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.SyncTaskGet).
+		HandlerFunc(requireSyncAdminToken(m.getSyncTask))
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.SyncTaskCancel).
+		HandlerFunc(requireSyncAdminToken(m.cancelSyncTask))
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.SyncTaskRetry).
+		HandlerFunc(requireSyncAdminToken(m.retrySyncTask))
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.SyncTaskExport).
+		HandlerFunc(requireSyncAdminToken(m.exportSyncTasks))
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.SyncTaskDelete).
+		HandlerFunc(requireSyncAdminToken(m.deleteSyncTask))
+
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.SyncNodeDecommission).
+		HandlerFunc(requireSyncAdminToken(m.decommissionSyncNode))
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.SyncNodeDrain).
+		HandlerFunc(requireSyncAdminToken(m.drainSyncNode))
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.SyncNodeRestore).
+		HandlerFunc(requireSyncAdminToken(m.restoreSyncNode))
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.SyncNodeTasks).
+		HandlerFunc(requireSyncAdminToken(m.listSyncNodeTasks))
+
+	// Bench rule + task admin surface (P0 — in-memory, no raft persistence).
+	// Auth gated by the same shared admin token as sync rule handlers.
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.BenchRuleList).
+		HandlerFunc(requireSyncAdminToken(m.listBenchRules))
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.BenchRuleCreate).
+		HandlerFunc(requireSyncAdminToken(m.createBenchRule))
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.BenchRuleGet).
+		HandlerFunc(requireSyncAdminToken(m.getBenchRule))
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.BenchRuleUpdate).
+		HandlerFunc(requireSyncAdminToken(m.updateBenchRule))
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.BenchRuleDelete).
+		HandlerFunc(requireSyncAdminToken(m.deleteBenchRule))
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.BenchRuleTrigger).
+		HandlerFunc(requireSyncAdminToken(m.triggerBenchRule))
+
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.BenchTaskList).
+		HandlerFunc(requireSyncAdminToken(m.listBenchTasks))
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.BenchTaskGet).
+		HandlerFunc(requireSyncAdminToken(m.getBenchTask))
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.BenchTaskCancel).
+		HandlerFunc(requireSyncAdminToken(m.cancelBenchTask))
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.BenchTaskRetry).
+		HandlerFunc(requireSyncAdminToken(m.retryBenchTask))
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.BenchTaskDelete).
+		HandlerFunc(requireSyncAdminToken(m.deleteBenchTask))
+
 	// node task response APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.GetDataNodeTaskResponse).
@@ -513,6 +627,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.GetLcNodeTaskResponse).
 		HandlerFunc(m.handleLcNodeTaskResponse)
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.GetSyncNodeTaskResponse).
+		HandlerFunc(m.handleSyncNodeTaskResponse)
 
 	// meta partition management APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

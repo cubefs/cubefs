@@ -462,6 +462,73 @@ func IsAppendRandomWrite(writeType int) bool {
 	return writeType == AppendRandomWriteType
 }
 
+// isExactIdempotentReplay reports whether param looks like a benign
+// duplicate of an already-applied write — same range, fully within the
+// already-written portion, and the on-disk data matches the incoming
+// Crc. Caller (Extent.Write) treats a true return as success without
+// re-applying. See the call site for the failure-mode rationale.
+//
+// Two verification paths:
+//
+//   - Full-block aligned (Offset and Size both block-aligned, Size ==
+//     BlockSize): compare the cheap stored per-block CRC header
+//     (e.GetCrc) against param.Crc. No disk read.
+//   - Partial block (the typical trailing write of a non-block-aligned
+//     payload — e.g. 90 KiB ending at extent offset 66 MiB): re-read
+//     the actual bytes from disk and compute CRC32 over them, compare
+//     against param.Crc. ~µs cost on a path that would otherwise fail
+//     the entire write. This path is what closes the
+//     ArgUnmatchErr-on-partial-block hole that caused follower data
+//     divergence in production.
+//
+// Rejects: tiny extents (different layout — WriteTiny has its own
+// check), out-of-range writes, zero-size writes, and any case where
+// the on-disk verify itself fails (treat as not-duplicate, fall
+// through to the usual error so the operator sees the real fault).
+func isExactIdempotentReplay(e *Extent, param *WriteParam) bool {
+	if IsTinyExtent(e.extentID) {
+		// Tiny extents store data differently; let WriteTiny's own
+		// dataSize/Offset check decide.
+		return false
+	}
+	if param == nil || param.Offset < 0 || param.Size <= 0 {
+		return false
+	}
+	end := param.Offset + param.Size
+	if end > int64(e.dataSize) {
+		// Range extends past existing data — can't be a duplicate of
+		// already-written bytes by definition.
+		return false
+	}
+
+	// Fast path: full-block aligned write checks the stored block CRC
+	// header instead of reading from disk.
+	if param.Size == util.BlockSize && param.Offset%util.BlockSize == 0 {
+		blockNo := param.Offset / util.BlockSize
+		storedCrc := e.GetCrc(blockNo)
+		if storedCrc == 0 {
+			// Header CRC not yet populated; can't prove duplicate.
+			return false
+		}
+		return storedCrc == param.Crc
+	}
+
+	// Slow path: partial-block / non-aligned — re-read on-disk bytes
+	// and compute their CRC32 over [Offset, Offset+Size). Held under
+	// e.Lock so no concurrent writer can mutate the range mid-read.
+	// Caller's data buffer (param.Data) is NOT used — we compare
+	// against what's on disk, which is the source of truth.
+	verifyBuf := make([]byte, param.Size)
+	n, err := e.file.ReadAt(verifyBuf, param.Offset)
+	if err != nil || int64(n) != param.Size {
+		// Disk read failed or short — fall through to the normal
+		// error so the actual fault is surfaced rather than silently
+		// swallowed as "idempotent OK".
+		return false
+	}
+	return crc32.ChecksumIEEE(verifyBuf) == param.Crc
+}
+
 // WriteTiny performs write on a tiny extent.
 func (e *Extent) WriteTiny(param *WriteParam) (err error) {
 	e.Lock()
@@ -528,6 +595,29 @@ func (e *Extent) Write(param *WriteParam, crcFunc UpdateCrcFunc) (status uint8, 
 	defer e.Unlock()
 
 	if IsAppendWrite(param.WriteType) && e.dataSize != param.Offset && !param.IsRepair {
+		// Idempotent-retry shortcut. Failure mode this covers:
+		//   1. First attempt's data already replicated to disk on
+		//      this node — e.dataSize and stored block CRC reflect it.
+		//   2. The first attempt's reply to its caller was lost
+		//      (RDMA response timeout, follower→leader recv drop,
+		//      dedup cache missed because ResultCode != OpOk path
+		//      didn't Remember).
+		//   3. The retry resends the IDENTICAL payload (same offset,
+		//      same size, same Crc) — the SDK's recoverPacket reuses
+		//      the original packet bytes verbatim — and lands here.
+		// Without this check the retry would surface as OpArgMismatchErr
+		// at this node, propagate as OpIntraGroupNetErr to the SDK,
+		// taint the replication group, and force another SDK retry on
+		// a fresh extent — multiplying the problem.
+		//
+		// Handles both full-block writes (cheap stored-CRC check) and
+		// partial-block trailing writes (read-from-disk + CRC32 verify).
+		// See isExactIdempotentReplay for the two-path implementation.
+		if isExactIdempotentReplay(e, param) {
+			status = proto.OpOk
+			log.LogInfof("action[Extent.Write] idempotent retry detected path %v param(%v) — returning OpOk without re-applying", e.filePath, param)
+			return
+		}
 		err = newParameterError("extent current size=%d write param(%v)", e.dataSize, param)
 		log.LogInfof("action[Extent.Write] newParameterError path %v write param(%v) err %v", e.filePath, param, err)
 		status = proto.OpTryOtherExtent

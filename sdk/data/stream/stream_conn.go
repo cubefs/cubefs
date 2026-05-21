@@ -122,6 +122,16 @@ func (sc *StreamConn) String() string {
 	return fmt.Sprintf("Partition(%v) CurrentAddr(%v) Hosts(%v)", sc.dp.PartitionID, sc.currAddr, sc.dp.Hosts)
 }
 
+// CurrAddr returns the currently selected target host for this StreamConn.
+// NewStreamConn picks this address based on the follower / NearRead /
+// LeaderAddr flags. Callers that route around the regular Send path
+// should consult this rather than re-deriving the target from
+// dp.Hosts[0] — those two can differ after a leader election and would
+// otherwise silently route reads to a lagging follower.
+func (sc *StreamConn) CurrAddr() string {
+	return sc.currAddr
+}
+
 func (sc *StreamConn) getRetryTimeOut() time.Duration {
 	if sc.maxRetryTimeout <= 0 {
 		return StreamSendMaxTimeout

@@ -281,6 +281,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	}
 	s.mw.VerReadSeq = s.ec.GetReadVer()
 
+
 	needCreateBlobClient := false
 	if !proto.IsValidStorageClass(opt.VolStorageClass) {
 		// for compatability: old version server modules has no filed VolStorageClas

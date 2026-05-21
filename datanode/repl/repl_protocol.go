@@ -31,6 +31,24 @@ import (
 
 var gConnPool = util.NewConnectPool()
 
+func (rp *ReplProtocol) sendRequestToAllFollowers(request *Packet) (index int, err error) {
+	for index = 0; index < len(request.followersAddrs); index++ {
+		followerRequest := NewFollowerPacket()
+		copyPacket(request, followerRequest)
+		followerRequest.RemainingFollowers = 0
+		request.followerPackets[index] = followerRequest
+
+		var transport *FollowerTransport
+		if transport, err = rp.allocateFollowersConns(request, index); err != nil {
+			request.PackErrorBody(ActionSendToFollowers, err.Error())
+			return
+		}
+		transport.Write(followerRequest)
+	}
+
+	return
+}
+
 // ReplProtocol defines the struct of the replication protocol.
 // 1. ServerConn reads a packet from the client socket, and analyzes the addresses of the followers.
 // 2. After the preparation, the packet is send to toBeProcessedCh. If failure happens, send it to the response channel.
@@ -304,23 +322,6 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 	}
 
 	err = rp.putToBeProcess(request)
-
-	return
-}
-
-func (rp *ReplProtocol) sendRequestToAllFollowers(request *Packet) (index int, err error) {
-	for index = 0; index < len(request.followersAddrs); index++ {
-		var transport *FollowerTransport
-		if transport, err = rp.allocateFollowersConns(request, index); err != nil {
-			request.PackErrorBody(ActionSendToFollowers, err.Error())
-			return
-		}
-		followerRequest := NewFollowerPacket()
-		copyPacket(request, followerRequest)
-		followerRequest.RemainingFollowers = 0
-		request.followerPackets[index] = followerRequest
-		transport.Write(followerRequest)
-	}
 
 	return
 }
