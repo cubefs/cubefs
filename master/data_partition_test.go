@@ -3,6 +3,7 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"sync"
 	"testing"
 	"time"
@@ -14,6 +15,118 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 )
+
+type recordedDataNodeAdminTask struct {
+	opCode uint8
+	task   *proto.AdminTask
+}
+
+const recordedCreateReplicaDiskPath = "/disk-created-by-master-test"
+
+func startDataNodeAdminTaskRecorder(t *testing.T) (string, func() []recordedDataNodeAdminTask) {
+	t.Helper()
+	proto.InitBufferPool(int64(32768))
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	var mu sync.Mutex
+	tasks := make([]recordedDataNodeAdminTask, 0)
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			go func(conn net.Conn) {
+				defer conn.Close()
+
+				packet := proto.NewPacket()
+				if err := packet.ReadFromConnWithVer(conn, proto.NoReadDeadlineTime); err != nil {
+					t.Errorf("read admin task packet: %v", err)
+					return
+				}
+
+				task := &proto.AdminTask{}
+				if err := json.Unmarshal(packet.Data, task); err != nil {
+					t.Errorf("unmarshal admin task: %v", err)
+					return
+				}
+
+				mu.Lock()
+				tasks = append(tasks, recordedDataNodeAdminTask{opCode: packet.Opcode, task: task})
+				mu.Unlock()
+
+				if packet.Opcode == proto.OpCreateDataPartition {
+					packet.PacketOkWithBody([]byte(recordedCreateReplicaDiskPath))
+				} else {
+					packet.PacketOkReply()
+				}
+				if err := packet.WriteToConn(conn); err != nil {
+					t.Errorf("write admin task response: %v", err)
+				}
+			}(conn)
+		}
+	}()
+
+	t.Cleanup(func() {
+		_ = listener.Close()
+		<-done
+	})
+
+	return listener.Addr().String(), func() []recordedDataNodeAdminTask {
+		mu.Lock()
+		defer mu.Unlock()
+
+		copied := make([]recordedDataNodeAdminTask, len(tasks))
+		copy(copied, tasks)
+		return copied
+	}
+}
+
+func newRecordedDataNode(id uint64, addr string) *DataNode {
+	return &DataNode{
+		ID:             id,
+		Addr:           addr,
+		TaskManager:    newTestManager(addr),
+		MediaType:      proto.MediaType_SSD,
+		Total:          util.TB,
+		AvailableSpace: util.TB,
+		isActive:       true,
+	}
+}
+
+func newClusterWithDataNodesInNodeSet(t *testing.T, zoneName string, nodeSetID uint64, addrs ...string) (*Cluster, *nodeSet) {
+	t.Helper()
+
+	cluster := &Cluster{
+		cfg: newClusterConfig(),
+		ClusterVolSubItem: ClusterVolSubItem{
+			vols: make(map[string]*Vol),
+		},
+		ClusterTopoSubItem: ClusterTopoSubItem{
+			t: newTopology(),
+		},
+		partition: &mockPartition{isLeader: true},
+	}
+	zone := newZone(zoneName, proto.MediaType_SSD)
+	ns := newNodeSet(nil, nodeSetID, 18, zoneName, "")
+	require.NoError(t, zone.putNodeSet(ns))
+	require.NoError(t, cluster.t.putZone(zone))
+
+	for idx, addr := range addrs {
+		node := newRecordedDataNode(uint64(idx+1), addr)
+		node.ZoneName = zoneName
+		node.NodeSetID = nodeSetID
+		cluster.dataNodes.Store(addr, node)
+		ns.dataNodes.Store(addr, node)
+		zone.dataNodes.Store(addr, node)
+	}
+	return cluster, ns
+}
 
 type failingSubmitPartition struct {
 	mockPartition
@@ -72,6 +185,372 @@ func decommissionDataPartition(dp *DataPartition, t *testing.T) {
 		t.Errorf("decommissionDataPartition failed,offlineAddr[%v],hosts[%v]", offlineAddr, dp.Hosts)
 		return
 	}
+}
+
+func TestAddDataReplicaSendsOfflineTasksToDataNodes(t *testing.T) {
+	leaderAddr, leaderTasks := startDataNodeAdminTaskRecorder(t)
+	host2Addr, _ := startDataNodeAdminTaskRecorder(t)
+	host3Addr, _ := startDataNodeAdminTaskRecorder(t)
+	targetAddr, targetTasks := startDataNodeAdminTaskRecorder(t)
+
+	leaderNode := newRecordedDataNode(1, leaderAddr)
+	host2Node := newRecordedDataNode(2, host2Addr)
+	host3Node := newRecordedDataNode(3, host3Addr)
+	targetNode := newRecordedDataNode(4, targetAddr)
+
+	cluster := &Cluster{
+		Name: "unit-test-cluster",
+		ClusterVolSubItem: ClusterVolSubItem{
+			vols: make(map[string]*Vol),
+		},
+		partition: &mockPartition{isLeader: true},
+	}
+	cluster.dataNodes.Store(leaderAddr, leaderNode)
+	cluster.dataNodes.Store(host2Addr, host2Node)
+	cluster.dataNodes.Store(host3Addr, host3Node)
+	cluster.dataNodes.Store(targetAddr, targetNode)
+
+	dp := &DataPartition{
+		PartitionID:   102,
+		VolName:       "unit-test-vol-add",
+		VolID:         7,
+		ReplicaNum:    3,
+		PartitionType: proto.PartitionTypeNormal,
+		MediaType:     proto.MediaType_SSD,
+		Hosts:         []string{leaderAddr, host2Addr, host3Addr},
+		Peers: []proto.Peer{
+			{ID: leaderNode.ID, Addr: leaderAddr},
+			{ID: host2Node.ID, Addr: host2Addr},
+			{ID: host3Node.ID, Addr: host3Addr},
+		},
+		DecommissionType: ManualDecommission,
+	}
+	dp.Replicas = []*DataReplica{
+		{DataReplica: proto.DataReplica{Addr: leaderAddr, DiskPath: "/disk-leader", Status: proto.ReadWrite, ReportTime: time.Now().Unix(), IsLeader: true, Used: 11, LocalPeers: dp.Peers}, dataNode: leaderNode},
+		{DataReplica: proto.DataReplica{Addr: host2Addr, DiskPath: "/disk-host2", Status: proto.ReadWrite, ReportTime: time.Now().Unix(), LocalPeers: dp.Peers}, dataNode: host2Node},
+		{DataReplica: proto.DataReplica{Addr: host3Addr, DiskPath: "/disk-host3", Status: proto.ReadWrite, ReportTime: time.Now().Unix(), LocalPeers: dp.Peers}, dataNode: host3Node},
+	}
+
+	vol := &Vol{
+		ID:                dp.VolID,
+		Name:              dp.VolName,
+		dataPartitionSize: 120 * util.GB,
+		dataPartitions:    newDataPartitionMap(dp.VolName),
+	}
+	vol.dataPartitions.put(dp)
+	cluster.vols[vol.Name] = vol
+
+	err := cluster.addDataReplica(dp, targetAddr, true, false)
+	require.NoError(t, err)
+
+	require.Contains(t, dp.Hosts, targetAddr)
+	require.Len(t, dp.Peers, 4)
+	require.Len(t, dp.Replicas, 4)
+	newReplica, err := dp.getReplica(targetAddr)
+	require.NoError(t, err)
+	require.Equal(t, recordedCreateReplicaDiskPath, newReplica.DiskPath)
+	require.EqualValues(t, proto.Unavailable, newReplica.Status)
+
+	capturedLeaderTasks := leaderTasks()
+	require.Len(t, capturedLeaderTasks, 1)
+	require.Equal(t, proto.OpAddDataPartitionRaftMember, capturedLeaderTasks[0].opCode)
+	addReqBytes, err := json.Marshal(capturedLeaderTasks[0].task.Request)
+	require.NoError(t, err)
+	addReq := &proto.AddDataPartitionRaftMemberRequest{}
+	require.NoError(t, json.Unmarshal(addReqBytes, addReq))
+	require.Equal(t, dp.PartitionID, addReq.PartitionId)
+	require.Equal(t, targetNode.ID, addReq.AddPeer.ID)
+	require.Equal(t, targetAddr, addReq.AddPeer.Addr)
+	require.True(t, addReq.RepairingStatus)
+
+	capturedTargetTasks := targetTasks()
+	require.Len(t, capturedTargetTasks, 1)
+	require.Equal(t, proto.OpCreateDataPartition, capturedTargetTasks[0].opCode)
+	createReqBytes, err := json.Marshal(capturedTargetTasks[0].task.Request)
+	require.NoError(t, err)
+	createReq := &proto.CreateDataPartitionRequest{}
+	require.NoError(t, json.Unmarshal(createReqBytes, createReq))
+	require.Equal(t, dp.PartitionID, createReq.PartitionId)
+	require.Equal(t, dp.VolName, createReq.VolumeId)
+	require.Equal(t, proto.DecommissionedCreateDataPartition, createReq.CreateType)
+	require.Equal(t, int(dp.ReplicaNum), createReq.ReplicaNum)
+	require.Equal(t, int(vol.dataPartitionSize), createReq.PartitionSize)
+	require.Contains(t, createReq.Hosts, targetAddr)
+}
+
+func TestDataPartitionDecommissionRunsMasterToDataNodeOfflineFlow(t *testing.T) {
+	srcAddr, srcTasks := startDataNodeAdminTaskRecorder(t)
+	leaderAddr, leaderTasks := startDataNodeAdminTaskRecorder(t)
+	otherAddr, _ := startDataNodeAdminTaskRecorder(t)
+	targetAddr, targetTasks := startDataNodeAdminTaskRecorder(t)
+
+	srcNode := newRecordedDataNode(1, srcAddr)
+	leaderNode := newRecordedDataNode(2, leaderAddr)
+	otherNode := newRecordedDataNode(3, otherAddr)
+	targetNode := newRecordedDataNode(4, targetAddr)
+
+	cluster := &Cluster{
+		Name: "unit-test-cluster",
+		cfg: &clusterConfig{
+			AllowMultipleReplicasOnSameMachine: true,
+		},
+		ClusterVolSubItem: ClusterVolSubItem{
+			vols: make(map[string]*Vol),
+		},
+		ClusterDecommission: ClusterDecommission{
+			BadDataPartitionIds: new(sync.Map),
+		},
+		partition: &mockPartition{isLeader: true},
+	}
+	cluster.dataNodes.Store(srcAddr, srcNode)
+	cluster.dataNodes.Store(leaderAddr, leaderNode)
+	cluster.dataNodes.Store(otherAddr, otherNode)
+	cluster.dataNodes.Store(targetAddr, targetNode)
+
+	dp := &DataPartition{
+		PartitionID:                103,
+		VolName:                    "unit-test-vol-decommission",
+		VolID:                      8,
+		ReplicaNum:                 3,
+		PartitionType:              proto.PartitionTypeNormal,
+		MediaType:                  proto.MediaType_SSD,
+		Hosts:                      []string{srcAddr, leaderAddr, otherAddr},
+		Peers:                      []proto.Peer{{ID: srcNode.ID, Addr: srcAddr}, {ID: leaderNode.ID, Addr: leaderAddr}, {ID: otherNode.ID, Addr: otherAddr}},
+		DecommissionStatus:         markDecommission,
+		DecommissionSrcAddr:        srcAddr,
+		DecommissionDstAddr:        targetAddr,
+		DecommissionDstAddrSpecify: true,
+		DecommissionSrcDiskPath:    "/disk-src",
+		DecommissionType:           ManualDecommission,
+		DecommissionRaftForce:      false,
+		DecommissionNeedRollback:   false,
+		DecommissionRetry:          0,
+	}
+	dp.Replicas = []*DataReplica{
+		{DataReplica: proto.DataReplica{Addr: srcAddr, DiskPath: "/disk-src", Status: proto.ReadWrite, ReportTime: time.Now().Unix(), Used: 11}, dataNode: srcNode},
+		{DataReplica: proto.DataReplica{Addr: leaderAddr, DiskPath: "/disk-leader", Status: proto.ReadWrite, ReportTime: time.Now().Unix(), IsLeader: true, Used: 11}, dataNode: leaderNode},
+		{DataReplica: proto.DataReplica{Addr: otherAddr, DiskPath: "/disk-other", Status: proto.ReadWrite, ReportTime: time.Now().Unix(), Used: 11}, dataNode: otherNode},
+	}
+
+	vol := &Vol{
+		ID:                dp.VolID,
+		Name:              dp.VolName,
+		dpReplicaNum:      dp.ReplicaNum,
+		dataPartitionSize: 120 * util.GB,
+		dataPartitions:    newDataPartitionMap(dp.VolName),
+	}
+	vol.dataPartitions.put(dp)
+	cluster.vols[vol.Name] = vol
+
+	ok := dp.Decommission(cluster)
+	require.True(t, ok)
+
+	require.NotContains(t, dp.Hosts, srcAddr)
+	require.Contains(t, dp.Hosts, targetAddr)
+	require.Len(t, dp.Peers, 3)
+	require.Len(t, dp.Replicas, 3)
+	require.True(t, dp.isRecover)
+	require.EqualValues(t, proto.ReadOnly, dp.Status)
+	require.Equal(t, DecommissionRunning, dp.GetDecommissionStatus())
+	newReplica, err := dp.getReplica(targetAddr)
+	require.NoError(t, err)
+	require.Equal(t, recordedCreateReplicaDiskPath, newReplica.DiskPath)
+	require.EqualValues(t, proto.Recovering, newReplica.Status)
+
+	capturedLeaderTasks := leaderTasks()
+	require.Len(t, capturedLeaderTasks, 2)
+	require.Equal(t, proto.OpRemoveDataPartitionRaftMember, capturedLeaderTasks[0].opCode)
+	require.Equal(t, proto.OpAddDataPartitionRaftMember, capturedLeaderTasks[1].opCode)
+
+	capturedSrcTasks := srcTasks()
+	require.Len(t, capturedSrcTasks, 1)
+	require.Equal(t, proto.OpDeleteDataPartition, capturedSrcTasks[0].opCode)
+
+	capturedTargetTasks := targetTasks()
+	require.Len(t, capturedTargetTasks, 1)
+	require.Equal(t, proto.OpCreateDataPartition, capturedTargetTasks[0].opCode)
+
+	badDps, ok := cluster.BadDataPartitionIds.Load(fmt.Sprintf("%s:%s", srcAddr, "/disk-src"))
+	require.True(t, ok)
+	require.Contains(t, badDps.([]uint64), dp.PartitionID)
+	require.Equal(t, util.TB-uint64(11), targetNode.AvailableSpace)
+}
+
+func TestRemoveDataReplicaSendsOfflineTasksToDataNodes(t *testing.T) {
+	srcAddr, srcTasks := startDataNodeAdminTaskRecorder(t)
+	leaderAddr, leaderTasks := startDataNodeAdminTaskRecorder(t)
+	otherAddr, _ := startDataNodeAdminTaskRecorder(t)
+
+	srcNode := newRecordedDataNode(1, srcAddr)
+	leaderNode := newRecordedDataNode(2, leaderAddr)
+	otherNode := newRecordedDataNode(3, otherAddr)
+
+	cluster := &Cluster{Name: "unit-test-cluster"}
+	cluster.dataNodes.Store(srcAddr, srcNode)
+	cluster.dataNodes.Store(leaderAddr, leaderNode)
+	cluster.dataNodes.Store(otherAddr, otherNode)
+
+	dp := &DataPartition{
+		PartitionID:   101,
+		VolName:       "unit-test-vol",
+		ReplicaNum:    3,
+		PartitionType: proto.PartitionTypeNormal,
+		MediaType:     proto.MediaType_SSD,
+		Hosts:         []string{srcAddr, leaderAddr, otherAddr},
+		Peers: []proto.Peer{
+			{ID: srcNode.ID, Addr: srcAddr},
+			{ID: leaderNode.ID, Addr: leaderAddr},
+			{ID: otherNode.ID, Addr: otherAddr},
+		},
+		DecommissionType: ManualDecommission,
+	}
+	dp.Replicas = []*DataReplica{
+		{DataReplica: proto.DataReplica{Addr: srcAddr, DiskPath: "/disk-src", Status: proto.ReadWrite, ReportTime: time.Now().Unix()}, dataNode: srcNode},
+		{DataReplica: proto.DataReplica{Addr: leaderAddr, DiskPath: "/disk-leader", Status: proto.ReadWrite, ReportTime: time.Now().Unix(), IsLeader: true}, dataNode: leaderNode},
+		{DataReplica: proto.DataReplica{Addr: otherAddr, DiskPath: "/disk-other", Status: proto.ReadWrite, ReportTime: time.Now().Unix()}, dataNode: otherNode},
+	}
+
+	err := cluster.removeDataReplica(dp, srcAddr, false, false)
+	require.NoError(t, err)
+
+	require.NotContains(t, dp.Hosts, srcAddr)
+	require.Len(t, dp.Peers, 2)
+	require.Len(t, dp.Replicas, 2)
+	require.EqualValues(t, 0, dp.OfflinePeerID)
+
+	capturedLeaderTasks := leaderTasks()
+	require.Len(t, capturedLeaderTasks, 1)
+	require.Equal(t, proto.OpRemoveDataPartitionRaftMember, capturedLeaderTasks[0].opCode)
+	removeReqBytes, err := json.Marshal(capturedLeaderTasks[0].task.Request)
+	require.NoError(t, err)
+	removeReq := &proto.RemoveDataPartitionRaftMemberRequest{}
+	require.NoError(t, json.Unmarshal(removeReqBytes, removeReq))
+	require.Equal(t, dp.PartitionID, removeReq.PartitionId)
+	require.Equal(t, srcNode.ID, removeReq.RemovePeer.ID)
+	require.Equal(t, srcAddr, removeReq.RemovePeer.Addr)
+	require.False(t, removeReq.Force)
+
+	capturedSrcTasks := srcTasks()
+	require.Len(t, capturedSrcTasks, 1)
+	require.Equal(t, proto.OpDeleteDataPartition, capturedSrcTasks[0].opCode)
+	deleteReqBytes, err := json.Marshal(capturedSrcTasks[0].task.Request)
+	require.NoError(t, err)
+	deleteReq := &proto.DeleteDataPartitionRequest{}
+	require.NoError(t, json.Unmarshal(deleteReqBytes, deleteReq))
+	require.Equal(t, dp.PartitionID, deleteReq.PartitionId)
+	require.Equal(t, ManualDecommission, deleteReq.DecommissionType)
+	require.False(t, deleteReq.Force)
+}
+
+func TestDataPartitionPopHighestPriorityDecommissionTask(t *testing.T) {
+	dp := &DataPartition{}
+	low := DecommissionTask{
+		DecommissionSrcAddr: "src-low",
+		DecommissionWeight:  lowPriorityDecommissionWeight,
+	}
+	high := DecommissionTask{
+		DecommissionSrcAddr: "src-high",
+		DecommissionWeight:  highPriorityDecommissionWeight,
+	}
+	medium := DecommissionTask{
+		DecommissionSrcAddr: "src-medium",
+		DecommissionWeight:  mediumPriorityDecommissionWeight,
+	}
+
+	dp.enqueueDecommissionTask(low)
+	dp.enqueueDecommissionTask(high)
+	dp.enqueueDecommissionTask(medium)
+
+	task, ok := dp.popHighestPriorityTask()
+	require.True(t, ok)
+	require.Equal(t, high.DecommissionSrcAddr, task.DecommissionSrcAddr)
+	require.Equal(t, high.DecommissionWeight, task.DecommissionWeight)
+
+	task, ok = dp.popHighestPriorityTask()
+	require.True(t, ok)
+	require.Equal(t, medium.DecommissionSrcAddr, task.DecommissionSrcAddr)
+	require.Equal(t, medium.DecommissionWeight, task.DecommissionWeight)
+
+	task, ok = dp.popHighestPriorityTask()
+	require.True(t, ok)
+	require.Equal(t, low.DecommissionSrcAddr, task.DecommissionSrcAddr)
+	require.Equal(t, low.DecommissionWeight, task.DecommissionWeight)
+
+	_, ok = dp.popHighestPriorityTask()
+	require.False(t, ok)
+}
+
+func TestDataPartitionTraverseQueueSchedulesHighestPriorityNextTask(t *testing.T) {
+	const (
+		volName    = "vol_decommission_queue"
+		srcLow     = "10.0.0.1:17310"
+		srcHigh    = "10.0.0.2:17310"
+		srcCurrent = "10.0.0.3:17310"
+		zoneName   = "zone-queue"
+		nodeSetID  = uint64(1)
+	)
+	cluster, ns := newClusterWithDataNodesInNodeSet(t, zoneName, nodeSetID, srcLow, srcHigh, srcCurrent)
+	srcLowNode, err := cluster.dataNode(srcLow)
+	require.NoError(t, err)
+	srcHighNode, err := cluster.dataNode(srcHigh)
+	require.NoError(t, err)
+	srcCurrentNode, err := cluster.dataNode(srcCurrent)
+	require.NoError(t, err)
+	dp := &DataPartition{
+		PartitionID:              104,
+		VolName:                  volName,
+		ReplicaNum:               3,
+		PartitionType:            proto.PartitionTypeNormal,
+		Status:                   proto.ReadOnly,
+		Hosts:                    []string{srcLow, srcHigh, srcCurrent},
+		Peers:                    []proto.Peer{{ID: 1, Addr: srcLow}, {ID: 2, Addr: srcHigh}, {ID: 3, Addr: srcCurrent}},
+		DecommissionStatus:       DecommissionSuccess,
+		DecommissionSrcAddr:      srcCurrent,
+		DecommissionSrcDiskPath:  "/disk-current",
+		DecommissionType:         ManualDecommission,
+		DecommissionDiskRetryMap: make(map[string]int),
+	}
+	dp.Replicas = []*DataReplica{
+		{DataReplica: proto.DataReplica{Addr: srcLow, DiskPath: "/disk-low", Status: proto.ReadWrite, ReportTime: time.Now().Unix(), LocalPeers: dp.Peers}, dataNode: srcLowNode},
+		{DataReplica: proto.DataReplica{Addr: srcHigh, DiskPath: "/disk-high", Status: proto.ReadWrite, ReportTime: time.Now().Unix(), LocalPeers: dp.Peers}, dataNode: srcHighNode},
+		{DataReplica: proto.DataReplica{Addr: srcCurrent, DiskPath: "/disk-current", Status: proto.ReadWrite, ReportTime: time.Now().Unix(), LocalPeers: dp.Peers}, dataNode: srcCurrentNode},
+	}
+	vol := &Vol{Name: volName, dataPartitions: newDataPartitionMap(volName)}
+	vol.dataPartitions.put(dp)
+	cluster.vols[volName] = vol
+
+	low := DecommissionTask{
+		DecommissionSrcAddr:     srcLow,
+		DecommissionSrcDiskPath: "/disk-low",
+		DecommissionTerm:        1,
+		DecommissionWeight:      lowPriorityDecommissionWeight,
+		DecommissionType:        ManualDecommission,
+	}
+	high := DecommissionTask{
+		DecommissionSrcAddr:     srcHigh,
+		DecommissionSrcDiskPath: "/disk-high",
+		DecommissionTerm:        2,
+		DecommissionWeight:      highPriorityDecommissionWeight,
+		DecommissionType:        ManualDecommission,
+	}
+	dp.enqueueDecommissionTask(low)
+	dp.enqueueDecommissionTask(high)
+
+	dp.traverseDecommissionTaskQueue(cluster)
+
+	require.EqualValues(t, markDecommission, dp.GetDecommissionStatus())
+	require.Equal(t, srcHigh, dp.DecommissionSrcAddr)
+	require.Equal(t, "/disk-high", dp.DecommissionSrcDiskPath)
+	require.EqualValues(t, 2, dp.DecommissionTerm)
+	require.Equal(t, highPriorityDecommissionWeight, dp.DecommissionWeight)
+	require.Equal(t, ManualDecommission, dp.DecommissionType)
+	require.Equal(t, 1, dp.countQueuedTasks())
+
+	remainingQueue := dp.cloneDecommissionTaskQueue()
+	require.Len(t, remainingQueue, 1)
+	require.Equal(t, srcLow, remainingQueue[0].DecommissionSrcAddr)
+	require.Equal(t, lowPriorityDecommissionWeight, remainingQueue[0].DecommissionWeight)
+	require.True(t, ns.decommissionDataPartitionList.Has(dp.PartitionID))
 }
 
 func loadDataPartitionTest(dp *DataPartition, t *testing.T) {

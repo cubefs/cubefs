@@ -25,7 +25,10 @@ import (
 
 	"github.com/cubefs/cubefs/datanode/repl"
 	"github.com/cubefs/cubefs/datanode/storage"
+	"github.com/cubefs/cubefs/depends/tiglabs/raft"
+	raftProto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/atomicutil"
 	"github.com/stretchr/testify/require"
@@ -131,6 +134,307 @@ func newPacketForTest(task *proto.AdminTask) *repl.Packet {
 			Data: data,
 		},
 	}
+}
+
+type recordedRaftMemberChange struct {
+	changeType raftProto.ConfChangeType
+	peer       raftProto.Peer
+	context    []byte
+}
+
+type mockRaftPartitionForDecommission struct {
+	leaderID uint64
+	changes  []recordedRaftMemberChange
+}
+
+func (m *mockRaftPartitionForDecommission) Submit([]byte) (interface{}, error) {
+	return nil, nil
+}
+
+func (m *mockRaftPartitionForDecommission) ChangeMember(changeType raftProto.ConfChangeType, peer raftProto.Peer, context []byte) (interface{}, error) {
+	m.changes = append(m.changes, recordedRaftMemberChange{
+		changeType: changeType,
+		peer:       peer,
+		context:    append([]byte(nil), context...),
+	})
+	return nil, nil
+}
+
+func (m *mockRaftPartitionForDecommission) Stop() error { return nil }
+
+func (m *mockRaftPartitionForDecommission) Delete() error { return nil }
+
+func (m *mockRaftPartitionForDecommission) Status() *raftstore.PartitionStatus {
+	return &raftstore.PartitionStatus{}
+}
+
+func (m *mockRaftPartitionForDecommission) IsRestoring() bool { return false }
+
+func (m *mockRaftPartitionForDecommission) LeaderTerm() (uint64, uint64) {
+	return m.leaderID, 1
+}
+
+func (m *mockRaftPartitionForDecommission) IsRaftLeader() bool { return true }
+
+func (m *mockRaftPartitionForDecommission) AppliedIndex() uint64 { return 0 }
+
+func (m *mockRaftPartitionForDecommission) CommittedIndex() uint64 { return 0 }
+
+func (m *mockRaftPartitionForDecommission) Truncate(uint64) {}
+
+func (m *mockRaftPartitionForDecommission) TryToLeader(uint64) error { return nil }
+
+func (m *mockRaftPartitionForDecommission) IsOfflinePeer() bool { return false }
+
+func (m *mockRaftPartitionForDecommission) CloseAndBackup() error { return nil }
+
+func (m *mockRaftPartitionForDecommission) Closed() bool { return false }
+
+type mockRaftStoreForOperatorTest struct {
+	cfg        *raft.Config
+	partitions []*raftstore.PartitionConfig
+}
+
+func (m *mockRaftStoreForOperatorTest) CreatePartition(cfg *raftstore.PartitionConfig) (raftstore.Partition, error) {
+	m.partitions = append(m.partitions, cfg)
+	return &mockRaftPartitionForDecommission{leaderID: cfg.ID}, nil
+}
+
+func (m *mockRaftStoreForOperatorTest) Stop() {}
+
+func (m *mockRaftStoreForOperatorTest) RaftConfig() *raft.Config {
+	if m.cfg == nil {
+		m.cfg = &raft.Config{
+			TransportConfig: raft.TransportConfig{
+				HeartbeatAddr: "127.0.0.1:17310",
+				ReplicateAddr: "127.0.0.1:17320",
+			},
+		}
+	}
+	return m.cfg
+}
+
+func (m *mockRaftStoreForOperatorTest) RaftStatus(uint64) *raft.Status { return &raft.Status{} }
+
+func (m *mockRaftStoreForOperatorTest) AddNodeWithPort(uint64, string, int, int) {}
+
+func (m *mockRaftStoreForOperatorTest) DeleteNode(uint64) {}
+
+func (m *mockRaftStoreForOperatorTest) RaftServer() *raft.RaftServer { return nil }
+
+func (m *mockRaftStoreForOperatorTest) RemoveBackup(uint64) error { return nil }
+
+func (m *mockRaftStoreForOperatorTest) GetPeers(uint64) []uint64 { return nil }
+
+func (m *mockRaftStoreForOperatorTest) SetTruncateBlockMax(uint64, int) error { return nil }
+
+func TestHandlePacketToDecommissionDataPartitionChangesRaftMembers(t *testing.T) {
+	dn := newDataNodeForOperatorTest(t)
+	dp := newDpForOperatorTest(t, dn)
+	delete(dn.space.partitions, dp.partitionID)
+
+	partitionID := uint64(101)
+	addPeer := proto.Peer{ID: 3, Addr: "127.0.0.1:17312"}
+	removePeer := proto.Peer{ID: 2, Addr: "127.0.0.1:17311"}
+	mockRaft := &mockRaftPartitionForDecommission{leaderID: 1}
+
+	dp.partitionID = partitionID
+	dp.raftStatus = RaftStatusRunning
+	dp.raftPartition = mockRaft
+	dp.config.NodeID = 1
+	dp.config.Peers = []proto.Peer{
+		{ID: 1, Addr: "127.0.0.1:17310"},
+		removePeer,
+	}
+	dn.space.partitions[partitionID] = dp
+
+	task := proto.NewAdminTask(proto.OpDecommissionDataPartition, "", &proto.DataPartitionDecommissionRequest{
+		PartitionId: partitionID,
+		AddPeer:     addPeer,
+		RemovePeer:  removePeer,
+	})
+	packet := newPacketForTest(task)
+
+	dn.handlePacketToDecommissionDataPartition(packet)
+
+	require.EqualValues(t, proto.OpOk, packet.ResultCode)
+	require.Len(t, mockRaft.changes, 2)
+	require.Equal(t, raftProto.ConfAddNode, mockRaft.changes[0].changeType)
+	require.EqualValues(t, addPeer.ID, mockRaft.changes[0].peer.ID)
+	require.Equal(t, raftProto.ConfRemoveNode, mockRaft.changes[1].changeType)
+	require.EqualValues(t, removePeer.ID, mockRaft.changes[1].peer.ID)
+
+	req := &proto.DataPartitionDecommissionRequest{}
+	require.NoError(t, json.Unmarshal(mockRaft.changes[0].context, req))
+	require.Equal(t, partitionID, req.PartitionId)
+	require.Equal(t, addPeer, req.AddPeer)
+	require.Equal(t, removePeer, req.RemovePeer)
+}
+
+func TestHandlePacketToAddDataPartitionRaftMemberChangesRaftMember(t *testing.T) {
+	dn := newDataNodeForOperatorTest(t)
+	dp := newDpForOperatorTest(t, dn)
+	delete(dn.space.partitions, dp.partitionID)
+
+	partitionID := uint64(102)
+	addPeer := proto.Peer{ID: 3, Addr: "127.0.0.1:17312"}
+	mockRaft := &mockRaftPartitionForDecommission{leaderID: 1}
+
+	dp.partitionID = partitionID
+	dp.raftStatus = RaftStatusRunning
+	dp.raftPartition = mockRaft
+	dp.config.NodeID = 1
+	dp.config.Peers = []proto.Peer{
+		{ID: 1, Addr: "127.0.0.1:17310"},
+		{ID: 2, Addr: "127.0.0.1:17311"},
+	}
+	dn.space.partitions[partitionID] = dp
+
+	task := proto.NewAdminTask(proto.OpAddDataPartitionRaftMember, "", &proto.AddDataPartitionRaftMemberRequest{
+		PartitionId:     partitionID,
+		AddPeer:         addPeer,
+		RepairingStatus: true,
+	})
+	packet := newPacketForTest(task)
+
+	dn.handlePacketToAddDataPartitionRaftMember(packet)
+
+	require.EqualValues(t, proto.OpOk, packet.ResultCode)
+	require.Len(t, mockRaft.changes, 1)
+	require.Equal(t, raftProto.ConfAddNode, mockRaft.changes[0].changeType)
+	require.EqualValues(t, addPeer.ID, mockRaft.changes[0].peer.ID)
+
+	req := &proto.AddDataPartitionRaftMemberRequest{}
+	require.NoError(t, json.Unmarshal(mockRaft.changes[0].context, req))
+	require.Equal(t, partitionID, req.PartitionId)
+	require.Equal(t, addPeer, req.AddPeer)
+	require.True(t, req.RepairingStatus)
+}
+
+func TestHandlePacketToRemoveDataPartitionRaftMemberChangesRaftMember(t *testing.T) {
+	dn := newDataNodeForOperatorTest(t)
+	dp := newDpForOperatorTest(t, dn)
+	delete(dn.space.partitions, dp.partitionID)
+
+	partitionID := uint64(103)
+	removePeer := proto.Peer{ID: 2, Addr: "127.0.0.1:17311"}
+	mockRaft := &mockRaftPartitionForDecommission{leaderID: 1}
+
+	dp.partitionID = partitionID
+	dp.raftStatus = RaftStatusRunning
+	dp.raftPartition = mockRaft
+	dp.config.NodeID = 1
+	dp.config.Peers = []proto.Peer{
+		{ID: 1, Addr: "127.0.0.1:17310"},
+		removePeer,
+	}
+	dp.replicas = []string{"127.0.0.1:17310", removePeer.Addr}
+	dn.space.partitions[partitionID] = dp
+
+	task := proto.NewAdminTask(proto.OpRemoveDataPartitionRaftMember, "", &proto.RemoveDataPartitionRaftMemberRequest{
+		PartitionId:     partitionID,
+		RemovePeer:      removePeer,
+		RepairingStatus: true,
+		AutoRemove:      true,
+	})
+	packet := newPacketForTest(task)
+
+	dn.handlePacketToRemoveDataPartitionRaftMember(packet)
+
+	require.EqualValues(t, proto.OpOk, packet.ResultCode)
+	require.Len(t, mockRaft.changes, 1)
+	require.Equal(t, raftProto.ConfRemoveNode, mockRaft.changes[0].changeType)
+	require.EqualValues(t, removePeer.ID, mockRaft.changes[0].peer.ID)
+
+	req := &proto.RemoveDataPartitionRaftMemberRequest{}
+	require.NoError(t, json.Unmarshal(mockRaft.changes[0].context, req))
+	require.Equal(t, partitionID, req.PartitionId)
+	require.Equal(t, removePeer, req.RemovePeer)
+	require.True(t, req.RepairingStatus)
+	require.True(t, req.AutoRemove)
+}
+
+func TestHandlePacketToCreateDataPartitionCreatesReplica(t *testing.T) {
+	dn := newDataNodeForOperatorTest(t)
+	raftStore := &mockRaftStoreForOperatorTest{}
+	dn.space.raftStore = raftStore
+	dn.space.nodeID = 1
+	dn.space.clusterID = "cluster-create"
+	diskPath, err := os.MkdirTemp("", "")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = os.RemoveAll(diskPath)
+	})
+	disk := newDiskForOperatorTest(t, dn)
+	disk.Path = diskPath
+	disk.space = dn.space
+	disk.partitionMap = make(map[uint64]*DataPartition)
+	dn.space.disks[diskPath] = disk
+
+	partitionID := uint64(104)
+	hosts := []string{"127.0.0.1:17310", "127.0.0.1:17311"}
+	peers := []proto.Peer{
+		{ID: 1, Addr: hosts[0]},
+		{ID: 2, Addr: hosts[1]},
+	}
+
+	task := proto.NewAdminTask(proto.OpCreateDataPartition, "", &proto.CreateDataPartitionRequest{
+		VolumeId:      "vol-create",
+		PartitionId:   partitionID,
+		ReplicaNum:    len(peers),
+		PartitionSize: int(1 * util.GB),
+		Members:       peers,
+		Hosts:         hosts,
+		PartitionTyp:  proto.PartitionTypeNormal,
+		CreateType:    proto.NormalCreateDataPartition,
+	})
+	packet := newPacketForTest(task)
+
+	dn.handlePacketToCreateDataPartition(packet)
+
+	require.EqualValues(t, proto.OpOk, packet.ResultCode)
+	require.Equal(t, diskPath, string(packet.Data[:packet.Size]))
+	created := dn.space.Partition(partitionID)
+	require.NotNil(t, created)
+	require.Equal(t, partitionID, created.partitionID)
+	require.Equal(t, "vol-create", created.volumeID)
+	require.Equal(t, diskPath, created.Disk().Path)
+	require.Len(t, raftStore.partitions, 1)
+	require.Equal(t, partitionID, raftStore.partitions[0].ID)
+
+	t.Cleanup(func() {
+		if created := dn.space.Partition(partitionID); created != nil {
+			created.Stop()
+		}
+	})
+}
+
+func TestHandlePacketToDeleteDataPartitionRemovesReplica(t *testing.T) {
+	dn := newDataNodeForOperatorTest(t)
+	dp := newDpForOperatorTest(t, dn)
+
+	partitionID := uint64(105)
+	partitionPath, err := os.MkdirTemp("", "")
+	require.NoError(t, err)
+	dp.partitionID = partitionID
+	dp.path = partitionPath
+	dp.disk.Path = path.Dir(partitionPath)
+	dp.disk.partitionMap = map[uint64]*DataPartition{partitionID: dp}
+	dn.space.partitions = map[uint64]*DataPartition{partitionID: dp}
+
+	task := proto.NewAdminTask(proto.OpDeleteDataPartition, "", &proto.DeleteDataPartitionRequest{
+		PartitionId: partitionID,
+		Force:       false,
+	})
+	packet := newPacketForTest(task)
+
+	dn.handlePacketToDeleteDataPartition(packet)
+
+	require.EqualValues(t, proto.OpOk, packet.ResultCode)
+	require.Nil(t, dn.space.Partition(partitionID))
+	require.Nil(t, dp.disk.GetDataPartition(partitionID))
+	_, err = os.Stat(partitionPath)
+	require.True(t, os.IsNotExist(err))
 }
 
 func TestMarkDeleteIopsLimit(t *testing.T) {
