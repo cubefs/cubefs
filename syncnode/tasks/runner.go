@@ -941,6 +941,14 @@ func buildTask(rule *rules.Rule, src, dst backend.Backend, taskID string) *execu
 		SampleRate:         cfg.SampleRate,
 		BandwidthLimitMBps: cfg.BandwidthLimitMBps,
 		Parallelism:        cfg.Parallelism,
+		// Data-integrity P0/P1/P2 knobs. All four are opt-in; default zero
+		// values preserve legacy behaviour. validateTask in the executor
+		// enforces the AfterCopy=verify_then_delete_src ⇒ ChecksumMode=strong
+		// invariant before Run() proceeds.
+		ChecksumMode:    cfg.ChecksumMode,
+		OnSourceMutated: cfg.OnSourceMutated,
+		MaxRetries:      cfg.MaxRetries,
+		ResumeEnabled:   cfg.ResumeEnabled,
 	}
 }
 

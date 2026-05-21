@@ -247,6 +247,13 @@ func (b *Backend) Capabilities() backend.Caps {
 		AtomicRename:      true,
 		ListMaxKeys:       0,
 		StrongConsistency: true,
+		// CubeFS has no server-side digest. We persist sha256 in a
+		// companion file (`<key>.syncnode.sha256`) on Put, which makes
+		// GetChecksum O(64-byte read) on the hot path — but it's still
+		// not "native" in the executor's sense (the volume itself isn't
+		// telling us anything). Reported false so executor knows it
+		// should still gate on src-side compute.
+		NativeChecksum: false,
 	}
 }
 
@@ -462,14 +469,18 @@ type writeChunk struct {
 // goroutine is used to avoid synchronization overhead.
 //
 // The size parameter is advisory: actual bytes written come from io.EOF on
-// body. opts is currently unused by cfs (no storage class concept).
-func (b *Backend) Put(ctx context.Context, key string, body io.Reader, size int64, _ backend.PutOptions) (string, error) {
+// body. opts.StorageClass / Multipart are unused by cfs (no storage class
+// concept here). When opts.ComputeChecksum is true we tee the body through
+// a sha256 hasher and, on a successful write, persist the digest in a
+// companion file `<key>.syncnode.sha256` so subsequent GetChecksum calls
+// avoid a full re-read.
+func (b *Backend) Put(ctx context.Context, key string, body io.Reader, size int64, opts backend.PutOptions) (backend.PutResult, error) {
 	full := normalizeKey(key)
 	dir, name := splitPath(full)
 
 	dirIno, err := b.mkdirAll(dir)
 	if err != nil {
-		return "", fmt.Errorf("cfs put mkdir %s: %w", dir, err)
+		return backend.PutResult{}, fmt.Errorf("cfs put mkdir %s: %w", dir, err)
 	}
 
 	var ino uint64
@@ -479,48 +490,222 @@ func (b *Backend) Put(ctx context.Context, key string, body io.Reader, size int6
 	} else if errors.Is(cerr, syscall.EEXIST) {
 		existIno, _, lerr := b.mw.Lookup_ll(dirIno, name)
 		if lerr != nil {
-			return "", fmt.Errorf("cfs put lookup existing %s: %w", full, lerr)
+			return backend.PutResult{}, fmt.Errorf("cfs put lookup existing %s: %w", full, lerr)
 		}
 		ino = existIno
 	} else {
-		return "", fmt.Errorf("cfs put create %s: %w", full, cerr)
+		return backend.PutResult{}, fmt.Errorf("cfs put create %s: %w", full, cerr)
 	}
 
 	if err := b.ec.OpenStream(ino, true, false, full); err != nil {
-		return "", fmt.Errorf("cfs put open stream %s: %w", full, err)
+		return backend.PutResult{}, fmt.Errorf("cfs put open stream %s: %w", full, err)
 	}
 	// Truncate to zero first so a previously larger file does not leak
 	// stale tail bytes.
 	if err := b.truncate(dirIno, ino, full); err != nil {
 		_ = b.ec.CloseStream(ino)
-		return "", fmt.Errorf("cfs put truncate %s: %w", full, err)
+		return backend.PutResult{}, fmt.Errorf("cfs put truncate %s: %w", full, err)
 	}
 
 	parallel := b.cfg.resolvedWriteParallel()
 	chunkSize := b.cfg.resolvedWriteChunkSize()
 
+	// Wrap body so reads are counted; optionally also tee'd through a
+	// sha256 sink. This keeps both sequential and parallel write paths
+	// agnostic to checksum computation — they just consume an io.Reader.
+	src := &countingReader{r: body}
+	var sumFn func() string
+	if opts.ComputeChecksum {
+		h, fn := backend.NewSHA256Sink()
+		src.r = io.TeeReader(body, h)
+		sumFn = fn
+	}
+
 	// Choice of write path: small bodies bypass the goroutine pool to
 	// avoid the per-file orchestration cost when it doesn't pay off.
 	if size > 0 && size <= parallelWriteMinBytes || parallel <= 1 {
-		if err := b.writeSequential(ctx, ino, full, body, chunkSize); err != nil {
+		if err := b.writeSequential(ctx, ino, full, src, chunkSize); err != nil {
 			_ = b.ec.CloseStream(ino)
-			return "", err
+			return backend.PutResult{}, err
 		}
 	} else {
-		if err := b.writeParallel(ctx, ino, full, body, chunkSize, parallel); err != nil {
+		if err := b.writeParallel(ctx, ino, full, src, chunkSize, parallel); err != nil {
 			_ = b.ec.CloseStream(ino)
-			return "", err
+			return backend.PutResult{}, err
 		}
 	}
 
 	if err := b.ec.Flush(ino); err != nil {
 		_ = b.ec.CloseStream(ino)
-		return "", fmt.Errorf("cfs put flush %s: %w", full, err)
+		return backend.PutResult{}, fmt.Errorf("cfs put flush %s: %w", full, err)
 	}
 	if err := b.ec.CloseStream(ino); err != nil {
-		return "", fmt.Errorf("cfs put close stream %s: %w", full, err)
+		return backend.PutResult{}, fmt.Errorf("cfs put close stream %s: %w", full, err)
 	}
-	return "", nil
+
+	res := backend.PutResult{BytesPut: src.n}
+	if sumFn != nil {
+		hexSum := sumFn()
+		res.Checksum = hexSum
+		res.Algorithm = backend.ChecksumAlgorithmSHA256
+		// Write the companion file. Best-effort: if this fails the data
+		// upload still succeeded and the checksum lives in res.Checksum;
+		// the next GetChecksum will simply re-stream and re-write.
+		if cerr := b.writeCompanion(ctx, full, hexSum); cerr != nil {
+			log.LogWarnf("cfs put: write companion sha256 for %s: %v", full, cerr)
+		}
+	}
+	return res, nil
+}
+
+// countingReader wraps an io.Reader and counts bytes read. Used by Put to
+// report PutResult.BytesPut without making writeSequential / writeParallel
+// return byte counts (which would touch their hot paths).
+type countingReader struct {
+	r io.Reader
+	n int64
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	c.n += int64(n)
+	return n, err
+}
+
+// companionPath returns the path for the sha256 companion file given a
+// normalized full path.
+func companionPath(full string) string {
+	return full + backend.SHA256CompanionSuffix
+}
+
+// writeCompanion stores hexSum in the companion file next to full. The
+// companion is a tiny 64-byte object so we use the sequential write path
+// regardless of write-parallel config.
+func (b *Backend) writeCompanion(ctx context.Context, full, hexSum string) error {
+	companion := companionPath(full)
+	dir, name := splitPath(companion)
+	dirIno, err := b.mkdirAll(dir)
+	if err != nil {
+		return fmt.Errorf("mkdir %s: %w", dir, err)
+	}
+	var ino uint64
+	info, cerr := b.mw.Create_ll(dirIno, name, 0o644, 0, 0, nil, companion, true)
+	if cerr == nil {
+		ino = info.Inode
+	} else if errors.Is(cerr, syscall.EEXIST) {
+		existIno, _, lerr := b.mw.Lookup_ll(dirIno, name)
+		if lerr != nil {
+			return fmt.Errorf("lookup existing %s: %w", companion, lerr)
+		}
+		ino = existIno
+	} else {
+		return fmt.Errorf("create %s: %w", companion, cerr)
+	}
+	if err := b.ec.OpenStream(ino, true, false, companion); err != nil {
+		return fmt.Errorf("open stream %s: %w", companion, err)
+	}
+	if err := b.truncate(dirIno, ino, companion); err != nil {
+		_ = b.ec.CloseStream(ino)
+		return fmt.Errorf("truncate %s: %w", companion, err)
+	}
+	data := []byte(hexSum)
+	if _, werr := b.ec.Write(ino, 0, data, 0, nil, b.storageClass, false, false); werr != nil {
+		_ = b.ec.CloseStream(ino)
+		return fmt.Errorf("write %s: %w", companion, werr)
+	}
+	if err := b.ec.Flush(ino); err != nil {
+		_ = b.ec.CloseStream(ino)
+		return fmt.Errorf("flush %s: %w", companion, err)
+	}
+	if err := b.ec.CloseStream(ino); err != nil {
+		return fmt.Errorf("close stream %s: %w", companion, err)
+	}
+	_ = ctx // ctx parameter retained for symmetry / future cancellation
+	return nil
+}
+
+// GetChecksum returns the sha256 of key. Resolution order:
+//
+//  1. If a companion file `<key>.syncnode.sha256` exists and contains a
+//     well-formed 64-char hex digest, return it (cheap path — one tiny read).
+//  2. Otherwise stream the main file through sha256, then write the digest
+//     back into the companion file (best-effort, log+continue on failure
+//     so the next call still hits the cheap path) and return the digest.
+//  3. If the main file does not exist, return backend.ErrKeyNotFound.
+//
+// Algorithm is always backend.ChecksumAlgorithmSHA256 — cfs never returns md5.
+func (b *Backend) GetChecksum(ctx context.Context, key string) (string, string, error) {
+	full := normalizeKey(key)
+	// Cheap path: try the companion file first.
+	if hexSum, ok := b.readCompanion(ctx, full); ok {
+		return hexSum, backend.ChecksumAlgorithmSHA256, nil
+	}
+	// Fall back to streaming sha256 of the main file.
+	rc, err := b.Get(ctx, key, 0, 0)
+	if err != nil {
+		// Get already maps ENOENT to ErrKeyNotFound via translateErr.
+		return "", "", err
+	}
+	defer rc.Close()
+	hexSum, _, serr := backend.SHA256Stream(rc)
+	if serr != nil {
+		return "", "", fmt.Errorf("cfs sha256 stream %s: %w", full, serr)
+	}
+	// Best-effort writeback; never fails GetChecksum.
+	if werr := b.writeCompanion(ctx, full, hexSum); werr != nil {
+		log.LogWarnf("cfs writeCompanion %s: %v", full, werr)
+	}
+	return hexSum, backend.ChecksumAlgorithmSHA256, nil
+}
+
+// readCompanion attempts to read and validate the companion sha256 file for
+// full. Returns (hexSum, true) on success. On any error or malformed content
+// it returns ("", false) — callers fall back to streaming the main file.
+func (b *Backend) readCompanion(ctx context.Context, full string) (string, bool) {
+	_ = ctx
+	companion := companionPath(full)
+	ino, err := b.mw.LookupPath(companion)
+	if err != nil {
+		return "", false
+	}
+	info, err := b.mw.InodeGet_ll(ino)
+	if err != nil || !proto.IsRegular(info.Mode) {
+		return "", false
+	}
+	// sha256 hex is exactly 64 bytes; reject anything outside a tight window
+	// to avoid reading absurd payloads if the companion got corrupted.
+	if info.Size == 0 || info.Size > 128 {
+		return "", false
+	}
+	if err := b.ec.OpenStream(ino, false, false, companion); err != nil {
+		return "", false
+	}
+	defer func() { _ = b.ec.CloseStream(ino) }()
+	buf := make([]byte, info.Size)
+	n, rerr := b.ec.Read(ino, buf, 0, len(buf), b.storageClass, false)
+	if rerr != nil && rerr != io.EOF {
+		return "", false
+	}
+	if n != int(info.Size) {
+		return "", false
+	}
+	hexSum := strings.TrimSpace(string(buf[:n]))
+	if len(hexSum) != 64 || !isHex(hexSum) {
+		return "", false
+	}
+	return hexSum, true
+}
+
+// isHex reports whether s consists entirely of lowercase or uppercase hex
+// digits. Cheaper than encoding/hex.DecodeString for the validate-only path.
+func isHex(s string) bool {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
 }
 
 // truncate is the test-friendly wrapper over ec.Truncate; in real builds it
@@ -715,6 +900,12 @@ func (b *Backend) walkDir(ctx context.Context, ch chan<- backend.Entry, ino uint
 			emit(ctx, ch, backend.Entry{Err: ctx.Err()})
 			return
 		default:
+		}
+		// Hide sha256 companion files from List. They are an internal
+		// implementation detail of GetChecksum and should never appear
+		// to executor / replicator code.
+		if strings.HasSuffix(d.Name, backend.SHA256CompanionSuffix) {
+			continue
 		}
 		childPath := base
 		if strings.HasSuffix(childPath, "/") {

@@ -596,11 +596,11 @@ func TestPutGetRoundTrip_Small(t *testing.T) {
 	for i := range body {
 		body[i] = byte(i)
 	}
-	etag, err := b.Put(ctx, key, strings.NewReader(string(body)), int64(len(body)), backend.PutOptions{})
+	res, err := b.Put(ctx, key, strings.NewReader(string(body)), int64(len(body)), backend.PutOptions{})
 	if err != nil {
 		t.Fatalf("Put: %v", err)
 	}
-	if etag == "" {
+	if res.ETag == "" {
 		t.Error("expected non-empty etag")
 	}
 
@@ -633,16 +633,16 @@ func TestPutGetRoundTrip_Multipart(t *testing.T) {
 	for i := range body {
 		body[i] = byte(i % 251)
 	}
-	etag, err := b.Put(ctx, key, strings.NewReader(string(body)), int64(size), backend.PutOptions{})
+	res, err := b.Put(ctx, key, strings.NewReader(string(body)), int64(size), backend.PutOptions{})
 	if err != nil {
 		t.Fatalf("Put multipart: %v", err)
 	}
-	if etag == "" {
+	if res.ETag == "" {
 		t.Error("expected non-empty etag")
 	}
 	// Multipart etag has "-N" suffix
-	if !strings.Contains(etag, "-") {
-		t.Errorf("expected multipart etag with -N suffix, got %q", etag)
+	if !strings.Contains(res.ETag, "-") {
+		t.Errorf("expected multipart etag with -N suffix, got %q", res.ETag)
 	}
 
 	rc, err := b.Get(ctx, key, 0, 0)

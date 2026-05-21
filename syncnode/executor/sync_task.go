@@ -184,9 +184,192 @@ func (e *Executor) runSync(ctx context.Context, t *Task, r Reporter, p *Progress
 	return nil
 }
 
-// syncOneFile transfers a single entry from src to dst. Heads dst first to
-// support idempotent re-runs; skips only when both sides agree on an ETag
-// so same-size mutations on ETag-less backends (local POSIX) are re-uploaded.
+// errSourceMutated is the per-file sentinel for the P1 「source mutated mid-
+// transfer」 path. Local to executor — callers above the worker fold it into
+// FilesFailed / FilesSkipped via OnSourceMutated routing.
+var errSourceMutated = errors.New("sync: source mutated mid-transfer")
+
+// headSnapshot captures the size + mtime + etag triple used to detect
+// concurrent mutation of the source key. Zero value means "not snapshotted"
+// (mutated() returns false in that case to keep the legacy code path).
+type headSnapshot struct {
+	taken bool
+	size  int64
+	mtime time.Time
+	etag  string
+}
+
+// headSnapshotOf takes a fresh Head of key on b. headErr is surfaced to the
+// caller; on error we still return a non-taken snapshot so mutated() short-
+// circuits to "no change observable".
+func headSnapshotOf(ctx context.Context, b backend.Backend, key string) (headSnapshot, error) {
+	sz, etag, mt, err := b.Head(ctx, key)
+	if err != nil {
+		return headSnapshot{}, err
+	}
+	return headSnapshot{taken: true, size: sz, mtime: mt, etag: etag}, nil
+}
+
+// mutated reports whether two snapshots disagree on size / etag / mtime.
+// When either snapshot is not taken, returns false (cannot prove change).
+// ETag is only compared when both sides have one — locally / on POSIX it's
+// usually empty and we lean on size + mtime instead.
+func mutated(pre, post headSnapshot) bool {
+	if !pre.taken || !post.taken {
+		return false
+	}
+	if pre.size != post.size {
+		return true
+	}
+	if pre.etag != "" && post.etag != "" && pre.etag != post.etag {
+		return true
+	}
+	if !pre.mtime.IsZero() && !post.mtime.IsZero() && !pre.mtime.Equal(post.mtime) {
+		return true
+	}
+	return false
+}
+
+// checksumEqual reports whether two backend-reported checksums are
+// comparable AND equal. Differing algorithms (sha256 vs md5) are treated as
+// "not equal" — strong mode refuses to bridge across hash families.
+func checksumEqual(sumA, algoA, sumB, algoB string) bool {
+	if sumA == "" || sumB == "" {
+		return false
+	}
+	if algoA == "" || algoB == "" {
+		return false
+	}
+	if algoA != algoB {
+		return false
+	}
+	return sumA == sumB
+}
+
+// backoffSleep waits 1s, 2s, 4s, ..., 32s (capped at 30s) before the next
+// retry attempt. attempt is 1-based for the FIRST retry (attempt=0 means no
+// sleep — the first try has not happened yet). Honours ctx cancellation so
+// shutdown isn't blocked by a long backoff.
+func backoffSleep(ctx context.Context, attempt int) {
+	if attempt < 1 {
+		return
+	}
+	shift := attempt - 1
+	if shift > 5 {
+		shift = 5
+	}
+	d := time.Duration(1<<shift) * time.Second
+	if d > 30*time.Second {
+		d = 30 * time.Second
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+	case <-ctx.Done():
+	}
+}
+
+// transferResult carries everything the per-file retry loop needs to
+// progress: bytes acked, optional resume token (for s3 multipart), and the
+// PutResult itself (so strong-mode can compare the upload-side checksum).
+type transferResult struct {
+	put          backend.PutResult
+	bytesAcked   int64
+	uploadID     string
+	partialBytes int64 // bytes the dst is known to have on disk if Put failed
+}
+
+// transferOnce performs a single Get→io.Pipe→Put round. resumeOffset and
+// resumeUploadID are advisory: backends that don't support resume ignore
+// them. computeChecksum threads the strong-mode flag through PutOptions.
+//
+// Returns the transferResult on success; on failure the result still carries
+// any partial-bytes count we observed via io.Copy (so the caller can persist
+// a breakpoint before retrying).
+func (e *Executor) transferOnce(
+	ctx context.Context,
+	t *Task,
+	entry backend.Entry,
+	dstKey string,
+	resumeOffset int64,
+	resumeUploadID string,
+	computeChecksum bool,
+) (transferResult, error) {
+	pr, pw := io.Pipe()
+
+	putOpts := backend.PutOptions{
+		ComputeChecksum: computeChecksum,
+	}
+	// Note: StorageClass intentionally not threaded through here.
+	// PutOptions.StorageClass would be sourced from the rule config
+	// (dst.storageClass) — see design.md §4.2.
+
+	type putOutcome struct {
+		res backend.PutResult
+		err error
+	}
+	putCh := make(chan putOutcome, 1)
+	go func() {
+		res, perr := t.Dst.Put(ctx, dstKey, pr, entry.Size, putOpts)
+		_ = pr.CloseWithError(perr)
+		putCh <- putOutcome{res: res, err: perr}
+	}()
+
+	rc, gerr := t.Src.Get(ctx, entry.Key, resumeOffset, 0)
+	if gerr != nil {
+		_ = pw.CloseWithError(gerr)
+		<-putCh // drain the writer goroutine
+		return transferResult{uploadID: resumeUploadID}, fmt.Errorf("get src %q: %w", entry.Key, gerr)
+	}
+	// Wrap source reader with the layered bandwidth limiter (§12.4).
+	var src io.Reader = rc
+	if lim := e.buildTransferLimiter(t); lim != nil {
+		src = ratelimit.NewLimitedReader(ctx, rc, lim)
+	}
+	n, copyErr := io.Copy(pw, src)
+	_ = rc.Close()
+	_ = pw.CloseWithError(copyErr)
+	out := <-putCh
+
+	result := transferResult{
+		put:        out.res,
+		bytesAcked: out.res.BytesPut,
+		uploadID:   resumeUploadID,
+	}
+	if copyErr != nil {
+		// Copy aborted mid-stream; preserve what we observed for resume.
+		result.partialBytes = resumeOffset + n
+		return result, fmt.Errorf("copy %q -> %q: %w", entry.Key, dstKey, copyErr)
+	}
+	if out.err != nil {
+		// Put failed; the bytes we shoved through io.Copy may or may not
+		// have made it to dst — backend can't tell us without a Head, so
+		// we surface what we know on the src side.
+		result.partialBytes = resumeOffset + n
+		return result, fmt.Errorf("put dst %q: %w", dstKey, out.err)
+	}
+	// Successful upload: bytes acked is the full source size.
+	if result.bytesAcked == 0 {
+		result.bytesAcked = n
+	}
+	return result, nil
+}
+
+// syncOneFile transfers a single entry from src to dst. The flow honours the
+// data-integrity P0/P1/P2 design (docs/plan/syncnode/data-integrity-p0-p2.md):
+//   - P0: ChecksumMode == "strong" computes sha256 on the src side during
+//     transfer, verifies against dst checksum (native or metadata) before
+//     allowing AfterCopy=verify_then_delete_src to delete src.
+//   - P1: OnSourceMutated != "" enables Pre/Post-Head of src; on size /
+//     mtime / etag drift dst is rolled back and the file is failed / skipped /
+//     retried.
+//   - P2: MaxRetries / ResumeEnabled give per-file exponential-backoff retry
+//     and breakpoint resume from bolt.InProgressStore.
+//
+// All three layers are opt-in. The legacy code path (no ChecksumMode, no
+// OnSourceMutated, MaxRetries=0, ResumeEnabled=false) is preserved bit-for-
+// bit by short-circuiting through the same transferOnce helper.
 func (e *Executor) syncOneFile(
 	ctx context.Context,
 	t *Task,
@@ -202,15 +385,25 @@ func (e *Executor) syncOneFile(
 		return fmt.Errorf("rebase key %q: %w", entry.Key, err)
 	}
 
-	// Idempotency check: skip if dst already has a verified match.
-	// When both sides have an ETag we require them to agree (catches
-	// same-size mutations). When either side lacks an ETag (e.g. local
-	// POSIX backend never returns one) we fall back to size-only, matching
-	// the behaviour of load_task.go and accepting rare same-size mutations
-	// as the cost of idempotency on ETag-less backends.
+	// 1) Pre-Head src (P1) — only when OnSourceMutated is enabled.
+	var srcPre headSnapshot
+	if t.OnSourceMutated != "" {
+		snap, herr := headSnapshotOf(ctx, t.Src, entry.Key)
+		if herr != nil {
+			return fmt.Errorf("pre-head src %q: %w", entry.Key, herr)
+		}
+		srcPre = snap
+	}
+
+	// 2) Idempotent skip: if dst already matches what we'd write, return
+	// without transferring. The decision tree:
+	//   - size + ETag agree → skip (legacy behaviour)
+	//   - dst size matches and dst has no ETag → skip (POSIX/CFS lack ETag)
+	//   - ChecksumMode=="strong" → upgrade the skip decision: when both
+	//     backends report comparable checksums for the same key AND the
+	//     checksums agree, skip; otherwise fall through to a full transfer.
 	if dstSize, dstETag, _, herr := t.Dst.Head(ctx, dstKey); herr == nil {
-		etagMatch := entry.ETag != "" && dstETag != "" && entry.ETag == dstETag
-		if dstSize == entry.Size && (etagMatch || dstETag == "") {
+		if shouldSkipExistingDst(ctx, t, entry, dstKey, dstSize, dstETag) {
 			atomic.AddInt64(&p.FilesSkipped, 1)
 			atomic.AddInt64(&p.BytesSkipped, entry.Size)
 			if p.Sampler != nil {
@@ -220,76 +413,171 @@ func (e *Executor) syncOneFile(
 			return nil
 		}
 	} else if !errors.Is(herr, backend.ErrKeyNotFound) {
-		// Surface unexpected Head errors. ErrKeyNotFound is the happy
-		// path — dst doesn't have the file yet, we'll write it below.
 		return fmt.Errorf("head dst %q: %w", dstKey, herr)
 	}
 
 	r.OnFileStart(entry.Key, entry.Size)
 
-	// Stream src → dst through an io.Pipe. The reader side runs Put in a
-	// goroutine; the writer side runs Get-then-Copy on this goroutine.
-	pr, pw := io.Pipe()
-
-	putErrCh := make(chan error, 1)
-	go func() {
-		// Note: StorageClass intentionally not threaded through here.
-		// PutOptions.StorageClass would be sourced from the rule config
-		// (dst.storageClass) — that's a future wiring step (see
-		// design.md §4.2). Empty is the safe default; every Backend
-		// honours its own.
-		_, perr := t.Dst.Put(ctx, dstKey, pr, entry.Size, backend.PutOptions{})
-		// Drain any remaining bytes / unblock the writer on Put failure.
-		_ = pr.CloseWithError(perr)
-		putErrCh <- perr
-	}()
-
-	rc, gerr := t.Src.Get(ctx, entry.Key, 0, 0)
-	if gerr != nil {
-		_ = pw.CloseWithError(gerr)
-		<-putErrCh // drain the writer goroutine
-		return fmt.Errorf("get src %q: %w", entry.Key, gerr)
-	}
-	// Wrap the source reader with the layered bandwidth limiter (§12.4).
-	// Wrapping the READER side is the canonical placement — the Put side
-	// consumes from the pipe, so throttling the producer naturally back-
-	// pressures the consumer through the io.Pipe.
-	var src io.Reader = rc
-	if lim := e.buildTransferLimiter(t); lim != nil {
-		src = ratelimit.NewLimitedReader(ctx, rc, lim)
-	}
-	n, copyErr := io.Copy(pw, src)
-	_ = rc.Close()
-	_ = pw.CloseWithError(copyErr)
-	putErr := <-putErrCh
-
-	if copyErr != nil {
-		return fmt.Errorf("copy %q -> %q: %w", entry.Key, dstKey, copyErr)
-	}
-	if putErr != nil {
-		return fmt.Errorf("put dst %q: %w", dstKey, putErr)
-	}
-
-	atomic.AddInt64(&p.FilesDone, 1)
-	atomic.AddInt64(&p.BytesDone, n)
-
-	// AfterCopy: verify_then_delete_src re-heads dst and only deletes src
-	// if the bytes landed at the expected size.
-	if t.AfterCopy == AfterCopyVerifyThenDeleteSrc {
-		dstSize, _, _, verr := t.Dst.Head(ctx, dstKey)
-		if verr != nil {
-			return fmt.Errorf("verify dst %q: %w", dstKey, verr)
-		}
-		if dstSize != entry.Size {
-			return fmt.Errorf("verify dst %q: size %d != src size %d", dstKey, dstSize, entry.Size)
-		}
-		if derr := t.Src.Delete(ctx, entry.Key); derr != nil {
-			return fmt.Errorf("delete src %q after verify: %w", entry.Key, derr)
+	// 3) Resume? (P2) — pull breakpoint when caller wired the store and the
+	// task opts in. Failures are non-fatal: a missing breakpoint means we
+	// start from offset 0.
+	var resumeOffset int64
+	var resumeUploadID string
+	if t.ResumeEnabled && e.inprogress != nil {
+		bp, gerr := e.inprogress.Get(ctx, breakpointKey(t.ID, entry.Key))
+		if gerr == nil && bp != nil {
+			resumeOffset = bp.BytesDone
+			resumeUploadID = bp.UploadID
 		}
 	}
 
-	r.OnFileDone(entry.Key, n, nil)
-	return nil
+	// 4) Per-file retry loop (P2). attempt=0 is the first try; subsequent
+	// rounds backoff before transferOnce. lastErr is the most recent
+	// failure we've observed; on exhaustion it's what the caller sees.
+	var (
+		lastErr  error
+		bytesAck int64
+	)
+	strongMode := t.ChecksumMode == "strong"
+	for attempt := 0; attempt <= t.MaxRetries; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if attempt > 0 {
+			backoffSleep(ctx, attempt)
+		}
+
+		result, terr := e.transferOnce(ctx, t, entry, dstKey, resumeOffset, resumeUploadID, strongMode)
+		if terr != nil {
+			lastErr = terr
+			// Persist breakpoint when we have something to resume from.
+			if t.ResumeEnabled && e.inprogress != nil && result.partialBytes > 0 {
+				_ = e.inprogress.Put(ctx, &Breakpoint{
+					TaskID:    t.ID,
+					Key:       breakpointKey(t.ID, entry.Key),
+					BytesDone: result.partialBytes,
+					UploadID:  result.uploadID,
+				})
+				resumeOffset = result.partialBytes
+				resumeUploadID = result.uploadID
+			}
+			continue
+		}
+		bytesAck = result.bytesAcked
+		if bytesAck == 0 {
+			bytesAck = entry.Size
+		}
+
+		// 5) Post-Head src (P1) — detect mid-transfer mutation. We rolled
+		// dst forward unconditionally, so a mutated src means the dst we
+		// just wrote is stale; nuke it before deciding fail/skip/retry.
+		if t.OnSourceMutated != "" {
+			srcPost, herr := headSnapshotOf(ctx, t.Src, entry.Key)
+			if herr != nil {
+				lastErr = fmt.Errorf("post-head src %q: %w", entry.Key, herr)
+				continue
+			}
+			if mutated(srcPre, srcPost) {
+				_ = t.Dst.Delete(ctx, dstKey)
+				lastErr = errSourceMutated
+				switch t.OnSourceMutated {
+				case "skip":
+					atomic.AddInt64(&p.FilesSkipped, 1)
+					atomic.AddInt64(&p.BytesSkipped, entry.Size)
+					if p.Sampler != nil {
+						p.Sampler.add(entry.Key)
+					}
+					r.OnFileDone(entry.Key, 0, nil)
+					if t.ResumeEnabled && e.inprogress != nil {
+						_ = e.inprogress.Delete(ctx, breakpointKey(t.ID, entry.Key))
+					}
+					return nil
+				case "fail":
+					return lastErr
+				case "retry":
+					// snapshot moves forward so the next attempt's diff is
+					// versus the latest observed state.
+					srcPre = srcPost
+					continue
+				default:
+					// Unknown value → fail closed.
+					return fmt.Errorf("invalid OnSourceMutated %q: %w", t.OnSourceMutated, lastErr)
+				}
+			}
+		}
+
+		// 6) Strong checksum verify (P0). Only the strong mode path runs
+		// GetChecksum on dst; legacy modes already passed the size-based
+		// idempotency check earlier.
+		if strongMode {
+			dstSum, dstAlgo, gerr := t.Dst.GetChecksum(ctx, dstKey)
+			if gerr != nil {
+				_ = t.Dst.Delete(ctx, dstKey)
+				lastErr = fmt.Errorf("get dst checksum %q: %w", dstKey, gerr)
+				continue
+			}
+			if !checksumEqual(result.put.Checksum, result.put.Algorithm, dstSum, dstAlgo) {
+				_ = t.Dst.Delete(ctx, dstKey)
+				lastErr = backend.ErrChecksumMismatch
+				continue
+			}
+		}
+
+		// 7) AfterCopy=verify_then_delete_src (P0 升级). validateTask
+		// already guarantees ChecksumMode=="strong" at task start; the
+		// strong verify above passed, so deletion is safe.
+		if t.AfterCopy == AfterCopyVerifyThenDeleteSrc {
+			if derr := t.Src.Delete(ctx, entry.Key); derr != nil {
+				return fmt.Errorf("delete src %q after verify: %w", entry.Key, derr)
+			}
+		}
+
+		// 8) Clear breakpoint and tally bytes done.
+		if t.ResumeEnabled && e.inprogress != nil {
+			_ = e.inprogress.Delete(ctx, breakpointKey(t.ID, entry.Key))
+		}
+		atomic.AddInt64(&p.FilesDone, 1)
+		atomic.AddInt64(&p.BytesDone, bytesAck)
+		r.OnFileDone(entry.Key, bytesAck, nil)
+		return nil
+	}
+	return lastErr
+}
+
+// shouldSkipExistingDst implements the «is dst already a verified match?»
+// decision used by the idempotency check at the top of syncOneFile. The
+// data-integrity SDD says size-only skip is unsafe: same-size mutations
+// silently slip through. So unless we have at least one comparable
+// signature (matching ETag or strong-mode checksum), we MUST re-upload.
+//
+//   - ChecksumMode=="strong": skip iff both sides return comparable
+//     checksums and they agree.
+//   - Otherwise: skip iff src ETag and dst ETag are both non-empty and
+//     equal. POSIX-style backends (no ETag) always re-upload; this is
+//     the safe default.
+func shouldSkipExistingDst(
+	ctx context.Context,
+	t *Task,
+	entry backend.Entry,
+	dstKey string,
+	dstSize int64,
+	dstETag string,
+) bool {
+	if dstSize != entry.Size {
+		return false
+	}
+	if t.ChecksumMode == "strong" {
+		srcSum, srcAlgo, serr := t.Src.GetChecksum(ctx, entry.Key)
+		if serr != nil {
+			return false
+		}
+		dstSum, dstAlgo, derr := t.Dst.GetChecksum(ctx, dstKey)
+		if derr != nil {
+			return false
+		}
+		return checksumEqual(srcSum, srcAlgo, dstSum, dstAlgo)
+	}
+	return entry.ETag != "" && dstETag != "" && entry.ETag == dstETag
 }
 
 // runRetention lists dst under t.DstPath, asks Retention.SelectToDelete

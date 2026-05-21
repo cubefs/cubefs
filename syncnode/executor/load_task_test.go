@@ -113,13 +113,13 @@ type slowPutBackend struct {
 	delay time.Duration
 }
 
-func (s *slowPutBackend) Put(ctx context.Context, key string, body io.Reader, size int64, opts backend.PutOptions) (string, error) {
+func (s *slowPutBackend) Put(ctx context.Context, key string, body io.Reader, size int64, opts backend.PutOptions) (backend.PutResult, error) {
 	// Sleep in small slices so ctx cancellation interrupts us promptly.
 	deadline := time.Now().Add(s.delay)
 	for time.Now().Before(deadline) {
 		select {
 		case <-ctx.Done():
-			return "", ctx.Err()
+			return backend.PutResult{}, ctx.Err()
 		case <-time.After(20 * time.Millisecond):
 		}
 	}

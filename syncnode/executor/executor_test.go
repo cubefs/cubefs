@@ -41,13 +41,16 @@ func (n *nullBackend) Get(ctx context.Context, k string, off, sz int64) (io.Read
 func (n *nullBackend) Head(ctx context.Context, k string) (int64, string, time.Time, error) {
 	return 0, "", time.Time{}, backend.ErrKeyNotFound
 }
-func (n *nullBackend) Put(ctx context.Context, k string, body io.Reader, sz int64, opts backend.PutOptions) (string, error) {
-	return "", nil
+func (n *nullBackend) Put(ctx context.Context, k string, body io.Reader, sz int64, opts backend.PutOptions) (backend.PutResult, error) {
+	return backend.PutResult{}, nil
 }
-func (n *nullBackend) Delete(ctx context.Context, k string) error  { return nil }
+func (n *nullBackend) GetChecksum(ctx context.Context, k string) (string, string, error) {
+	return "", "", backend.ErrKeyNotFound
+}
+func (n *nullBackend) Delete(ctx context.Context, k string) error     { return nil }
 func (n *nullBackend) Rename(ctx context.Context, o, nk string) error { return nil }
-func (n *nullBackend) Capabilities() backend.Caps                  { return backend.Caps{} }
-func (n *nullBackend) Close() error                                { return nil }
+func (n *nullBackend) Capabilities() backend.Caps                     { return backend.Caps{} }
+func (n *nullBackend) Close() error                                   { return nil }
 
 // listErrBackend fails List with a fixed error. Useful for triggering the
 // failure path in runSync / runCheck / runLoad without a real storage stack.

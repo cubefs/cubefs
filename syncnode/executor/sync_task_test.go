@@ -214,8 +214,11 @@ func (f *failingBackend) Get(ctx context.Context, key string, off, size int64) (
 func (f *failingBackend) Head(ctx context.Context, key string) (int64, string, time.Time, error) {
 	return f.inner.Head(ctx, key)
 }
-func (f *failingBackend) Put(ctx context.Context, key string, body io.Reader, size int64, opts backend.PutOptions) (string, error) {
+func (f *failingBackend) Put(ctx context.Context, key string, body io.Reader, size int64, opts backend.PutOptions) (backend.PutResult, error) {
 	return f.inner.Put(ctx, key, body, size, opts)
+}
+func (f *failingBackend) GetChecksum(ctx context.Context, key string) (string, string, error) {
+	return f.inner.GetChecksum(ctx, key)
 }
 func (f *failingBackend) Delete(ctx context.Context, key string) error {
 	return f.inner.Delete(ctx, key)
@@ -351,6 +354,7 @@ func TestRunSync_IdempotentReRun_NoETag(t *testing.T) {
 // requiring a real S3 server.
 type etagBackend struct {
 	inner backend.Backend
+	root  string
 	mu    sync.Mutex
 	etags map[string]string // key → etag
 }
@@ -370,10 +374,17 @@ func newETagBackend(t *testing.T) *etagBackend {
 		t.Fatalf("new etagBackend: %v", err)
 	}
 	t.Cleanup(func() { _ = b.Close() })
-	return &etagBackend{inner: b, etags: make(map[string]string)}
+	return &etagBackend{inner: b, root: resolved, etags: make(map[string]string)}
 }
 
 func (e *etagBackend) Kind() string { return e.inner.Kind() }
+// relKey strips the configured root + leading separators so the etags
+// lookup is rooted on a stable, location-independent key (matches the
+// scheme used in Put / Head below).
+func (e *etagBackend) relKey(key string) string {
+	rel := strings.TrimPrefix(key, e.root)
+	return strings.TrimLeft(rel, "/")
+}
 func (e *etagBackend) List(ctx context.Context, prefix string, recursive bool) (<-chan backend.Entry, error) {
 	ch, err := e.inner.List(ctx, prefix, recursive)
 	if err != nil {
@@ -383,9 +394,12 @@ func (e *etagBackend) List(ctx context.Context, prefix string, recursive bool) (
 	go func() {
 		defer close(out)
 		for entry := range ch {
-			if !entry.IsDir && entry.ETag == "" {
+			// Override the inner backend's ETag (local computes md5)
+			// with our synthetic etag so the test's idempotency-skip
+			// path compares against a single consistent ETag scheme.
+			if !entry.IsDir {
 				e.mu.Lock()
-				entry.ETag = e.etags[entry.Key]
+				entry.ETag = e.etags[e.relKey(entry.Key)]
 				e.mu.Unlock()
 			}
 			out <- entry
@@ -402,37 +416,43 @@ func (e *etagBackend) Head(ctx context.Context, key string) (int64, string, time
 		return 0, "", time.Time{}, err
 	}
 	e.mu.Lock()
-	etag := e.etags[key]
+	etag := e.etags[e.relKey(key)]
 	e.mu.Unlock()
 	return sz, etag, mt, nil
 }
-func (e *etagBackend) Put(ctx context.Context, key string, body io.Reader, size int64, opts backend.PutOptions) (string, error) {
-	etag, err := e.inner.Put(ctx, key, body, size, opts)
+func (e *etagBackend) Put(ctx context.Context, key string, body io.Reader, size int64, opts backend.PutOptions) (backend.PutResult, error) {
+	res, err := e.inner.Put(ctx, key, body, size, opts)
 	if err != nil {
-		return "", err
+		return backend.PutResult{}, err
 	}
-	// Generate a stable synthetic ETag from a counter so identical
-	// content written twice gets a different tag (simulating re-put).
-	// For idempotency we want the same content to get the same tag —
-	// use a fixed tag per key so repeated puts of the same payload match.
+	// Generate a stable synthetic ETag keyed on the relative path within
+	// root, so two etagBackend instances rooted at different temp dirs
+	// produce the same ETag for the same logical object — that's what
+	// the idempotency-skip test needs.
 	e.mu.Lock()
-	if e.etags[key] == "" {
-		e.etags[key] = fmt.Sprintf("etag-%s", key)
+	rel := e.relKey(key)
+	if e.etags[rel] == "" {
+		e.etags[rel] = fmt.Sprintf("etag-%s", rel)
 	}
-	etag = e.etags[key]
+	res.ETag = e.etags[rel]
 	e.mu.Unlock()
-	return etag, nil
+	return res, nil
+}
+func (e *etagBackend) GetChecksum(ctx context.Context, key string) (string, string, error) {
+	return e.inner.GetChecksum(ctx, key)
 }
 func (e *etagBackend) Delete(ctx context.Context, key string) error {
 	e.mu.Lock()
-	delete(e.etags, key)
+	delete(e.etags, e.relKey(key))
 	e.mu.Unlock()
 	return e.inner.Delete(ctx, key)
 }
 func (e *etagBackend) Rename(ctx context.Context, oldKey, newKey string) error {
 	e.mu.Lock()
-	e.etags[newKey] = e.etags[oldKey]
-	delete(e.etags, oldKey)
+	oldRel := e.relKey(oldKey)
+	newRel := e.relKey(newKey)
+	e.etags[newRel] = e.etags[oldRel]
+	delete(e.etags, oldRel)
 	e.mu.Unlock()
 	return e.inner.Rename(ctx, oldKey, newKey)
 }
@@ -459,8 +479,8 @@ func TestRunSync_IdempotentReRun_WithETag(t *testing.T) {
 		Type:             TaskTypeSync,
 		Src:              src,
 		Dst:              dst,
-		SrcPath:          "",
-		DstPath:          "",
+		SrcPath:          src.root,
+		DstPath:          dst.root,
 		AfterCopy:        AfterCopyKeep,
 		DownloadStrategy: DownloadStrategyTempRename,
 	}
@@ -494,6 +514,9 @@ func TestRunSync_AfterCopyVerifyThenDeleteSrc(t *testing.T) {
 
 	task := newSyncTask(env, "t-acdel")
 	task.AfterCopy = AfterCopyVerifyThenDeleteSrc
+	// validateTask requires ChecksumMode=strong before allowing src
+	// deletion — without it the task fails closed (see executor.go).
+	task.ChecksumMode = "strong"
 	res := runSyncTask(context.Background(), t, task)
 
 	if res.Status != StatusDone {
@@ -689,6 +712,304 @@ func TestRebaseKey(t *testing.T) {
 				t.Errorf("got %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+// -----------------------------------------------------------------------
+// Data-integrity P0/P1/P2 tests
+// -----------------------------------------------------------------------
+
+// checksumMismatchBackend wraps a Backend so GetChecksum returns a fixed
+// "wrong" sha256 value. Triggers the strong-mode mismatch path in
+// syncOneFile without requiring a contrived two-machine race.
+type checksumMismatchBackend struct {
+	inner backend.Backend
+}
+
+func (b *checksumMismatchBackend) Kind() string { return b.inner.Kind() }
+func (b *checksumMismatchBackend) List(ctx context.Context, prefix string, recursive bool) (<-chan backend.Entry, error) {
+	return b.inner.List(ctx, prefix, recursive)
+}
+func (b *checksumMismatchBackend) Get(ctx context.Context, key string, off, size int64) (io.ReadCloser, error) {
+	return b.inner.Get(ctx, key, off, size)
+}
+func (b *checksumMismatchBackend) Head(ctx context.Context, key string) (int64, string, time.Time, error) {
+	return b.inner.Head(ctx, key)
+}
+func (b *checksumMismatchBackend) Put(ctx context.Context, key string, body io.Reader, size int64, opts backend.PutOptions) (backend.PutResult, error) {
+	return b.inner.Put(ctx, key, body, size, opts)
+}
+func (b *checksumMismatchBackend) GetChecksum(ctx context.Context, key string) (string, string, error) {
+	// Always return a predictable "different" sha256 value so the
+	// equality check in checksumEqual() falls through to mismatch.
+	return strings.Repeat("0", 64), backend.ChecksumAlgorithmSHA256, nil
+}
+func (b *checksumMismatchBackend) Delete(ctx context.Context, key string) error {
+	return b.inner.Delete(ctx, key)
+}
+func (b *checksumMismatchBackend) Rename(ctx context.Context, oldKey, newKey string) error {
+	return b.inner.Rename(ctx, oldKey, newKey)
+}
+func (b *checksumMismatchBackend) Capabilities() backend.Caps { return b.inner.Capabilities() }
+func (b *checksumMismatchBackend) Close() error               { return b.inner.Close() }
+
+// TestSyncOneFile_StrongChecksum_Mismatch — P0 strong-mode rejects a copy
+// when the backend-reported dst checksum disagrees with what we just
+// uploaded. After MaxRetries failures the file is failed; dst is rolled
+// back so a partially-written object doesn't linger.
+func TestSyncOneFile_StrongChecksum_Mismatch(t *testing.T) {
+	env := newSyncTestEnv(t)
+	env.writeSrcFile(t, "p0.bin", []byte("integrity-payload"))
+
+	// Wrap dst so GetChecksum always returns a wrong sha256 — the verify
+	// step in syncOneFile will see mismatch on every attempt.
+	dst := &checksumMismatchBackend{inner: env.dst}
+
+	task := &Task{
+		ID:           "t-p0-mismatch",
+		Type:         TaskTypeSync,
+		Src:          env.src,
+		Dst:          dst,
+		SrcPath:      env.srcRoot,
+		DstPath:      env.dstRoot,
+		Parallelism:  1,
+		ChecksumMode: "strong",
+		MaxRetries:   2,
+	}
+	res := runSyncTask(context.Background(), t, task)
+
+	if res.Status != StatusFailed {
+		t.Fatalf("Status = %s, want Failed (checksum mismatch). err=%s", res.Status, res.Error)
+	}
+	if got, want := res.Progress.FilesFailed, int64(1); got != want {
+		t.Errorf("FilesFailed = %d, want %d", got, want)
+	}
+	if !strings.Contains(res.Error, "checksum mismatch") {
+		t.Errorf("error = %q, want it to mention 'checksum mismatch'", res.Error)
+	}
+	// Dst should have been deleted by the rollback in syncOneFile (the
+	// final failed attempt ran t.Dst.Delete before returning).
+	if _, _, _, err := env.dst.Head(context.Background(), filepath.Join(env.dstRoot, "p0.bin")); err == nil {
+		t.Errorf("dst p0.bin still exists; rollback should have removed it")
+	} else if !errors.Is(err, backend.ErrKeyNotFound) {
+		t.Errorf("Head dst err = %v, want ErrKeyNotFound", err)
+	}
+}
+
+// TestValidateTask_VerifyDeleteRequiresStrong — P0 防呆: any task that
+// sets AfterCopy=verify_then_delete_src without ChecksumMode=strong must
+// be rejected before any side-effects run.
+func TestValidateTask_VerifyDeleteRequiresStrong(t *testing.T) {
+	env := newSyncTestEnv(t)
+
+	// Empty mode → reject.
+	task := newSyncTask(env, "t-vt-empty")
+	task.AfterCopy = AfterCopyVerifyThenDeleteSrc
+	if err := validateTask(task); err == nil {
+		t.Errorf("validateTask returned nil; expected verify_then_delete_src/empty to be rejected")
+	} else if !strings.Contains(err.Error(), "checksumMode=strong") {
+		t.Errorf("validateTask err = %q, want it to mention checksumMode=strong", err)
+	}
+
+	// "loose" mode → still reject (only "strong" is allowed).
+	task2 := newSyncTask(env, "t-vt-loose")
+	task2.AfterCopy = AfterCopyVerifyThenDeleteSrc
+	task2.ChecksumMode = "loose"
+	if err := validateTask(task2); err == nil {
+		t.Errorf("validateTask returned nil for loose mode; expected reject")
+	}
+
+	// "strong" mode → accept.
+	task3 := newSyncTask(env, "t-vt-strong")
+	task3.AfterCopy = AfterCopyVerifyThenDeleteSrc
+	task3.ChecksumMode = "strong"
+	if err := validateTask(task3); err != nil {
+		t.Errorf("validateTask returned %v for strong mode; want nil", err)
+	}
+}
+
+// mutatingBackend wraps a src Backend and skews the Mtime returned by the
+// SECOND Head call only. After that the inner mtime is returned unchanged
+// so the retry attempt sees a consistent pre/post pair.
+//
+// Call sequence in syncOneFile with retry-on-mutate:
+//
+//	call 1 (pre-Head, attempt 0)   → mt0
+//	call 2 (post-Head, attempt 0)  → mt0 + 1m  ← mutation detected, retry
+//	call 3 (post-Head, attempt 1)  → mt0       ← BUT we compare against the
+//	                                            srcPre that moved forward
+//	                                            to mt0+1m on retry, so this
+//	                                            still mismatches.
+//
+// To make the retry succeed cleanly, we make ONLY call #2 skewed, and on
+// every subsequent call return the inner mtime — but the retry loop also
+// rolls srcPre forward to the most recently observed post-Head value
+// (mt0+1m). So call #3 returning mt0 would still be a mismatch.
+//
+// Workaround: after the first skew, we permanently shift every subsequent
+// reading by +1m so srcPre/srcPost stay equal across the retry.
+type mutatingBackend struct {
+	inner   backend.Backend
+	calls   atomic.Int64
+	shifted atomic.Bool
+}
+
+func (b *mutatingBackend) Kind() string { return b.inner.Kind() }
+func (b *mutatingBackend) List(ctx context.Context, prefix string, recursive bool) (<-chan backend.Entry, error) {
+	return b.inner.List(ctx, prefix, recursive)
+}
+func (b *mutatingBackend) Get(ctx context.Context, key string, off, size int64) (io.ReadCloser, error) {
+	return b.inner.Get(ctx, key, off, size)
+}
+func (b *mutatingBackend) Head(ctx context.Context, key string) (int64, string, time.Time, error) {
+	sz, etag, mt, err := b.inner.Head(ctx, key)
+	if err != nil {
+		return 0, "", time.Time{}, err
+	}
+	// Trigger the mutation on the SECOND call (the first attempt's post-
+	// Head). On every subsequent call return the shifted mtime so the
+	// retry attempt sees a stable pre/post pair.
+	n := b.calls.Add(1)
+	if n == 2 {
+		b.shifted.Store(true)
+	}
+	if b.shifted.Load() {
+		mt = mt.Add(time.Minute)
+	}
+	return sz, etag, mt, nil
+}
+func (b *mutatingBackend) Put(ctx context.Context, key string, body io.Reader, size int64, opts backend.PutOptions) (backend.PutResult, error) {
+	return b.inner.Put(ctx, key, body, size, opts)
+}
+func (b *mutatingBackend) GetChecksum(ctx context.Context, key string) (string, string, error) {
+	return b.inner.GetChecksum(ctx, key)
+}
+func (b *mutatingBackend) Delete(ctx context.Context, key string) error {
+	return b.inner.Delete(ctx, key)
+}
+func (b *mutatingBackend) Rename(ctx context.Context, oldKey, newKey string) error {
+	return b.inner.Rename(ctx, oldKey, newKey)
+}
+func (b *mutatingBackend) Capabilities() backend.Caps { return b.inner.Capabilities() }
+func (b *mutatingBackend) Close() error               { return b.inner.Close() }
+
+// TestSyncOneFile_OnSourceMutated_Retry — P1 OnSourceMutated="retry"
+// detects mid-transfer src drift on the FIRST attempt, rolls dst back, and
+// the SECOND attempt (where mutatingBackend's mtime is stable) succeeds.
+func TestSyncOneFile_OnSourceMutated_Retry(t *testing.T) {
+	env := newSyncTestEnv(t)
+	env.writeSrcFile(t, "p1.bin", []byte("payload-mutated-then-stable"))
+
+	src := &mutatingBackend{inner: env.src}
+
+	task := &Task{
+		ID:              "t-p1-retry",
+		Type:            TaskTypeSync,
+		Src:             src,
+		Dst:             env.dst,
+		SrcPath:         env.srcRoot,
+		DstPath:         env.dstRoot,
+		Parallelism:     1,
+		OnSourceMutated: "retry",
+		MaxRetries:      3,
+	}
+	res := runSyncTask(context.Background(), t, task)
+
+	if res.Status != StatusDone {
+		t.Fatalf("Status = %s, want Done (retry should succeed). err=%s", res.Status, res.Error)
+	}
+	if got, want := res.Progress.FilesDone, int64(1); got != want {
+		t.Errorf("FilesDone = %d, want %d", got, want)
+	}
+	if got, want := res.Progress.FilesFailed, int64(0); got != want {
+		t.Errorf("FilesFailed = %d, want %d", got, want)
+	}
+}
+
+// fakeStore is an in-memory InProgressStore used by the resume test. The
+// real bolt store is exercised by syncnode/bolt's own tests.
+type fakeStore struct {
+	mu sync.Mutex
+	bp map[string]*Breakpoint
+}
+
+func newFakeStore() *fakeStore { return &fakeStore{bp: map[string]*Breakpoint{}} }
+func (s *fakeStore) Put(ctx context.Context, b *Breakpoint) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cp := *b
+	s.bp[b.Key] = &cp
+	return nil
+}
+func (s *fakeStore) Get(ctx context.Context, key string) (*Breakpoint, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if b, ok := s.bp[key]; ok {
+		cp := *b
+		return &cp, nil
+	}
+	return nil, nil
+}
+func (s *fakeStore) Delete(ctx context.Context, key string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.bp, key)
+	return nil
+}
+func (s *fakeStore) snapshot() map[string]*Breakpoint {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make(map[string]*Breakpoint, len(s.bp))
+	for k, v := range s.bp {
+		cp := *v
+		out[k] = &cp
+	}
+	return out
+}
+
+// TestSyncOneFile_Resume_FromBreakpoint — P2 ResumeEnabled clears the
+// breakpoint after a successful transfer (the post-condition the resume
+// loop guards). When syncOneFile completes without a partial failure, no
+// breakpoint should remain in the store.
+func TestSyncOneFile_Resume_FromBreakpoint(t *testing.T) {
+	env := newSyncTestEnv(t)
+	env.writeSrcFile(t, "p2.bin", []byte("resume-payload"))
+
+	store := newFakeStore()
+	// Pre-seed a breakpoint to verify it gets DELETED on success — the
+	// resume loop must clean up after itself when the transfer completes.
+	preKey := breakpointKey("t-p2-resume", filepath.Join(env.srcRoot, "p2.bin"))
+	if err := store.Put(context.Background(), &Breakpoint{
+		TaskID:    "t-p2-resume",
+		Key:       preKey,
+		BytesDone: 0,
+	}); err != nil {
+		t.Fatalf("seed breakpoint: %v", err)
+	}
+
+	task := &Task{
+		ID:            "t-p2-resume",
+		Type:          TaskTypeSync,
+		Src:           env.src,
+		Dst:           env.dst,
+		SrcPath:       env.srcRoot,
+		DstPath:       env.dstRoot,
+		Parallelism:   1,
+		ResumeEnabled: true,
+	}
+	e := New(WithProgressInterval(20*time.Millisecond), WithInProgressStore(store))
+	defer e.Close()
+	res := e.Run(context.Background(), task, NoopReporter{})
+
+	if res.Status != StatusDone {
+		t.Fatalf("Status = %s, want Done. err=%s", res.Status, res.Error)
+	}
+	if got, want := res.Progress.FilesDone, int64(1); got != want {
+		t.Errorf("FilesDone = %d, want %d", got, want)
+	}
+	if remaining := store.snapshot(); len(remaining) != 0 {
+		t.Errorf("breakpoint store has %d entries after success, want 0: %v",
+			len(remaining), remaining)
 	}
 }
 

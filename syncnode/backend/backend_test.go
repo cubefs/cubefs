@@ -68,8 +68,12 @@ func (f *fakeBackend) Head(ctx context.Context, key string) (int64, string, time
 	return 0, "", time.Time{}, ErrKeyNotFound
 }
 
-func (f *fakeBackend) Put(ctx context.Context, key string, body io.Reader, size int64, opts PutOptions) (string, error) {
-	return "fake-etag", nil
+func (f *fakeBackend) Put(ctx context.Context, key string, body io.Reader, size int64, opts PutOptions) (PutResult, error) {
+	return PutResult{ETag: "fake-etag"}, nil
+}
+
+func (f *fakeBackend) GetChecksum(ctx context.Context, key string) (string, string, error) {
+	return "", "", errors.New("backend: GetChecksum not implemented")
 }
 
 func (f *fakeBackend) Delete(ctx context.Context, key string) error  { return nil }

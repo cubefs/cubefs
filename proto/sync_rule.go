@@ -127,6 +127,32 @@ type SyncRuleConfig struct {
 	// ShardPrefixes carries operator-declared partition prefixes for the
 	// "prefix" strategy. Optional for "auto" (acts as a whitelist).
 	ShardPrefixes []string `json:"shardPrefixes,omitempty"`
+
+	// ChecksumMode controls the post-copy verification strictness.
+	//   ""           → "size_etag" legacy default
+	//   "size_etag"  → size + etag (when both sides have one)
+	//   "strong"     → ALWAYS compute sha256 src-side; compare against dst checksum.
+	//                  REQUIRED for AfterCopy=verify_then_delete_src; with any other
+	//                  value the executor refuses to delete src.
+	ChecksumMode string `json:"checksumMode,omitempty"`
+
+	// OnSourceMutated controls behaviour when src key changes (size/mtime/etag)
+	// between pre-transfer Head and post-transfer Head.
+	//   ""      → "fail" default
+	//   "fail"  → error the file; counted in FilesFailed; never deletes src
+	//   "skip"  → log + skip; counted in FilesSkipped; does not delete src
+	//   "retry" → re-fetch & re-upload up to MaxRetries; failed after exhaustion
+	OnSourceMutated string `json:"onSourceMutated,omitempty"`
+
+	// MaxRetries is the per-file retry cap. 0 means 1 attempt total (current
+	// behaviour). Recommended value: 3 with exponential backoff (1s,2s,4s,...,30s).
+	MaxRetries int `json:"maxRetries,omitempty"`
+
+	// ResumeEnabled toggles the breakpoint-resume code path. When true:
+	//   - executor consults bolt.InProgressStore at file start and resumes from
+	//     BytesDone (POSIX/CFS) or UploadID (s3 multipart);
+	//   - on each successful Put, the breakpoint is cleared.
+	ResumeEnabled bool `json:"resumeEnabled,omitempty"`
 }
 
 // SyncLastRunSummary captures the post-run state written back after a

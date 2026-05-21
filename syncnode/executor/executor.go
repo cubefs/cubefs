@@ -149,6 +149,33 @@ type Task struct {
 	// benchBackend is the pre-built backend for S3/SDK bench tasks.
 	// Built by the Runner before the Task is submitted to the executor.
 	benchBackend backend.Backend
+
+	// ChecksumMode controls post-copy verification strictness (P0).
+	//   "" / "size_etag" → legacy size + (etag when both have one)
+	//   "strong"         → compute sha256 on src during transfer; verify
+	//                      against dst checksum (native or metadata sha256).
+	//                      REQUIRED for AfterCopy=verify_then_delete_src.
+	ChecksumMode string
+
+	// OnSourceMutated controls behaviour when src key changes (size/mtime/
+	// etag) between the pre-transfer Head and post-transfer Head (P1).
+	//   ""       → disabled (no Pre/Post-Head, legacy behaviour)
+	//   "fail"   → error the file; FilesFailed++; src is never deleted
+	//   "skip"   → log + FilesSkipped++; dst is rolled back; src is never
+	//              deleted
+	//   "retry"  → re-fetch and re-upload up to MaxRetries; failed after
+	//              exhaustion
+	OnSourceMutated string
+
+	// MaxRetries is the per-file retry cap (P2). 0 means 1 attempt total
+	// (legacy behaviour). Backoff is exponential with a 30s cap.
+	MaxRetries int
+
+	// ResumeEnabled toggles the breakpoint-resume code path (P2). Default
+	// off for safety; operators opt in. When true, executor consults
+	// bolt.InProgressStore at file start (resume from BytesDone /
+	// UploadID) and clears the breakpoint on successful Put.
+	ResumeEnabled bool
 }
 
 // Result reports the terminal outcome of a Task run.
@@ -276,6 +303,12 @@ type Executor struct {
 	trackers map[string]*bandwidthTracker  // task_id → rolling-window bandwidth tracker
 	resultCh chan Result
 
+	// inprogress is the optional breakpoint store consulted by syncOneFile
+	// when Task.ResumeEnabled is true. nil disables the resume path
+	// entirely (preserves legacy behaviour and keeps unit tests honest
+	// about what's wired).
+	inprogress InProgressStore
+
 	// closed is set by Close(); Run() refuses to start once true. Combined
 	// with the nil-map guard below this closes the race where a queued
 	// Runner goroutine could call Run() against a torn-down executor and
@@ -299,6 +332,11 @@ type options struct {
 	// 4 (per-backend). When nil, transfers run unthrottled — preserving
 	// the historical executor behaviour for tests that don't care.
 	rateLimits *ratelimit.Registry
+
+	// inprogress is the optional breakpoint store. Plumbed through here so
+	// the construction site can use the existing Option pattern; copied
+	// onto the Executor in New().
+	inprogress InProgressStore
 }
 
 // Option configures a new Executor.
@@ -345,6 +383,16 @@ func WithProgressInterval(d time.Duration) Option {
 	}
 }
 
+// WithInProgressStore wires the breakpoint store consumed by syncOneFile
+// when Task.ResumeEnabled is true. Pass nil (or omit) to leave resume
+// disabled; legacy callers and tests that don't need P2 should not set
+// this. The store is shared by reference — the caller owns its lifetime.
+func WithInProgressStore(s InProgressStore) Option {
+	return func(o *options) {
+		o.inprogress = s
+	}
+}
+
 // New returns a fresh Executor. Caller must Close() when done.
 func New(opts ...Option) *Executor {
 	o := options{
@@ -356,12 +404,13 @@ func New(opts ...Option) *Executor {
 		opt(&o)
 	}
 	return &Executor{
-		opts:     o,
-		running:  make(map[string]context.CancelFunc),
-		progMap:  make(map[string]*Progress),
-		startMap: make(map[string]time.Time),
-		trackers: make(map[string]*bandwidthTracker),
-		resultCh: make(chan Result, 256),
+		opts:       o,
+		running:    make(map[string]context.CancelFunc),
+		progMap:    make(map[string]*Progress),
+		startMap:   make(map[string]time.Time),
+		trackers:   make(map[string]*bandwidthTracker),
+		resultCh:   make(chan Result, 256),
+		inprogress: o.inprogress,
 	}
 }
 
@@ -594,6 +643,11 @@ func validateTask(t *Task) error {
 	case TaskTypeSync, TaskTypeLoad, TaskTypeCheck, TaskTypeBench:
 	default:
 		return fmt.Errorf("invalid task.Type: %q", t.Type)
+	}
+	// P0 防呆: 把"老用户没读 release note 就升级"导致的静默回退堵住——必须显式选
+	// strong 才能开 verify_then_delete_src，否则核心搬运语义会退化到只 size 比对。
+	if t.AfterCopy == AfterCopyVerifyThenDeleteSrc && t.ChecksumMode != "strong" {
+		return fmt.Errorf("verify_then_delete_src requires checksumMode=strong, got %q", t.ChecksumMode)
 	}
 	return nil
 }

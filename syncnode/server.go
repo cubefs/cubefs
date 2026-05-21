@@ -557,6 +557,12 @@ func (s *SyncNode) initExecutorAndRunner() error {
 	if s.cfg.Concurrency.BandwidthLimitMBps > 0 {
 		execOpts = append(execOpts, executor.WithBandwidthLimit(s.cfg.Concurrency.BandwidthLimitMBps))
 	}
+	// Wire the bolt-backed in-progress store into the executor so P2 resume
+	// works in production. The adapter bridges the two package-local
+	// Breakpoint structs without introducing an import cycle.
+	if s.inProgress != nil {
+		execOpts = append(execOpts, executor.WithInProgressStore(bolt.AdaptForExecutor(s.inProgress)))
+	}
 	s.executor = executor.New(execOpts...)
 
 	// FIX D: pass a cfg-provider closure rather than the current pointer

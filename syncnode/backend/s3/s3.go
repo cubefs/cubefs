@@ -246,6 +246,14 @@ func (b *Backend) Capabilities() backend.Caps {
 		AtomicRename:      false, // copy+delete, not atomic
 		ListMaxKeys:       defaultListMaxKeys,
 		StrongConsistency: true,
+		// S3 ETag is a server-side hash usable as a cheap integrity
+		// signal (single-part: full-object MD5; multipart: documented
+		// per-part hash). When the user-metadata sha256 we persist on
+		// upload is present GetChecksum returns that with O(1) cost; even
+		// when it isn't, the ETag fallback still lets the executor short-
+		// circuit a redundant src-side hash. Reported true so the executor
+		// can skip the `requireSrcChecksum` path when both ends are native.
+		NativeChecksum: true,
 	}
 }
 
@@ -312,7 +320,18 @@ func (b *Backend) Head(ctx context.Context, key string) (int64, string, time.Tim
 // Upload based on size and opts.Multipart. Multipart path uses
 // manager.Uploader which handles AbortMultipartUpload on error
 // automatically (no orphan parts on transient failures).
-func (b *Backend) Put(ctx context.Context, key string, body io.Reader, size int64, opts backend.PutOptions) (string, error) {
+//
+// When opts.ComputeChecksum is true, the body stream is tee'd through a
+// sha256 hasher so the digest is computed during the upload itself (no
+// extra read). Because the manager.Uploader is a streaming multipart driver
+// we cannot stamp the metadata header in the original PUT — the digest is
+// only known once the body has been fully consumed. The implementation
+// therefore performs a follow-up CopyObject with MetadataDirective=REPLACE
+// to write `x-amz-meta-syncnode-sha256` onto the just-uploaded object.
+// Should the metadata copy fail (e.g. permissions), we log and continue:
+// the checksum still lives in PutResult so the caller's contract holds, and
+// a subsequent GetChecksum will fall back to the ETag path.
+func (b *Backend) Put(ctx context.Context, key string, body io.Reader, size int64, opts backend.PutOptions) (backend.PutResult, error) {
 	storageClass := opts.StorageClass
 	if storageClass == "" {
 		storageClass = b.cfg.StorageClass
@@ -321,16 +340,26 @@ func (b *Backend) Put(ctx context.Context, key string, body io.Reader, size int6
 	threshold := int64(b.cfg.MultipartThresholdMiB) * mib
 	useMultipart := opts.Multipart || (size > 0 && size > threshold) || size < 0
 
+	// Optional sha256 sink: wraps body so the upload pulls bytes through
+	// the hasher. sumFn() returns the hex digest after the upload finishes.
+	src := body
+	var sumFn func() string
+	if opts.ComputeChecksum {
+		h, fn := backend.NewSHA256Sink()
+		src = io.TeeReader(body, h)
+		sumFn = fn
+	}
+
 	if !useMultipart {
 		// Buffer small bodies so we can pass an io.ReadSeeker that the
 		// SDK signer can checksum (single-shot PutObject requires a
 		// seekable body for v4 signing).
-		buf, err := io.ReadAll(body)
+		buf, err := io.ReadAll(src)
 		if err != nil {
-			return "", fmt.Errorf("s3 Put %s/%s: read body: %w", b.bucket, key, err)
+			return backend.PutResult{}, fmt.Errorf("s3 Put %s/%s: read body: %w", b.bucket, key, err)
 		}
 		if size >= 0 && int64(len(buf)) != size {
-			return "", fmt.Errorf("s3 Put %s/%s: body length %d != declared size %d",
+			return backend.PutResult{}, fmt.Errorf("s3 Put %s/%s: body length %d != declared size %d",
 				b.bucket, key, len(buf), size)
 		}
 		input := &awss3.PutObjectInput{
@@ -344,14 +373,30 @@ func (b *Backend) Put(ctx context.Context, key string, body io.Reader, size int6
 		if opts.ContentType != "" {
 			input.ContentType = aws.String(opts.ContentType)
 		}
-		if len(opts.Metadata) > 0 {
-			input.Metadata = opts.Metadata
+		// Merge caller metadata + (optionally) sha256 so single-shot path
+		// can stamp the digest in the original PUT — no follow-up Copy
+		// needed, saves one round trip.
+		md := mergeMetadata(opts.Metadata, sumFn)
+		if len(md) > 0 {
+			input.Metadata = md
 		}
 		out, err := b.client.PutObject(ctx, input)
 		if err != nil {
-			return "", fmt.Errorf("s3 PutObject %s/%s: %w", b.bucket, key, err)
+			return backend.PutResult{}, fmt.Errorf("s3 PutObject %s/%s: %w", b.bucket, key, err)
 		}
-		return strings.Trim(aws.ToString(out.ETag), `"`), nil
+		res := backend.PutResult{
+			ETag:     strings.Trim(aws.ToString(out.ETag), `"`),
+			BytesPut: int64(len(buf)),
+		}
+		if sumFn != nil {
+			// sumFn already invoked inside mergeMetadata; recompute from the
+			// merged map's value to avoid double-Sum on the hash.
+			if v, ok := md[backend.SHA256MetadataKey]; ok {
+				res.Checksum = v
+				res.Algorithm = backend.ChecksumAlgorithmSHA256
+			}
+		}
+		return res, nil
 	}
 
 	// Multipart path.
@@ -362,7 +407,7 @@ func (b *Backend) Put(ctx context.Context, key string, body io.Reader, size int6
 	input := &awss3.PutObjectInput{
 		Bucket: aws.String(b.bucket),
 		Key:    aws.String(key),
-		Body:   body,
+		Body:   src,
 	}
 	if storageClass != "" {
 		input.StorageClass = s3types.StorageClass(storageClass)
@@ -377,9 +422,113 @@ func (b *Backend) Put(ctx context.Context, key string, body io.Reader, size int6
 		u.PartSize = int64(partSize) * mib
 	})
 	if err != nil {
-		return "", fmt.Errorf("s3 Upload %s/%s: %w", b.bucket, key, err)
+		return backend.PutResult{}, fmt.Errorf("s3 Upload %s/%s: %w", b.bucket, key, err)
 	}
-	return strings.Trim(aws.ToString(out.ETag), `"`), nil
+
+	res := backend.PutResult{
+		ETag:     strings.Trim(aws.ToString(out.ETag), `"`),
+		BytesPut: size,
+	}
+	if sumFn != nil {
+		hexSum := sumFn()
+		res.Checksum = hexSum
+		res.Algorithm = backend.ChecksumAlgorithmSHA256
+		// Stamp metadata via REPLACE-mode CopyObject. We can't include
+		// caller-supplied opts.Metadata in the original Upload AND drop it
+		// here, so on the multipart path callers' metadata is preserved
+		// across the copy.
+		copyMeta := mergeMetadata(opts.Metadata, func() string { return hexSum })
+		if cerr := b.stampSHA256Metadata(ctx, key, storageClass, opts.ContentType, copyMeta); cerr != nil {
+			// Best-effort: surface as a warning. Do NOT fail the Put — the
+			// checksum is still in res.Checksum and the executor can act on
+			// it. GetChecksum will degrade to the ETag fallback.
+			fmt.Fprintf(os.Stderr, "s3 Put %s/%s: stamp sha256 metadata: %v\n", b.bucket, key, cerr)
+		}
+	}
+	return res, nil
+}
+
+// mergeMetadata returns a new map with caller-supplied entries plus the
+// sha256 entry sourced from sumFn (if any). Returns nil when both sources
+// are empty so callers can leave PutObjectInput.Metadata unset rather than
+// passing an empty map (some servers treat empty-map differently).
+func mergeMetadata(user map[string]string, sumFn func() string) map[string]string {
+	if sumFn == nil && len(user) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(user)+1)
+	for k, v := range user {
+		out[k] = v
+	}
+	if sumFn != nil {
+		out[backend.SHA256MetadataKey] = sumFn()
+	}
+	return out
+}
+
+// stampSHA256Metadata performs a CopyObject onto key with
+// MetadataDirective=REPLACE so the user-metadata map (containing the
+// sha256) is written without re-uploading the data. CopySource is the
+// just-written object itself.
+func (b *Backend) stampSHA256Metadata(ctx context.Context, key, storageClass, contentType string, md map[string]string) error {
+	if len(md) == 0 {
+		return nil
+	}
+	input := &awss3.CopyObjectInput{
+		Bucket:            aws.String(b.bucket),
+		Key:               aws.String(key),
+		CopySource:        aws.String(b.bucket + "/" + key),
+		Metadata:          md,
+		MetadataDirective: s3types.MetadataDirectiveReplace,
+	}
+	if storageClass != "" {
+		input.StorageClass = s3types.StorageClass(storageClass)
+	}
+	if contentType != "" {
+		input.ContentType = aws.String(contentType)
+	}
+	_, err := b.client.CopyObject(ctx, input)
+	return err
+}
+
+// GetChecksum implements Backend. Resolution order:
+//
+//  1. HeadObject → user metadata `syncnode-sha256`. Set on upload by Put
+//     when ComputeChecksum=true. Returns (hex, "sha256", nil).
+//  2. ETag fallback. Single-part ETags are an MD5 of the object body and
+//     are useful for cross-endpoint comparison; we surface them as
+//     algorithm "md5". Multipart ETags (suffixed with "-N") are NOT
+//     comparable across servers — we return ErrChecksumMismatch so the
+//     executor can decide to either skip the check or re-hash.
+//  3. Missing key → ErrKeyNotFound.
+func (b *Backend) GetChecksum(ctx context.Context, key string) (string, string, error) {
+	out, err := b.client.HeadObject(ctx, &awss3.HeadObjectInput{
+		Bucket: aws.String(b.bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		if isNotFound(err) {
+			return "", "", backend.ErrKeyNotFound
+		}
+		return "", "", fmt.Errorf("s3 HeadObject %s/%s: %w", b.bucket, key, err)
+	}
+	// 1. user metadata (sdk strips x-amz-meta- prefix; lookups are
+	//    case-insensitive per HTTP, but the SDK normalises to lowercase).
+	if out.Metadata != nil {
+		if v, ok := out.Metadata[backend.SHA256MetadataKey]; ok && v != "" {
+			return v, backend.ChecksumAlgorithmSHA256, nil
+		}
+	}
+	// 2. ETag fallback.
+	etag := strings.Trim(aws.ToString(out.ETag), `"`)
+	if etag != "" && !strings.Contains(etag, "-") && len(etag) == 32 {
+		// Single-part: 32 hex chars, no dash. Standard MD5.
+		return etag, backend.ChecksumAlgorithmMD5, nil
+	}
+	// Multipart ETag has the form `<hex>-<partCount>` and is NOT a
+	// content hash compatible across endpoints. The caller has to fall
+	// back to streaming compute.
+	return "", "", backend.ErrChecksumMismatch
 }
 
 // Delete implements Backend. Idempotent: missing keys are not an error.

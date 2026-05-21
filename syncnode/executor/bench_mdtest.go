@@ -17,6 +17,7 @@ package executor
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -50,7 +51,7 @@ func runBenchMdtest(ctx context.Context, rule *spec.BenchRule, taskID string, sh
 		result.Status = "failed"
 		result.Error = "mdtest: rule.mountPath is empty"
 		result.DoneAt = time.Now().UnixMilli()
-		return result, fmt.Errorf(result.Error)
+		return result, errors.New(result.Error)
 	}
 
 	workDir := filepath.Join(rule.MountPath, fmt.Sprintf("bench-%s-shard-%d", strings.ReplaceAll(taskID, "/", "_"), shardIdx))

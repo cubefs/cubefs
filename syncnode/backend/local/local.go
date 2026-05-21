@@ -37,6 +37,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cubefs/cubefs/syncnode/backend"
@@ -53,6 +54,13 @@ const defaultBufferSize = 4 * 1024 * 1024
 // minBufferSize is the floor we enforce on the copy buffer. Anything smaller
 // silently kneecaps throughput on parallel filesystems.
 const minBufferSize = 64 * 1024
+
+// checksumCacheCap caps the in-memory checksum cache. Beyond this, a random
+// entry is evicted on insert. We don't run an LRU because:
+//   - syncnode hits each key at most a handful of times per task,
+//   - the cost of a missed entry is one extra streaming sha256, not a bug,
+//   - a real LRU adds ~50 LoC for marginal benefit at this size.
+const checksumCacheCap = 1000
 
 // Config configures a local Backend. AllowedRoots are absolute paths every
 // key must resolve under; an empty AllowedRoots list is rejected at
@@ -74,6 +82,23 @@ type Backend struct {
 	allowedRoots []string // absolute, cleaned, with trailing separator stripped
 	bufferSize   int      // bytes
 	maxDirDepth  int
+
+	// cache stores recently-computed sha256 checksums keyed by the absolute
+	// resolved path. Entry validity is gated on (mtimeNs, size); on miss we
+	// fall back to a streaming compute. A new sha256 returned by Put is
+	// inserted directly so the immediately-following GetChecksum doesn't
+	// have to re-read the file.
+	cacheMu sync.RWMutex
+	cache   map[string]checksumEntry
+}
+
+// checksumEntry is one row of the in-memory sha256 cache. mtimeNs+size form
+// the staleness key — if either changes between Put and GetChecksum the
+// entry is dropped and the file is re-hashed.
+type checksumEntry struct {
+	mtimeNs int64
+	size    int64
+	sum     string
 }
 
 func init() { backend.Register(kindName, New) }
@@ -116,6 +141,7 @@ func New(cfgI interface{}) (backend.Backend, error) {
 		allowedRoots: roots,
 		bufferSize:   bufSize,
 		maxDirDepth:  cfg.MaxDirDepth,
+		cache:        make(map[string]checksumEntry, 64),
 	}, nil
 }
 
@@ -130,6 +156,9 @@ func (b *Backend) Capabilities() backend.Caps {
 		AtomicRename:      true,
 		ListMaxKeys:       0, // unlimited
 		StrongConsistency: true,
+		// POSIX has no native checksum: GetChecksum streams the file. The
+		// in-memory cache helps for repeat lookups but is not server-side.
+		NativeChecksum: false,
 	}
 }
 
@@ -299,10 +328,15 @@ func (b *Backend) Head(ctx context.Context, key string) (int64, string, time.Tim
 // file alongside the destination and we os.Rename into place on success.
 // A failed Put leaves no half-written destination, only an orphan temp file
 // that operators can sweep.
-func (b *Backend) Put(ctx context.Context, key string, body io.Reader, size int64, opts backend.PutOptions) (string, error) {
+//
+// When opts.ComputeChecksum is true, the body stream is tee'd through a
+// sha256 hasher during the copy so the checksum costs no extra read. The
+// resulting digest is returned in PutResult.Checksum (algorithm "sha256")
+// and primed into the in-memory cache so a subsequent GetChecksum is O(1).
+func (b *Backend) Put(ctx context.Context, key string, body io.Reader, size int64, opts backend.PutOptions) (backend.PutResult, error) {
 	path, err := b.resolveSafe(key, false)
 	if err != nil {
-		return "", err
+		return backend.PutResult{}, err
 	}
 
 	// Ensure the parent directory exists and is itself inside AllowedRoots
@@ -311,11 +345,11 @@ func (b *Backend) Put(ctx context.Context, key string, body io.Reader, size int6
 	// created as a symlink by something racing us).
 	parent := filepath.Dir(path)
 	if err := os.MkdirAll(parent, 0o755); err != nil {
-		return "", fmt.Errorf("mkdir parent of %q: %w", path, err)
+		return backend.PutResult{}, fmt.Errorf("mkdir parent of %q: %w", path, err)
 	}
 	if resolvedParent, perr := filepath.EvalSymlinks(parent); perr == nil {
 		if !b.underAllowedRoot(filepath.Clean(resolvedParent)) {
-			return "", fmt.Errorf("%w: parent %q resolves outside allowedRoots", backend.ErrConfigInvalid, parent)
+			return backend.PutResult{}, fmt.Errorf("%w: parent %q resolves outside allowedRoots", backend.ErrConfigInvalid, parent)
 		}
 	}
 
@@ -331,28 +365,121 @@ func (b *Backend) Put(ctx context.Context, key string, body io.Reader, size int6
 
 	tmpName, err := tempName(path)
 	if err != nil {
-		return "", err
+		return backend.PutResult{}, err
 	}
 	f, err := os.OpenFile(tmpName, os.O_WRONLY|os.O_CREATE|os.O_EXCL|os.O_TRUNC, 0o644)
 	if err != nil {
-		return "", fmt.Errorf("create temp %q: %w", tmpName, err)
+		return backend.PutResult{}, fmt.Errorf("create temp %q: %w", tmpName, err)
 	}
 	cleanup := func() { _ = os.Remove(tmpName) }
 
-	if cerr := copyWithBufferCtx(ctx, f, body, bufSize); cerr != nil {
+	src := body
+	var sumFn func() string
+	if opts.ComputeChecksum {
+		h, fn := backend.NewSHA256Sink()
+		src = io.TeeReader(body, h)
+		sumFn = fn
+	}
+
+	written, cerr := copyWithBufferCtx(ctx, f, src, bufSize)
+	if cerr != nil {
 		_ = f.Close()
 		cleanup()
-		return "", fmt.Errorf("copy to %q: %w", tmpName, cerr)
+		return backend.PutResult{}, fmt.Errorf("copy to %q: %w", tmpName, cerr)
 	}
 	if err := f.Close(); err != nil {
 		cleanup()
-		return "", fmt.Errorf("close temp %q: %w", tmpName, err)
+		return backend.PutResult{}, fmt.Errorf("close temp %q: %w", tmpName, err)
 	}
 	if err := os.Rename(tmpName, path); err != nil {
 		cleanup()
-		return "", fmt.Errorf("rename %q -> %q: %w", tmpName, path, err)
+		return backend.PutResult{}, fmt.Errorf("rename %q -> %q: %w", tmpName, path, err)
 	}
-	return "", nil
+
+	res := backend.PutResult{BytesPut: written}
+	if sumFn != nil {
+		res.Checksum = sumFn()
+		res.Algorithm = backend.ChecksumAlgorithmSHA256
+		// Best-effort prime the cache. We Stat the just-renamed file to
+		// pick up the canonical mtime; if Stat fails (extremely unlikely
+		// since rename succeeded) we just skip caching.
+		if info, statErr := os.Stat(path); statErr == nil {
+			b.cachePut(path, checksumEntry{
+				mtimeNs: info.ModTime().UnixNano(),
+				size:    info.Size(),
+				sum:     res.Checksum,
+			})
+		}
+	}
+	return res, nil
+}
+
+// GetChecksum implements backend.Backend. POSIX has no native checksum so we
+// stream the file through sha256. A small in-memory cache keyed on
+// (path, mtimeNs, size) keeps repeat lookups O(1); on miss we hash and
+// insert.
+//
+// Returns ErrKeyNotFound when key does not exist.
+func (b *Backend) GetChecksum(_ context.Context, key string) (string, string, error) {
+	path, err := b.resolveSafe(key, true)
+	if err != nil {
+		return "", "", err
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", "", backend.ErrKeyNotFound
+		}
+		return "", "", fmt.Errorf("stat %q: %w", path, err)
+	}
+	mtimeNs := info.ModTime().UnixNano()
+	size := info.Size()
+
+	if cached, ok := b.cacheLookup(path, mtimeNs, size); ok {
+		return cached, backend.ChecksumAlgorithmSHA256, nil
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", "", backend.ErrKeyNotFound
+		}
+		return "", "", fmt.Errorf("open %q: %w", path, err)
+	}
+	defer f.Close()
+	sum, _, err := backend.SHA256Stream(f)
+	if err != nil {
+		return "", "", fmt.Errorf("sha256 %q: %w", path, err)
+	}
+	b.cachePut(path, checksumEntry{mtimeNs: mtimeNs, size: size, sum: sum})
+	return sum, backend.ChecksumAlgorithmSHA256, nil
+}
+
+// cacheLookup returns the cached sha256 for path if (mtimeNs, size) match.
+func (b *Backend) cacheLookup(path string, mtimeNs, size int64) (string, bool) {
+	b.cacheMu.RLock()
+	e, ok := b.cache[path]
+	b.cacheMu.RUnlock()
+	if !ok || e.mtimeNs != mtimeNs || e.size != size {
+		return "", false
+	}
+	return e.sum, true
+}
+
+// cachePut inserts e for path. When the cache is at capacity, one entry is
+// evicted before insert. Map iteration order in Go is unspecified so taking
+// the first key amounts to a cheap pseudo-random eviction — adequate for
+// this workload (see checksumCacheCap comment).
+func (b *Backend) cachePut(path string, e checksumEntry) {
+	b.cacheMu.Lock()
+	defer b.cacheMu.Unlock()
+	if len(b.cache) >= checksumCacheCap {
+		for k := range b.cache {
+			delete(b.cache, k)
+			break
+		}
+	}
+	b.cache[path] = e
 }
 
 // Delete implements backend.Backend. Deleting a missing key is not an error.
@@ -596,26 +723,30 @@ func tempName(dst string) (string, error) {
 // cancellation between chunks. Plain io.Copy / io.CopyBuffer honour
 // ReaderFrom on the destination, which on *os.File ignores our buffer and
 // uses its own 32 KiB — that defeats batching for sources like
-// io.LimitReader over a network socket.
-func copyWithBufferCtx(ctx context.Context, dst io.Writer, src io.Reader, bufSize int) error {
+// io.LimitReader over a network socket. Returns the number of bytes written
+// to dst on success.
+func copyWithBufferCtx(ctx context.Context, dst io.Writer, src io.Reader, bufSize int) (int64, error) {
 	buf := make([]byte, bufSize)
+	var written int64
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return written, ctx.Err()
 		default:
 		}
 		n, rerr := src.Read(buf)
 		if n > 0 {
-			if _, werr := dst.Write(buf[:n]); werr != nil {
-				return werr
+			wn, werr := dst.Write(buf[:n])
+			written += int64(wn)
+			if werr != nil {
+				return written, werr
 			}
 		}
 		if rerr == io.EOF {
-			return nil
+			return written, nil
 		}
 		if rerr != nil {
-			return rerr
+			return written, rerr
 		}
 	}
 }

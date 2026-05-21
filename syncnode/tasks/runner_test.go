@@ -48,8 +48,11 @@ func (b *emptyBackend) Get(ctx context.Context, k string, off, sz int64) (io.Rea
 func (b *emptyBackend) Head(ctx context.Context, k string) (int64, string, time.Time, error) {
 	return 0, "", time.Time{}, backend.ErrKeyNotFound
 }
-func (b *emptyBackend) Put(ctx context.Context, k string, body io.Reader, sz int64, opts backend.PutOptions) (string, error) {
-	return "", nil
+func (b *emptyBackend) Put(ctx context.Context, k string, body io.Reader, sz int64, opts backend.PutOptions) (backend.PutResult, error) {
+	return backend.PutResult{}, nil
+}
+func (b *emptyBackend) GetChecksum(ctx context.Context, k string) (string, string, error) {
+	return "", "", backend.ErrKeyNotFound
 }
 func (b *emptyBackend) Delete(ctx context.Context, k string) error     { return nil }
 func (b *emptyBackend) Rename(ctx context.Context, o, nk string) error { return nil }

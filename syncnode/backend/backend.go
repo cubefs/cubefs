@@ -54,9 +54,20 @@ type Backend interface {
 	Head(ctx context.Context, key string) (size int64, etag string, mtime time.Time, err error)
 
 	// Put writes body (size bytes) to key. opts controls multipart /
-	// storage class / metadata. Returns the resulting etag (for object
-	// stores) or empty string (for POSIX where there's no etag).
-	Put(ctx context.Context, key string, body io.Reader, size int64, opts PutOptions) (etag string, err error)
+	// storage class / metadata, and may request a checksum be computed
+	// alongside the upload (see PutOptions.ComputeChecksum). Returns a
+	// PutResult that always carries the backend-native ETag (where
+	// applicable) and optionally a checksum.
+	Put(ctx context.Context, key string, body io.Reader, size int64, opts PutOptions) (PutResult, error)
+
+	// GetChecksum returns the backend-native (or computed) checksum for key.
+	// Returns ErrKeyNotFound if missing. `algorithm` is one of "sha256" /
+	// "md5" / "crc32" and lets the executor decide cross-endpoint
+	// comparability.
+	//   - cfs:   伴随文件 sha256，未命中时流式计算并写回；algorithm="sha256"
+	//   - s3:    优先读 user metadata syncnode-sha256；fallback 单段 ETag (md5)
+	//   - local: 流式 sha256（带轻量 mtime+size 缓存）；algorithm="sha256"
+	GetChecksum(ctx context.Context, key string) (sum string, algorithm string, err error)
 
 	// Delete removes key. Idempotent: deleting a missing key is not an
 	// error.
@@ -93,6 +104,23 @@ type PutOptions struct {
 	Metadata     map[string]string // backend-specific metadata pairs
 	Multipart    bool              // force multipart (default: backend decides by size)
 	PartSizeMiB  int               // for multipart; 0 = backend default
+
+	// ComputeChecksum tells the backend to compute a sha256 alongside the upload
+	// and return it in PutResult. Object stores additionally persist it as user
+	// metadata (`x-amz-meta-syncnode-sha256`); POSIX backends just return the value.
+	ComputeChecksum bool
+}
+
+// PutResult is the result of a Put call. ETag is backend-native (e.g. s3
+// etag, empty for POSIX/CFS). Checksum/Algorithm are populated only when
+// PutOptions.ComputeChecksum was set. BytesPut is the byte count the
+// backend acknowledged writing — useful for sanity checks against the
+// declared size.
+type PutResult struct {
+	ETag      string // backend-native (s3 etag, empty for POSIX/CFS)
+	Checksum  string // sha256 hex (only set when PutOptions.ComputeChecksum)
+	Algorithm string // "sha256" when Checksum populated; "" otherwise
+	BytesPut  int64  // for sanity: bytes the backend acknowledged
 }
 
 // Caps reports static backend capabilities. Each Backend returns a fixed
@@ -103,6 +131,11 @@ type Caps struct {
 	AtomicRename      bool // Rename is atomic (POSIX yes, object stores no)
 	ListMaxKeys       int  // upper bound on List page size; 0 = unlimited
 	StrongConsistency bool // PUT followed by GET returns the new bytes immediately
+
+	// NativeChecksum reports whether GetChecksum returns a fast (O(1)) server-side
+	// value. s3=true (ETag), cfs=false (companion file), local=false. Hint for
+	// executor to skip src-side sha256 compute when both sides are native.
+	NativeChecksum bool
 }
 
 // Common errors returned by Backend implementations. Callers can use
@@ -111,6 +144,10 @@ var (
 	// ErrKeyNotFound is returned by Get / Head / Delete when the requested
 	// key does not exist on the backend.
 	ErrKeyNotFound = errors.New("backend: key not found")
+
+	// ErrChecksumMismatch is returned by data-integrity checks when the
+	// computed (or persisted) checksum disagrees with the expected value.
+	ErrChecksumMismatch = errors.New("backend: checksum mismatch")
 
 	// ErrBackendUnsupported is returned by Rename when the implementation
 	// does not support the operation (rare; most backends support some
