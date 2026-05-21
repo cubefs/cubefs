@@ -37,6 +37,7 @@ const (
 	BucketHashWidth     = 2          // first 2 hex chars
 	RebuildDirName      = "rebuild"  // rebuilt result zone
 	ensureBucketBackoff = 10 * time.Millisecond
+	renameRetryLimit    = 3
 )
 
 const (
@@ -331,7 +332,28 @@ func (trash *Trash) MoveToTrash(parentPathAbsolute string, parentIno uint64, fil
 		needStoreXattr = true
 		dstPath, originName = transferLongFileName(dstPath)
 	}
-	err = trash.renameToTrashTempFile(parentIno, trashCurrentIno, srcPath, dstPath, isAsync)
+	for retry := 0; retry < renameRetryLimit; retry++ {
+		var shouldRetry bool
+		shouldRetry, err = trash.renameToTrashTempFile(parentIno, trashCurrentIno, srcPath, dstPath, isAsync)
+		if err == nil || !shouldRetry {
+			break
+		}
+		log.LogWarnf("action[MoveToTrash] retry rename due to missing dst parent inode, attempt(%d) srcPath(%v) dstPath(%v) dstParentIno(%v)",
+			retry+1, srcPath, dstPath, trashCurrentIno)
+		for {
+			bucketDir, bucketInfo, err = trash.ensureBucketDir(bucketName, isAsync)
+			if err == nil {
+				break
+			}
+			if !strings.Contains(err.Error(), syscall.ENOENT.Error()) {
+				log.LogWarnf("action[MoveToTrash] ensureBucketDir during rename retry failed: %v", err)
+				return err
+			}
+			time.Sleep(ensureBucketBackoff)
+		}
+		trashCurrentIno = bucketInfo.Inode
+		dstPath = path.Join(bucketDir, path.Base(dstPath))
+	}
 	log.LogDebugf("action[MoveToTrash]  rename: srcPath(%v) dstPath(%v) consume %v", srcPath, dstPath, time.Since(startRename).Seconds())
 	if err != nil {
 		log.LogWarnf("action[MoveToTrash] rename %v to %v failed:%v", srcPath, dstPath, err.Error())
@@ -888,20 +910,34 @@ func (trash *Trash) createParentPathInTrash(parentPath, rootDir string) (err err
 	return
 }
 
-func (trash *Trash) renameToTrashTempFile(parentIno, currentIno uint64, oldPath, newPath string, isAsync bool) error {
+func (trash *Trash) renameToTrashTempFile(parentIno, currentIno uint64, oldPath, newPath string, isAsync bool) (bool, error) {
 	err := trash.mw.Rename_ll(parentIno, path.Base(oldPath), currentIno, path.Base(newPath), oldPath, newPath, true, isAsync)
 	if err == syscall.ENOENT {
 		log.LogErrorf("action[renameToTrashTempFile] rename src %v err ENOENT", oldPath)
 		srcParentMP := trash.mw.getPartitionByInode(parentIno)
 		if srcParentMP == nil {
-			return syscall.ENOENT
+			return false, syscall.ENOENT
 		}
 		status, _, _, _ := trash.mw.lookup(srcParentMP, parentIno, path.Base(oldPath), trash.mw.LastVerSeq, isAsync)
 		if status == statusNoent {
-			return nil
+			return false, nil
+		}
+		dstParentMP := trash.mw.getPartitionByInode(currentIno)
+		if dstParentMP == nil {
+			trash.subDirCache.Delete(path.Dir(newPath))
+			log.LogWarnf("action[renameToTrashTempFile] dst parent inode(%v) not found, invalidate cache(%v)",
+				currentIno, path.Dir(newPath))
+			return true, err
+		}
+		dstStatus, _, _ := trash.mw.iget(dstParentMP, currentIno, trash.mw.VerReadSeq, isAsync)
+		if dstStatus == statusNoent {
+			trash.subDirCache.Delete(path.Dir(newPath))
+			log.LogWarnf("action[renameToTrashTempFile] dst parent inode(%v) not found, invalidate cache(%v)",
+				currentIno, path.Dir(newPath))
+			return true, err
 		}
 	}
-	return err
+	return false, err
 }
 
 func (trash *Trash) rename(oldPath, newPath string) error {
