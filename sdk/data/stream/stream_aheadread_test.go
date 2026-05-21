@@ -210,6 +210,40 @@ func TestAheadRead_DoTask_ReadFailed(t *testing.T) {
 	}
 }
 
+func TestAheadRead_BackgroundTaskTickerStop(t *testing.T) {
+	// This test verifies that backgroundAheadReadTask stops its ticker
+	// when the streamer is closed, covering the defer ticker.Stop() line.
+	arc := NewAheadReadCache(true, 16*util.MB, 100000, 2)
+
+	s := &Streamer{}
+	s.inode = 99999
+	s.isOpen = false // stream is closed so backgroundAheadReadTask will exit on ticker
+
+	arw := &AheadReadWindow{
+		taskC:    make(chan *AheadReadTask, arc.winCnt),
+		cache:    arc,
+		streamer: s,
+	}
+
+	// Start backgroundAheadReadTask — it will see isOpen==false on the next
+	// ticker tick and return, which triggers defer ticker.Stop().
+	done := make(chan struct{})
+	go func() {
+		arw.backgroundAheadReadTask()
+		close(done)
+	}()
+
+	// Wait for the goroutine to exit (it should exit within ~1s ticker interval)
+	select {
+	case <-done:
+		// backgroundAheadReadTask exited, defer ticker.Stop() was executed
+	case <-time.After(5 * time.Second):
+		t.Fatal("backgroundAheadReadTask did not exit within 5s, defer ticker.Stop() may not have been called")
+	}
+
+	arc.Stop()
+}
+
 func TestAheadRead_EvictCacheBlock(t *testing.T) {
 	s, arc := newTestStreamerWithAheadRead(t, 5)
 	defer arc.Stop()

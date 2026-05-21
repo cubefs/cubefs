@@ -226,6 +226,7 @@ func NewAheadReadWindow(arc *AheadReadCache, s *Streamer) *AheadReadWindow {
 
 func (arw *AheadReadWindow) backgroundAheadReadTask() {
 	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
 	for {
 		select {
 		case task := <-arw.taskC:
