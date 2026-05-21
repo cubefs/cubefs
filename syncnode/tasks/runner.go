@@ -817,6 +817,19 @@ func (r *Runner) TriggerBench(ctx context.Context, rule *spec.BenchRule, taskID 
 		taskID = r.idFactory()
 	}
 
+	// Idempotency guard mirroring triggerRule: master may re-send
+	// OpSyncNodeRunTask for the same taskID after a brief heartbeat gap.
+	// Without this, every retry spawns a new goroutine racing the original
+	// over the shared workDir + /tmp/fio-<taskID>-<stage>.json output file —
+	// the loser's parseFIOResult returns "no such file or directory" which
+	// bench_posix.go silently flattens to a zero-stat record that then
+	// overwrites the original's real numbers.
+	if existing, getErr := r.store.Get(ctx, taskID); getErr == nil &&
+		existing.Status == executor.StatusRunning {
+		log.LogInfof("tasks: bench task=%q already running, ignoring duplicate trigger", taskID)
+		return cloneRecord(existing), nil
+	}
+
 	task := &executor.Task{
 		ID:         taskID,
 		Type:       executor.TaskTypeBench,

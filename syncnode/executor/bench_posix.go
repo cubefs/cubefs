@@ -121,9 +121,13 @@ func runFIOStage(ctx context.Context, defaults spec.FIOConfig, stage spec.FIOSta
 
 	sr, err := parseFIOResult(resultFile, stage.Name)
 	if err != nil {
-		// Return a partial result rather than failing the whole task.
+		// Propagate: fio finished with exit 0 but produced no JSON output
+		// (typically because something else wrote/removed it, or the path
+		// is unwritable). Returning a zero-stat success here used to mask
+		// real failures — most notably racing goroutines from duplicate
+		// master dispatches overwriting each other's results.
 		log.LogWarnf("bench posix: parse fio result %q: %v", resultFile, err)
-		sr = &spec.BenchStageResult{Name: stage.Name}
+		return nil, fmt.Errorf("parse fio result %q: %w", resultFile, err)
 	}
 	sr.DurationSec = time.Since(t0).Seconds()
 	return sr, nil
