@@ -226,7 +226,7 @@ func (m *Server) triggerBenchRule(w http.ResponseWriter, r *http.Request) {
 	parallelism := rule.Parallelism
 	if parallelism <= 1 {
 		// Single-node path.
-		taskID := fmt.Sprintf("bench-%s-%d", id, time.Now().UnixNano())
+		taskID := fmt.Sprintf("%s-%d", id, time.Now().UnixNano())
 		rec := &BenchTaskRecord{
 			TaskID:    taskID,
 			RuleID:    id,
@@ -249,7 +249,7 @@ func (m *Server) triggerBenchRule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Multi-shard fan-out path.
-	parentID := fmt.Sprintf("bench-%s-%d", id, time.Now().UnixNano())
+	parentID := fmt.Sprintf("%s-%d", id, time.Now().UnixNano())
 	parent := &BenchTaskRecord{
 		TaskID:     parentID,
 		RuleID:     id,
@@ -368,7 +368,7 @@ func (m *Server) retryBenchTask(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 		return
 	}
-	newTaskID := fmt.Sprintf("bench-%d", time.Now().UnixNano())
+	newTaskID := fmt.Sprintf("%s-%d", prev.RuleID, time.Now().UnixNano())
 	rec := &BenchTaskRecord{
 		TaskID:    newTaskID,
 		RuleID:    prev.RuleID,
