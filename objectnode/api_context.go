@@ -15,6 +15,7 @@
 package objectnode
 
 import (
+	"encoding/json"
 	"html"
 	"net/http"
 	"strconv"
@@ -35,6 +36,7 @@ const (
 	ContextKeyAccessKey     = "access_key"
 	ContextKeyRequester     = "requester"
 	ContextKeyOwner         = "owner"
+	ContextKeyAuditFields   = "audit_fields"
 )
 
 func SetRequestID(r *http.Request, requestID string) {
@@ -71,4 +73,28 @@ func SetResponseErrorMessage(r *http.Request, message string) {
 
 func getResponseErrorMessage(r *http.Request) string {
 	return mux.Vars(r)[ContextKeyErrorMessage]
+}
+
+type AuditFields struct {
+	Size    int64    `json:"Size,omitempty"`
+	ETag    string   `json:"ETag,omitempty"`
+	Objects []string `json:"Objects,omitempty"`
+}
+
+func SetAuditFields(r *http.Request, fields AuditFields) {
+	data, err := json.Marshal(fields)
+	if err != nil {
+		return
+	}
+	mux.Vars(r)[ContextKeyAuditFields] = string(data)
+}
+
+func GetAuditFields(r *http.Request) AuditFields {
+	var fields AuditFields
+	raw := mux.Vars(r)[ContextKeyAuditFields]
+	if raw == "" {
+		return fields
+	}
+	_ = json.Unmarshal([]byte(raw), &fields)
+	return fields
 }
