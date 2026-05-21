@@ -532,6 +532,104 @@ func TestRunSync_AfterCopyVerifyThenDeleteSrc(t *testing.T) {
 	}
 }
 
+// TestRunSync_AfterCopyVerifyThenDeleteSrc_SkipPath — rclone-move 语义：
+// 即使 dst 已经存在且与 src 强校验一致，本来会走 idempotent skip 分支，
+// AfterCopy=verify_then_delete_src 仍必须删除 src，否则源端会残留文件，
+// 用户视角等同于"move 没完成"。validateTask 已保证 strong checksum，
+// 故跳过分支命中时端到端校验已经一致，删除是安全的。
+func TestRunSync_AfterCopyVerifyThenDeleteSrc_SkipPath(t *testing.T) {
+	env := newSyncTestEnv(t)
+	// 两个文件 src/dst 内容一致，模拟"上次同步已完成、本次重跑"的场景。
+	for k, payload := range map[string][]byte{
+		"p.pt": []byte("identical-1"),
+		"q.pt": []byte("identical-2-larger"),
+	} {
+		env.writeSrcFile(t, k, payload)
+		env.writeDstFile(t, k, payload)
+	}
+
+	task := newSyncTask(env, "t-acdel-skip")
+	task.AfterCopy = AfterCopyVerifyThenDeleteSrc
+	task.ChecksumMode = "strong"
+	res := runSyncTask(context.Background(), t, task)
+
+	if res.Status != StatusDone {
+		t.Fatalf("Status = %s, want Done. err=%s", res.Status, res.Error)
+	}
+	if res.Progress.FilesSkipped != 2 {
+		t.Errorf("FilesSkipped = %d, want 2 (skip-path must fire when dst already matches)", res.Progress.FilesSkipped)
+	}
+	if res.Progress.FilesDone != 0 {
+		t.Errorf("FilesDone = %d, want 0 (no actual transfer expected on skip path)", res.Progress.FilesDone)
+	}
+	for _, k := range []string{"p.pt", "q.pt"} {
+		if env.srcExists(t, k) {
+			t.Errorf("src %q should have been deleted on skip-path (rclone-move semantics)", k)
+		}
+	}
+	dstKeys := env.listDstKeys(t)
+	if len(dstKeys) != 2 {
+		t.Errorf("dst should still hold both files after skip, got %d (%v)", len(dstKeys), dstKeys)
+	}
+}
+
+// TestRunSync_TaskTypeMove_HappyPath verifies that a bare TaskTypeMove
+// (no AfterCopy / ChecksumMode set by the caller) runs through runSync,
+// copies src to dst, and deletes src — i.e. validateTask locks the
+// invariants and the data path produces rclone-move semantics end-to-end.
+func TestRunSync_TaskTypeMove_HappyPath(t *testing.T) {
+	env := newSyncTestEnv(t)
+	env.writeSrcFile(t, "p.pt", []byte("move-payload-1"))
+	env.writeSrcFile(t, "q.pt", []byte("move-payload-2-larger"))
+
+	task := newSyncTask(env, "t-move")
+	task.Type = TaskTypeMove
+	// 不设置 AfterCopy / ChecksumMode — validateTask 应自动锁定。
+	res := runSyncTask(context.Background(), t, task)
+
+	if res.Status != StatusDone {
+		t.Fatalf("Status = %s, want Done. err=%s", res.Status, res.Error)
+	}
+	for _, k := range []string{"p.pt", "q.pt"} {
+		if env.srcExists(t, k) {
+			t.Errorf("src %q should have been deleted by TaskTypeMove", k)
+		}
+	}
+	if got := env.listDstKeys(t); len(got) != 2 {
+		t.Errorf("dst should hold 2 files after move, got %d (%v)", len(got), got)
+	}
+}
+
+// TestRunSync_TaskTypeMove_SkipPath verifies that TaskTypeMove also enforces
+// rclone-move semantics on the skip path: dst already matches src → skip
+// transfer but still delete src.
+func TestRunSync_TaskTypeMove_SkipPath(t *testing.T) {
+	env := newSyncTestEnv(t)
+	for k, payload := range map[string][]byte{
+		"p.pt": []byte("identical-move-1"),
+		"q.pt": []byte("identical-move-2-larger"),
+	} {
+		env.writeSrcFile(t, k, payload)
+		env.writeDstFile(t, k, payload)
+	}
+
+	task := newSyncTask(env, "t-move-skip")
+	task.Type = TaskTypeMove
+	res := runSyncTask(context.Background(), t, task)
+
+	if res.Status != StatusDone {
+		t.Fatalf("Status = %s, want Done. err=%s", res.Status, res.Error)
+	}
+	if res.Progress.FilesSkipped != 2 {
+		t.Errorf("FilesSkipped = %d, want 2", res.Progress.FilesSkipped)
+	}
+	for _, k := range []string{"p.pt", "q.pt"} {
+		if env.srcExists(t, k) {
+			t.Errorf("src %q must be deleted on TaskTypeMove skip-path", k)
+		}
+	}
+}
+
 func TestRunSync_RetentionKeepLast(t *testing.T) {
 	env := newSyncTestEnv(t)
 

@@ -77,6 +77,10 @@ func TestValidateTask(t *testing.T) {
 		{"valid sync", &Task{ID: "x", Type: TaskTypeSync, Src: &nullBackend{}, Dst: &nullBackend{}}, false},
 		{"valid load", &Task{ID: "x", Type: TaskTypeLoad, Src: &nullBackend{}, Dst: &nullBackend{}}, false},
 		{"valid check", &Task{ID: "x", Type: TaskTypeCheck, Src: &nullBackend{}, Dst: &nullBackend{}}, false},
+		{"valid move bare", &Task{ID: "x", Type: TaskTypeMove, Src: &nullBackend{}, Dst: &nullBackend{}}, false},
+		{"valid move with matching knobs", &Task{ID: "x", Type: TaskTypeMove, AfterCopy: AfterCopyVerifyThenDeleteSrc, ChecksumMode: "strong", Src: &nullBackend{}, Dst: &nullBackend{}}, false},
+		{"move forbids conflicting afterCopy", &Task{ID: "x", Type: TaskTypeMove, AfterCopy: AfterCopy("other"), Src: &nullBackend{}, Dst: &nullBackend{}}, true},
+		{"move forbids conflicting checksumMode", &Task{ID: "x", Type: TaskTypeMove, ChecksumMode: "size_etag", Src: &nullBackend{}, Dst: &nullBackend{}}, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -85,6 +89,23 @@ func TestValidateTask(t *testing.T) {
 				t.Errorf("err = %v, wantErr %v", err, tc.wantErr)
 			}
 		})
+	}
+}
+
+// TestValidateTask_MoveLocksKnobs asserts that validateTask actively rewrites
+// a bare TaskTypeMove to AfterCopy=verify_then_delete_src + ChecksumMode=strong,
+// so downstream Run() observes the locked invariants regardless of what the
+// caller set.
+func TestValidateTask_MoveLocksKnobs(t *testing.T) {
+	task := &Task{ID: "x", Type: TaskTypeMove, Src: &nullBackend{}, Dst: &nullBackend{}}
+	if err := validateTask(task); err != nil {
+		t.Fatalf("validateTask: %v", err)
+	}
+	if task.AfterCopy != AfterCopyVerifyThenDeleteSrc {
+		t.Errorf("AfterCopy = %q, want %q", task.AfterCopy, AfterCopyVerifyThenDeleteSrc)
+	}
+	if task.ChecksumMode != "strong" {
+		t.Errorf("ChecksumMode = %q, want %q", task.ChecksumMode, "strong")
 	}
 }
 

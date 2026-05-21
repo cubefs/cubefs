@@ -41,6 +41,12 @@ const (
 	TaskTypeLoad  TaskType = "load"  // src → dst with temp_rename, strict verify
 	TaskTypeCheck TaskType = "check" // both-sided integrity check, no data move
 	TaskTypeBench TaskType = "bench" // distributed benchmark (S3 or POSIX/fio)
+	// TaskTypeMove is rclone-move semantics: copy src → dst with strong
+	// (sha256) verification, then delete src. Equivalent to TaskTypeSync
+	// + AfterCopy=verify_then_delete_src + ChecksumMode=strong, but as a
+	// first-class type so the UI can hide the supporting knobs and
+	// validateTask can lock the invariants centrally.
+	TaskTypeMove TaskType = "move"
 )
 
 // Status is the terminal state of a Task. Pending / Running are tracked by
@@ -516,7 +522,9 @@ func (e *Executor) Run(ctx context.Context, t *Task, r Reporter) Result {
 
 	var benchResult *spec.BenchShardResult
 	switch t.Type {
-	case TaskTypeSync:
+	case TaskTypeSync, TaskTypeMove:
+		// Move 是 sync 的特化：validateTask 已锁定 AfterCopy/ChecksumMode，
+		// 走完 runSync 即完成 verify_then_delete_src 语义。
 		runErr = e.runSync(taskCtx, t, r, &progress)
 	case TaskTypeLoad:
 		runErr = e.runLoad(taskCtx, t, r, &progress)
@@ -640,9 +648,23 @@ func validateTask(t *Task) error {
 		return errors.New("task.Src and task.Dst must be non-nil")
 	}
 	switch t.Type {
-	case TaskTypeSync, TaskTypeLoad, TaskTypeCheck, TaskTypeBench:
+	case TaskTypeSync, TaskTypeLoad, TaskTypeCheck, TaskTypeBench, TaskTypeMove:
 	default:
 		return fmt.Errorf("invalid task.Type: %q", t.Type)
+	}
+	// TaskTypeMove 的语义就是"sync + verify_then_delete_src + strong"。
+	// 用户若另设这两个字段，要么留空（默认）、要么显式与 move 锁定值一致；
+	// 任何冲突值都拒绝，避免歧义。校验通过后强制锁定到锁定值，让下游 Run
+	// 一路按 verify_then_delete_src + strong 走。
+	if t.Type == TaskTypeMove {
+		if t.AfterCopy != "" && t.AfterCopy != AfterCopyVerifyThenDeleteSrc {
+			return fmt.Errorf("type=move forbids afterCopy=%q (only %q or empty allowed)", t.AfterCopy, AfterCopyVerifyThenDeleteSrc)
+		}
+		if t.ChecksumMode != "" && t.ChecksumMode != "strong" {
+			return fmt.Errorf("type=move requires checksumMode=strong, got %q", t.ChecksumMode)
+		}
+		t.AfterCopy = AfterCopyVerifyThenDeleteSrc
+		t.ChecksumMode = "strong"
 	}
 	// P0 防呆: 把"老用户没读 release note 就升级"导致的静默回退堵住——必须显式选
 	// strong 才能开 verify_then_delete_src，否则核心搬运语义会退化到只 size 比对。

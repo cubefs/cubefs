@@ -404,6 +404,15 @@ func (e *Executor) syncOneFile(
 	//     checksums agree, skip; otherwise fall through to a full transfer.
 	if dstSize, dstETag, _, herr := t.Dst.Head(ctx, dstKey); herr == nil {
 		if shouldSkipExistingDst(ctx, t, entry, dstKey, dstSize, dstETag) {
+			// rclone-move 语义：dst 已与 src 对齐时仍须删除 src。验证强度由
+			// shouldSkipExistingDst 保证——validateTask 已锁定
+			// verify_then_delete_src→strong，因此本分支命中时 src/dst
+			// strong checksum 已比对一致，删除安全。
+			if t.AfterCopy == AfterCopyVerifyThenDeleteSrc {
+				if derr := t.Src.Delete(ctx, entry.Key); derr != nil {
+					return fmt.Errorf("delete src %q after skip-verify: %w", entry.Key, derr)
+				}
+			}
 			atomic.AddInt64(&p.FilesSkipped, 1)
 			atomic.AddInt64(&p.BytesSkipped, entry.Size)
 			if p.Sampler != nil {
