@@ -239,7 +239,7 @@ func validateConfig(cfg *SyncConfig) *ConfigError {
 
 		if !validRuleTypes[r.Type] {
 			return newConfigErr(ErrCodeTypeError, field+".type",
-				"type must be sync / load / check, got: "+r.Type)
+				"type must be sync / load / check / move, got: "+r.Type)
 		}
 		if r.Schedule != "" {
 			if err := validateCronExpr(r.Schedule); err != nil {

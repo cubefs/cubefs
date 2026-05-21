@@ -93,7 +93,7 @@ const (
 
 // Allowed enum values for rule fields.
 var (
-	validRuleTypes        = map[string]bool{"sync": true, "load": true, "check": true}
+	validRuleTypes        = map[string]bool{"sync": true, "load": true, "check": true, "move": true}
 	validBackendKinds     = map[string]bool{"cfs": true, "s3": true, "local": true}
 	validAfterCopy        = map[string]bool{"": true, "keep": true, "verify_then_delete_src": true}
 	validDownloadStrategy = map[string]bool{"": true, "temp_rename": true, "direct": true}
