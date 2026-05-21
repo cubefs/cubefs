@@ -41,6 +41,7 @@ import (
 	"github.com/cubefs/cubefs/syncnode/tasks"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/gorilla/mux"
 )
@@ -169,9 +170,15 @@ func doStart(srv common.Server, cfg *config.Config) (err error) {
 	initMetrics()
 	startMetricsLoop(s.stopC)
 
-	// Note: exporter.Init and exporter.RegistConsul are called by cmd/cmd.go
-	// before server.Start(); calling them again here would double-register
-	// /metrics on http.DefaultServeMux and panic under Go 1.22+ strict mux.
+	// Register with Consul once master returns our clusterID. cmd/cmd.go calls
+	// exporter.Init (which mounts /metrics + creates the prom HTTP server) but
+	// NOT RegistConsul — every other role (master/datanode/lcnode/flashnode/
+	// objectnode) does that itself in its own server.go after it knows the
+	// cluster. We mirror datanode's "after first successful register" pattern:
+	// fire a one-shot goroutine that waits for masterClient to populate
+	// clusterID, then calls RegistConsul once. Without this, Prometheus's
+	// Consul SD never discovers syncnode targets.
+	go s.registerConsulOnce(cfg)
 
 	// Phase F: BoltDB + executor + runner + scheduler + TTL. Order is
 	// important: state store first (so we can recover interrupted tasks
@@ -309,6 +316,35 @@ func doShutdown(srv common.Server) {
 	}
 	s.wg.Wait()
 	log.LogInfo("syncnode shutdown complete")
+}
+
+// registerConsulOnce mirrors the datanode/lcnode/objectnode pattern: wait
+// for masterClient to populate clusterID after the first successful master
+// register, then call exporter.RegistConsul exactly once. The Init call in
+// cmd/cmd.go only mounts /metrics; without RegistConsul, Prometheus's
+// Consul SD never lists syncnode as a target. Exits silently on shutdown.
+func (s *SyncNode) registerConsulOnce(cfg *config.Config) {
+	const pollInterval = time.Second
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-s.stopC:
+			return
+		case <-ticker.C:
+		}
+		if s.masterClient == nil {
+			continue
+		}
+		cid := s.masterClient.ClusterID()
+		if cid == "" {
+			continue
+		}
+		s.clusterID = cid
+		exporter.RegistConsul(cid, ModuleName, cfg)
+		log.LogInfof("syncnode: registered with consul as cluster=%s role=%s", cid, ModuleName)
+		return
+	}
 }
 
 // parseConfig loads the raw config.Config into a typed SyncConfig and runs
