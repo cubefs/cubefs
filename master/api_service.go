@@ -8071,7 +8071,19 @@ func (m *Server) listSyncNodes(w http.ResponseWriter, r *http.Request) {
 		}
 		sn.RUnlock()
 		if scores != nil {
-			info.LoadScore = scores[info.Addr]
+			// LoadScoreAll returns +Inf for stale / unhealthy nodes
+			// (see sync_dispatcher.go contract). encoding/json refuses
+			// to marshal +Inf or NaN — emitting one stale node would
+			// fail the entire /syncNode/list reply with
+			// "json: unsupported value: +Inf" and surface as HTTP 400
+			// to the dashboard. Clamp to MaxFloat64 here so the
+			// "lower is better" ordering still puts stale nodes at the
+			// bottom, but the wire format stays valid JSON.
+			s := scores[info.Addr]
+			if math.IsInf(s, 0) || math.IsNaN(s) {
+				s = math.MaxFloat64
+			}
+			info.LoadScore = s
 		}
 		out = append(out, info)
 		return true

@@ -1100,8 +1100,11 @@ type SyncNodeInfo struct {
 	LastTaskFailureRate float64 `json:"lastTaskFailureRate"`
 
 	// LoadScore is the master-side scheduler score per design.md §6.3.1.
-	// Lower is better; +Inf means the node is stale or unhealthy. Computed
-	// by SyncDispatcher.LoadScore at /syncNode/list time.
+	// Lower is better. Stale / unhealthy nodes get math.MaxFloat64 on the
+	// wire — the internal dispatcher uses +Inf, but encoding/json rejects
+	// that, so listSyncNodes clamps to MaxFloat64 at the JSON boundary and
+	// "lower is better" ordering is preserved. Computed by
+	// SyncDispatcher.LoadScore at /syncNode/list time.
 	LoadScore float64 `json:"loadScore"`
 
 	// MountPoints lists every POSIX path the syncnode container can read /
