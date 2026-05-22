@@ -132,7 +132,7 @@ func TestDashboardFresh_UpdatesSnapshotAndNotifiesWaiters(t *testing.T) {
 	}
 
 	t1 := time.Now()
-	d.fresh()
+	d.fresh(context.Background(), true)
 
 	select {
 	case <-ch:
@@ -157,7 +157,7 @@ func TestDashboardFresh_NoPanicWhenNoWaiter(t *testing.T) {
 	svc, cleanup := initTestService(t)
 	defer cleanup()
 	require.NotPanics(t, func() {
-		svc.dashboardMgr.fresh()
+		svc.dashboardMgr.fresh(context.Background(), false)
 	})
 }
 

@@ -32,6 +32,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 )
 
@@ -102,9 +103,12 @@ type dashboardMgr struct {
 	snapshot atomic.Value // stores *dashboardSnapshot
 
 	// volumes is a persistent cache of VolumeBasic keyed by Vid.
-	// RangeUpdateVolume updates entries in-place on each fresh()
-	volumes map[proto.Vid]*clustermgr.VolumeBasic
-	volMu   sync.RWMutex
+	// RangeUpdateVolume updates entries in-place
+	// only called DashboardFreshVolumeTick reached
+	volumes    map[proto.Vid]*clustermgr.VolumeBasic
+	volMu      sync.RWMutex
+	freshTick  uint64
+	lastVolume clustermgr.VolumeStat
 
 	freshCh chan struct{} // buffered(1); loop listens for force-fresh signals
 
@@ -227,22 +231,24 @@ func (d *dashboardMgr) Simulate(nodes []string) clustermgr.ClusterDashboard {
 
 func (d *dashboardMgr) loopFresh() {
 	defaulter.LessOrEqual(&d.service.DashboardFreshIntervalS, 60)
+	defaulter.IntegerLessOrEqual(&d.service.DashboardFreshVolumeTick, 5)
 
 	interval := time.Duration(d.service.DashboardFreshIntervalS) * time.Second
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for {
+		_, ctx := trace.StartSpanFromContext(context.Background(), "")
 		select {
 		case <-ticker.C:
-			d.fresh()
+			d.fresh(ctx, false)
 			select {
 			case <-d.freshCh:
 			default:
 			}
 
 		case <-d.freshCh:
-			d.fresh()
+			d.fresh(ctx, true)
 			ticker.Reset(interval)
 
 		case <-d.service.closeCh:
@@ -251,13 +257,13 @@ func (d *dashboardMgr) loopFresh() {
 	}
 }
 
-func (d *dashboardMgr) fresh() {
+func (d *dashboardMgr) fresh(ctx context.Context, force bool) {
 	now := time.Now()
 
 	scope := buildScope(d.service.ScopeMgr.Stat())
 	services, _ := d.service.ServiceMgr.ListServiceInfo()
 	allDisks, expiredDisks := d.blobnode.DisksSnapshot()
-	allNodes := d.blobnode.ListNodes(context.Background(), proto.NodeStatusInvalid)
+	allNodes := d.blobnode.ListNodes(ctx, proto.NodeStatusInvalid)
 	droppedNodes := make(map[proto.NodeID]struct{})
 	nodeHost := make(map[proto.NodeID]string, len(allNodes))
 	for _, n := range allNodes {
@@ -282,11 +288,15 @@ func (d *dashboardMgr) fresh() {
 	}
 
 	d.volMu.Lock()
-	d.service.VolumeMgr.RangeUpdateVolume(context.Background(), d.volumes)
-	volume := buildVolume(d.volumes,
-		d.service.VolumeMgr.AllocatableSize,
-		d.service.VolumeMgr.RetainThreshold,
-		d.service.VolumeMgr.AllocatableDiskLoadThreshold)
+	if force || d.freshTick%uint64(util.Max(1, d.service.DashboardFreshVolumeTick)) == 0 {
+		d.service.VolumeMgr.RangeUpdateVolume(ctx, d.volumes)
+		d.lastVolume = buildVolume(d.volumes,
+			d.service.VolumeMgr.AllocatableSize,
+			d.service.VolumeMgr.RetainThreshold,
+			d.service.VolumeMgr.AllocatableDiskLoadThreshold)
+	}
+	d.freshTick++
+	volume := d.lastVolume
 	safety := buildVolumeSafety(d.volumes, unsafeDiskSet)
 	d.volMu.Unlock()
 

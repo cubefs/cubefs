@@ -22,6 +22,7 @@ import (
 	"os"
 	"path"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -1478,4 +1479,50 @@ func TestVolumeStat(t *testing.T) {
 	spaceBeforeAdd = stat.getWriteSpace()
 	stat.addSize(vid3, proto.VolumeStatusActive, freeSize1)
 	require.Equal(t, spaceBeforeAdd, stat.getWriteSpace())
+}
+
+func makeBenchVolumeMgr(n int) *VolumeMgr {
+	num := uint32(testConfig.VolumeSliceMapNum)
+	shards := &shardedVolumes{
+		num:   num,
+		m:     make(map[uint32]map[proto.Vid]*volume, num),
+		locks: make(map[uint32]*sync.RWMutex, num),
+	}
+	for i := uint32(0); i < num; i++ {
+		shards.m[i] = make(map[proto.Vid]*volume)
+		shards.locks[i] = &sync.RWMutex{}
+	}
+	v := &VolumeMgr{all: shards}
+	for _, vol := range generateVolume(codemode.EC12P9, n, 1) {
+		v.all.putVol(vol) //nolint:errcheck
+	}
+	return v
+}
+
+func BenchmarkRangeUpdateVolume(b *testing.B) {
+	cases := []struct {
+		name  string
+		count int
+	}{
+		{"1w", 10_000},
+		{"10w", 100_000},
+		{"100w", 1_000_000},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		b.Run(tc.name, func(b *testing.B) {
+			mgr := makeBenchVolumeMgr(tc.count)
+			ctx := context.Background()
+
+			cache := make(map[proto.Vid]*clustermgr.VolumeBasic, tc.count)
+			mgr.RangeUpdateVolume(ctx, cache)
+
+			b.ResetTimer()
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				mgr.RangeUpdateVolume(ctx, cache)
+			}
+		})
+	}
 }

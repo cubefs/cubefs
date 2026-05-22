@@ -131,6 +131,7 @@ type Config struct {
 	MetricReportIntervalM    int                       `json:"metric_report_interval_m"`
 	ConsistentCheckIntervalM int                       `json:"consistent_check_interval_m"`
 	DashboardFreshIntervalS  int                       `json:"dashboard_fresh_interval_s"`
+	DashboardFreshVolumeTick int                       `json:"dashboard_fresh_volume_tick"`
 
 	BrokenVolumeUnitReportNum int `json:"broken_volume_unit_report_num"`
 	BrokenShardUnitReportNum  int `json:"broken_shard_unit_report_num"`
