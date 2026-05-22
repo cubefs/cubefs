@@ -22,6 +22,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const txUpdateDentryTestTxID = "10001_tx_update_idempotent"
+
 func prepareInodeForDentryTest(t *testing.T, mp MetaPartition, mode uint32) (resp *proto.CreateInodeResponse) {
 	p := &Packet{}
 	req := &proto.CreateInodeRequest{
@@ -311,4 +313,160 @@ func TestOpDeleteDentryCoversFsmCopyGet(t *testing.T) {
 	defer ctrl.Finish()
 	mp := mockPartitionRaftForFsmDentryTest(t, ctrl, proto.StoreModeMem)
 	testOpDeleteDentry(t, mp)
+}
+
+func insertTxRbDentryForTxUpdateTest(t *testing.T, mp *metaPartition, dentry *Dentry, txID string) {
+	t.Helper()
+	txDI := proto.NewTxDentryInfo("", dentry.ParentId, dentry.Name, mp.config.PartitionId)
+	txDI.TxID = txID
+	rbDentry := NewTxRollbackDentry(dentry, txDI, TxUpdate)
+	txRsc := mp.txProcessor.txResource
+	handle, err := txRsc.txRbDentryTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	status, err := txRsc.addTxRollbackDentry(handle, rbDentry)
+	require.NoError(t, err)
+	require.Equal(t, proto.OpOk, status)
+	err = txRsc.txRbDentryTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
+}
+
+func txUpdateDentryReq(mp *metaPartition, parent uint64, name string, oldIno, newIno uint64, txID string) *proto.TxUpdateDentryRequest {
+	return &proto.TxUpdateDentryRequest{
+		VolName:     mp.GetBaseConfig().VolName,
+		PartitionID: mp.GetBaseConfig().PartitionId,
+		ParentID:    parent,
+		Name:        name,
+		Inode:       newIno,
+		OldIno:      oldIno,
+		TxInfo:      &proto.TransactionInfo{TxID: txID},
+	}
+}
+
+func setDentryInodeInTreeForTxUpdateTest(t *testing.T, mp *metaPartition, parent uint64, name string, newIno uint64) {
+	t.Helper()
+	den := getDentryForFsmDentryTest(t, mp, parent, name)
+	handle, err := mp.dentryTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	den.Inode = newIno
+	require.NoError(t, mp.dentryTree.Update(handle, den))
+	require.NoError(t, mp.dentryTree.CommitAndReleaseBatchWriteHandle(handle, false))
+}
+
+func callTxUpdateDentry(t *testing.T, mp *metaPartition, req *proto.TxUpdateDentryRequest) *Packet {
+	t.Helper()
+	p := &Packet{}
+	_ = mp.TxUpdateDentry(req, p, "127.0.0.1")
+	return p
+}
+
+func newMPForTxUpdateDentryTest(t *testing.T, storeMode proto.StoreMode) *metaPartition {
+	t.Helper()
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	return mockPartitionRaftForFsmDentryTest(t, ctrl, storeMode)
+}
+
+func testTxUpdateDentryIdempotent(t *testing.T, storeMode proto.StoreMode) {
+	const dentryName = "tx-update-link"
+
+	t.Run("already updated by current tx returns ok", func(t *testing.T) {
+		mp := newMPForTxUpdateDentryTest(t, storeMode)
+		dirIno := prepareInodeForDentryTest(t, mp, DirModeType)
+		oldFileIno := prepareInodeForDentryTest(t, mp, FileModeType)
+		newFileIno := prepareInodeForDentryTest(t, mp, FileModeType)
+		parent := dirIno.Info.Inode
+		createDentryForDentryTest(t, mp, parent, dentryName, oldFileIno.Info.Inode)
+		oldDentry := &Dentry{ParentId: parent, Name: dentryName, Inode: oldFileIno.Info.Inode}
+		insertTxRbDentryForTxUpdateTest(t, mp, oldDentry, txUpdateDentryTestTxID)
+		setDentryInodeInTreeForTxUpdateTest(t, mp, parent, dentryName, newFileIno.Info.Inode)
+
+		p := callTxUpdateDentry(t, mp, txUpdateDentryReq(mp, parent, dentryName,
+			oldFileIno.Info.Inode, newFileIno.Info.Inode, txUpdateDentryTestTxID))
+		require.Equal(t, proto.OpOk, p.ResultCode)
+		resp := &proto.TxUpdateDentryResponse{}
+		require.NoError(t, p.UnmarshalData(resp))
+		require.Equal(t, oldFileIno.Info.Inode, resp.Inode)
+	})
+
+	t.Run("dentry missing but owned by current tx returns ok", func(t *testing.T) {
+		mp := newMPForTxUpdateDentryTest(t, storeMode)
+		dirIno := prepareInodeForDentryTest(t, mp, DirModeType)
+		oldFileIno := prepareInodeForDentryTest(t, mp, FileModeType)
+		newFileIno := prepareInodeForDentryTest(t, mp, FileModeType)
+		parent := dirIno.Info.Inode
+		oldDentry := &Dentry{ParentId: parent, Name: dentryName, Inode: oldFileIno.Info.Inode}
+		insertTxRbDentryForTxUpdateTest(t, mp, oldDentry, txUpdateDentryTestTxID)
+
+		p := callTxUpdateDentry(t, mp, txUpdateDentryReq(mp, parent, dentryName,
+			oldFileIno.Info.Inode, newFileIno.Info.Inode, txUpdateDentryTestTxID))
+		require.Equal(t, proto.OpOk, p.ResultCode)
+	})
+
+	t.Run("dentry missing and not owned returns not exist", func(t *testing.T) {
+		mp := newMPForTxUpdateDentryTest(t, storeMode)
+		dirIno := prepareInodeForDentryTest(t, mp, DirModeType)
+		newFileIno := prepareInodeForDentryTest(t, mp, FileModeType)
+		parent := dirIno.Info.Inode
+
+		p := callTxUpdateDentry(t, mp, txUpdateDentryReq(mp, parent, "missing-link",
+			100, newFileIno.Info.Inode, txUpdateDentryTestTxID))
+		require.Equal(t, proto.OpNotExistErr, p.ResultCode)
+	})
+
+	t.Run("already updated but wrong tx returns exist err", func(t *testing.T) {
+		mp := newMPForTxUpdateDentryTest(t, storeMode)
+		dirIno := prepareInodeForDentryTest(t, mp, DirModeType)
+		oldFileIno := prepareInodeForDentryTest(t, mp, FileModeType)
+		newFileIno := prepareInodeForDentryTest(t, mp, FileModeType)
+		parent := dirIno.Info.Inode
+		createDentryForDentryTest(t, mp, parent, dentryName, oldFileIno.Info.Inode)
+		oldDentry := &Dentry{ParentId: parent, Name: dentryName, Inode: oldFileIno.Info.Inode}
+		insertTxRbDentryForTxUpdateTest(t, mp, oldDentry, "other_tx_id")
+		setDentryInodeInTreeForTxUpdateTest(t, mp, parent, dentryName, newFileIno.Info.Inode)
+
+		p := callTxUpdateDentry(t, mp, txUpdateDentryReq(mp, parent, dentryName,
+			oldFileIno.Info.Inode, newFileIno.Info.Inode, txUpdateDentryTestTxID))
+		require.Equal(t, proto.OpExistErr, p.ResultCode)
+	})
+
+	t.Run("old inode mismatch returns not exist", func(t *testing.T) {
+		mp := newMPForTxUpdateDentryTest(t, storeMode)
+		dirIno := prepareInodeForDentryTest(t, mp, DirModeType)
+		oldFileIno := prepareInodeForDentryTest(t, mp, FileModeType)
+		newFileIno := prepareInodeForDentryTest(t, mp, FileModeType)
+		parent := dirIno.Info.Inode
+		createDentryForDentryTest(t, mp, parent, dentryName, oldFileIno.Info.Inode)
+
+		p := callTxUpdateDentry(t, mp, txUpdateDentryReq(mp, parent, dentryName,
+			99999, newFileIno.Info.Inode, txUpdateDentryTestTxID))
+		require.Equal(t, proto.OpNotExistErr, p.ResultCode)
+	})
+
+	t.Run("txUpdateDentryOwnedByCurrentTx", func(t *testing.T) {
+		mp := newMPForTxUpdateDentryTest(t, storeMode)
+		dirIno := prepareInodeForDentryTest(t, mp, DirModeType)
+		oldFileIno := prepareInodeForDentryTest(t, mp, FileModeType)
+		newFileIno := prepareInodeForDentryTest(t, mp, FileModeType)
+		parent := dirIno.Info.Inode
+		oldDentry := &Dentry{ParentId: parent, Name: dentryName, Inode: oldFileIno.Info.Inode}
+		insertTxRbDentryForTxUpdateTest(t, mp, oldDentry, txUpdateDentryTestTxID)
+
+		req := txUpdateDentryReq(mp, parent, dentryName, oldFileIno.Info.Inode, newFileIno.Info.Inode, txUpdateDentryTestTxID)
+		owned, err := mp.txUpdateDentryOwnedByCurrentTx(req)
+		require.NoError(t, err)
+		require.True(t, owned)
+
+		owned, err = mp.txUpdateDentryOwnedByCurrentTx(txUpdateDentryReq(mp, parent, dentryName,
+			oldFileIno.Info.Inode, newFileIno.Info.Inode, "other_tx"))
+		require.NoError(t, err)
+		require.False(t, owned)
+	})
+}
+
+func TestTxUpdateDentryIdempotent(t *testing.T) {
+	testTxUpdateDentryIdempotent(t, proto.StoreModeMem)
+}
+
+func TestTxUpdateDentryIdempotent_Rocksdb(t *testing.T) {
+	testTxUpdateDentryIdempotent(t, proto.StoreModeRocksDb)
 }

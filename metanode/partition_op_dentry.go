@@ -422,6 +422,18 @@ func (mp *metaPartition) DeleteDentryBatch(req *BatchDeleteDentryReq, p *Packet,
 	return
 }
 
+// txUpdateDentryOwnedByCurrentTx reports whether the dentry change was already applied by req.TxInfo.TxID.
+func (mp *metaPartition) txUpdateDentryOwnedByCurrentTx(req *proto.TxUpdateDentryRequest) (owned bool, err error) {
+	var inTx bool
+	inTx, err = mp.txDentryInRb(req.ParentID, req.Name, req.TxInfo.TxID)
+	if err != nil {
+		log.LogErrorf("[TxUpdateDentry] check rb dentry failed, parent(%v) name(%v) txId(%v), err(%v)",
+			req.ParentID, req.Name, req.TxInfo.TxID, err)
+		return false, err
+	}
+	return inTx, nil
+}
+
 func (mp *metaPartition) TxUpdateDentry(req *proto.TxUpdateDentryRequest, p *Packet, remoteAddr string) (err error) {
 	start := time.Now()
 	if mp.IsEnableAuditLog() {
@@ -464,20 +476,33 @@ func (mp *metaPartition) TxUpdateDentry(req *proto.TxUpdateDentryRequest, p *Pac
 		p.PacketErrorWithBody(status, []byte(err.Error()))
 		return
 	}
-	if status != proto.OpOk {
-		inTx := false
-		inTx, err = mp.txDentryInRb(req.ParentID, req.Name, req.TxInfo.TxID)
+	// dentry 不存在，或已指向目标 inode：可能是当前事务重试，先确认是否已由本 tx 完成。
+	if status != proto.OpOk || oldDentry.Inode == req.Inode {
+		var owned bool
+		owned, err = mp.txUpdateDentryOwnedByCurrentTx(req)
 		if err != nil {
-			log.LogErrorf("[TxDeleteDentry] failed to get dentry from rb dentry tree, parent(%v) name(%v), err(%v)", req.ParentID, req.Name, err)
+			log.LogWarnf("[TxUpdateDentry] check rb dentry failed, parent(%v) name(%v) txId(%v), err(%v)",
+				req.ParentID, req.Name, req.TxInfo.TxID, err)
+			p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
 			return
 		}
-		if inTx {
+
+		if owned {
 			p.ResultCode = proto.OpOk
-			log.LogWarnf("TxDeleteDentry: dentry is already been deleted before, req %v", req)
+			log.LogWarnf("[TxUpdateDentry] dentry already updated by current tx, req %v", req)
 			return
 		}
-		err = fmt.Errorf("oldDentry[%v] not exists", oldDentry)
-		p.PacketErrorWithBody(status, []byte(err.Error()))
+
+		if status != proto.OpOk {
+			err = fmt.Errorf("dentry not exists, parent(%v) name(%v)", req.ParentID, req.Name)
+			log.LogWarn(err)
+			p.PacketErrorWithBody(status, []byte(err.Error()))
+			return
+		}
+		err = fmt.Errorf("dentry already points to inode %d but not owned by tx %s, dentry %v",
+			req.Inode, req.TxInfo.TxID, oldDentry)
+		log.LogWarn(err)
+		p.PacketErrorWithBody(proto.OpExistErr, []byte(err.Error()))
 		return
 	}
 
