@@ -276,6 +276,10 @@ func init() {
 // ObserveBenchOpClass 与 ObserveBenchOp 并行调用，把 class 维度的延迟与
 // 字节累计记录到 class 维度的指标。class 为空时记为 "default"，保证标签
 // 永不缺失。bytes <= 0 时仅记录 latency。
+//
+// 设计约束：仅用于真 per-op emit 场景（如 bench_s3.go 的 PUT/GET/DELETE 单次调用）。
+// 不要在 fio 子进程路径调用——子进程边界外 syncnode 不感知 per-op，
+// 调用此函数会让 histogram 退化成 gauge（仅一个 stage 聚合样本）。
 func ObserveBenchOpClass(taskID string, shard int, stage, op, class string, latencyS float64, bytes int64) {
 	if class == "" {
 		class = "default"

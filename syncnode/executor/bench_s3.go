@@ -51,12 +51,21 @@ func runBenchS3(ctx context.Context, rule *spec.BenchRule, taskID string, shardI
 	keyRing := make([]string, 0, 1024)
 	var keyRingMu sync.Mutex
 
-	for _, stage := range rule.Stages {
+	for stageIdx, stage := range rule.Stages {
 		if ctx.Err() != nil {
 			result.Status = "failed"
 			result.Error = "context cancelled"
 			break
 		}
+		// rc8 #120: rule 级 CacheDrop 在每个 stage 进入前触发，按位置区分
+		// "before_first"（首个 stage）/ "between"（后续 stage）。MaybeDropCaches
+		// 内部根据 spec.BeforeFirstStage/BetweenStages 决定是否实际 drop；
+		// CacheDrop=nil 或 Enabled=false 时整链路 no-op。失败仅写指标不阻断 stage。
+		dropWhere := "between"
+		if stageIdx == 0 {
+			dropWhere = "before_first"
+		}
+		MaybeDropCaches(ctx, taskID, rule.CacheDrop, dropWhere)
 		// S1.6: cross-shard barrier before stage start when requested.
 		// On error (ctx cancel) we bail; on barrier timeout the helper
 		// logs + returns nil so a partial cluster keeps moving.
@@ -122,8 +131,16 @@ func runObjStage(
 	shardIdx int,
 	_ int, // pushIntervalSec reserved for future live-push
 ) (*spec.BenchStageResult, error) {
-	t0 := time.Now()
 	sr := &spec.BenchStageResult{Name: stage.Name}
+
+	// rc8 #120: stage 主测量前的预热。stage.Warmup 为 nil 或 DurationSeconds<=0
+	// 时 runObjStageWarmup 立即返回；预热耗时不计入 DurationSec（t0 在预热完成
+	// 后才取）。S3 路径与 FIO 不同：backend.Put 可在每个 loop 调用一次真实 IO，
+	// 故 loopFn 在预热窗口内执行真实的小对象 PUT，对 keyPrefix 下的 warmup-* 键
+	// 进行写入；写入的 key 不进入 keyRing（避免污染 stage 主测量的工作集）。
+	runObjStageWarmup(ctx, stage, b, keyPrefix, taskID, shardIdx)
+
+	t0 := time.Now()
 
 	// Per-stage HDR recorder feeds both the BenchStageResult.Latency
 	// percentiles for this shard AND the HDRBuckets snapshot the master
@@ -567,4 +584,31 @@ func resolveObjSize(s spec.ObjSize) func(*rand.Rand) int64 {
 // op 错误分支和 deleteAll 错误分支内联，向新的 cubefs_bench_error_attr_total
 // 指标双写错误归因。旧的 syncnode_bench_op_errors_total{kind=...} 保持不变。
 // ---------------------------------------------------------------------------
+
+// runObjStageWarmup 为 S3 stage 提供 RunWarmup 接入点。spec.Warmup 为 nil 或
+// DurationSeconds<=0 时立即返回（RunWarmup 也会做同样的 no-op 守卫，这里只是
+// 提前短路，避免无谓地构造 loopFn）。loopFn 在窗口内对 backend 发起小对象
+// PUT，让预热真正打到对象存储；warmup 写入的 key 以 "warmup-" 前缀且不进
+// keyRing，从而不污染 stage 主测量的工作集。warmup 错误仅由 RunWarmup 内部
+// 写 observeWarmupOp，不影响 stage 状态。
+func runObjStageWarmup(ctx context.Context, stage spec.ObjStage, b backend.Backend, keyPrefix, taskID string, shardIdx int) {
+	if stage.Warmup == nil || stage.Warmup.DurationSeconds <= 0 {
+		return
+	}
+	// warmup 写入大小：取 ObjectSize 的"平均"作为代表；resolveObjSize 已经处理
+	// Fixed / Min,Max / 默认 4KiB 的回落，所以单次 PUT 必有合法 size。
+	sizeFn := resolveObjSize(stage.ObjectSize)
+	var warmSeq atomic.Int64
+	loop := func(ctx context.Context) error {
+		// 用本地 rng 避免与主测量 worker 抢同一个全局 rand（rand.New 廉价）。
+		rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+		sz := sizeFn(rng)
+		seq := warmSeq.Add(1)
+		key := fmt.Sprintf("%swarmup-%d", keyPrefix, seq)
+		body := bytes.NewReader(make([]byte, sz))
+		_, err := b.Put(ctx, key, body, sz, backend.PutOptions{})
+		return err
+	}
+	defaultWarmupRunner.run(ctx, taskID, strconv.Itoa(shardIdx), stage.Name, stage.Warmup, loop)
+}
 

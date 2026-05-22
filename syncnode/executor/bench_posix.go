@@ -53,7 +53,7 @@ func runBenchPosix(ctx context.Context, rule *spec.BenchRule, taskID string, sha
 		return result, err
 	}
 
-	for _, stage := range rule.FIOStages {
+	for stageIdx, stage := range rule.FIOStages {
 		if ctx.Err() != nil {
 			result.Status = "failed"
 			result.Error = "context cancelled"
@@ -63,6 +63,15 @@ func runBenchPosix(ctx context.Context, rule *spec.BenchRule, taskID string, sha
 			result.Stages = append(result.Stages, spec.BenchStageResult{Name: stage.Name})
 			continue
 		}
+		// rc8 #120: rule 级 CacheDrop 在每个 stage 进入前触发，按位置区分
+		// "before_first"（首个 stage）/ "between"（后续 stage）。MaybeDropCaches
+		// 内部根据 spec.BeforeFirstStage/BetweenStages 决定是否实际 drop；
+		// CacheDrop=nil 或 Enabled=false 时整链路 no-op。失败仅写指标不阻断 stage。
+		dropWhere := "between"
+		if stageIdx == 0 {
+			dropWhere = "before_first"
+		}
+		MaybeDropCaches(ctx, taskID, rule.CacheDrop, dropWhere)
 		// S1.6: cross-shard barrier before each fio stage when requested.
 		// Errors from waitForPeers are nil for timeouts (logged and
 		// continues), only propagating ctx-cancel as a hard stop.
@@ -110,7 +119,6 @@ func runBenchPosix(ctx context.Context, rule *spec.BenchRule, taskID string, sha
 // returns a BenchStageResult. The result file is written to os.TempDir() and
 // removed after parsing.
 func runFIOStage(ctx context.Context, defaults spec.FIOConfig, stage spec.FIOStage, workDir, taskID string, shardIdx, pushIntervalSec int) (*spec.BenchStageResult, error) {
-	t0 := time.Now()
 	safeID := strings.ReplaceAll(taskID, "/", "_")
 	resultFile := filepath.Join(os.TempDir(), fmt.Sprintf("fio-%s-%d-%s.json", safeID, shardIdx, stage.Name))
 	defer os.Remove(resultFile)
@@ -125,6 +133,17 @@ func runFIOStage(ctx context.Context, defaults spec.FIOConfig, stage spec.FIOSta
 		// "we returned without error" fallback.
 		SetStageState(taskID, shardIdx, stage.Name, StageStateDone)
 	}()
+
+	// rc8 #120: stage 主测量前的预热窗口。spec.Warmup 为 nil 或
+	// DurationSeconds<=0 时 RunWarmup 直接返回。RunWarmup 无 error 返回，
+	// 失败仅记 metrics 不阻断 stage —— FIO 子进程模型不支持"loopFn 每秒多次
+	// 调用"的细粒度预热，loopFn 仅响应 ctx，让 RunWarmup 的 DurationSeconds +
+	// TargetQPS 节拍生效（observeWarmupOp 打点）。真正 I/O 预热由 stage.Control
+	// 的 ramp 字段承担。
+	runStageWarmup(ctx, stage.Warmup, taskID, shardIdx, stage.Name)
+
+	// 预热耗时不计入 stage DurationSec：t0 在 warmup 完成后起点。
+	t0 := time.Now()
 
 	si := pushIntervalSec
 	if si <= 0 {
@@ -460,8 +479,11 @@ func setFioRunner(r fioRunner) func() {
 // 聚合返回的 BenchStageResult 把各组件的 TotalOps / TotalBytes 累加，
 // Latency 取最慢组件（保守 SLA 检查）。
 func runFIOStageMixed(ctx context.Context, defaults spec.FIOConfig, stage spec.FIOStage, workDir, taskID string, shardIdx, _ int) (*spec.BenchStageResult, error) {
-	t0 := time.Now()
 	SetStageState(taskID, shardIdx, stage.Name, StageStateRunning)
+	// rc8 #120: 同 runFIOStage，先跑 warmup（spec.Warmup 为 nil 时立即返回）；
+	// 预热耗时不计入 stage DurationSec。
+	runStageWarmup(ctx, stage.Warmup, taskID, shardIdx, stage.Name)
+	t0 := time.Now()
 
 	totalWeight := 0
 	for _, c := range stage.Mixed {
@@ -513,18 +535,31 @@ func runFIOStageMixed(ctx context.Context, defaults spec.FIOConfig, stage spec.F
 		agg.TotalBytes += sr.TotalBytes
 		agg.OpsPerSec += sr.OpsPerSec
 		agg.ThroughputMBs += sr.ThroughputMBs
+		agg.Errors += sr.Errors
 		if sr.Latency.Mean > maxMean {
 			maxMean = sr.Latency.Mean
 			agg.Latency = sr.Latency
 		}
 
-		// 把该组件的吞吐 / op 数写入 class 维度 metrics：
-		// op label = "fio/<componentName>"，class label = SizeClass。
-		opLabel := "fio/" + comp.Name
-		classLabel := comp.SizeClass.ClassLabel()
-		// latency.Mean 是 µs（parseFIOResult 已做 ns→µs 换算），这里换成秒。
-		ObserveBenchOpClass(taskID, shardIdx, stage.Name, opLabel, classLabel, sr.Latency.Mean/1e6, sr.TotalBytes)
-		// 同时记录一笔总耗时型 latency 观测，dashboard 可对齐 stage 节拍。
+		// #121: 保留每个 component 的独立结果到 MixedComponents，dashboard
+		// 终态结果页直接读这里展示 small / large 分项数据；stage 聚合的
+		// Total* / Latency 仍由上面的累加得出，用于 SLA 与 headline tile。
+		agg.MixedComponents = append(agg.MixedComponents, spec.BenchComponentResult{
+			Name:          comp.Name,
+			SizeClass:     comp.SizeClass.ClassLabel(),
+			Weight:        comp.Weight,
+			DurationSec:   sr.DurationSec,
+			ThroughputMBs: sr.ThroughputMBs,
+			OpsPerSec:     sr.OpsPerSec,
+			TotalOps:      sr.TotalOps,
+			TotalBytes:    sr.TotalBytes,
+			Errors:        sr.Errors,
+			Latency:       sr.Latency,
+		})
+
+		// 注：fio 子进程内部完成 I/O，syncnode 不感知每个 op。
+		// per-component 数据通过 agg.MixedComponents（#121）走结构化 API，
+		// 不再向 Prometheus emit 误导性的 op-level 样本（#122）。
 		_ = sliceDur
 	}
 
@@ -539,3 +574,50 @@ func runFIOStageMixed(ctx context.Context, defaults spec.FIOConfig, stage spec.F
 // cubefs_bench_error_attr_total 指标写入错误归因。旧的 IncErr 调用保持不变。
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// rc8 #120 Warmup wiring — 共享 helper。Sprint 3.4 的 warmup_runner.go /
+// cache_drop.go 之前没有任何 stage runner 引用，被 Go linker 死代码消除从二
+// 进制中删除。本 helper 把 RunWarmup 接入到 FIO / S3 stage 入口，让符号被引
+// 用从而留在二进制里；IOR / mdtest 路径 spec 上没有 stage.Warmup 字段，仅
+// 接入 MaybeDropCaches。warmupRunner 提供测试注入点：测试可替换为 fake，
+// 断言 stage 入口确实调用了预热（生产路径走默认 productionWarmupRunner，
+// 直连 RunWarmup）。
+// ---------------------------------------------------------------------------
+
+// warmupRunner 抽象 stage 入口处的预热调用，便于测试断言 "warmup 被触发"。
+// 生产路径走 productionWarmupRunner.run，内部转调 RunWarmup（包内函数，
+// 引用本身就阻止 linker 死代码消除）。
+type warmupRunner interface {
+	run(ctx context.Context, taskID, shardID, stage string, sp *spec.WarmupSpec, loopFn func(ctx context.Context) error)
+}
+
+type productionWarmupRunner struct{}
+
+func (productionWarmupRunner) run(ctx context.Context, taskID, shardID, stage string, sp *spec.WarmupSpec, loopFn func(ctx context.Context) error) {
+	RunWarmup(ctx, taskID, shardID, stage, sp, loopFn)
+}
+
+// defaultWarmupRunner 是生产路径使用的 runner；测试通过 setWarmupRunner 替换。
+var defaultWarmupRunner warmupRunner = productionWarmupRunner{}
+
+// setWarmupRunner 在测试中替换默认 runner；返回的 cleanup 闭包供 t.Cleanup 使用。
+func setWarmupRunner(r warmupRunner) func() {
+	prev := defaultWarmupRunner
+	defaultWarmupRunner = r
+	return func() { defaultWarmupRunner = prev }
+}
+
+// runStageWarmup 在 stage 主测量前触发一次 RunWarmup。spec 为 nil 或
+// DurationSeconds<=0 时立即返回（observeWarmupOp 不打点），与
+// RunWarmup 自身的 no-op 语义一致。loopFn 设计为不做真实 I/O —— FIO/IOR/
+// mdtest 子进程模型不适合"每秒多次 loop"的细粒度预热，让 RunWarmup 在
+// DurationSeconds 窗口内按 TargetQPS 节拍打 observeWarmupOp 即可；真正
+// 的预热 I/O 由 stage.Control 的 ramp 字段承担。S3 路径在 runObjStage 内
+// 复用本 helper 但提供真实 backend op 的 loopFn（见 bench_s3.go）。
+func runStageWarmup(ctx context.Context, sp *spec.WarmupSpec, taskID string, shardIdx int, stageName string) {
+	if sp == nil || sp.DurationSeconds <= 0 {
+		return
+	}
+	loop := func(ctx context.Context) error { return ctx.Err() }
+	defaultWarmupRunner.run(ctx, taskID, strconv.Itoa(shardIdx), stageName, sp, loop)
+}

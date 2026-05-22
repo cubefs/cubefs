@@ -67,7 +67,7 @@ func runBenchMdtest(ctx context.Context, rule *spec.BenchRule, taskID string, sh
 		defaults = *rule.MdtestDefaults
 	}
 
-	for _, stage := range rule.MdtestStages {
+	for stageIdx, stage := range rule.MdtestStages {
 		if ctx.Err() != nil {
 			result.Status = "failed"
 			result.Error = "context cancelled"
@@ -77,6 +77,14 @@ func runBenchMdtest(ctx context.Context, rule *spec.BenchRule, taskID string, sh
 			result.Stages = append(result.Stages, spec.BenchStageResult{Name: stage.Name})
 			continue
 		}
+		// rc8 #120: rule 级 CacheDrop 在每个 stage 进入前触发。MdtestStage 上没有
+		// Warmup 字段（mdtest 自身的 iterations 已经覆盖了 warmup 语义），所以
+		// mdtest 路径只接 cache_drop。MaybeDropCaches 按 spec 决定是否实际 drop。
+		dropWhere := "between"
+		if stageIdx == 0 {
+			dropWhere = "before_first"
+		}
+		MaybeDropCaches(ctx, taskID, rule.CacheDrop, dropWhere)
 		// S1.6: cross-shard barrier before mpirun starts; logged + skipped
 		// on timeout, hard-failed only when ctx is cancelled.
 		shardID := strconv.Itoa(shardIdx)

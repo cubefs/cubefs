@@ -59,8 +59,41 @@ type BenchSLAItem struct {
 // across shards via syncnode/hist.MergeSnapshots and recomputes percentiles
 // onto the parent record. Populated only for storage types that have a
 // per-op hook (S3/SDK); fio/mdtest paths leave it empty.
+//
+// MixedComponents carries the per-component breakdown for FIO mixed stages
+// (stage.Mixed != nil). Each entry mirrors one FIOMixedComponent's outcome
+// before the stage-level aggregation collapses them into Total* / Latency.
+// Empty for non-mixed stages (fio single, s3, ior, mdtest) — the `omitempty`
+// tag keeps the JSON payload identical to rc7 for those paths so dashboards
+// can detect the field's presence to decide whether to render a per-component
+// breakdown.
 type BenchStageResult struct {
+	Name            string                 `json:"name"`
+	DurationSec     float64                `json:"durationSec"`
+	ThroughputMBs   float64                `json:"throughputMBs"`
+	OpsPerSec       float64                `json:"opsPerSec"`
+	TotalOps        int64                  `json:"totalOps"`
+	TotalBytes      int64                  `json:"totalBytes"`
+	Errors          int64                  `json:"errors"`
+	Latency         BenchLatencyResult     `json:"latency"`
+	HDRBuckets      map[string][]byte      `json:"hdrBuckets,omitempty"`
+	MixedComponents []BenchComponentResult `json:"mixedComponents,omitempty"`
+}
+
+// BenchComponentResult is the per-component breakdown of a FIO mixed stage.
+// One entry per FIOMixedComponent that actually ran (Weight > 0). The
+// stage-level BenchStageResult still carries the aggregated Total* / Latency
+// for SLA evaluation and the headline dashboard tile; this slice is what the
+// dashboard's "small vs large" detail panel reads from.
+//
+// SizeClass is the resolved label (FIOMixedComponent.SizeClass.ClassLabel()),
+// not the raw enum, so consumers don't need to repeat the "" → "default"
+// fallback. Weight is copied verbatim so dashboards can show the configured
+// time-share alongside the realised throughput.
+type BenchComponentResult struct {
 	Name          string             `json:"name"`
+	SizeClass     string             `json:"sizeClass"`
+	Weight        int                `json:"weight"`
 	DurationSec   float64            `json:"durationSec"`
 	ThroughputMBs float64            `json:"throughputMBs"`
 	OpsPerSec     float64            `json:"opsPerSec"`
@@ -68,7 +101,6 @@ type BenchStageResult struct {
 	TotalBytes    int64              `json:"totalBytes"`
 	Errors        int64              `json:"errors"`
 	Latency       BenchLatencyResult `json:"latency"`
-	HDRBuckets    map[string][]byte  `json:"hdrBuckets,omitempty"`
 }
 
 // BenchLatencyResult carries latency percentiles + mean + max for a stage,

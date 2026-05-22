@@ -411,6 +411,24 @@ func mergeShardStages(shards []BenchShardResult) []spec.BenchStageResult {
 	if len(shards) == 0 {
 		return nil
 	}
+	// componentAgg accumulates one FIO-mixed component across all shards that
+	// reported it. Latency is averaged with sample weighting (mean across
+	// shards) — fio mixed paths don't ship HDR snapshots per component, so an
+	// unweighted shard-mean is the best honest approximation. Components are
+	// keyed by Name within a stage; SizeClass / Weight are copied from the
+	// first shard that contributed and assumed identical across shards (they
+	// come from the rule config, not from the run).
+	type componentAgg struct {
+		comp            spec.BenchComponentResult
+		latencySumP50   float64
+		latencySumP95   float64
+		latencySumP99   float64
+		latencySumP999  float64
+		latencySumP9999 float64
+		latencySumMax   float64
+		latencySumMean  float64
+		latencyCount    int
+	}
 	type agg struct {
 		stage           spec.BenchStageResult
 		hdrBlobsByOp    map[string][][]byte
@@ -424,6 +442,11 @@ func mergeShardStages(shards []BenchShardResult) []spec.BenchStageResult {
 		latencyCount    int
 		durationSum     float64
 		durationCount   int
+		// componentOrder preserves the per-component order of the first shard
+		// that contributed each component, so the parent's MixedComponents
+		// reads the same as the rule's stage.Mixed declaration.
+		componentOrder  []string
+		componentByName map[string]*componentAgg
 	}
 	order := make([]string, 0)
 	byName := make(map[string]*agg)
@@ -432,8 +455,9 @@ func mergeShardStages(shards []BenchShardResult) []spec.BenchStageResult {
 			a, ok := byName[stg.Name]
 			if !ok {
 				a = &agg{
-					stage:        spec.BenchStageResult{Name: stg.Name},
-					hdrBlobsByOp: make(map[string][][]byte),
+					stage:           spec.BenchStageResult{Name: stg.Name},
+					hdrBlobsByOp:    make(map[string][][]byte),
+					componentByName: make(map[string]*componentAgg),
 				}
 				byName[stg.Name] = a
 				order = append(order, stg.Name)
@@ -463,6 +487,44 @@ func mergeShardStages(shards []BenchShardResult) []spec.BenchStageResult {
 					continue
 				}
 				a.hdrBlobsByOp[op] = append(a.hdrBlobsByOp[op], blob)
+			}
+			// #121: per-component aggregation for FIO mixed stages. Each shard
+			// reported MixedComponents on this stage; sum throughput / ops /
+			// bytes / errors across shards, track max duration (wall-clock
+			// honesty, same logic as stage.DurationSec), and shard-average
+			// latency. SizeClass / Weight come from the rule and are identical
+			// across shards.
+			for _, comp := range stg.MixedComponents {
+				ca, ok := a.componentByName[comp.Name]
+				if !ok {
+					ca = &componentAgg{
+						comp: spec.BenchComponentResult{
+							Name:      comp.Name,
+							SizeClass: comp.SizeClass,
+							Weight:    comp.Weight,
+						},
+					}
+					a.componentByName[comp.Name] = ca
+					a.componentOrder = append(a.componentOrder, comp.Name)
+				}
+				ca.comp.TotalOps += comp.TotalOps
+				ca.comp.TotalBytes += comp.TotalBytes
+				ca.comp.Errors += comp.Errors
+				ca.comp.ThroughputMBs += comp.ThroughputMBs
+				ca.comp.OpsPerSec += comp.OpsPerSec
+				if comp.DurationSec > ca.comp.DurationSec {
+					ca.comp.DurationSec = comp.DurationSec
+				}
+				if comp.Latency.P50 > 0 || comp.Latency.Mean > 0 {
+					ca.latencySumP50 += comp.Latency.P50
+					ca.latencySumP95 += comp.Latency.P95
+					ca.latencySumP99 += comp.Latency.P99
+					ca.latencySumP999 += comp.Latency.P999
+					ca.latencySumP9999 += comp.Latency.P9999
+					ca.latencySumMax += comp.Latency.Max
+					ca.latencySumMean += comp.Latency.Mean
+					ca.latencyCount++
+				}
 			}
 		}
 	}
@@ -522,6 +584,28 @@ func mergeShardStages(shards []BenchShardResult) []spec.BenchStageResult {
 				P999:  a.latencySumP999 / n,
 				P9999: a.latencySumP9999 / n,
 				Max:   a.latencySumMax / n,
+			}
+		}
+		// #121: emit per-component breakdown on the parent record. Order
+		// follows the first shard that contributed each component, so it
+		// matches the rule's stage.Mixed declaration.
+		if len(a.componentOrder) > 0 {
+			stg.MixedComponents = make([]spec.BenchComponentResult, 0, len(a.componentOrder))
+			for _, cname := range a.componentOrder {
+				ca := a.componentByName[cname]
+				if ca.latencyCount > 0 {
+					n := float64(ca.latencyCount)
+					ca.comp.Latency = spec.BenchLatencyResult{
+						Mean:  ca.latencySumMean / n,
+						P50:   ca.latencySumP50 / n,
+						P95:   ca.latencySumP95 / n,
+						P99:   ca.latencySumP99 / n,
+						P999:  ca.latencySumP999 / n,
+						P9999: ca.latencySumP9999 / n,
+						Max:   ca.latencySumMax / n,
+					}
+				}
+				stg.MixedComponents = append(stg.MixedComponents, ca.comp)
 			}
 		}
 		out = append(out, stg)

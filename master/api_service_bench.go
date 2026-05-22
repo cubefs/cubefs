@@ -35,9 +35,11 @@ package master
 //   POST /benchTask/retry    ?id=
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -45,6 +47,61 @@ import (
 	"github.com/cubefs/cubefs/syncnode/spec"
 	"github.com/cubefs/cubefs/util/exporter"
 )
+
+// benchRuleView is the GET response shape for /benchRule/list and
+// /benchRule/get. It embeds *spec.BenchRule (preserving every existing
+// field in the JSON output) and lifts RawJSON — which BenchRule itself
+// hides via `json:"-"` — into a top-level "rawJSON" property so dashboard
+// / debug callers can byte-compare against the original POST body.
+//
+// RawJSON is omitempty: rules that pre-date RC8 #119 (loaded from rocksdb
+// in the legacy bare-BenchRule format) have an empty RawJSON and the
+// field is dropped from the response.
+type benchRuleView struct {
+	*spec.BenchRule
+	RawJSON string `json:"rawJSON,omitempty"`
+}
+
+// newBenchRuleView wraps a *spec.BenchRule for outbound JSON serialisation.
+// Callers MUST pass a value that won't be mutated afterwards (the store's
+// Get / List already return copies).
+func newBenchRuleView(r *spec.BenchRule) *benchRuleView {
+	if r == nil {
+		return nil
+	}
+	return &benchRuleView{BenchRule: r, RawJSON: r.RawJSON}
+}
+
+// newBenchRuleViews wraps a slice of *spec.BenchRule for list responses.
+func newBenchRuleViews(rs []*spec.BenchRule) []*benchRuleView {
+	out := make([]*benchRuleView, 0, len(rs))
+	for _, r := range rs {
+		out = append(out, newBenchRuleView(r))
+	}
+	return out
+}
+
+// decodeBenchRuleStrict reads the request body and decodes a BenchRule
+// with DisallowUnknownFields enabled. Returns the decoded rule and the
+// raw body bytes (for RawJSON persistence) or an error suitable for an
+// HTTP 400 reply. Unknown / typo'd fields surface as
+// `json: unknown field "<name>"` so the caller (dashboard / CLI) can
+// diagnose schema drift immediately instead of silently dropping data.
+//
+// Mutates: drains r.Body.
+func decodeBenchRuleStrict(body io.Reader) (*spec.BenchRule, []byte, error) {
+	raw, err := io.ReadAll(body)
+	if err != nil {
+		return nil, nil, fmt.Errorf("read body: %w", err)
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	var rule spec.BenchRule
+	if err := dec.Decode(&rule); err != nil {
+		return nil, raw, fmt.Errorf("decode body: %w", err)
+	}
+	return &rule, raw, nil
+}
 
 // ---- Bench rule handlers ----
 
@@ -64,10 +121,10 @@ func (m *Server) listBenchRules(w http.ResponseWriter, r *http.Request) {
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: gerr.Error()})
 			return
 		}
-		sendOkReply(w, r, newSuccessHTTPReply(rule))
+		sendOkReply(w, r, newSuccessHTTPReply(newBenchRuleView(rule)))
 		return
 	}
-	sendOkReply(w, r, newSuccessHTTPReply(m.cluster.benchRuleStore.List()))
+	sendOkReply(w, r, newSuccessHTTPReply(newBenchRuleViews(m.cluster.benchRuleStore.List())))
 }
 
 // createBenchRule handles POST /benchRule/create.
@@ -82,9 +139,12 @@ func (m *Server) createBenchRule(w http.ResponseWriter, r *http.Request) {
 	var err error
 	defer func() { doStatAndMetric(proto.BenchRuleCreate, metric, err, nil) }()
 
-	var rule spec.BenchRule
-	if err = json.NewDecoder(r.Body).Decode(&rule); err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "decode body: " + err.Error()})
+	// RC8 #119: 严格解码 + 持久化原始 body。DisallowUnknownFields 让 schema
+	// 漂移立刻 400 暴露，不再静默丢字段。
+	rule, raw, derr := decodeBenchRuleStrict(r.Body)
+	if derr != nil {
+		err = derr
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: derr.Error()})
 		return
 	}
 	if rule.ID == "" {
@@ -92,12 +152,13 @@ func (m *Server) createBenchRule(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if err = m.cluster.benchRuleStore.Create(&rule); err != nil {
+	rule.RawJSON = string(raw)
+	if err = m.cluster.benchRuleStore.Create(rule); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: benchRuleErrCode(err), Msg: err.Error()})
 		return
 	}
 	created, _ := m.cluster.benchRuleStore.Get(rule.ID)
-	sendOkReply(w, r, newSuccessHTTPReply(created))
+	sendOkReply(w, r, newSuccessHTTPReply(newBenchRuleView(created)))
 }
 
 // getBenchRule handles GET /benchRule/get?id=.
@@ -118,7 +179,7 @@ func (m *Server) getBenchRule(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: gerr.Error()})
 		return
 	}
-	sendOkReply(w, r, newSuccessHTTPReply(rule))
+	sendOkReply(w, r, newSuccessHTTPReply(newBenchRuleView(rule)))
 }
 
 // updateBenchRule handles POST /benchRule/update.
@@ -129,9 +190,12 @@ func (m *Server) updateBenchRule(w http.ResponseWriter, r *http.Request) {
 	var err error
 	defer func() { doStatAndMetric(proto.BenchRuleUpdate, metric, err, nil) }()
 
-	var rule spec.BenchRule
-	if err = json.NewDecoder(r.Body).Decode(&rule); err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "decode body: " + err.Error()})
+	// RC8 #119: 与 create 同样的严格解码 + RawJSON 持久化。Update 等同于全量
+	// 覆盖，新的 RawJSON 会替换 store 内既有的副本。
+	rule, raw, derr := decodeBenchRuleStrict(r.Body)
+	if derr != nil {
+		err = derr
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: derr.Error()})
 		return
 	}
 	if rule.ID == "" {
@@ -139,12 +203,13 @@ func (m *Server) updateBenchRule(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if err = m.cluster.benchRuleStore.Update(&rule); err != nil {
+	rule.RawJSON = string(raw)
+	if err = m.cluster.benchRuleStore.Update(rule); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: benchRuleErrCode(err), Msg: err.Error()})
 		return
 	}
 	updated, _ := m.cluster.benchRuleStore.Get(rule.ID)
-	sendOkReply(w, r, newSuccessHTTPReply(updated))
+	sendOkReply(w, r, newSuccessHTTPReply(newBenchRuleView(updated)))
 }
 
 // deleteBenchRule handles POST /benchRule/delete?id=.
@@ -185,7 +250,8 @@ func benchRuleErrCode(err error) int32 {
 // but the taskID is still returned so the caller can observe the status.
 //
 // Optional JSON body:
-//   { "backendEndpoint": { <spec.EndpointConfig> } }
+//
+//	{ "backendEndpoint": { <spec.EndpointConfig> } }
 //
 // When present, backendEndpoint is injected into the rule's BackendEndpoint
 // field before dispatch. This is required for S3/SDK storage types where the

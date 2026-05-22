@@ -82,6 +82,23 @@ type BenchRule struct {
 	// CacheDrop.Enabled == false 时全链路 no-op。结构见同文件末尾的
 	// CacheDropSpec 定义；append-only。
 	CacheDrop *CacheDropSpec `json:"cache_drop,omitempty"`
+
+	// RC8 #119 — 原始 JSON 字节，仅在内存中流转，不参与 JSON marshal/unmarshal。
+	//
+	// master 的 POST /benchRule/create|update handler 在严格反序列化通过后，
+	// 把请求 body 的原始字节存到这里；BenchRuleStore 在 raft 持久化时与
+	// BenchRule 一起序列化进 rocksdb（见 master/bench_rule_store.go 的
+	// storedBenchRule 包装）；GET handler 通过 wrapper response 把 RawJSON
+	// 以 "rawJSON" 字段对外暴露，供 dashboard / debug 字节级对照。
+	//
+	// 使用 `json:"-"` 是关键：
+	//  1. POST body 里写 rawJSON 字段时被 DisallowUnknownFields 拒绝，避免
+	//     调用方伪造 RawJSON；
+	//  2. dispatch payload 透传 BenchRule 给 syncnode 时 RawJSON 不会被
+	//     重复打包；
+	//  3. 内部 syncPut 路径走单独的 storedBenchRule wrapper，不依赖该字段
+	//     的 JSON tag。
+	RawJSON string `json:"-"`
 }
 
 // BenchSLA encodes one pass/fail criterion checked against the aggregated
@@ -452,8 +469,8 @@ type WarmupSpec struct {
 
 // CacheDropSpec 控制 stage 之间是否清理客户端缓存。
 type CacheDropSpec struct {
-	Enabled          bool `json:"enabled,omitempty"`             // 默认 false，需要显式打开
-	BetweenStages    bool `json:"between_stages,omitempty"`      // stage 之间 drop（默认 true 当 Enabled）
-	BeforeFirstStage bool `json:"before_first_stage,omitempty"`  // 首个 stage 之前也 drop
-	DropLevel        int  `json:"drop_level,omitempty"`          // 1/2/3，默认 3
+	Enabled          bool `json:"enabled,omitempty"`            // 默认 false，需要显式打开
+	BetweenStages    bool `json:"between_stages,omitempty"`     // stage 之间 drop（默认 true 当 Enabled）
+	BeforeFirstStage bool `json:"before_first_stage,omitempty"` // 首个 stage 之前也 drop
+	DropLevel        int  `json:"drop_level,omitempty"`         // 1/2/3，默认 3
 }

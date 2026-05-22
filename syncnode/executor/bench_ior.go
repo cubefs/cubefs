@@ -105,7 +105,7 @@ func runBenchIORWithClient(ctx context.Context, rule *spec.BenchRule, taskID str
 		endpoint = defaultSidecarEndpoint
 	}
 
-	for _, stage := range rule.IORStages {
+	for stageIdx, stage := range rule.IORStages {
 		if ctx.Err() != nil {
 			result.Status = "failed"
 			result.Error = "context cancelled"
@@ -115,6 +115,15 @@ func runBenchIORWithClient(ctx context.Context, rule *spec.BenchRule, taskID str
 			result.Stages = append(result.Stages, spec.BenchStageResult{Name: stage.Name})
 			continue
 		}
+		// rc8 #120: rule 级 CacheDrop 在每个 stage 进入前触发。IORStage 上没有
+		// Warmup 字段（IOR / mdtest 自身已有 stonewalling / iterations 机制），
+		// 所以 IOR 路径只接 cache_drop，不接 warmup。MaybeDropCaches 内部按 spec
+		// 决定是否实际 drop。
+		dropWhere := "between"
+		if stageIdx == 0 {
+			dropWhere = "before_first"
+		}
+		MaybeDropCaches(ctx, taskID, rule.CacheDrop, dropWhere)
 		shardID := strconv.Itoa(shardIdx)
 		if err := waitForPeers(ctx, taskID, stage.Name, shardID, shardTotal, stage.Control); err != nil {
 			result.Status = "failed"

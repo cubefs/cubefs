@@ -139,3 +139,42 @@ func TestFIOStage_MixedOmitEmpty(t *testing.T) {
 	}
 }
 
+// TestBenchRule_RawJSON_HiddenFromMarshal: RC8 #119 — BenchRule.RawJSON 必须
+// 走 `json:"-"` 隐藏，否则 (a) dispatch payload 会把 RawJSON 再次嵌入；
+// (b) DisallowUnknownFields 反而允许调用方伪造 RawJSON 字段。两条都会让
+// "原始 body 持久化" 的语义崩塌。
+func TestBenchRule_RawJSON_HiddenFromMarshal(t *testing.T) {
+	r := BenchRule{ID: "r1", Name: "n", RawJSON: `{"id":"r1"}`}
+	enc, err := json.Marshal(r)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(enc), "rawJSON") || strings.Contains(string(enc), "raw_json") {
+		t.Errorf("BenchRule JSON must not expose RawJSON: %s", enc)
+	}
+	// 反序列化时同样不接受 rawJSON 字段（json:"-"）。常规解码丢弃未知字段，
+	// 严格解码（DisallowUnknownFields）拒绝该字段——这是 handler 层的契约，
+	// 这里只验证字段不被填回。
+	var back BenchRule
+	if err := json.Unmarshal([]byte(`{"id":"r1","rawJSON":"x"}`), &back); err != nil {
+		t.Fatalf("loose unmarshal: %v", err)
+	}
+	if back.RawJSON != "" {
+		t.Errorf("RawJSON must stay empty after JSON unmarshal, got %q", back.RawJSON)
+	}
+}
+
+// TestBenchRule_RawJSON_StrictDecodeRejectsField: 严格解码（master handler
+// 走的路径）必须拒绝 rawJSON 字段。否则任意调用方都能伪造持久化原文。
+func TestBenchRule_RawJSON_StrictDecodeRejectsField(t *testing.T) {
+	dec := json.NewDecoder(strings.NewReader(`{"id":"r1","rawJSON":"x"}`))
+	dec.DisallowUnknownFields()
+	var r BenchRule
+	err := dec.Decode(&r)
+	if err == nil {
+		t.Fatalf("strict decode must reject rawJSON field, got nil err and rule=%+v", r)
+	}
+	if !strings.Contains(err.Error(), "rawJSON") {
+		t.Errorf("error must name the offending field, got %v", err)
+	}
+}
