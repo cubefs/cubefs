@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cubefs/cubefs/syncnode/hist"
 	"github.com/cubefs/cubefs/syncnode/spec"
 )
 
@@ -52,13 +53,13 @@ func (s BenchTaskStatus) IsTerminal() bool {
 // BenchShardResult carries one shard's summary produced by a bench
 // executor. Populated when the node reports back; empty until then.
 type BenchShardResult struct {
-	ShardIdx int                      `json:"shardIdx"`
-	NodeAddr string                   `json:"nodeAddr"`
-	Output   string                   `json:"output,omitempty"`   // raw fio / s3bench JSON output
-	Error    string                   `json:"error,omitempty"`
-	Duration int64                    `json:"duration,omitempty"` // milliseconds
-	Status   string                   `json:"status,omitempty"`   // shard terminal status
-	Stages   []spec.BenchStageResult  `json:"stages,omitempty"`   // copied from the shard's BenchResult so the parent record carries per-shard per-stage metrics (throughput / IOPS / latency) for fan-out visualisation
+	ShardIdx int                     `json:"shardIdx"`
+	NodeAddr string                  `json:"nodeAddr"`
+	Output   string                  `json:"output,omitempty"` // raw fio / s3bench JSON output
+	Error    string                  `json:"error,omitempty"`
+	Duration int64                   `json:"duration,omitempty"` // milliseconds
+	Status   string                  `json:"status,omitempty"`   // shard terminal status
+	Stages   []spec.BenchStageResult `json:"stages,omitempty"`   // copied from the shard's BenchResult so the parent record carries per-shard per-stage metrics (throughput / IOPS / latency) for fan-out visualisation
 }
 
 // BenchTaskRecord is the master-side view of one bench task (or shard).
@@ -69,19 +70,33 @@ type BenchShardResult struct {
 // shard IDs use the "<parentID>/<idx>" format mirroring SyncFanout.
 // Parent status is derived from shards: failed > cancelled > succeeded.
 type BenchTaskRecord struct {
-	TaskID       string                 `json:"taskID"`
-	RuleID       string                 `json:"ruleID"`
-	Status       BenchTaskStatus        `json:"status"`
-	CreatedAt    int64                  `json:"createdAt"`
-	UpdatedAt    int64                  `json:"updatedAt"`
-	DoneAt       int64                  `json:"doneAt,omitempty"`
-	Error        string                 `json:"error,omitempty"`
-	BenchResult  *spec.BenchShardResult `json:"benchResult,omitempty"` // populated on terminal
+	TaskID      string                 `json:"taskID"`
+	RuleID      string                 `json:"ruleID"`
+	Status      BenchTaskStatus        `json:"status"`
+	CreatedAt   int64                  `json:"createdAt"`
+	UpdatedAt   int64                  `json:"updatedAt"`
+	DoneAt      int64                  `json:"doneAt,omitempty"`
+	Error       string                 `json:"error,omitempty"`
+	BenchResult *spec.BenchShardResult `json:"benchResult,omitempty"` // populated on terminal
 	// Fan-out fields (only set when Parallelism > 1)
-	ShardTotal   int                    `json:"shardTotal,omitempty"`  // parent: total shards
-	ShardsDone   int                    `json:"shardsDone,omitempty"`  // parent: shards completed
-	ParentTaskID string                 `json:"parentTaskID,omitempty"` // shard: parent ID
-	Shards       []BenchShardResult     `json:"shards,omitempty"`      // parent: shard summaries
+	ShardTotal   int                `json:"shardTotal,omitempty"`   // parent: total shards
+	ShardsDone   int                `json:"shardsDone,omitempty"`   // parent: shards completed
+	ParentTaskID string             `json:"parentTaskID,omitempty"` // shard: parent ID
+	Shards       []BenchShardResult `json:"shards,omitempty"`       // parent: shard summaries
+	// SLAResult is populated by the master after a task reaches a terminal
+	// state and the originating rule has SLA configured. Nil means "rule
+	// had no SLA" so dashboards can render a "no SLA" badge instead of
+	// forcing a pass/fail color. For fan-out tasks the field is only set
+	// on the parent record once all shards have rolled up.
+	SLAResult *spec.BenchSLAResult `json:"slaResult,omitempty"`
+	// AggregatedStages holds the parent-level merged stage results,
+	// computed from every shard's HDR snapshots (lossless percentile merge)
+	// + summed throughput/IOPS/ops/bytes/errors. Populated by
+	// CompleteShardAndAggregate once all shards have terminated. The
+	// per-shard Stages remain on Shards[*].Stages for fan-out visualisation;
+	// dashboards that want the single "what did the task achieve" view use
+	// AggregatedStages directly.
+	AggregatedStages []spec.BenchStageResult `json:"aggregatedStages,omitempty"`
 }
 
 // BenchTaskLedger is a bounded LRU store for BenchTaskRecords. Entries
@@ -245,6 +260,23 @@ func (l *BenchTaskLedger) Complete(taskID string, result spec.BenchShardResult) 
 	return true
 }
 
+// SetSLAResult stores the SLA evaluation outcome on a terminal record.
+// Returns true when the record exists and the field was written. A nil
+// result is allowed (and stored as nil) so callers can explicitly mark
+// "evaluation attempted but rule had no SLA configured" semantics if
+// desired; current callers only invoke SetSLAResult with non-nil values.
+func (l *BenchTaskLedger) SetSLAResult(taskID string, result *spec.BenchSLAResult) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	r, ok := l.tasks[taskID]
+	if !ok {
+		return false
+	}
+	r.SLAResult = result
+	r.UpdatedAt = time.Now().UnixMilli()
+	return true
+}
+
 // AddShards inserts a parent record and N shard records atomically. The
 // parent record must have ShardTotal == len(shardIDs) and Status==running.
 // Each shard record is seeded with the parent's RuleID and marked running.
@@ -360,7 +392,139 @@ func (l *BenchTaskLedger) CompleteShardAndAggregate(shardID string) (parentID st
 		parent.Status = BenchTaskStatusSucceeded
 	}
 	parent.Shards = shardSummaries
+	parent.AggregatedStages = mergeShardStages(shardSummaries)
 	parent.DoneAt = now
 	parent.UpdatedAt = now
 	return parentID, true
+}
+
+// mergeShardStages folds N shards' per-stage results into one summary per
+// stage name. Throughput / IOPS / ops / bytes / errors are summed; latency
+// percentiles come from a lossless HDR merge across every shard that
+// recorded HDR snapshots for that stage. Stages without HDR data (fio,
+// mdtest) get the simple-average latency across shards so dashboards still
+// have something to render.
+//
+// Stage ordering follows the first shard that contributes a given stage
+// name — preserves the original pipeline order in the result.
+func mergeShardStages(shards []BenchShardResult) []spec.BenchStageResult {
+	if len(shards) == 0 {
+		return nil
+	}
+	type agg struct {
+		stage           spec.BenchStageResult
+		hdrBlobsByOp    map[string][][]byte
+		latencySumP50   float64
+		latencySumP95   float64
+		latencySumP99   float64
+		latencySumP999  float64
+		latencySumP9999 float64
+		latencySumMax   float64
+		latencySumMean  float64
+		latencyCount    int
+		durationSum     float64
+		durationCount   int
+	}
+	order := make([]string, 0)
+	byName := make(map[string]*agg)
+	for _, sh := range shards {
+		for _, stg := range sh.Stages {
+			a, ok := byName[stg.Name]
+			if !ok {
+				a = &agg{
+					stage:        spec.BenchStageResult{Name: stg.Name},
+					hdrBlobsByOp: make(map[string][][]byte),
+				}
+				byName[stg.Name] = a
+				order = append(order, stg.Name)
+			}
+			a.stage.TotalOps += stg.TotalOps
+			a.stage.TotalBytes += stg.TotalBytes
+			a.stage.Errors += stg.Errors
+			a.stage.ThroughputMBs += stg.ThroughputMBs
+			a.stage.OpsPerSec += stg.OpsPerSec
+			a.durationSum += stg.DurationSec
+			a.durationCount++
+			// Latency fallback aggregation: only used when no HDR data is
+			// present for this stage at all. We collect sums unconditionally
+			// and decide which path to emit in the post-loop step.
+			if stg.Latency.P50 > 0 || stg.Latency.Mean > 0 {
+				a.latencySumP50 += stg.Latency.P50
+				a.latencySumP95 += stg.Latency.P95
+				a.latencySumP99 += stg.Latency.P99
+				a.latencySumP999 += stg.Latency.P999
+				a.latencySumP9999 += stg.Latency.P9999
+				a.latencySumMax += stg.Latency.Max
+				a.latencySumMean += stg.Latency.Mean
+				a.latencyCount++
+			}
+			for op, blob := range stg.HDRBuckets {
+				if len(blob) == 0 {
+					continue
+				}
+				a.hdrBlobsByOp[op] = append(a.hdrBlobsByOp[op], blob)
+			}
+		}
+	}
+
+	out := make([]spec.BenchStageResult, 0, len(order))
+	for _, name := range order {
+		a := byName[name]
+		stg := a.stage
+		// Duration: use the max across shards so the value still reads as
+		// "wall-clock the stage took". Summing would mislead users into
+		// thinking the cluster spent N×duration when shards ran in parallel.
+		// Approximation: average is closer than sum but worse than max;
+		// use shard average × shard count is unhelpful. Pick max for honesty.
+		var durMax float64
+		for _, sh := range shards {
+			for _, s := range sh.Stages {
+				if s.Name == name && s.DurationSec > durMax {
+					durMax = s.DurationSec
+				}
+			}
+		}
+		stg.DurationSec = durMax
+		if len(a.hdrBlobsByOp) > 0 {
+			stg.HDRBuckets = make(map[string][]byte) // do not republish; mark presence only if needed downstream
+			// Merge ALL ops into a single stage-wide histogram so the
+			// stage-level percentile is comparable across stages with
+			// different op mixes. Per-op percentiles remain visible via
+			// Prometheus.
+			allBlobs := make([][]byte, 0)
+			for op, blobs := range a.hdrBlobsByOp {
+				allBlobs = append(allBlobs, blobs...)
+				_ = op // op-keyed snapshots intentionally not persisted on parent
+			}
+			merged, _, mergeErr := hist.MergeSnapshots(allBlobs)
+			if mergeErr == nil && merged.TotalCount() > 0 {
+				stg.Latency = spec.BenchLatencyResult{
+					Mean:  merged.Mean(),
+					P50:   float64(merged.ValueAtPercentile(50)),
+					P95:   float64(merged.ValueAtPercentile(95)),
+					P99:   float64(merged.ValueAtPercentile(99)),
+					P999:  float64(merged.ValueAtPercentile(99.9)),
+					P9999: float64(merged.ValueAtPercentile(99.99)),
+					Max:   float64(merged.Max()),
+				}
+			}
+			// Drop the placeholder map — we don't republish op-keyed
+			// snapshots on the parent because the per-shard HDRBuckets are
+			// still available on Shards[*].Stages.
+			stg.HDRBuckets = nil
+		} else if a.latencyCount > 0 {
+			n := float64(a.latencyCount)
+			stg.Latency = spec.BenchLatencyResult{
+				Mean:  a.latencySumMean / n,
+				P50:   a.latencySumP50 / n,
+				P95:   a.latencySumP95 / n,
+				P99:   a.latencySumP99 / n,
+				P999:  a.latencySumP999 / n,
+				P9999: a.latencySumP9999 / n,
+				Max:   a.latencySumMax / n,
+			}
+		}
+		out = append(out, stg)
+	}
+	return out
 }

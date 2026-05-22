@@ -147,8 +147,25 @@ func (c *Cluster) handleSyncNodeTaskResponse(nodeAddr string, task *proto.AdminT
 			}
 			// For fan-out bench tasks, aggregate the shard into the parent.
 			// No-op when the task ID is not a known bench shard record.
-			if parentID, allDone := c.benchTaskLedger.CompleteShardAndAggregate(rep.TaskID); allDone {
+			parentID, allDone := c.benchTaskLedger.CompleteShardAndAggregate(rep.TaskID)
+			if allDone {
 				log.LogInfof("sn bench shard aggregate: parent %s fully done", parentID)
+			}
+			// SLA evaluation: run once the task reaches a terminal state.
+			// Two cases:
+			//   1. Single-shard task (parentID == "") — evaluate against
+			//      this shard's BenchResult.Stages.
+			//   2. Fan-out parent — only when allDone, aggregate every
+			//      shard's stages worst-case before evaluating.
+			// Tasks that never produced a BenchResult (executor crash,
+			// cancel) have no metrics to score, so we still record a
+			// failing SLAResult when the rule has SLA configured so the
+			// dashboard surfaces "SLA could not be evaluated" rather than
+			// hiding the field entirely.
+			if parentID == "" {
+				c.evaluateBenchSLAForSingle(rep.TaskID)
+			} else if allDone {
+				c.evaluateBenchSLAForParent(parentID)
 			}
 		}
 		// Fan-out: when the terminal report carries a shard sub-task ID

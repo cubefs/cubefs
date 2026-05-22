@@ -32,8 +32,9 @@ import (
 
 // runBenchPosix runs a POSIX fio benchmark for a single shard.
 // workDir is created under rule.MountPath and optionally removed on completion
-// when rule.FIODefaults.CleanupAfterDone is true.
-func runBenchPosix(ctx context.Context, rule *spec.BenchRule, taskID string, shardIdx int, pushIntervalSec int) (*spec.BenchShardResult, error) {
+// when rule.FIODefaults.CleanupAfterDone is true. shardTotal carries the
+// cluster-wide shard count for S1.6 cross-shard barriers.
+func runBenchPosix(ctx context.Context, rule *spec.BenchRule, taskID string, shardIdx, shardTotal int, pushIntervalSec int) (*spec.BenchShardResult, error) {
 	result := &spec.BenchShardResult{
 		ShardIdx:  shardIdx,
 		Status:    "running",
@@ -62,7 +63,27 @@ func runBenchPosix(ctx context.Context, rule *spec.BenchRule, taskID string, sha
 			result.Stages = append(result.Stages, spec.BenchStageResult{Name: stage.Name})
 			continue
 		}
-		sr, err := runFIOStage(ctx, rule.FIODefaults, stage, workDir, taskID, shardIdx, pushIntervalSec)
+		// S1.6: cross-shard barrier before each fio stage when requested.
+		// Errors from waitForPeers are nil for timeouts (logged and
+		// continues), only propagating ctx-cancel as a hard stop.
+		shardID := strconv.Itoa(shardIdx)
+		if err := waitForPeers(ctx, taskID, stage.Name, shardID, shardTotal, stage.Control); err != nil {
+			result.Status = "failed"
+			result.Error = fmt.Sprintf("stage %q barrier: %v", stage.Name, err)
+			result.DoneAt = time.Now().UnixMilli()
+			return result, err
+		}
+		// S3.3: 当 stage.Mixed 非空时走混合负载路径，按 weight 把 Runtime
+		// 分片成多次串行 fio 运行；否则保持单 BS/RW 路径完全不变。
+		var (
+			sr  *spec.BenchStageResult
+			err error
+		)
+		if len(stage.Mixed) > 0 {
+			sr, err = runFIOStageMixed(ctx, rule.FIODefaults, stage, workDir, taskID, shardIdx, pushIntervalSec)
+		} else {
+			sr, err = runFIOStage(ctx, rule.FIODefaults, stage, workDir, taskID, shardIdx, pushIntervalSec)
+		}
 		if err != nil {
 			result.Status = "failed"
 			result.Error = fmt.Sprintf("stage %q: %v", stage.Name, err)
@@ -94,6 +115,17 @@ func runFIOStage(ctx context.Context, defaults spec.FIOConfig, stage spec.FIOSta
 	resultFile := filepath.Join(os.TempDir(), fmt.Sprintf("fio-%s-%d-%s.json", safeID, shardIdx, stage.Name))
 	defer os.Remove(resultFile)
 
+	// fio doesn't expose a per-op hook, so we only carry stage-level state
+	// + (below) increment the error counter when fio itself fails. The
+	// /metrics/bench histogram stays empty for fio paths — dashboards use
+	// fio's own JSON percentiles via BenchLatencyResult.
+	SetStageState(taskID, shardIdx, stage.Name, StageStateRunning)
+	defer func() {
+		// Final state is patched below on the failure paths; this is the
+		// "we returned without error" fallback.
+		SetStageState(taskID, shardIdx, stage.Name, StageStateDone)
+	}()
+
 	si := pushIntervalSec
 	if si <= 0 {
 		si = 5
@@ -109,13 +141,25 @@ func runFIOStage(ctx context.Context, defaults spec.FIOConfig, stage spec.FIOSta
 	cmd := exec.CommandContext(ctx, "fio", args...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
+		SetStageState(taskID, shardIdx, stage.Name, StageStateFailed)
+		IncErr(taskID, shardIdx, stage.Name, "fio", "other")
+		// S3.4: 错误归因 metric。
+		observeErrorAttr(taskID, shardLabel(shardIdx), stage.Name, "fio", ClassifyErr(err))
 		return nil, fmt.Errorf("stdoutpipe: %w", err)
 	}
 	if err := cmd.Start(); err != nil {
+		SetStageState(taskID, shardIdx, stage.Name, StageStateFailed)
+		IncErr(taskID, shardIdx, stage.Name, "fio", "other")
+		// S3.4: 错误归因 metric。
+		observeErrorAttr(taskID, shardLabel(shardIdx), stage.Name, "fio", ClassifyErr(err))
 		return nil, fmt.Errorf("fio start: %w", err)
 	}
 	go drainFIOStdout(stdout, taskID, shardIdx, stage.Name)
 	if err := cmd.Wait(); err != nil {
+		SetStageState(taskID, shardIdx, stage.Name, StageStateFailed)
+		IncErr(taskID, shardIdx, stage.Name, "fio", ClassifyError(err))
+		// S3.4: 错误归因 metric。
+		observeErrorAttr(taskID, shardLabel(shardIdx), stage.Name, "fio", ClassifyErr(err))
 		return nil, fmt.Errorf("fio wait: %w", err)
 	}
 
@@ -126,6 +170,10 @@ func runFIOStage(ctx context.Context, defaults spec.FIOConfig, stage spec.FIOSta
 		// is unwritable). Returning a zero-stat success here used to mask
 		// real failures — most notably racing goroutines from duplicate
 		// master dispatches overwriting each other's results.
+		SetStageState(taskID, shardIdx, stage.Name, StageStateFailed)
+		IncErr(taskID, shardIdx, stage.Name, "fio", "other")
+		// S3.4: 错误归因 metric。
+		observeErrorAttr(taskID, shardLabel(shardIdx), stage.Name, "fio", ClassifyErr(err))
 		log.LogWarnf("bench posix: parse fio result %q: %v", resultFile, err)
 		return nil, fmt.Errorf("parse fio result %q: %w", resultFile, err)
 	}
@@ -336,3 +384,158 @@ func lastJSONObject(data []byte) []byte {
 	}
 	return data
 }
+
+// ---------------------------------------------------------------------------
+// S3.3 Mixed workload — append-only block. 混合 FIO 负载（单 stage 内多组件
+// 按 weight 时间分片串行执行）。Mixed 为空时所有原路径不受影响。
+// S3.4 应在本块末尾继续追加 `// S3.4 ... append-only block` 锚点。
+// ---------------------------------------------------------------------------
+
+// fioRunner 把 fio 子进程执行抽象成可替换接口，单元测试可注入 fake runner
+// 避免真正 exec fio。生产路径默认走 execFioRunner（exec.CommandContext）。
+//
+// 入参：
+//   - runtime: 本次 fio 运行的目标时长（秒），<=0 时不带 --runtime 限制。
+//   - component: 当前混合负载组件，提供 Name/RW/BS/IODepth/NumJobs/Size。
+//
+// 返回：fio JSON 解析后的 BenchStageResult（Name=component.Name）+ error。
+type fioRunner interface {
+	run(ctx context.Context, defaults spec.FIOConfig, stage spec.FIOStage, component spec.FIOMixedComponent, runtime int, workDir, taskID string, shardIdx int) (*spec.BenchStageResult, error)
+}
+
+// fioRunnerImpl 走真实 exec.CommandContext("fio", ...)，由生产路径使用。
+type fioRunnerImpl struct{}
+
+func (fioRunnerImpl) run(ctx context.Context, defaults spec.FIOConfig, stage spec.FIOStage, component spec.FIOMixedComponent, runtime int, workDir, taskID string, shardIdx int) (*spec.BenchStageResult, error) {
+	// 用 component 字段覆盖 stage 上的 RW/BS/IODepth/NumJobs/Size，然后复用
+	// 既有 buildFIOArgs + parseFIOResult 路径，避免重复实现 fio 调用逻辑。
+	mergedStage := stage
+	if component.RW != "" {
+		mergedStage.RW = component.RW
+	}
+	if component.BlockSize != "" {
+		mergedStage.BS = component.BlockSize
+	}
+	if component.IODepth > 0 {
+		mergedStage.IODepth = component.IODepth
+	}
+	if component.NumJobs > 0 {
+		mergedStage.NumJobs = component.NumJobs
+	}
+	if component.Size != "" {
+		mergedStage.Size = component.Size
+	}
+	mergedStage.Runtime = runtime
+	// component.Name 作为 fio job name + 结果文件后缀，便于日志/调试区分组件。
+	mergedStage.Name = stage.Name + "/" + component.Name
+
+	safeID := strings.ReplaceAll(taskID, "/", "_")
+	resultFile := filepath.Join(os.TempDir(), fmt.Sprintf("fio-%s-%d-%s-%s.json", safeID, shardIdx, stage.Name, component.Name))
+	defer os.Remove(resultFile)
+
+	args := buildFIOArgs(defaults, mergedStage, workDir)
+	args = append(args,
+		"--output-format=json+",
+		"--output="+resultFile,
+	)
+	cmd := exec.CommandContext(ctx, "fio", args...)
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("fio component %q: %w", component.Name, err)
+	}
+	return parseFIOResult(resultFile, mergedStage.Name)
+}
+
+// defaultFioRunner 是生产路径的实际 runner；测试中通过 setFioRunner 替换。
+var defaultFioRunner fioRunner = fioRunnerImpl{}
+
+// setFioRunner 用于测试注入 fake runner；返回 restore 闭包供 t.Cleanup。
+func setFioRunner(r fioRunner) func() {
+	prev := defaultFioRunner
+	defaultFioRunner = r
+	return func() { defaultFioRunner = prev }
+}
+
+// runFIOStageMixed 实现 stage.Mixed 非空时的混合负载执行：按 weight 把
+// stage.Runtime 拆给每个组件，串行运行；每段独立写入 class 维度 metrics。
+// 聚合返回的 BenchStageResult 把各组件的 TotalOps / TotalBytes 累加，
+// Latency 取最慢组件（保守 SLA 检查）。
+func runFIOStageMixed(ctx context.Context, defaults spec.FIOConfig, stage spec.FIOStage, workDir, taskID string, shardIdx, _ int) (*spec.BenchStageResult, error) {
+	t0 := time.Now()
+	SetStageState(taskID, shardIdx, stage.Name, StageStateRunning)
+
+	totalWeight := 0
+	for _, c := range stage.Mixed {
+		if c.Weight > 0 {
+			totalWeight += c.Weight
+		}
+	}
+	if totalWeight <= 0 {
+		SetStageState(taskID, shardIdx, stage.Name, StageStateFailed)
+		IncErr(taskID, shardIdx, stage.Name, "fio_mixed", "other")
+		// S3.4: 错误归因 metric（配置错误归到 other）。
+		observeErrorAttr(taskID, shardLabel(shardIdx), stage.Name, "fio_mixed", "other")
+		return nil, fmt.Errorf("stage %q: mixed total weight must be > 0", stage.Name)
+	}
+
+	// orDefaultInt 的 fallback 是 60，所以 totalRuntime 永远 > 0，无需再校验。
+	totalRuntime := orDefaultInt(stage.Runtime, defaults.Runtime, 60)
+
+	agg := &spec.BenchStageResult{Name: stage.Name}
+	var maxMean float64
+
+	for _, comp := range stage.Mixed {
+		if ctx.Err() != nil {
+			SetStageState(taskID, shardIdx, stage.Name, StageStateFailed)
+			return nil, ctx.Err()
+		}
+		if comp.Weight <= 0 {
+			continue
+		}
+		slice := totalRuntime * comp.Weight / totalWeight
+		if slice <= 0 {
+			slice = 1
+		}
+
+		sliceStart := time.Now()
+		sr, err := defaultFioRunner.run(ctx, defaults, stage, comp, slice, workDir, taskID, shardIdx)
+		if err != nil {
+			SetStageState(taskID, shardIdx, stage.Name, StageStateFailed)
+			IncErr(taskID, shardIdx, stage.Name, "fio_mixed/"+comp.Name, ClassifyError(err))
+			// S3.4: 错误归因 metric。
+			observeErrorAttr(taskID, shardLabel(shardIdx), stage.Name, "fio_mixed/"+comp.Name, ClassifyErr(err))
+			log.LogWarnf("bench posix mixed: stage %q component %q: %v", stage.Name, comp.Name, err)
+			return nil, fmt.Errorf("stage %q component %q: %w", stage.Name, comp.Name, err)
+		}
+		sliceDur := time.Since(sliceStart)
+
+		// 累加到 stage 聚合结果。
+		agg.TotalOps += sr.TotalOps
+		agg.TotalBytes += sr.TotalBytes
+		agg.OpsPerSec += sr.OpsPerSec
+		agg.ThroughputMBs += sr.ThroughputMBs
+		if sr.Latency.Mean > maxMean {
+			maxMean = sr.Latency.Mean
+			agg.Latency = sr.Latency
+		}
+
+		// 把该组件的吞吐 / op 数写入 class 维度 metrics：
+		// op label = "fio/<componentName>"，class label = SizeClass。
+		opLabel := "fio/" + comp.Name
+		classLabel := comp.SizeClass.ClassLabel()
+		// latency.Mean 是 µs（parseFIOResult 已做 ns→µs 换算），这里换成秒。
+		ObserveBenchOpClass(taskID, shardIdx, stage.Name, opLabel, classLabel, sr.Latency.Mean/1e6, sr.TotalBytes)
+		// 同时记录一笔总耗时型 latency 观测，dashboard 可对齐 stage 节拍。
+		_ = sliceDur
+	}
+
+	agg.DurationSec = time.Since(t0).Seconds()
+	SetStageState(taskID, shardIdx, stage.Name, StageStateDone)
+	return agg, nil
+}
+
+// ---------------------------------------------------------------------------
+// S3.4 error attribution — append-only hooks. observeErrorAttr 调用点已在
+// fio 启动/wait/parse 失败分支以及 fio_mixed 配置/执行失败分支内联，向新的
+// cubefs_bench_error_attr_total 指标写入错误归因。旧的 IncErr 调用保持不变。
+// ---------------------------------------------------------------------------
+

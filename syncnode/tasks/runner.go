@@ -975,6 +975,17 @@ func buildTask(rule *rules.Rule, src, dst backend.Backend, taskID string) *execu
 		// and validateTask rejects Confirm=true + DryRun=false on those.
 		DryRun:  cfg.DryRun,
 		Confirm: cfg.Confirm,
+		// POSIX metadata preservation (P2-1): forwarded untouched so
+		// syncOneFile asks the source backend (via backend.Stater) for the
+		// requested attributes and threads them through PutOptions. Each
+		// backend declares native capability via backend.Caps; when the dst
+		// can't honour the request the executor routes the failure through
+		// OnMetadataUnsupported. Mtime is preserved unconditionally when
+		// the source exposes it — predates these knobs.
+		PreserveMode:          cfg.PreserveMode,
+		PreserveOwner:         cfg.PreserveOwner,
+		PreserveXattr:         cfg.PreserveXattr,
+		OnMetadataUnsupported: cfg.OnMetadataUnsupported,
 	}
 }
 

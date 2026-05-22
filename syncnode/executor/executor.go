@@ -240,6 +240,33 @@ type Task struct {
 	// with errors text "dry-run confirmation required: set DryRun=true to
 	// preview first". Confirm has no effect on non-destructive task types.
 	Confirm bool
+
+	// PreserveMode / PreserveOwner / PreserveXattr mirror the same-named
+	// fields on proto.SyncRuleConfig — when set, syncOneFile asks the source
+	// backend (via the optional backend.Stater interface) for those POSIX
+	// attributes and threads them through PutOptions so the destination
+	// backend can persist them natively (cfs/local) or in user-metadata
+	// (s3 object-store). Backends that cannot honour the request raise
+	// backend.ErrBackendUnsupported / backend.ErrMetadataTooLarge, which
+	// the executor routes through OnMetadataUnsupported.
+	//
+	// Mtime is always preserved when the source backend exposes it
+	// (legacy behaviour pre-dates this struct), so it has no dedicated
+	// toggle here.
+	PreserveMode  bool
+	PreserveOwner bool
+	PreserveXattr bool
+
+	// OnMetadataUnsupported mirrors proto.SyncRuleConfig.OnMetadataUnsupported.
+	// Selects per-file behaviour when the destination backend cannot persist
+	// the metadata requested by Preserve{Mode,Owner,Xattr}:
+	//   "" / "warn" → log + counter, finish the transfer without that field
+	//   "skip"      → FilesSkipped++ for this file, dst unchanged
+	//   "error"     → propagate the backend error and fail the file
+	//
+	// validateTask normalises "" → "warn" so syncOneFile dispatches on a
+	// closed enum. Has no effect unless at least one Preserve* is true.
+	OnMetadataUnsupported string
 }
 
 // Result reports the terminal outcome of a Task run.
@@ -401,6 +428,12 @@ type options struct {
 	// the construction site can use the existing Option pattern; copied
 	// onto the Executor in New().
 	inprogress InProgressStore
+
+	// S3.2: soakStore is the optional Soak checkpoint store consumed by
+	// WrapSoakIfEnabled. nil disables the Soak code path entirely — rules
+	// requesting Soak with no store wired surface a clear error rather
+	// than silently degrade to single-shot.
+	soakStore SoakStore
 }
 
 // Option configures a new Executor.
@@ -738,6 +771,25 @@ var validOnSymlink = map[string]bool{
 	OnSymlinkError:  true,
 }
 
+// OnMetadataUnsupported strategy values consumed by syncOneFile when the
+// destination backend cannot honour a Preserve{Mode,Owner,Xattr} request.
+// Mirrored from proto.SyncRuleConfig.OnMetadataUnsupported.
+const (
+	OnMetadataUnsupportedWarn  = "warn"
+	OnMetadataUnsupportedSkip  = "skip"
+	OnMetadataUnsupportedError = "error"
+)
+
+// validOnMetadataUnsupported is the executor-side whitelist used by
+// validateTask. Empty string is the back-compat alias for "warn" and is
+// normalised in validateTask so syncOneFile dispatches on a closed enum.
+var validOnMetadataUnsupported = map[string]bool{
+	"":                         true,
+	OnMetadataUnsupportedWarn:  true,
+	OnMetadataUnsupportedSkip:  true,
+	OnMetadataUnsupportedError: true,
+}
+
 // validateTask catches obvious misconfigurations before doing real work.
 func validateTask(t *Task) error {
 	if t == nil {
@@ -760,6 +812,9 @@ func validateTask(t *Task) error {
 	}
 	if !validOnSymlink[t.OnSymlink] {
 		return fmt.Errorf("invalid task.OnSymlink: %q", t.OnSymlink)
+	}
+	if !validOnMetadataUnsupported[t.OnMetadataUnsupported] {
+		return fmt.Errorf("invalid task.OnMetadataUnsupported: %q", t.OnMetadataUnsupported)
 	}
 	// TaskTypeMove 的语义就是"sync + verify_then_delete_src + strong"。
 	// 用户若另设这两个字段，要么留空（默认）、要么显式与 move 锁定值一致；
@@ -803,6 +858,9 @@ func validateTask(t *Task) error {
 	// post-validation invariants).
 	if t.OnExisting == "" {
 		t.OnExisting = OnExistingVerifyThenSkip
+	}
+	if t.OnMetadataUnsupported == "" {
+		t.OnMetadataUnsupported = OnMetadataUnsupportedWarn
 	}
 	// P0 防呆: 把"老用户没读 release note 就升级"导致的静默回退堵住——必须显式选
 	// strong 才能开 verify_then_delete_src，否则核心搬运语义会退化到只 size 比对。
@@ -888,16 +946,25 @@ func (e *Executor) runBench(ctx context.Context, t *Task) (*spec.BenchShardResul
 	rule := t.BenchRule
 	pushIntervalSec := 5 // default; could be wired from config in future
 
+	// shardTotal is plumbed to every bench path so S1.6's cross-shard
+	// barrier knows how many peers to wait for. Falls back to 1 when
+	// the dispatch payload didn't carry a value (single-node task).
+	shardTotal := t.ShardTotal
+	if shardTotal <= 0 {
+		shardTotal = 1
+	}
 	switch rule.StorageType {
 	case spec.BenchStoragePosix:
-		return runBenchPosix(ctx, rule, t.ID, t.ShardIndex, pushIntervalSec)
+		return runBenchPosix(ctx, rule, t.ID, t.ShardIndex, shardTotal, pushIntervalSec)
 	case spec.BenchStorageS3, spec.BenchStorageSDK:
 		if t.benchBackend == nil {
 			return nil, fmt.Errorf("bench task for storage type %q has nil backend", rule.StorageType)
 		}
-		return runBenchS3(ctx, rule, t.ID, t.ShardIndex, t.benchBackend, pushIntervalSec)
+		return runBenchS3(ctx, rule, t.ID, t.ShardIndex, shardTotal, t.benchBackend, pushIntervalSec)
 	case spec.BenchStorageMdtest:
-		return runBenchMdtest(ctx, rule, t.ID, t.ShardIndex, pushIntervalSec)
+		return runBenchMdtest(ctx, rule, t.ID, t.ShardIndex, shardTotal, pushIntervalSec)
+	case spec.BenchStorageIOR:
+		return runBenchIOR(ctx, rule, t.ID, t.ShardIndex, shardTotal, pushIntervalSec)
 	default:
 		return nil, fmt.Errorf("unknown bench storage type: %q", rule.StorageType)
 	}
@@ -948,4 +1015,73 @@ func (e *Executor) buildTransferLimiter(t *Task) ratelimit.Limiter {
 		return nil
 	}
 	return ratelimit.NewComposite(layers...)
+}
+
+// ---------------------------------------------------------------------------
+// S3.2 Soak — append-only helpers. New functions / types MUST go below this
+// anchor; do not insert above (avoids merge conflicts with S3.3 / S3.4 which
+// also append at file tail). See docs/plan or 任务卡片 S3.2.
+// ---------------------------------------------------------------------------
+
+// soakStoreForExecutor exposes the executor's (optional) SoakStore. The
+// SoakStore is wired by the syncnode server at startup via WithSoakStore.
+// Returns nil when soak is not configured — callers must treat that as
+// "soak disabled" rather than panicking.
+func (e *Executor) soakStoreForExecutor() SoakStore {
+	if e == nil {
+		return nil
+	}
+	return e.opts.soakStore
+}
+
+// WrapSoakIfEnabled is the executor-facing entry point that decides whether
+// to wrap a bench stage callback with Soak long-running semantics. Per the
+// S3.2 contract:
+//
+//   - rule.Soak.DurationSec == 0 → returns stage unchanged (legacy behaviour
+//     is 100% preserved, no Soak machinery touched).
+//   - rule.Soak.DurationSec  > 0 → wraps stage with RunSoakLoop, threading
+//     task / stage / shard identifiers and the SoakStore through opts.
+//
+// The wrapper deliberately ignores the inbound restartCount argument; once
+// Soak is engaged, the Soak runner manages its own restart counter and
+// passes the live value into the stage via SoakResumeFromContext.
+//
+// When Soak is requested but no SoakStore is wired (server startup gap or
+// misconfigured tests), the wrapper returns a callback that errors loudly
+// on first invocation rather than silently falling back to single-shot.
+// This matches the "fail loudly when soak requested but cannot be honored"
+// principle of the surrounding bench platform.
+func (e *Executor) WrapSoakIfEnabled(
+	rule *spec.BenchRule,
+	taskID, stage string,
+	shardID int,
+	cb func(ctx context.Context, restartCount int) error,
+) func(ctx context.Context, restartCount int) error {
+	if rule == nil || !rule.Soak.Enabled() {
+		return cb
+	}
+	store := e.soakStoreForExecutor()
+	if store == nil {
+		return func(ctx context.Context, _ int) error {
+			return errors.New("soak: rule.Soak.DurationSec > 0 but executor has no SoakStore configured")
+		}
+	}
+	opts := SoakLoopOptions{
+		Control: rule.Soak,
+		Store:   store,
+		TaskID:  taskID,
+		Stage:   stage,
+		ShardID: shardID,
+	}
+	return wrapSoakIfEnabled(opts, cb)
+}
+
+// WithSoakStore wires the Soak checkpoint store consumed by WrapSoakIfEnabled.
+// Pass nil (or omit) to leave Soak disabled; rules with Soak.DurationSec > 0
+// will then surface the "no SoakStore configured" error described above.
+func WithSoakStore(s SoakStore) Option {
+	return func(o *options) {
+		o.soakStore = s
+	}
 }

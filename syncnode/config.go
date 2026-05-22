@@ -54,6 +54,12 @@ type SyncConfig struct {
 	// feature (P0). Pushgateway settings are optional; zero values are
 	// replaced by applyDefaults.
 	Bench BenchGlobalConfig `json:"bench"`
+	// ConsulAddr is the Consul HTTP API address used for S1.6 bench
+	// stage barriers (cross-shard rendezvous). Accepted forms:
+	// "host:port", "http://host:port", "https://host:port". Empty
+	// disables Consul; the bench executor falls back to an in-process
+	// MemBarrier (single-shard semantics only).
+	ConsulAddr string `json:"consulAddr"`
 }
 
 type S3DefaultsConfig struct {

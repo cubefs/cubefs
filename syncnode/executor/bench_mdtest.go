@@ -40,7 +40,7 @@ import (
 // mdtest emits per-operation rate lines (Directory creation / stat / removal,
 // File creation / stat / read / removal, Tree creation / removal) that we
 // parse and project into BenchStageResult{OpsPerSec, TotalOps, DurationSec}.
-func runBenchMdtest(ctx context.Context, rule *spec.BenchRule, taskID string, shardIdx int, pushIntervalSec int) (*spec.BenchShardResult, error) {
+func runBenchMdtest(ctx context.Context, rule *spec.BenchRule, taskID string, shardIdx, shardTotal int, pushIntervalSec int) (*spec.BenchShardResult, error) {
 	result := &spec.BenchShardResult{
 		ShardIdx:  shardIdx,
 		Status:    "running",
@@ -77,13 +77,28 @@ func runBenchMdtest(ctx context.Context, rule *spec.BenchRule, taskID string, sh
 			result.Stages = append(result.Stages, spec.BenchStageResult{Name: stage.Name})
 			continue
 		}
+		// S1.6: cross-shard barrier before mpirun starts; logged + skipped
+		// on timeout, hard-failed only when ctx is cancelled.
+		shardID := strconv.Itoa(shardIdx)
+		if err := waitForPeers(ctx, taskID, stage.Name, shardID, shardTotal, stage.Control); err != nil {
+			result.Status = "failed"
+			result.Error = fmt.Sprintf("stage %q barrier: %v", stage.Name, err)
+			result.DoneAt = time.Now().UnixMilli()
+			return result, err
+		}
+		SetStageState(taskID, shardIdx, stage.Name, StageStateRunning)
 		stageResults, err := runMdtestStage(ctx, defaults, stage, workDir, taskID, shardIdx)
 		if err != nil {
+			SetStageState(taskID, shardIdx, stage.Name, StageStateFailed)
+			IncErr(taskID, shardIdx, stage.Name, "mdtest", ClassifyError(err))
+			// S3.4: 错误归因 metric。
+			observeErrorAttr(taskID, shardLabel(shardIdx), stage.Name, "mdtest", ClassifyErr(err))
 			result.Status = "failed"
 			result.Error = fmt.Sprintf("stage %q: %v", stage.Name, err)
 			result.DoneAt = time.Now().UnixMilli()
 			return result, err
 		}
+		SetStageState(taskID, shardIdx, stage.Name, StageStateDone)
 		result.Stages = append(result.Stages, stageResults...)
 	}
 
@@ -292,3 +307,10 @@ func orInt(over, def, fallback int) int {
 	}
 	return fallback
 }
+
+// ---------------------------------------------------------------------------
+// S3.4 error attribution — append-only hooks. observeErrorAttr 调用点已在
+// mdtest stage 执行失败分支内联，向新的 cubefs_bench_error_attr_total 指标
+// 写入错误归因。旧的 IncErr 调用保持不变。
+// ---------------------------------------------------------------------------
+

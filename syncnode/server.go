@@ -34,6 +34,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/syncnode/api"
 	"github.com/cubefs/cubefs/syncnode/backend"
+	"github.com/cubefs/cubefs/syncnode/barrier"
 	"github.com/cubefs/cubefs/syncnode/bolt"
 	"github.com/cubefs/cubefs/syncnode/executor"
 	"github.com/cubefs/cubefs/syncnode/ratelimit"
@@ -43,6 +44,7 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/gorilla/mux"
 )
 
@@ -170,6 +172,21 @@ func doStart(srv common.Server, cfg *config.Config) (err error) {
 	initMetrics()
 	startMetricsLoop(s.stopC)
 
+	// Expose the bench metrics on a SEPARATE path (/metrics/bench) over the
+	// same listener that cmd/cmd.go's exporter.Init has already opened. The
+	// exporter does `http.Serve(l, nil)` against DefaultServeMux, so any
+	// http.Handle call here lands on the same socket the scraper hits.
+	// Independent registry keeps high-cardinality task_id/shard/stage/op
+	// series out of the node-level /metrics endpoint.
+	http.Handle("/metrics/bench", promhttp.HandlerFor(executor.BenchRegistry(), promhttp.HandlerOpts{}))
+
+	// Sprint 3 / S3.1: launch the client-side resource sampler (CPU, RSS,
+	// host NIC bytes, host disk bytes, fd count, goroutines) on the same
+	// isolated registry. Pairs the syncnode bench worker's own resource
+	// footprint with the bench op metrics so dashboards can attribute
+	// throughput stalls to client-side saturation.
+	executor.StartClientMetricsSampler(s.stopC)
+
 	// Register with Consul once master returns our clusterID. cmd/cmd.go calls
 	// exporter.Init (which mounts /metrics + creates the prom HTTP server) but
 	// NOT RegistConsul — every other role (master/datanode/lcnode/flashnode/
@@ -189,6 +206,11 @@ func doStart(srv common.Server, cfg *config.Config) (err error) {
 	if err = s.initExecutorAndRunner(); err != nil {
 		return fmt.Errorf("init executor: %w", err)
 	}
+	// S1.6: install the cross-shard bench barrier. ConsulAddr empty or
+	// unreachable degrades to a process-local MemBarrier so the
+	// executor never has to nil-check. Boot must succeed even if
+	// Consul is temporarily down.
+	s.initBenchBarrier()
 	if err = s.bootstrapRulesFromConfig(); err != nil {
 		return fmt.Errorf("bootstrap rules: %w", err)
 	}
@@ -588,6 +610,32 @@ func (s *SyncNode) initExecutorAndRunner() error {
 	s.runner = tasks.NewRunner(s.executor, s.taskStore, s.ruleStore, builder, runnerOpts...)
 	// P2-6: task HTTP handlers removed; master owns the task API.
 	return nil
+}
+
+// initBenchBarrier wires the cross-shard bench barrier into the
+// executor (S1.6). When ConsulAddr is set we build a Consul-backed
+// barrier; otherwise — or when the Consul client cannot be constructed
+// at all (DNS / config error) — we fall back to a process-local
+// MemBarrier so the executor never has to nil-check.
+//
+// We do NOT block startup if Consul is unreachable: NewConsulBarrier
+// logs a warning but returns a usable client whose first Ready() call
+// surfaces the error per-stage. The boot path stays cheap.
+func (s *SyncNode) initBenchBarrier() {
+	addr := s.cfg.ConsulAddr
+	if addr == "" {
+		log.LogInfof("bench barrier: consulAddr empty, using in-process MemBarrier fallback")
+		executor.SetBarrier(barrier.NewMemBarrier(1))
+		return
+	}
+	b, err := barrier.NewConsulBarrier(addr)
+	if err != nil {
+		log.LogWarnf("bench barrier: consul client init failed (addr=%q): %v — falling back to MemBarrier", addr, err)
+		executor.SetBarrier(barrier.NewMemBarrier(1))
+		return
+	}
+	executor.SetBarrier(b)
+	log.LogInfof("bench barrier: consul-backed barrier installed (addr=%q)", addr)
 }
 
 // onTaskTerminal pushes a task lifecycle update to master via the
