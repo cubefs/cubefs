@@ -71,17 +71,33 @@ const checksumCacheCap = 1000
 // FadviseSequential) are surfaced on PutOptions / GetOptions at call time,
 // not on the Backend itself, so a single Backend can be shared across rules
 // that point at the same Config.
+//
+// OnSymlink selects the rule's symlink policy (mirror of
+// proto.SyncRuleConfig.OnSymlink). One of: "" / "skip" / "follow" / "error".
+// "" is the back-compat alias for "skip"; New normalises it.
 type Config struct {
 	AllowedRoots         []string
 	DefaultBufferSizeKiB int
 	MaxDirDepth          int
+	OnSymlink            string
 }
+
+// Symlink-policy constants. Mirrored from proto.SyncRuleConfig.OnSymlink /
+// syncnode.validOnSymlink. Kept here so the backend doesn't import upward.
+const (
+	OnSymlinkSkip   = "skip"   // default; silently skip symlinks during List
+	OnSymlinkFollow = "follow" // deref via os.Stat; final path must stay under AllowedRoots
+	OnSymlinkError  = "error"  // emit backend.Entry{Err: ...} for each symlink
+)
 
 // Backend is the local-POSIX implementation of backend.Backend.
 type Backend struct {
 	allowedRoots []string // absolute, cleaned, with trailing separator stripped
 	bufferSize   int      // bytes
 	maxDirDepth  int
+	// onSymlink is one of OnSymlinkSkip / OnSymlinkFollow / OnSymlinkError.
+	// Empty config values are normalised to OnSymlinkSkip in New().
+	onSymlink string
 
 	// cache stores recently-computed sha256 checksums keyed by the absolute
 	// resolved path. Entry validity is gated on (mtimeNs, size); on miss we
@@ -137,10 +153,26 @@ func New(cfgI interface{}) (backend.Backend, error) {
 		bufSize = defaultBufferSize
 	}
 
+	// Normalise the symlink policy: "" is the back-compat alias for
+	// "skip" (the legacy hard-coded behaviour). Unknown values are
+	// rejected here as a third defence line (config-load + executor's
+	// validateTask catch them earlier, but a direct caller using
+	// local.New could otherwise slip a typo through).
+	onSym := cfg.OnSymlink
+	switch onSym {
+	case "":
+		onSym = OnSymlinkSkip
+	case OnSymlinkSkip, OnSymlinkFollow, OnSymlinkError:
+		// ok
+	default:
+		return nil, fmt.Errorf("%w: local.Config.OnSymlink must be skip/follow/error, got %q", backend.ErrConfigInvalid, cfg.OnSymlink)
+	}
+
 	return &Backend{
 		allowedRoots: roots,
 		bufferSize:   bufSize,
 		maxDirDepth:  cfg.MaxDirDepth,
+		onSymlink:    onSym,
 		cache:        make(map[string]checksumEntry, 64),
 	}, nil
 }
@@ -159,7 +191,43 @@ func (b *Backend) Capabilities() backend.Caps {
 		// POSIX has no native checksum: GetChecksum streams the file. The
 		// in-memory cache helps for repeat lookups but is not server-side.
 		NativeChecksum: false,
+		// POSIX honors PutOptions.Mtime via os.Chtimes after the rename.
+		NativeMtimeWrite: true,
+		// No server-side copy fast path today. A local-to-local same-instance
+		// move could exploit os.Link / copy_file_range, but that's a separate
+		// optimization tracked outside the rclone-gap roadmap and isn't
+		// required for the cross-backend correctness story.
+		ServerSideCopy: false,
 	}
+}
+
+// SameInstance reports whether other is another local backend rooted at
+// the exact same AllowedRoots list. Equality is positional — two backends
+// configured with [/a, /b] and [/b, /a] are treated as distinct so we
+// don't surprise an operator who reordered roots on purpose.
+func (b *Backend) SameInstance(other backend.Backend) bool {
+	o, ok := other.(*Backend)
+	if !ok || o == nil {
+		return false
+	}
+	if len(b.allowedRoots) != len(o.allowedRoots) {
+		return false
+	}
+	for i, r := range b.allowedRoots {
+		if r != o.allowedRoots[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// ServerSideCopy is declared so local.Backend satisfies the
+// ServerSideCopier interface for symmetry with s3.Backend. Local doesn't
+// expose a server-side path today, so it returns ErrBackendUnsupported —
+// the executor short-circuits on Caps.ServerSideCopy long before reaching
+// here.
+func (b *Backend) ServerSideCopy(_ context.Context, _, _ string, _ backend.PutOptions) (backend.PutResult, error) {
+	return backend.PutResult{}, backend.ErrBackendUnsupported
 }
 
 // Close implements backend.Backend. Local backend has no resources to free.
@@ -396,6 +464,20 @@ func (b *Backend) Put(ctx context.Context, key string, body io.Reader, size int6
 		return backend.PutResult{}, fmt.Errorf("rename %q -> %q: %w", tmpName, path, err)
 	}
 
+	// Preserve source mtime if requested. atime is set to now to avoid
+	// stamping the access time of the just-written file with a stale value;
+	// callers that need atime preserved would need a separate option. A
+	// Chtimes failure is propagated because the caller explicitly asked for
+	// the mtime to be honored and a silent fallthrough would be worse than a
+	// clear error (and would break checksum/idempotency comparisons that key
+	// off mtime).
+	if opts.Mtime != nil {
+		now := time.Now()
+		if err := os.Chtimes(path, now, *opts.Mtime); err != nil {
+			return backend.PutResult{}, fmt.Errorf("chtimes %q: %w", path, err)
+		}
+	}
+
 	res := backend.PutResult{BytesPut: written}
 	if sumFn != nil {
 		res.Checksum = sumFn()
@@ -572,12 +654,73 @@ func (b *Backend) walkShallow(ctx context.Context, base, prefix string, ch chan<
 			return
 		default:
 		}
+		absPath := filepath.Join(base, de.Name())
+		key := joinKey(prefix, de.Name())
+
+		// Symlink handling. de.Type() reflects os.Lstat semantics so it
+		// identifies the link itself, not its target.
+		if de.Type()&os.ModeSymlink != 0 {
+			switch b.onSymlink {
+			case OnSymlinkSkip:
+				continue
+			case OnSymlinkError:
+				emit(ctx, ch, backend.Entry{
+					Key: key,
+					Err: fmt.Errorf("symlink %q encountered with onSymlink=error policy", absPath),
+				})
+				continue
+			case OnSymlinkFollow:
+				// Deref to the target via os.Stat. Reject if the target
+				// resolves outside AllowedRoots — we never let List leak
+				// out-of-roots data.
+				resolved, terr := filepath.EvalSymlinks(absPath)
+				if terr != nil {
+					emit(ctx, ch, backend.Entry{
+						Key: key,
+						Err: fmt.Errorf("follow symlink %q: %w", absPath, terr),
+					})
+					continue
+				}
+				if !b.underAllowedRoot(filepath.Clean(resolved)) {
+					emit(ctx, ch, backend.Entry{
+						Key: key,
+						Err: fmt.Errorf("%w: symlink %q resolves to %q outside allowedRoots", backend.ErrConfigInvalid, absPath, resolved),
+					})
+					continue
+				}
+				info, terr := os.Stat(absPath) // deref
+				if terr != nil {
+					emit(ctx, ch, backend.Entry{
+						Key: key,
+						Err: fmt.Errorf("stat-deref %q: %w", absPath, terr),
+					})
+					continue
+				}
+				entry := backend.Entry{
+					Key:   key,
+					Size:  info.Size(),
+					Mtime: info.ModTime(),
+					IsDir: info.IsDir(),
+				}
+				if info.IsDir() {
+					entry.Size = 0
+				} else {
+					if etag, merr := fileMD5(resolved); merr == nil {
+						entry.ETag = etag
+					}
+				}
+				if !emit(ctx, ch, entry) {
+					return
+				}
+				continue
+			}
+		}
+
 		info, err := de.Info()
 		if err != nil {
 			emit(ctx, ch, backend.Entry{Err: fmt.Errorf("stat %q: %w", de.Name(), err)})
 			continue
 		}
-		key := joinKey(prefix, de.Name())
 		entry := backend.Entry{
 			Key:   key,
 			Size:  info.Size(),
@@ -587,7 +730,6 @@ func (b *Backend) walkShallow(ctx context.Context, base, prefix string, ch chan<
 		if de.IsDir() {
 			entry.Size = 0
 		} else {
-			absPath := filepath.Join(base, de.Name())
 			if etag, merr := fileMD5(absPath); merr == nil {
 				entry.ETag = etag
 			}
@@ -610,14 +752,36 @@ func (b *Backend) walkRecursive(ctx context.Context, base, prefix string, ch cha
 			return ctx.Err()
 		default:
 		}
-		// Skip symlinks (don't follow). For regular files / dirs continue.
-		if d.Type()&os.ModeSymlink != 0 {
-			return nil
-		}
-		// Skip the base directory itself.
+		// Skip the base directory itself (no policy applies to it).
 		if p == base {
 			return nil
 		}
+
+		// Symlink handling per b.onSymlink. d.Type() honours Lstat semantics.
+		if d.Type()&os.ModeSymlink != 0 {
+			rel, relErr := filepath.Rel(base, p)
+			if relErr != nil {
+				emit(ctx, ch, backend.Entry{Err: fmt.Errorf("relpath %q: %w", p, relErr)})
+				return nil
+			}
+			key := joinKey(prefix, filepath.ToSlash(rel))
+			switch b.onSymlink {
+			case OnSymlinkSkip:
+				return nil
+			case OnSymlinkError:
+				emit(ctx, ch, backend.Entry{
+					Key: key,
+					Err: fmt.Errorf("symlink %q encountered with onSymlink=error policy", p),
+				})
+				return nil
+			case OnSymlinkFollow:
+				if ferr := b.followAndEmit(ctx, p, key, base, prefix, ch); ferr != nil {
+					emit(ctx, ch, backend.Entry{Key: key, Err: ferr})
+				}
+				return nil
+			}
+		}
+
 		// Enforce maxDirDepth if configured. Depth is the number of path
 		// separators between base and p.
 		if b.maxDirDepth > 0 {
@@ -662,6 +826,128 @@ func (b *Backend) walkRecursive(ctx context.Context, base, prefix string, ch cha
 	if walkErr != nil && !errors.Is(walkErr, context.Canceled) && !errors.Is(walkErr, context.DeadlineExceeded) {
 		emit(ctx, ch, backend.Entry{Err: walkErr})
 	}
+}
+
+// followAndEmit dereferences a symlink at p (with key `key` in the listing
+// space) and emits the target. When the target is a directory, the function
+// recurses via filepath.WalkDir on the *resolved* path so symlinked
+// directories appear in the listing as a flattened tree under key.
+//
+// The resolved final path must live under one of the AllowedRoots — this
+// keeps the design's "follow may resolve across boundaries, but the final
+// resting path must stay inside the union" invariant.
+func (b *Backend) followAndEmit(ctx context.Context, p, key, walkBase, walkPrefix string, ch chan<- backend.Entry) error {
+	resolved, err := filepath.EvalSymlinks(p)
+	if err != nil {
+		return fmt.Errorf("follow symlink %q: %w", p, err)
+	}
+	resolved = filepath.Clean(resolved)
+	if !b.underAllowedRoot(resolved) {
+		return fmt.Errorf("%w: symlink %q resolves to %q outside allowedRoots", backend.ErrConfigInvalid, p, resolved)
+	}
+	info, err := os.Stat(p)
+	if err != nil {
+		return fmt.Errorf("stat-deref %q: %w", p, err)
+	}
+	if !info.IsDir() {
+		entry := backend.Entry{
+			Key:   key,
+			Size:  info.Size(),
+			Mtime: info.ModTime(),
+			IsDir: false,
+		}
+		if etag, merr := fileMD5(resolved); merr == nil {
+			entry.ETag = etag
+		}
+		if !emit(ctx, ch, entry) {
+			return nil
+		}
+		return nil
+	}
+	// Emit the dir itself.
+	if !emit(ctx, ch, backend.Entry{
+		Key:   key,
+		Size:  0,
+		Mtime: info.ModTime(),
+		IsDir: true,
+	}) {
+		return nil
+	}
+	// Recurse into resolved using its own onSymlink behaviour (still b.onSymlink).
+	// We use WalkDir on the resolved path so nested symlinks are subject to
+	// the same policy. We re-base under the symlinked key.
+	subWalkErr := filepath.WalkDir(resolved, func(rp string, rd fs.DirEntry, werr error) error {
+		if werr != nil {
+			emit(ctx, ch, backend.Entry{Err: fmt.Errorf("walk %q: %w", rp, werr)})
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+		if rp == resolved {
+			return nil
+		}
+		rel, rerr := filepath.Rel(resolved, rp)
+		if rerr != nil {
+			emit(ctx, ch, backend.Entry{Err: fmt.Errorf("relpath %q: %w", rp, rerr)})
+			return nil
+		}
+		subKey := joinKey(key, filepath.ToSlash(rel))
+		if rd.Type()&os.ModeSymlink != 0 {
+			switch b.onSymlink {
+			case OnSymlinkSkip:
+				return nil
+			case OnSymlinkError:
+				emit(ctx, ch, backend.Entry{
+					Key: subKey,
+					Err: fmt.Errorf("symlink %q encountered with onSymlink=error policy", rp),
+				})
+				return nil
+			case OnSymlinkFollow:
+				if ferr := b.followAndEmit(ctx, rp, subKey, resolved, key, ch); ferr != nil {
+					emit(ctx, ch, backend.Entry{Key: subKey, Err: ferr})
+				}
+				return nil
+			}
+		}
+		if b.maxDirDepth > 0 {
+			depth := strings.Count(filepath.ToSlash(rel), "/") + 1
+			if depth > b.maxDirDepth {
+				if rd.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+		}
+		info, ierr := rd.Info()
+		if ierr != nil {
+			emit(ctx, ch, backend.Entry{Err: fmt.Errorf("stat %q: %w", rp, ierr)})
+			return nil
+		}
+		entry := backend.Entry{
+			Key:   subKey,
+			Size:  info.Size(),
+			Mtime: info.ModTime(),
+			IsDir: rd.IsDir(),
+		}
+		if rd.IsDir() {
+			entry.Size = 0
+		} else {
+			if etag, merr := fileMD5(rp); merr == nil {
+				entry.ETag = etag
+			}
+		}
+		if !emit(ctx, ch, entry) {
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	if subWalkErr != nil && !errors.Is(subWalkErr, context.Canceled) && !errors.Is(subWalkErr, context.DeadlineExceeded) {
+		emit(ctx, ch, backend.Entry{Err: subWalkErr})
+	}
+	return nil
 }
 
 // fileMD5 computes the hex-encoded MD5 checksum of the named file. Used to

@@ -24,6 +24,7 @@ import (
 	"github.com/cubefs/cubefs/syncnode/backend/local"
 	"github.com/cubefs/cubefs/syncnode/backend/s3"
 	"github.com/cubefs/cubefs/syncnode/spec"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 // backendBuilder converts a rule's EndpointConfig into a constructed
@@ -76,6 +77,14 @@ func (b *backendBuilder) Build(_ context.Context, ep *spec.EndpointConfig) (back
 		masterAddr = cfg.MasterAddr
 	}
 
+	// OnSymlink is a local-backend-only knob. Warn (don't fail) when a rule
+	// declares it on a non-local endpoint so operators notice typos but
+	// existing s3/cfs rules don't break.
+	if ep.OnSymlink != "" && ep.Kind != "local" {
+		log.LogWarnf("backendBuilder: OnSymlink=%q is not applicable to %s backend; ignored",
+			ep.OnSymlink, ep.Kind)
+	}
+
 	switch ep.Kind {
 	case "cfs":
 		return b.pool.Acquire(backend.PoolKey{Kind: "cfs", Bucket: ep.Vol}, &cfs.Config{
@@ -121,10 +130,16 @@ func (b *backendBuilder) Build(_ context.Context, ep *spec.EndpointConfig) (back
 		if bufKiB == 0 {
 			bufKiB = posix.DefaultBufferSizeKiB
 		}
-		return b.pool.Acquire(backend.PoolKey{Kind: "local"}, &local.Config{
+		// Disambiguate pooled local Backends by the symlink policy so two
+		// rules with different OnSymlink values don't collide on a single
+		// shared instance. CredKey is reused as the discriminator slot
+		// (local backends have no credentials, so the field is otherwise
+		// unused here).
+		return b.pool.Acquire(backend.PoolKey{Kind: "local", CredKey: ep.OnSymlink}, &local.Config{
 			AllowedRoots:         posix.AllowedRoots,
 			DefaultBufferSizeKiB: bufKiB,
 			MaxDirDepth:          posix.MaxDirDepth,
+			OnSymlink:            ep.OnSymlink,
 		})
 	default:
 		return nil, fmt.Errorf("backendBuilder: unknown kind %q", ep.Kind)

@@ -82,9 +82,42 @@ type Backend interface {
 	// Capabilities reports static capabilities of this backend.
 	Capabilities() Caps
 
+	// SameInstance reports whether other points at the same underlying
+	// storage instance as this backend — same endpoint + same credential
+	// realm for object stores, same volume for cfs, same allowed root for
+	// local. When true, the executor MAY skip Get→Put and ask one side
+	// for a server-side copy (see ServerSideCopier and Caps.ServerSideCopy).
+	//
+	// Conservative-by-default: when in doubt, return false. A false
+	// negative only costs an unnecessary streaming round trip; a false
+	// positive risks writing to the wrong realm.
+	SameInstance(other Backend) bool
+
 	// Close releases all resources (HTTP clients, mounted streams, etc.).
 	// Safe to call multiple times.
 	Close() error
+}
+
+// ServerSideCopier is an optional capability interface for backends that
+// can copy bytes between two keys without round-tripping through the
+// executor. The executor will only invoke ServerSideCopy after asserting
+// both:
+//
+//   - src.SameInstance(dst) is true (same underlying realm), AND
+//   - src.Capabilities().ServerSideCopy is true.
+//
+// Implementations return ErrBackendUnsupported when the requested copy
+// cannot be performed server-side (e.g. cross-credential, object too
+// large for the chosen API path) so the executor can fall back to the
+// generic Get→Put pipeline.
+type ServerSideCopier interface {
+	// ServerSideCopy copies srcKey → dstKey inside the same backend
+	// instance. opts mirrors PutOptions but only ContentType, StorageClass,
+	// Metadata and Mtime are meaningful — ComputeChecksum is treated as a
+	// best-effort hint (object stores typically have a native ETag the
+	// executor can compare). The returned PutResult carries the same fields
+	// as a normal Put: ETag, optional Checksum + Algorithm, BytesPut.
+	ServerSideCopy(ctx context.Context, srcKey, dstKey string, opts PutOptions) (PutResult, error)
 }
 
 // Entry is one item from a List call.
@@ -109,6 +142,20 @@ type PutOptions struct {
 	// and return it in PutResult. Object stores additionally persist it as user
 	// metadata (`x-amz-meta-syncnode-sha256`); POSIX backends just return the value.
 	ComputeChecksum bool
+
+	// Mtime, when non-nil, instructs the backend to persist this modification
+	// time on the written object so that subsequent List/Head returns the
+	// source mtime instead of the backend's write time. Implementations:
+	//   - local: os.Chtimes(dst, now, *Mtime) after rename
+	//   - s3:    PutObject metadata `x-amz-meta-syncnode-mtime` (RFC3339Nano);
+	//            Head prefers this header over LastModified. ListObjectsV2
+	//            does NOT return user-metadata, so List still falls back to
+	//            LastModified for that backend.
+	//   - cfs:   mw.Setattr with proto.AttrModifyTime after the data stream
+	//            is flushed.
+	// A nil pointer (default) preserves prior behavior — the backend uses
+	// its own write-time.
+	Mtime *time.Time
 }
 
 // PutResult is the result of a Put call. ETag is backend-native (e.g. s3
@@ -136,6 +183,22 @@ type Caps struct {
 	// value. s3=true (ETag), cfs=false (companion file), local=false. Hint for
 	// executor to skip src-side sha256 compute when both sides are native.
 	NativeChecksum bool
+
+	// NativeMtimeWrite reports whether the backend honors PutOptions.Mtime by
+	// persisting the supplied modification time on the written object. All three
+	// in-tree backends report true (local via os.Chtimes, s3 via user metadata,
+	// cfs via mw.Setattr). Backends that cannot preserve mtime should report
+	// false so the executor can warn or fall back.
+	NativeMtimeWrite bool
+
+	// ServerSideCopy reports whether the backend implements the
+	// ServerSideCopier interface and can copy bytes between two keys
+	// inside the same instance without streaming through the executor.
+	// Reported true by s3 (CopyObject + multipart UploadPartCopy);
+	// reported false by local and cfs (no native API yet — cfs is
+	// blocked on a metanode inode-clone API). The executor checks
+	// SameInstance AND this flag before attempting a server-side copy.
+	ServerSideCopy bool
 }
 
 // Common errors returned by Backend implementations. Callers can use

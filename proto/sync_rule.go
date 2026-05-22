@@ -73,6 +73,12 @@ type SyncEndpointConfig struct {
 	Concurrency       int  `json:"concurrency"`
 	DirectIO          bool `json:"directIO"`
 	FadviseSequential bool `json:"fadviseSequential"`
+	// OnSymlink mirrors SyncRuleConfig.OnSymlink at the endpoint level so the
+	// backend builder can read the policy without an interface change. The
+	// runner copies SyncRuleConfig.OnSymlink into both Src and Dst before
+	// invoking the builder; rule-level validation remains authoritative.
+	// Only local backends consume it; s3/cfs builders log a warning and ignore.
+	OnSymlink string `json:"onSymlink,omitempty"`
 }
 
 // SyncFilterConfig is the wire / persisted shape of a rule's file filter.
@@ -153,6 +159,66 @@ type SyncRuleConfig struct {
 	//     BytesDone (POSIX/CFS) or UploadID (s3 multipart);
 	//   - on each successful Put, the breakpoint is cleared.
 	ResumeEnabled bool `json:"resumeEnabled,omitempty"`
+
+	// OnExisting selects how the executor decides whether to overwrite an
+	// already-present dst object. Matches the rclone gap-fill roadmap
+	// (docs/plan/syncnode/rclone-gap-roadmap.md 子项 3):
+	//   ""                  → verify_then_skip (legacy default, back-compat)
+	//   "verify_then_skip"  → size + checksum/ETag; skip only when equal
+	//   "always_skip"       → rclone --ignore-existing; never re-upload
+	//   "newer_only"        → rclone --update; skip when dst.Mtime ≥ src.Mtime
+	//                         (1s cross-backend tolerance)
+	//   "overwrite"         → rclone --ignore-times; always re-upload
+	// For type=move only "" / "verify_then_skip" are accepted: the other
+	// strategies risk silent data loss when paired with src deletion.
+	OnExisting string `json:"onExisting,omitempty"`
+
+	// OnSymlink controls how the local backend treats symbolic links during
+	// List / resolve. Applies only when at least one endpoint is local; s3/cfs
+	// backends ignore the field (with a warn log from the backend builder).
+	//   ""       → "skip" default; legacy behaviour, back-compat
+	//   "skip"   → silently skip symlinks during List; reject symlinked keys at resolve
+	//   "follow" → treat each symlink as the file it points to (os.Stat
+	//              semantics); EvalSymlinks may resolve across AllowedRoots
+	//              boundaries, but the final path must still resolve under the
+	//              configured AllowedRoots union
+	//   "error"  → emit a backend.Entry{Err: ...} for each symlink and fail the
+	//              List; never silently skip
+	OnSymlink string `json:"onSymlink,omitempty"`
+
+	// DryRun toggles the executor's "演练" mode (rclone --dry-run parity, 子项 2).
+	// When true the executor still walks the source listing, evaluates filters
+	// and idempotency checks, and emits per-file structured "would_*" events
+	// (would_copy / would_skip_existing / would_server_side_copy /
+	// would_delete_src) so operators can preview the effect of a rule before
+	// arming destructive options. NO writes / deletes / server-side copies hit
+	// either backend while DryRun is true. The task still terminates Done on
+	// success — callers distinguish演练 vs real runs by reading this flag back
+	// off the rule config (and the DryRunStats counters surfaced by the
+	// executor).
+	//
+	// dry-run is a prerequisite for type=mirror (子项 6 / wave 3): the first
+	// pass of a mirror rule defaults DryRun=true so the operator can see which
+	// dst entries would be deleted before actually deleting them.
+	DryRun bool `json:"dryRun,omitempty"`
+
+	// Confirm pairs with DryRun for destructive task types (type=move and the
+	// upcoming type=mirror). It is the operator's explicit acknowledgement
+	// that they have reviewed a prior演练 (DryRun=true) and accept the
+	// destructive plan; the executor refuses to start a destructive task with
+	// Confirm=true unless the same task also sets DryRun=true (i.e. the
+	// caller is asking for a fresh演练 with the confirmation bit pre-set), so
+	// the only way to actually mutate state is: (1) run with DryRun=true and
+	// review the events, (2) re-run with DryRun=false AND Confirm=false (or
+	// drop Confirm entirely). The redundancy is intentional — a single
+	// boolean flip should not turn a演练 into a real delete.
+	//
+	// Validation: Confirm=true + DryRun=false on a destructive task →
+	// validateTask rejects with "dry-run confirmation required: set
+	// DryRun=true to preview first". Non-destructive task types ignore
+	// Confirm (the rule-level config validator forbids Confirm=true outside
+	// destructive types so the field cannot accumulate unused state).
+	Confirm bool `json:"confirm,omitempty"`
 }
 
 // SyncLastRunSummary captures the post-run state written back after a

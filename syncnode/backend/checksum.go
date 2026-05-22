@@ -42,6 +42,13 @@ const SHA256CompanionSuffix = ".syncnode.sha256"
 // bare key.
 const SHA256MetadataKey = "syncnode-sha256"
 
+// MtimeMetadataKey is the user-metadata key under which object-store backends
+// persist the source modification time (RFC3339Nano) supplied via
+// PutOptions.Mtime. The full HTTP header sent by the S3 SDK is
+// `x-amz-meta-syncnode-mtime`; the SDK strips the `x-amz-meta-` prefix when
+// surfacing Metadata maps, so backend code looks up the bare key.
+const MtimeMetadataKey = "syncnode-mtime"
+
 // NewSHA256Sink returns a fresh sha256.Hash plus a closure that returns the
 // hex-encoded digest. Backends typically call this once per Put, wrap the
 // body with `io.TeeReader(body, h)`, then call sum() once the upload

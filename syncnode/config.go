@@ -239,7 +239,7 @@ func validateConfig(cfg *SyncConfig) *ConfigError {
 
 		if !validRuleTypes[r.Type] {
 			return newConfigErr(ErrCodeTypeError, field+".type",
-				"type must be sync / load / check / move, got: "+r.Type)
+				"type must be sync / load / check / move / mirror, got: "+r.Type)
 		}
 		if r.Schedule != "" {
 			if err := validateCronExpr(r.Schedule); err != nil {
@@ -264,6 +264,29 @@ func validateConfig(cfg *SyncConfig) *ConfigError {
 		if !validOnMismatch[r.OnMismatch] {
 			return newConfigErr(ErrCodeUnknownOnMismatch, field+".onMismatch",
 				"onMismatch must be alert / auto_fix / ignore, got: "+r.OnMismatch)
+		}
+		if !validOnExisting[r.OnExisting] {
+			return newConfigErr(ErrCodeUnknownOnExisting, field+".onExisting",
+				"onExisting must be verify_then_skip / always_skip / newer_only / overwrite, got: "+r.OnExisting)
+		}
+		// type=move locks dst-deletion semantics; only verify_then_skip (or
+		// the empty alias) is safe — the other strategies either leave src
+		// undeleted or risk overwriting a newer dst.
+		if r.Type == "move" && r.OnExisting != "" && r.OnExisting != "verify_then_skip" {
+			return newConfigErr(ErrCodeUnknownOnExisting, field+".onExisting",
+				fmt.Sprintf("type=move forbids onExisting=%q (only verify_then_skip allowed)", r.OnExisting))
+		}
+		if !validOnSymlink[r.OnSymlink] {
+			return newConfigErr(ErrCodeUnknownOnSymlink, field+".onSymlink",
+				"onSymlink must be skip / follow / error, got: "+r.OnSymlink)
+		}
+		// DryRun + Confirm 互斥（rclone-gap 子项 2）：Confirm 是用户已审阅
+		// dry-run 输出后的"放行"标志，只在真正执行（DryRun=false）的破坏性
+		// 任务上有意义；同时打开 DryRun=true + Confirm=true 是配置矛盾，
+		// 直接拒绝，避免后端 validateTask 抛出含糊错误。
+		if r.DryRun && r.Confirm {
+			return newConfigErr(ErrCodeDryRunConfirmConflict, field+".confirm",
+				"confirm=true requires dryRun=false: confirm acknowledges a prior dry-run preview, not the preview itself")
 		}
 		if err := validateFilter(&r.Filter, field+".filter"); err != nil {
 			return err

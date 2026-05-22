@@ -254,7 +254,63 @@ func (b *Backend) Capabilities() backend.Caps {
 		// telling us anything). Reported false so executor knows it
 		// should still gate on src-side compute.
 		NativeChecksum: false,
+		// CubeFS exposes meta.Setattr which can update ModifyTime with the
+		// proto.AttrModifyTime valid-flag — Put honors PutOptions.Mtime via
+		// that call after the data stream is flushed.
+		NativeMtimeWrite: true,
+		// TODO: 待 metanode inode-clone API 落地后改为 true。当前 CubeFS 的
+		// 写路径必须流式过 ExtentClient.Write，没有原生的 same-volume copy
+		// 接口，所以同实例的 Get→Put 仍然走通用路径。
+		ServerSideCopy: false,
 	}
+}
+
+// SameInstance reports whether other targets the same CubeFS volume on
+// the same master cluster. Comparison normalises master order so a config
+// with [m1,m2] matches [m2,m1] — masters form a quorum and order is not
+// semantically meaningful.
+func (b *Backend) SameInstance(other backend.Backend) bool {
+	o, ok := other.(*Backend)
+	if !ok || o == nil || b.cfg == nil || o.cfg == nil {
+		return false
+	}
+	if b.cfg.Volume != o.cfg.Volume {
+		return false
+	}
+	if len(b.cfg.Masters) != len(o.cfg.Masters) {
+		return false
+	}
+	// Compare master sets order-independently via sorted copies.
+	a := append([]string(nil), b.cfg.Masters...)
+	c := append([]string(nil), o.cfg.Masters...)
+	sortStrings(a)
+	sortStrings(c)
+	for i := range a {
+		if a[i] != c[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// sortStrings is a small in-place sort helper used by SameInstance to keep
+// the cfs.go imports minimal — we don't want to pull "sort" just for this.
+func sortStrings(s []string) {
+	// Insertion sort is fine: master lists are tiny (≤ 5 entries in practice).
+	for i := 1; i < len(s); i++ {
+		for j := i; j > 0 && s[j-1] > s[j]; j-- {
+			s[j-1], s[j] = s[j], s[j-1]
+		}
+	}
+}
+
+// ServerSideCopy is declared so cfs.Backend satisfies the
+// ServerSideCopier interface, but returns ErrBackendUnsupported until a
+// metanode-side inode-clone API is available. The executor short-circuits
+// on Caps.ServerSideCopy long before reaching here, so callers should
+// only see this error if they bypass the capability check.
+func (b *Backend) ServerSideCopy(_ context.Context, _, _ string, _ backend.PutOptions) (backend.PutResult, error) {
+	return backend.PutResult{}, backend.ErrBackendUnsupported
 }
 
 // Close releases the ExtentClient. The MetaWrapper does not have a public
@@ -541,6 +597,21 @@ func (b *Backend) Put(ctx context.Context, key string, body io.Reader, size int6
 	}
 	if err := b.ec.CloseStream(ino); err != nil {
 		return backend.PutResult{}, fmt.Errorf("cfs put close stream %s: %w", full, err)
+	}
+
+	// Preserve source mtime when requested. Called after CloseStream so the
+	// data path is finalized first; if Setattr fails the data is still good
+	// and we return the error so the caller knows the requested timestamp
+	// was not applied (an idempotency comparison that keys off mtime would
+	// otherwise silently mis-match on the next sync run).
+	//
+	// CubeFS stores mtime as Unix-seconds on the wire (metanode reconstructs
+	// via time.Unix(mt, 0)) so sub-second precision is truncated. Callers
+	// that need ns-precision comparison must tolerate this on cfs backends.
+	if opts.Mtime != nil {
+		if err := b.mw.Setattr(ino, proto.AttrModifyTime, 0, 0, 0, 0, opts.Mtime.Unix()); err != nil {
+			return backend.PutResult{}, fmt.Errorf("cfs put setattr mtime %s: %w", full, err)
+		}
 	}
 
 	res := backend.PutResult{BytesPut: src.n}

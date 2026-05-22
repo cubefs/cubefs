@@ -428,6 +428,17 @@ func (r *Runner) triggerRule(ctx context.Context, rule *rules.Rule, newID string
 		}
 	}
 
+	// Mirror rule-level OnSymlink down into both endpoint configs so the
+	// BackendBuilder (and the local backend it constructs) can read the
+	// policy without changing the Build(ep) interface. Rule-level validation
+	// remains authoritative; endpoint-level field is purely a transport.
+	// Only the local backend consumes it; s3/cfs builders ignore (with a
+	// warn log).
+	if rule.Config.OnSymlink != "" {
+		rule.Config.Src.OnSymlink = rule.Config.OnSymlink
+		rule.Config.Dst.OnSymlink = rule.Config.OnSymlink
+	}
+
 	src, err := r.builder.Build(ctx, &rule.Config.Src)
 	if err != nil {
 		log.LogWarnf("tasks: rule=%q task=%q build src backend: %v", rule.Config.ID, newID, err)
@@ -949,6 +960,21 @@ func buildTask(rule *rules.Rule, src, dst backend.Backend, taskID string) *execu
 		OnSourceMutated: cfg.OnSourceMutated,
 		MaxRetries:      cfg.MaxRetries,
 		ResumeEnabled:   cfg.ResumeEnabled,
+		// OnExisting (rclone overwrite-policy parity, 子项 3): forwarded
+		// untouched; validateTask in the executor normalises the empty
+		// string + rejects unknown values + enforces type=move互斥.
+		OnExisting: cfg.OnExisting,
+		// OnSymlink (rclone local-symlink parity, 子项 1): forwarded so
+		// validateTask can apply the whitelist as a second defence; the
+		// actual file-walk behaviour lives in syncnode/backend/local and
+		// reads the value off the EndpointConfig (mirrored above).
+		OnSymlink: cfg.OnSymlink,
+		// DryRun / Confirm (rclone-gap 子项 2): forwarded so the executor
+		// sees them on validateTask + syncOneFile. Confirm only matters
+		// for destructive tasks (type=move OR AfterCopy=verify_then_delete_src)
+		// and validateTask rejects Confirm=true + DryRun=false on those.
+		DryRun:  cfg.DryRun,
+		Confirm: cfg.Confirm,
 	}
 }
 

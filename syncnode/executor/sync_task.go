@@ -26,7 +26,133 @@ import (
 
 	"github.com/cubefs/cubefs/syncnode/backend"
 	"github.com/cubefs/cubefs/syncnode/ratelimit"
+	"github.com/cubefs/cubefs/util/log"
 )
+
+// Server-side copy counters. Mirrors a Prometheus
+// `syncnode_server_side_copy_total{result="ok|fallback|error"}` triplet
+// without pulling the prometheus dependency into the executor; the metrics
+// scraper (or tests) can read these via the exported accessors.
+var (
+	serverSideCopyOK       atomic.Int64
+	serverSideCopyFallback atomic.Int64
+	serverSideCopyErr      atomic.Int64
+)
+
+// ServerSideCopyStats returns the current cumulative counts. Exposed
+// primarily for tests; production code can call this from a metrics
+// exporter without taking any lock.
+func ServerSideCopyStats() (ok, fallback, errs int64) {
+	return serverSideCopyOK.Load(), serverSideCopyFallback.Load(), serverSideCopyErr.Load()
+}
+
+// Dry-run counters (子项 2). Mirror the server-side-copy stats pattern: one
+// atomic counter per "would_*" branch syncOneFile can take when DryRun=true.
+// A metrics exporter can scrape these as
+// `syncnode_dry_run_total{action="copy|skip|server_side_copy|delete_src"}`
+// without forcing this package to depend on Prometheus.
+//
+// Counters are package-level and cumulative across all tasks. Tests reset
+// them via resetDryRunStats(t) (see dry_run_test.go) so each scenario starts
+// from zero. Production code never resets — the rate of change is what
+// matters, not the absolute baseline.
+var (
+	dryRunWouldCopy           atomic.Int64
+	dryRunWouldSkip           atomic.Int64
+	dryRunWouldServerSideCopy atomic.Int64
+	dryRunWouldDeleteSrc      atomic.Int64
+)
+
+// DryRunStatsSnapshot is the structured form returned by DryRunStats. We
+// expose a struct (rather than a 4-tuple of int64s like ServerSideCopyStats)
+// because callers downstream often want to log or render counters by name —
+// e.g. a dashboard tooltip "[dry-run] would_copy=12 would_skip=3" — and
+// positional returns get confusing once we add the type=mirror would_delete_dst
+// counter in wave 3.
+type DryRunStatsSnapshot struct {
+	WouldCopy           int64 `json:"wouldCopy"`
+	WouldSkip           int64 `json:"wouldSkip"`
+	WouldServerSideCopy int64 `json:"wouldServerSideCopy"`
+	WouldDeleteSrc      int64 `json:"wouldDeleteSrc"`
+}
+
+// DryRunStats returns the current cumulative dry-run counters as a struct.
+// Exposed primarily for tests and metrics exporters; the values are wide
+// snapshots (read with atomic.LoadInt64) so concurrent updates may produce
+// a slightly stale view across fields, but each field individually is
+// consistent.
+func DryRunStats() DryRunStatsSnapshot {
+	return DryRunStatsSnapshot{
+		WouldCopy:           dryRunWouldCopy.Load(),
+		WouldSkip:           dryRunWouldSkip.Load(),
+		WouldServerSideCopy: dryRunWouldServerSideCopy.Load(),
+		WouldDeleteSrc:      dryRunWouldDeleteSrc.Load(),
+	}
+}
+
+// dryRunAction names the "would_*" outcome a dry-run pass would log for a
+// single entry. Used purely as a typed key for accountDryRun so callers can
+// stay declarative ("this branch would_copy") instead of remembering which
+// atomic.Add to invoke.
+type dryRunAction int
+
+const (
+	dryRunActionCopy dryRunAction = iota + 1
+	dryRunActionSkip
+	dryRunActionServerSideCopy
+)
+
+// accountDryRun records a single would_* outcome: the action-specific
+// counter, the per-task Progress tally (so the task summary still reports
+// realistic numbers in dry-run mode), the move-mode would_delete_src side
+// effect when AfterCopy=verify_then_delete_src, and a structured log line
+// dashboards can filter by `dryrun=true`.
+//
+// Returns nil so callers can `return accountDryRun(...)` cleanly. Reporter
+// observers (OnFileDone) are still notified — dashboards expecting a Done
+// event per listed entry continue to work in dry-run mode.
+func accountDryRun(t *Task, entry backend.Entry, action dryRunAction, r Reporter, p *Progress) error {
+	var actionName string
+	switch action {
+	case dryRunActionCopy:
+		dryRunWouldCopy.Add(1)
+		atomic.AddInt64(&p.FilesDone, 1)
+		atomic.AddInt64(&p.BytesDone, entry.Size)
+		actionName = "would_copy"
+	case dryRunActionSkip:
+		dryRunWouldSkip.Add(1)
+		atomic.AddInt64(&p.FilesSkipped, 1)
+		atomic.AddInt64(&p.BytesSkipped, entry.Size)
+		actionName = "would_skip_existing"
+	case dryRunActionServerSideCopy:
+		dryRunWouldServerSideCopy.Add(1)
+		atomic.AddInt64(&p.FilesDone, 1)
+		atomic.AddInt64(&p.BytesDone, entry.Size)
+		actionName = "would_server_side_copy"
+	default:
+		actionName = "would_unknown"
+	}
+	if t.AfterCopy == AfterCopyVerifyThenDeleteSrc {
+		dryRunWouldDeleteSrc.Add(1)
+	}
+	if p.Sampler != nil {
+		p.Sampler.add(entry.Key)
+	}
+	log.LogDebugf("syncnode: task=%s dryrun=true action=%s key=%s size=%d after_copy=%s",
+		t.ID, actionName, entry.Key, entry.Size, t.AfterCopy)
+	r.OnFileDone(entry.Key, 0, nil)
+	return nil
+}
+
+// nonZeroMtimePtr returns &t when t is non-zero, else nil. Encodes the
+// "preserve src mtime only if we know it" rule cleanly for callers that
+// build PutOptions.
+func nonZeroMtimePtr(t time.Time) *time.Time {
+	if t.IsZero() {
+		return nil
+	}
+	return &t
+}
 
 // runSync is the entry point for TaskTypeSync. Called from Executor.Run.
 //
@@ -301,6 +427,13 @@ func (e *Executor) transferOnce(
 	putOpts := backend.PutOptions{
 		ComputeChecksum: computeChecksum,
 	}
+	// Preserve source mtime on the destination. Only set the pointer when
+	// the listing actually produced an mtime — backends that don't expose
+	// mtime via List would otherwise have us write a zero timestamp.
+	if !entry.Mtime.IsZero() {
+		mt := entry.Mtime
+		putOpts.Mtime = &mt
+	}
 	// Note: StorageClass intentionally not threaded through here.
 	// PutOptions.StorageClass would be sourced from the rule config
 	// (dst.storageClass) — see design.md §4.2.
@@ -395,15 +528,26 @@ func (e *Executor) syncOneFile(
 		srcPre = snap
 	}
 
-	// 2) Idempotent skip: if dst already matches what we'd write, return
-	// without transferring. The decision tree:
-	//   - size + ETag agree → skip (legacy behaviour)
-	//   - dst size matches and dst has no ETag → skip (POSIX/CFS lack ETag)
-	//   - ChecksumMode=="strong" → upgrade the skip decision: when both
-	//     backends report comparable checksums for the same key AND the
-	//     checksums agree, skip; otherwise fall through to a full transfer.
-	if dstSize, dstETag, _, herr := t.Dst.Head(ctx, dstKey); herr == nil {
-		if shouldSkipExistingDst(ctx, t, entry, dstKey, dstSize, dstETag) {
+	// 2) Idempotent skip: dispatch on Task.OnExisting (rclone-style overwrite
+	// strategy). validateTask normalises empty → verify_then_skip and rejects
+	// unknown values, so dispatch is closed-set:
+	//   - verify_then_skip  → legacy size + checksum/ETag comparison
+	//                         (rclone default)
+	//   - always_skip       → rclone --ignore-existing (any dst wins)
+	//   - newer_only        → rclone --update (dst.Mtime ≥ src.Mtime − 1s)
+	//   - overwrite         → rclone --ignore-times (never skip on this branch)
+	//
+	// Mtime is plumbed alongside size/etag because newer_only needs it; the
+	// other strategies ignore it. dst.Head failure that isn't ErrKeyNotFound
+	// is still propagated so callers see real backend trouble (unchanged
+	// from the legacy path).
+	if dstSize, dstETag, dstMtime, herr := t.Dst.Head(ctx, dstKey); herr == nil {
+		if shouldSkipExistingDstByStrategy(ctx, t, entry, dstKey, dstSize, dstETag, dstMtime) {
+			// Dry-run short-circuit: account the would_skip_existing outcome
+			// (and would_delete_src when move-mode) without mutating Src.
+			if t.DryRun {
+				return accountDryRun(t, entry, dryRunActionSkip, r, p)
+			}
 			// rclone-move 语义：dst 已与 src 对齐时仍须删除 src。验证强度由
 			// shouldSkipExistingDst 保证——validateTask 已锁定
 			// verify_then_delete_src→strong，因此本分支命中时 src/dst
@@ -427,6 +571,62 @@ func (e *Executor) syncOneFile(
 
 	r.OnFileStart(entry.Key, entry.Size)
 
+	// 2.5) Server-side copy fast path (rclone-gap-roadmap §4). When src and
+	// dst point at the same storage realm AND the backend advertises
+	// ServerSideCopy, skip the Get→Put round trip by asking the backend to
+	// move bytes internally. This avoids egress and is dramatically faster
+	// on multi-GiB objects.
+	//
+	// Strong-mode (P0) and OnSourceMutated (P1) are NOT compatible with the
+	// fast path: both require either a streaming sha256 we cannot compute
+	// server-side, or a Pre/Post-Head snapshot pair that races the copy.
+	// Fall through to the legacy Get/Put pipeline in those cases.
+	if t.ChecksumMode != "strong" && t.OnSourceMutated == "" &&
+		t.Src.SameInstance(t.Dst) && t.Src.Capabilities().ServerSideCopy {
+		if _, ok := t.Src.(backend.ServerSideCopier); ok && t.DryRun {
+			// Dry-run short-circuit: we'd take the SSC fast path, but
+			// never call into the backend. Account would_server_side_copy
+			// (and would_delete_src when move-mode) and return.
+			return accountDryRun(t, entry, dryRunActionServerSideCopy, r, p)
+		}
+		if copier, ok := t.Src.(backend.ServerSideCopier); ok {
+			pr, cerr := copier.ServerSideCopy(ctx, entry.Key, dstKey, backend.PutOptions{
+				Mtime: nonZeroMtimePtr(entry.Mtime),
+			})
+			if cerr == nil {
+				serverSideCopyOK.Add(1)
+				if t.AfterCopy == AfterCopyVerifyThenDeleteSrc {
+					if derr := t.Src.Delete(ctx, entry.Key); derr != nil {
+						return fmt.Errorf("delete src %q after server-side copy: %w", entry.Key, derr)
+					}
+				}
+				bytesAck := pr.BytesPut
+				if bytesAck == 0 {
+					bytesAck = entry.Size
+				}
+				atomic.AddInt64(&p.FilesDone, 1)
+				atomic.AddInt64(&p.BytesDone, bytesAck)
+				if p.Sampler != nil {
+					p.Sampler.add(entry.Key)
+				}
+				r.OnFileDone(entry.Key, bytesAck, nil)
+				return nil
+			}
+			if errors.Is(cerr, backend.ErrBackendUnsupported) {
+				serverSideCopyFallback.Add(1)
+				log.LogDebugf("syncnode: server-side copy unsupported for %s, falling back to Get/Put", entry.Key)
+				// Fall through to legacy pipeline.
+			} else {
+				serverSideCopyErr.Add(1)
+				log.LogWarnf("syncnode: server-side copy failed for %s: %v, falling back to Get/Put", entry.Key, cerr)
+				// Don't return the error — fall back to the proven streaming
+				// path. Returning here would surface transient backend issues
+				// (e.g. bucket policy denying CopyObject) as hard task failures
+				// when the slow path would have worked.
+			}
+		}
+	}
+
 	// 3) Resume? (P2) — pull breakpoint when caller wired the store and the
 	// task opts in. Failures are non-fatal: a missing breakpoint means we
 	// start from offset 0.
@@ -438,6 +638,13 @@ func (e *Executor) syncOneFile(
 			resumeOffset = bp.BytesDone
 			resumeUploadID = bp.UploadID
 		}
+	}
+
+	// Dry-run short-circuit: we'd transfer bytes here, but DryRun forbids
+	// any mutation. Account would_copy (and would_delete_src for move
+	// semantics) and return before the retry loop touches transferOnce.
+	if t.DryRun {
+		return accountDryRun(t, entry, dryRunActionCopy, r, p)
 	}
 
 	// 4) Per-file retry loop (P2). attempt=0 is the first try; subsequent
@@ -553,9 +760,67 @@ func (e *Executor) syncOneFile(
 	return lastErr
 }
 
+// newerOnlyMtimeTolerance is the cross-backend clock-skew tolerance used by
+// the OnExisting=newer_only strategy: we treat dst as "newer or equal" when
+// dst.Mtime + 1s ≥ src.Mtime. S3 reports mtime at second precision while
+// local/CFS report at nanosecond precision; without slack the rule would
+// always re-upload after a S3 → local round-trip even when nothing changed.
+const newerOnlyMtimeTolerance = time.Second
+
+// shouldSkipExistingDstByStrategy dispatches on Task.OnExisting (set by
+// validateTask) and falls through to shouldSkipExistingDst for the legacy
+// verify_then_skip path. Splitting the dispatch from the verify logic keeps
+// the size+checksum/ETag code path (the most heavily tested branch)
+// bit-for-bit identical to the pre-OnExisting behaviour.
+//
+// dstMtime is only consumed by newer_only; the other branches ignore it but
+// the signature is uniform so callers don't have to thread an Option-style
+// type.
+func shouldSkipExistingDstByStrategy(
+	ctx context.Context,
+	t *Task,
+	entry backend.Entry,
+	dstKey string,
+	dstSize int64,
+	dstETag string,
+	dstMtime time.Time,
+) bool {
+	switch t.OnExisting {
+	case OnExistingAlwaysSkip:
+		// rclone --ignore-existing: any dst at this key wins. We already
+		// proved dst exists (caller only entered this branch on a
+		// successful Head), so unconditional skip is correct.
+		return true
+	case OnExistingOverwrite:
+		// rclone --ignore-times: never skip. The full transfer path runs
+		// and replaces whatever dst held.
+		return false
+	case OnExistingNewerOnly:
+		// rclone --update: skip when dst is at least as recent as src.
+		// Missing mtimes (either side reports zero) force a re-upload —
+		// fail-safe: without timestamp evidence we cannot prove dst is
+		// fresher.
+		if entry.Mtime.IsZero() || dstMtime.IsZero() {
+			return false
+		}
+		return !entry.Mtime.After(dstMtime.Add(newerOnlyMtimeTolerance))
+	case OnExistingVerifyThenSkip, "":
+		// Legacy default (back-compat alias on empty). validateTask
+		// normalises the empty string up front but we tolerate it here
+		// defensively in case a caller bypasses validateTask.
+		return shouldSkipExistingDst(ctx, t, entry, dstKey, dstSize, dstETag)
+	default:
+		// Unknown strategy reaching the dispatcher is a programmer bug —
+		// validateTask should have rejected it. Fail-closed: never skip,
+		// so the worst case is an unnecessary re-upload, never silent
+		// data loss.
+		return false
+	}
+}
+
 // shouldSkipExistingDst implements the «is dst already a verified match?»
-// decision used by the idempotency check at the top of syncOneFile. The
-// data-integrity SDD says size-only skip is unsafe: same-size mutations
+// decision used by the verify_then_skip path of shouldSkipExistingDstByStrategy.
+// The data-integrity SDD says size-only skip is unsafe: same-size mutations
 // silently slip through. So unless we have at least one comparable
 // signature (matching ETag or strong-mode checksum), we MUST re-upload.
 //

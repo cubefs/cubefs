@@ -28,7 +28,9 @@ package s3
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -254,7 +256,53 @@ func (b *Backend) Capabilities() backend.Caps {
 		// circuit a redundant src-side hash. Reported true so the executor
 		// can skip the `requireSrcChecksum` path when both ends are native.
 		NativeChecksum: true,
+		// Honored on Put via x-amz-meta-syncnode-mtime; Head re-reads it
+		// and prefers it over LastModified. NOTE: ListObjectsV2 does NOT
+		// return user metadata, so List still falls back to LastModified.
+		NativeMtimeWrite: true,
+		// S3 supports server-side copy via CopyObject (≤5 GiB) and via
+		// UploadPartCopy (>5 GiB) inside the multipart-upload protocol.
+		// See ServerSideCopy below. Executor checks SameInstance AND this
+		// flag before invoking the fast path.
+		ServerSideCopy: true,
 	}
+}
+
+// SameInstance reports whether other points at the same S3 realm: same
+// endpoint, same region, and same credential identity. Bucket is
+// deliberately NOT part of the equality — cross-bucket server-side copy
+// is supported by the S3 API as long as the credentials cover both
+// buckets. AccessKey is compared via a stable hash so plaintext never
+// leaves the Backend (caller could log mismatched values otherwise).
+func (b *Backend) SameInstance(other backend.Backend) bool {
+	o, ok := other.(*Backend)
+	if !ok || o == nil || b.cfg == nil || o.cfg == nil {
+		return false
+	}
+	if b.cfg.Endpoint != o.cfg.Endpoint {
+		return false
+	}
+	if b.cfg.Region != o.cfg.Region {
+		return false
+	}
+	if credentialFingerprint(b.cfg) != credentialFingerprint(o.cfg) {
+		return false
+	}
+	return true
+}
+
+// credentialFingerprint returns a stable hash of the credential identity
+// used by cfg. Prefers inline AccessKey when set, else falls back to the
+// env-var NAME (NOT its value, which would force an env lookup and
+// re-introduce races against secret rotation). We hash so a caller logging
+// the value can't recover the AK.
+func credentialFingerprint(c *Config) string {
+	src := c.AccessKey
+	if src == "" {
+		src = c.AccessKeyEnv
+	}
+	sum := sha256.Sum256([]byte(src))
+	return hex.EncodeToString(sum[:])
 }
 
 // Close implements Backend. The underlying SDK client uses Go's
@@ -292,7 +340,10 @@ func (b *Backend) Get(ctx context.Context, key string, off, size int64) (io.Read
 }
 
 // Head implements Backend. ETag is returned without surrounding quotes
-// (S3 wraps it in quotes; callers expect bare).
+// (S3 wraps it in quotes; callers expect bare). When the
+// `x-amz-meta-syncnode-mtime` header is present its parsed RFC3339Nano value
+// is returned in preference to LastModified — this lets callers see the
+// source-side modification time stamped at upload (see PutOptions.Mtime).
 func (b *Backend) Head(ctx context.Context, key string) (int64, string, time.Time, error) {
 	out, err := b.client.HeadObject(ctx, &awss3.HeadObjectInput{
 		Bucket: aws.String(b.bucket),
@@ -309,11 +360,29 @@ func (b *Backend) Head(ctx context.Context, key string) (int64, string, time.Tim
 		size = *out.ContentLength
 	}
 	etag := strings.Trim(aws.ToString(out.ETag), `"`)
-	var mtime time.Time
-	if out.LastModified != nil {
+	mtime := parseSyncnodeMtime(out.Metadata)
+	if mtime.IsZero() && out.LastModified != nil {
 		mtime = *out.LastModified
 	}
 	return size, etag, mtime, nil
+}
+
+// parseSyncnodeMtime extracts and parses the syncnode-mtime user-metadata
+// header. Returns the zero time on miss or parse error so callers can fall
+// back to LastModified.
+func parseSyncnodeMtime(md map[string]string) time.Time {
+	if len(md) == 0 {
+		return time.Time{}
+	}
+	v, ok := md[backend.MtimeMetadataKey]
+	if !ok || v == "" {
+		return time.Time{}
+	}
+	t, err := time.Parse(time.RFC3339Nano, v)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
 }
 
 // Put implements Backend. Routes between simple PutObject and multipart
@@ -373,10 +442,10 @@ func (b *Backend) Put(ctx context.Context, key string, body io.Reader, size int6
 		if opts.ContentType != "" {
 			input.ContentType = aws.String(opts.ContentType)
 		}
-		// Merge caller metadata + (optionally) sha256 so single-shot path
-		// can stamp the digest in the original PUT — no follow-up Copy
-		// needed, saves one round trip.
-		md := mergeMetadata(opts.Metadata, sumFn)
+		// Merge caller metadata + (optionally) sha256 + (optionally) source
+		// mtime so the single-shot path can stamp everything in the original
+		// PUT — no follow-up Copy needed, saves one round trip.
+		md := mergeMetadata(opts.Metadata, sumFn, opts.Mtime)
 		if len(md) > 0 {
 			input.Metadata = md
 		}
@@ -415,8 +484,12 @@ func (b *Backend) Put(ctx context.Context, key string, body io.Reader, size int6
 	if opts.ContentType != "" {
 		input.ContentType = aws.String(opts.ContentType)
 	}
-	if len(opts.Metadata) > 0 {
-		input.Metadata = opts.Metadata
+	// Mtime is known up-front (does not require the stream to finish), so we
+	// stamp it on the original multipart Upload. sha256 still needs a post-
+	// upload CopyObject because the digest is only known once the body is
+	// drained.
+	if md := mergeMetadata(opts.Metadata, nil, opts.Mtime); len(md) > 0 {
+		input.Metadata = md
 	}
 	out, err := b.uploader.Upload(ctx, input, func(u *manager.Uploader) {
 		u.PartSize = int64(partSize) * mib
@@ -433,11 +506,10 @@ func (b *Backend) Put(ctx context.Context, key string, body io.Reader, size int6
 		hexSum := sumFn()
 		res.Checksum = hexSum
 		res.Algorithm = backend.ChecksumAlgorithmSHA256
-		// Stamp metadata via REPLACE-mode CopyObject. We can't include
-		// caller-supplied opts.Metadata in the original Upload AND drop it
-		// here, so on the multipart path callers' metadata is preserved
-		// across the copy.
-		copyMeta := mergeMetadata(opts.Metadata, func() string { return hexSum })
+		// Stamp metadata via REPLACE-mode CopyObject. We must preserve
+		// caller-supplied opts.Metadata AND the mtime entry that was already
+		// on the original Upload — REPLACE overwrites the whole map.
+		copyMeta := mergeMetadata(opts.Metadata, func() string { return hexSum }, opts.Mtime)
 		if cerr := b.stampSHA256Metadata(ctx, key, storageClass, opts.ContentType, copyMeta); cerr != nil {
 			// Best-effort: surface as a warning. Do NOT fail the Put — the
 			// checksum is still in res.Checksum and the executor can act on
@@ -449,19 +521,23 @@ func (b *Backend) Put(ctx context.Context, key string, body io.Reader, size int6
 }
 
 // mergeMetadata returns a new map with caller-supplied entries plus the
-// sha256 entry sourced from sumFn (if any). Returns nil when both sources
-// are empty so callers can leave PutObjectInput.Metadata unset rather than
-// passing an empty map (some servers treat empty-map differently).
-func mergeMetadata(user map[string]string, sumFn func() string) map[string]string {
-	if sumFn == nil && len(user) == 0 {
+// sha256 entry sourced from sumFn (if any) and the syncnode-mtime entry
+// derived from mtime (if non-nil). Returns nil when all sources are empty so
+// callers can leave PutObjectInput.Metadata unset rather than passing an
+// empty map (some servers treat empty-map differently).
+func mergeMetadata(user map[string]string, sumFn func() string, mtime *time.Time) map[string]string {
+	if sumFn == nil && len(user) == 0 && mtime == nil {
 		return nil
 	}
-	out := make(map[string]string, len(user)+1)
+	out := make(map[string]string, len(user)+2)
 	for k, v := range user {
 		out[k] = v
 	}
 	if sumFn != nil {
 		out[backend.SHA256MetadataKey] = sumFn()
+	}
+	if mtime != nil {
+		out[backend.MtimeMetadataKey] = mtime.UTC().Format(time.RFC3339Nano)
 	}
 	return out
 }
@@ -562,6 +638,207 @@ func (b *Backend) Rename(ctx context.Context, oldKey, newKey string) error {
 		return fmt.Errorf("s3 Rename copy %s/%s -> %s: %w", b.bucket, oldKey, newKey, err)
 	}
 	return b.Delete(ctx, oldKey)
+}
+
+// S3 server-side copy limits. CopyObject permits a single-shot copy up to
+// 5 GiB; larger objects must use multipart-copy via UploadPartCopy. Both
+// the threshold and the part size are package vars so tests can shrink
+// them without inflating fixtures past the integration-test budget.
+const serverSideCopySingleMaxDefault int64 = 5 * 1024 * 1024 * 1024
+
+var (
+	serverSideCopySingleMaxOverride int64 = serverSideCopySingleMaxDefault
+	serverSideCopyPartSize          int64 = 100 * 1024 * 1024 // 100 MiB
+)
+
+// ServerSideCopy implements backend.ServerSideCopier. Caller MUST have
+// asserted both SameInstance and Caps.ServerSideCopy beforehand.
+//
+// Strategy:
+//   - srcSize ≤ 5 GiB: single CopyObject call (one round trip).
+//   - srcSize > 5 GiB: multipart-copy protocol (CreateMultipartUpload +
+//     loop of UploadPartCopy with byte-range copy-source + Complete).
+//
+// PutOptions semantics:
+//   - StorageClass / ContentType / Metadata are passed through.
+//   - Mtime, if set, is persisted as `x-amz-meta-syncnode-mtime` (RFC3339Nano)
+//     just like a normal Put — both single and multipart paths respect it.
+//   - ComputeChecksum is a hint only: server-side copy never restreams
+//     bytes through the executor, so we cannot recompute sha256. The
+//     returned PutResult carries the destination ETag and an empty
+//     Checksum/Algorithm. The caller that asked for ComputeChecksum can
+//     fall back to GetChecksum(dst) afterwards if needed.
+func (b *Backend) ServerSideCopy(ctx context.Context, srcKey, dstKey string, opts backend.PutOptions) (backend.PutResult, error) {
+	if srcKey == "" || dstKey == "" {
+		return backend.PutResult{}, fmt.Errorf("s3 ServerSideCopy: empty src/dst key")
+	}
+	head, err := b.client.HeadObject(ctx, &awss3.HeadObjectInput{
+		Bucket: aws.String(b.bucket),
+		Key:    aws.String(srcKey),
+	})
+	if err != nil {
+		if isNotFound(err) {
+			return backend.PutResult{}, backend.ErrKeyNotFound
+		}
+		return backend.PutResult{}, fmt.Errorf("s3 ServerSideCopy head %s/%s: %w", b.bucket, srcKey, err)
+	}
+	var size int64
+	if head.ContentLength != nil {
+		size = *head.ContentLength
+	}
+	if size <= serverSideCopySingleMaxOverride {
+		return b.serverSideCopySingle(ctx, srcKey, dstKey, size, opts)
+	}
+	return b.serverSideCopyMultipart(ctx, srcKey, dstKey, size, opts)
+}
+
+// serverSideCopySingle issues a single CopyObject. Object stores honor
+// MetadataDirective=REPLACE to overwrite metadata in the new copy; we set
+// it only when the caller supplied at least one metadata directive (mtime,
+// content type, custom metadata) so the default cheap path stays cheap.
+func (b *Backend) serverSideCopySingle(ctx context.Context, srcKey, dstKey string, size int64, opts backend.PutOptions) (backend.PutResult, error) {
+	copySource := b.bucket + "/" + srcKey
+	input := &awss3.CopyObjectInput{
+		Bucket:     aws.String(b.bucket),
+		Key:        aws.String(dstKey),
+		CopySource: aws.String(copySource),
+	}
+	if opts.StorageClass != "" {
+		input.StorageClass = s3types.StorageClass(opts.StorageClass)
+	}
+
+	md, replace := buildCopyMetadata(opts)
+	if replace {
+		input.MetadataDirective = s3types.MetadataDirectiveReplace
+		input.Metadata = md
+		if opts.ContentType != "" {
+			input.ContentType = aws.String(opts.ContentType)
+		}
+	}
+
+	out, err := b.client.CopyObject(ctx, input)
+	if err != nil {
+		if isNotFound(err) {
+			return backend.PutResult{}, backend.ErrKeyNotFound
+		}
+		return backend.PutResult{}, fmt.Errorf("s3 ServerSideCopy single %s/%s -> %s: %w", b.bucket, srcKey, dstKey, err)
+	}
+	etag := ""
+	if out.CopyObjectResult != nil && out.CopyObjectResult.ETag != nil {
+		etag = strings.Trim(*out.CopyObjectResult.ETag, `"`)
+	}
+	return backend.PutResult{ETag: etag, BytesPut: size}, nil
+}
+
+// serverSideCopyMultipart drives the multipart-copy protocol for objects
+// larger than 5 GiB. Aborts the upload on any error so we don't leave
+// orphan parts (orphans are also cleaned by multipart_cleanup.go but
+// best-effort abort here is cheaper and faster).
+func (b *Backend) serverSideCopyMultipart(ctx context.Context, srcKey, dstKey string, size int64, opts backend.PutOptions) (backend.PutResult, error) {
+	createIn := &awss3.CreateMultipartUploadInput{
+		Bucket: aws.String(b.bucket),
+		Key:    aws.String(dstKey),
+	}
+	if opts.StorageClass != "" {
+		createIn.StorageClass = s3types.StorageClass(opts.StorageClass)
+	}
+	md, replace := buildCopyMetadata(opts)
+	if replace {
+		createIn.Metadata = md
+		if opts.ContentType != "" {
+			createIn.ContentType = aws.String(opts.ContentType)
+		}
+	}
+
+	created, err := b.client.CreateMultipartUpload(ctx, createIn)
+	if err != nil {
+		return backend.PutResult{}, fmt.Errorf("s3 ServerSideCopy create multipart %s/%s: %w", b.bucket, dstKey, err)
+	}
+	uploadID := aws.ToString(created.UploadId)
+
+	abort := func() {
+		if uploadID == "" {
+			return
+		}
+		_, _ = b.client.AbortMultipartUpload(context.Background(), &awss3.AbortMultipartUploadInput{
+			Bucket:   aws.String(b.bucket),
+			Key:      aws.String(dstKey),
+			UploadId: aws.String(uploadID),
+		})
+	}
+
+	partSize := serverSideCopyPartSize
+	if partSize <= 0 {
+		partSize = 100 * 1024 * 1024
+	}
+	copySource := b.bucket + "/" + srcKey
+	parts := make([]s3types.CompletedPart, 0, (size/partSize)+1)
+	var off int64
+	var partNum int32 = 1
+	for off < size {
+		end := off + partSize - 1
+		if end >= size {
+			end = size - 1
+		}
+		rangeHeader := fmt.Sprintf("bytes=%d-%d", off, end)
+		out, err := b.client.UploadPartCopy(ctx, &awss3.UploadPartCopyInput{
+			Bucket:          aws.String(b.bucket),
+			Key:             aws.String(dstKey),
+			UploadId:        aws.String(uploadID),
+			PartNumber:      aws.Int32(partNum),
+			CopySource:      aws.String(copySource),
+			CopySourceRange: aws.String(rangeHeader),
+		})
+		if err != nil {
+			abort()
+			return backend.PutResult{}, fmt.Errorf("s3 ServerSideCopy part %d %s/%s -> %s: %w", partNum, b.bucket, srcKey, dstKey, err)
+		}
+		etag := ""
+		if out.CopyPartResult != nil && out.CopyPartResult.ETag != nil {
+			etag = *out.CopyPartResult.ETag
+		}
+		parts = append(parts, s3types.CompletedPart{
+			ETag:       aws.String(etag),
+			PartNumber: aws.Int32(partNum),
+		})
+		off = end + 1
+		partNum++
+	}
+
+	done, err := b.client.CompleteMultipartUpload(ctx, &awss3.CompleteMultipartUploadInput{
+		Bucket:          aws.String(b.bucket),
+		Key:             aws.String(dstKey),
+		UploadId:        aws.String(uploadID),
+		MultipartUpload: &s3types.CompletedMultipartUpload{Parts: parts},
+	})
+	if err != nil {
+		abort()
+		return backend.PutResult{}, fmt.Errorf("s3 ServerSideCopy complete %s/%s: %w", b.bucket, dstKey, err)
+	}
+	etag := ""
+	if done.ETag != nil {
+		etag = strings.Trim(*done.ETag, `"`)
+	}
+	return backend.PutResult{ETag: etag, BytesPut: size}, nil
+}
+
+// buildCopyMetadata assembles the user-metadata map to apply on the
+// destination object, plus a boolean signaling whether the caller passed
+// any directive that requires MetadataDirective=REPLACE. Mtime is encoded
+// the same way Put does (RFC3339Nano under x-amz-meta-syncnode-mtime) so
+// Head reads it back consistently.
+func buildCopyMetadata(opts backend.PutOptions) (map[string]string, bool) {
+	if len(opts.Metadata) == 0 && opts.Mtime == nil && opts.ContentType == "" {
+		return nil, false
+	}
+	md := make(map[string]string, len(opts.Metadata)+1)
+	for k, v := range opts.Metadata {
+		md[k] = v
+	}
+	if opts.Mtime != nil {
+		md[backend.MtimeMetadataKey] = opts.Mtime.UTC().Format(time.RFC3339Nano)
+	}
+	return md, true
 }
 
 // List implements Backend. Streams entries on the returned channel.

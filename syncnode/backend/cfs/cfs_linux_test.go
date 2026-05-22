@@ -261,9 +261,21 @@ func (fs *fakeFS) BatchInodeGet(inos []uint64) []*proto.InodeInfo {
 	return out
 }
 
-// Setattr matches metaClient — currently the backend doesn't call it, but
-// the interface declares it so the fake must implement it.
-func (fs *fakeFS) Setattr(_ uint64, _, _, _, _ uint32, _, _ int64) error {
+// Setattr matches metaClient. Stores mtime on the addressed inode when the
+// valid bitmask requests it so tests for Put with PutOptions.Mtime can verify
+// the timestamp round-tripped (real metanode stores ModifyTime as unix-seconds
+// — we do the same for fidelity).
+func (fs *fakeFS) Setattr(ino uint64, valid, _, _, _ uint32, atime, mtime int64) error {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+	f, ok := fs.files[ino]
+	if !ok {
+		return syscall.ENOENT
+	}
+	if valid&proto.AttrModifyTime != 0 {
+		f.mtime = time.Unix(mtime, 0)
+	}
+	_ = atime // atime not used by syncnode tests yet
 	return nil
 }
 
@@ -773,3 +785,55 @@ func TestClose_Idempotent(t *testing.T) {
 // doesn't exercise that code path (it uses newWithDeps) but the import
 // MUST stay so cross-compilation linkage is right.
 var _ = stream.ExtentConfig{}
+
+// TestPutPreservesMtime verifies that PutOptions.Mtime causes the backend to
+// call Setattr(AttrModifyTime) and that a subsequent Head returns the same
+// mtime (truncated to whole seconds because the metanode wire format stores
+// ModifyTime as int64 unix-seconds).
+func TestPutPreservesMtime(t *testing.T) {
+	b, _ := newTestBackend(t)
+	ctx := context.Background()
+
+	// Use a whole-second timestamp so the second-precision wire truncation
+	// is exact rather than approximate.
+	want := time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC)
+	payload := []byte("cfs mtime preservation payload")
+	if _, err := b.Put(ctx, "/dir/mtime.bin", bytes.NewReader(payload), int64(len(payload)), backend.PutOptions{Mtime: &want}); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+
+	_, _, got, err := b.Head(ctx, "/dir/mtime.bin")
+	if err != nil {
+		t.Fatalf("Head: %v", err)
+	}
+	if !got.Equal(want) {
+		t.Errorf("Head mtime = %s, want %s", got, want)
+	}
+}
+
+// TestPutMtimeSubSecondTruncation documents that CFS stores ModifyTime as
+// whole unix-seconds on the wire, so sub-second precision from
+// PutOptions.Mtime is lost (this is a real CFS constraint, not a fakeFS
+// quirk — see metanode/partition_op_inode.go).
+func TestPutMtimeSubSecondTruncation(t *testing.T) {
+	b, _ := newTestBackend(t)
+	ctx := context.Background()
+
+	want := time.Date(2024, 1, 2, 3, 4, 5, 987654321, time.UTC)
+	payload := []byte("subsecond truncation payload")
+	if _, err := b.Put(ctx, "/dir/sub.bin", bytes.NewReader(payload), int64(len(payload)), backend.PutOptions{Mtime: &want}); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+
+	_, _, got, err := b.Head(ctx, "/dir/sub.bin")
+	if err != nil {
+		t.Fatalf("Head: %v", err)
+	}
+	wantTruncated := time.Unix(want.Unix(), 0)
+	if !got.Equal(wantTruncated) {
+		t.Errorf("Head mtime = %s, want %s (truncated to seconds)", got, wantTruncated)
+	}
+	if got.Equal(want) {
+		t.Errorf("CFS unexpectedly preserved sub-second precision (got = want = %s) — backend contract change?", got)
+	}
+}

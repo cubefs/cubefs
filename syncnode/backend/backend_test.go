@@ -79,7 +79,11 @@ func (f *fakeBackend) GetChecksum(ctx context.Context, key string) (string, stri
 func (f *fakeBackend) Delete(ctx context.Context, key string) error  { return nil }
 func (f *fakeBackend) Rename(ctx context.Context, o, n string) error { return nil }
 func (f *fakeBackend) Capabilities() Caps                            { return Caps{} }
-func (f *fakeBackend) Close() error                                  { f.closed.Store(true); return nil }
+func (f *fakeBackend) SameInstance(other Backend) bool {
+	o, ok := other.(*fakeBackend)
+	return ok && o != nil && o.kind == f.kind
+}
+func (f *fakeBackend) Close() error { f.closed.Store(true); return nil }
 
 // Register a couple of fake kinds for testing the registry + pool. Done
 // inside an init() guarded against double-registration in case multiple

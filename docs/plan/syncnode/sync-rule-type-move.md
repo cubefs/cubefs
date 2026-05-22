@@ -87,12 +87,22 @@ cubefs syncnode：
 ## 当前进度
 
 - [x] 设计落地
-- [ ] cubefs executor 改动 + 测试
-- [ ] dashboard 前端 + i18n
-- [ ] 镜像构建 + push
-- [ ] images.hcl bump（不 commit）
-- [ ] apply-syncnode / apply-monitoring
-- [ ] e2e 验证 src 删除 + dst 写入
+- [x] cubefs executor 改动 + 测试（rc4 `f438bf2d8`：TaskTypeMove + validateTask 自动锁定 + skip 路径 delete 修复）
+- [x] cubefs syncnode config 白名单补 "move"（rc5 `9b2bd2954`：`validRuleTypes` + 错误消息更新）
+- [x] dashboard 前端 + i18n（rc3：SyncRuleCreateDialog 新增 move 选项 + zh/en 文案）
+- [x] 镜像构建 + push（`cubefs:v3.5.3.1.rc5`、`cubefs-dashboard:v1.0.5.rc3`，均在 `hub.shiyak-office.com/storage/`）
+- [x] images.hcl bump（不 commit；cubefs-deploy `_envcommon/images.hcl` 已更新到 rc5）
+- [x] apply-syncnode / apply-monitoring（test-k3d 三个 syncnode pod Ready on rc5）
+- [x] e2e 验证 src 删除 + dst 写入（2026-05-22）
+
+### e2e 验证结果（2026-05-22, test-k3d, cubefs:v3.5.3.1.rc5）
+
+| 场景 | 结果 |
+|------|------|
+| Happy path：3 文件 local→local | status=succeeded，src 清空，dst sha256 全部匹配 |
+| 类型白名单：`type=transfer` | executor 拒绝：`invalid task.Type: "transfer"` |
+| AfterCopy 自动锁定：`type=move + afterCopy=keep` | validateTask 拒绝：`type=move forbids afterCopy="keep"` |
+| Master 存储层 | `/syncRule/create` 接受任意 type（按设计，校验在 syncnode dispatch 时执行） |
 
 ## 风险
 
