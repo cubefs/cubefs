@@ -44,7 +44,7 @@ const (
 )
 
 const (
-	maxRetryInterval = 60000 // 1min
+	maxRetryInterval = 30000 // 30second
 	baseFactor       = 1.5
 	maxRetryExpVal   = 26
 )
@@ -86,7 +86,7 @@ func getExtentAllocRetryTimeout() time.Duration {
 		return time.Duration(extentHandlerMaxRetryTime) * time.Second
 	}
 	// Cover at least: 2 * master DP check/create cycle + 2 * client DP pull cycle (see wrapper.Default*).
-	defaultTimeout := 2*wrapper.DefaultDpMasterCheckInterval + 2*wrapper.DefaultDpPullInterval
+	defaultTimeout := 2*wrapper.DefaultDpMasterCheckInterval + 6*wrapper.DefaultDpPullInterval
 	return defaultTimeout
 }
 

@@ -2,6 +2,7 @@ package stream
 
 import (
 	"testing"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data/wrapper"
@@ -53,4 +54,27 @@ func TestAllocateExtentRemoveDataPartitionForWrite(t *testing.T) {
 		t.Fatal("expected allocateExtent to fail, but it succeeded")
 	}
 	t.Logf("allocateExtent failed as expected: %v", err)
+}
+
+func TestGetExtentAllocRetryTimeout(t *testing.T) {
+	// When extentHandlerMaxRetryTime is 0, the function should return the default timeout:
+	// 2*DefaultDpMasterCheckInterval + 6*DefaultDpPullInterval
+	SetExentRetryArgs(0, 0, 0, false)
+	timeout := getExtentAllocRetryTimeout()
+	expected := 2*wrapper.DefaultDpMasterCheckInterval + 6*wrapper.DefaultDpPullInterval
+	if timeout != expected {
+		t.Fatalf("expected default timeout %v, got %v", expected, timeout)
+	}
+	t.Logf("default timeout: %v = 2*%v + 6*%v", timeout, wrapper.DefaultDpMasterCheckInterval, wrapper.DefaultDpPullInterval)
+
+	// When extentHandlerMaxRetryTime > 0, the configured value overrides the default
+	SetExentRetryArgs(0, 0, 5, false)
+	timeout2 := getExtentAllocRetryTimeout()
+	expected2 := 5 * time.Second
+	if timeout2 != expected2 {
+		t.Fatalf("expected configured timeout %v, got %v", expected2, timeout2)
+	}
+
+	// Reset to defaults
+	SetExentRetryArgs(0, 0, 0, false)
 }
