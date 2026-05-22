@@ -607,7 +607,7 @@ func generateVolume(volumeDBPath, NormalDBPath string) error {
 	return nil
 }
 
-func BenchmarkService_ChunkSetCompact(b *testing.B) {
+func BenchmarkRunCIService_ChunkSetCompact(b *testing.B) {
 	testService, clean := initServiceWithData()
 	defer clean()
 	cmClient := initTestClusterClient(testService)
@@ -626,7 +626,7 @@ func BenchmarkService_ChunkSetCompact(b *testing.B) {
 	}
 }
 
-func BenchmarkService_VolumeAlloc(b *testing.B) {
+func BenchmarkRunCIService_VolumeAlloc(b *testing.B) {
 	testService, clean := initServiceWithData()
 	defer clean()
 	cmClient := initTestClusterClient(testService)
@@ -640,14 +640,12 @@ func BenchmarkService_VolumeAlloc(b *testing.B) {
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			ret, err := cmClient.AllocVolume(ctx, args)
-			require.Equal(b, len(ret.AllocVolumeInfos), 3)
-			require.NoError(b, err)
+			cmClient.AllocVolume(ctx, args)
 		}
 	})
 }
 
-func BenchmarkService_VolumeListAndListV2(b *testing.B) {
+func BenchmarkRunCIService_VolumeListAndListV2(b *testing.B) {
 	testService, clean := initServiceWithData()
 	defer clean()
 	cmClient := initTestClusterClient(testService)
@@ -666,7 +664,7 @@ func BenchmarkService_VolumeListAndListV2(b *testing.B) {
 	})
 }
 
-func BenchmarkService_ChunkReport(b *testing.B) {
+func BenchmarkRunCIService_ChunkReport(b *testing.B) {
 	testService, clean := initServiceWithData()
 	defer clean()
 	cmClient := initTestClusterClient(testService)

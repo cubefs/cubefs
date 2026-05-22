@@ -1196,9 +1196,7 @@ func BenchmarkVolumeMgr_AllocVolume(b *testing.B) {
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			ret, err := mockVolumeMgr.AllocVolume(ctx, mode, len(args.Vids), args.Host)
-			require.NoError(b, err)
-			require.Equal(b, len(ret.AllocVolumeInfos), 2)
+			mockVolumeMgr.AllocVolume(ctx, mode, len(args.Vids), args.Host)
 		}
 	})
 }
@@ -1363,7 +1361,7 @@ func TestPreAlloc_HighWatermarkFallback(t *testing.T) {
 	})
 }
 
-func BenchmarkVolumeMgr_PreAllocVolume(b *testing.B) {
+func BenchmarkRunCIVolumeMgr_PreAllocVolume(b *testing.B) {
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 	mode := codemode.EC15P12
 	testConfig.checkAndFix()

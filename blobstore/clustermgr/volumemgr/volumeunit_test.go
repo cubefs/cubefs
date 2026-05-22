@@ -538,7 +538,7 @@ func TestVolumeMgr_AllocVolumeUnit_EpochOverflow(t *testing.T) {
 	require.ErrorIs(t, err, ErrVolumeUnitEpochOverflow)
 }
 
-func BenchmarkVolumeMgr_ChunkReport(b *testing.B) {
+func BenchmarkRunCIVolumeMgr_ChunkReport(b *testing.B) {
 	mockVolumeMgr, clean := initMockVolumeMgr(b)
 	defer clean()
 

@@ -1084,8 +1084,8 @@ func BenchmarkAllocFromDiskStoragesParallel(b *testing.B) {
 
 	testDiskMgr.cfg.HeartbeatExpireIntervalS = 6000
 	_, ctx := trace.StartSpanFromContext(context.Background(), "benchmark-parallel")
-	initTestBlobNodeMgrNodes(&testing.T{}, testDiskMgr, 1, 20, testIdcs[0])
-	initTestBlobNodeMgrDisks(&testing.T{}, testDiskMgr, 1, 1200, true, testIdcs[0])
+	initTestBlobNodeMgrNodes(&testing.T{}, testDiskMgr, 1, 21, testIdcs[0])
+	initTestBlobNodeMgrDisks(&testing.T{}, testDiskMgr, 1, 1200, false, testIdcs[0])
 
 	testDiskMgr.cfg.HostAware = true
 	testDiskMgr.cfg.RackAware = false
