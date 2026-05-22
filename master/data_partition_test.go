@@ -1058,48 +1058,41 @@ func TestDataPartition_getLeaderApplyMemberChangeID(t *testing.T) {
 	require.Zero(t, id)
 }
 
-func TestDataPartition_hasFollowerApplyMemberChangeAheadOfLeader(t *testing.T) {
+func TestDataPartition_maxApplyMemberChangeID(t *testing.T) {
 	peers := []proto.Peer{
 		{Addr: "h1", Type: raftProto.PeerNormal},
 		{Addr: "h2", Type: raftProto.PeerNormal},
-		{Addr: "h3", Type: raftProto.PeerNormal},
 	}
 	p := &DataPartition{
 		Replicas: []*DataReplica{
-			testLiveDataReplica("h1", 100, true, peers),
+			testLiveDataReplica("h1", 50, true, peers),
 			testLiveDataReplica("h2", 100, false, peers),
 		},
 	}
-	require.False(t, p.hasFollowerApplyMemberChangeAheadOfLeader())
-
-	p.Replicas = append(p.Replicas, testLiveDataReplica("h3", 101, false, peers))
-	require.True(t, p.hasFollowerApplyMemberChangeAheadOfLeader(), "non-leader replica behind max should skip restore")
-
-	p.Replicas[1].ApplyMemberChangeID = 101
-	require.False(t, p.hasFollowerApplyMemberChangeAheadOfLeader())
-
-	p.Replicas[1].ApplyMemberChangeID = 0
-	p.Replicas[1].AppliedID = 101
-	require.False(t, p.hasFollowerApplyMemberChangeAheadOfLeader(), "zero applyMemberChangeID with appliedID caught up should be skipped")
-
-	p.Replicas[1].AppliedID = 100
-	require.True(t, p.hasFollowerApplyMemberChangeAheadOfLeader(), "zero applyMemberChangeID without appliedID caught up should skip restore")
-
-	pLeaderBehind := &DataPartition{
-		Replicas: []*DataReplica{
-			testLiveDataReplica("h1", 100, true, peers),
-			testLiveDataReplica("h2", 101, false, peers),
-		},
-	}
-	require.False(t, pLeaderBehind.hasFollowerApplyMemberChangeAheadOfLeader(), "leader applyMemberChangeID is skipped")
+	require.EqualValues(t, 50, p.maxApplyMemberChangeID(), "leader applyMemberChangeID should be used as baseline")
 
 	pNoLeader := &DataPartition{
 		Replicas: []*DataReplica{
-			testLiveDataReplica("h1", 200, false, peers),
+			testLiveDataReplica("h1", 50, false, peers),
 			testLiveDataReplica("h2", 100, false, peers),
 		},
 	}
-	require.True(t, pNoLeader.hasFollowerApplyMemberChangeAheadOfLeader())
+	require.EqualValues(t, 100, pNoLeader.maxApplyMemberChangeID(), "without leader, max reported applyMemberChangeID should be used")
+}
+
+func TestDataReplica_isBehindApplyMemberChange(t *testing.T) {
+	peer := testLiveDataReplica("h1", 99, false, nil)
+	require.True(t, peer.isBehindApplyMemberChange(100), "non-zero applyMemberChangeID below baseline is behind")
+
+	peer.ApplyMemberChangeID = 100
+	require.False(t, peer.isBehindApplyMemberChange(100))
+
+	peer.ApplyMemberChangeID = 0
+	peer.AppliedID = 0
+	require.False(t, peer.isBehindApplyMemberChange(100), "zero applyMemberChangeID means local peers can be trusted")
+
+	leader := testLiveDataReplica("h2", 1, true, nil)
+	require.False(t, leader.isBehindApplyMemberChange(100), "leader is always trusted as baseline owner")
 }
 
 // TestDataPartition_needReplicaMetaRestore_applyMemberChangeID covers e8f69a29: lagging followers must not
@@ -1126,6 +1119,21 @@ func TestDataPartition_needReplicaMetaRestore_applyMemberChangeID(t *testing.T) 
 	}
 	require.False(t, dpLaggingFollower.needReplicaMetaRestore(c), "lagging follower should not trigger restore")
 
+	// A zero ApplyMemberChangeID means the replica's local peers can be trusted, even when AppliedID is also zero
+	// (for example, a new replica created from snapshot and not yet seeing random writes).
+	dpZeroApplyMemberChangeID := &DataPartition{
+		PartitionID: 9905,
+		ReplicaNum:  2,
+		Peers:       peers,
+		Hosts:       []string{"h1", "h2"},
+		Replicas: []*DataReplica{
+			testLiveDataReplica("h1", 200, true, peers),
+			testLiveDataReplica("h2", 0, false, peersWithOrphan),
+		},
+	}
+	dpZeroApplyMemberChangeID.Replicas[1].AppliedID = 0
+	require.True(t, dpZeroApplyMemberChangeID.needReplicaMetaRestore(c), "zero applyMemberChangeID replica should participate in restore checks")
+
 	// Same topology but follower caught up to leader — redundant local peer should be detected.
 	dpCaughtUp := &DataPartition{
 		PartitionID: 9902,
@@ -1151,6 +1159,42 @@ func TestDataPartition_needReplicaMetaRestore_applyMemberChangeID(t *testing.T) 
 		},
 	}
 	require.True(t, dpDivergent.needReplicaMetaRestore(c), "leader applyMemberChangeID is skipped by catch-up guard")
+}
+
+func TestDataPartition_needReplicaMetaRestore_manualAddMergedPeerChecks(t *testing.T) {
+	c := &Cluster{cfg: newClusterConfig()}
+	peers := []proto.Peer{
+		{Addr: "h1", Type: raftProto.PeerNormal},
+		{Addr: "h2", Type: raftProto.PeerNormal},
+	}
+	orphan := proto.Peer{Addr: "orphan", Type: raftProto.PeerNormal}
+	peersWithOrphan := append(append([]proto.Peer(nil), peers...), orphan)
+
+	dpManualAddExtraLocalPeer := &DataPartition{
+		PartitionID:      9906,
+		ReplicaNum:       2,
+		Peers:            peers,
+		Hosts:            []string{"h1", "h2"},
+		DecommissionType: ManualAddReplica,
+		Replicas: []*DataReplica{
+			testLiveDataReplica("h1", 100, true, peersWithOrphan),
+		},
+	}
+	require.False(t, dpManualAddExtraLocalPeer.needReplicaMetaRestore(c),
+		"ManualAddReplica should ignore replica-local peers that are not yet in master peers")
+
+	dpManualAddMissingLocalPeer := &DataPartition{
+		PartitionID:      9907,
+		ReplicaNum:       2,
+		Peers:            peers,
+		Hosts:            []string{"h1", "h2"},
+		DecommissionType: ManualAddReplica,
+		Replicas: []*DataReplica{
+			testLiveDataReplica("h1", 100, true, []proto.Peer{peers[0]}),
+		},
+	}
+	require.True(t, dpManualAddMissingLocalPeer.needReplicaMetaRestore(c),
+		"ManualAddReplica should still detect master peers missing from replica local peers")
 }
 
 func TestDataPartition_checkReplicaMetaSkipsLaggingApplyMemberChange(t *testing.T) {
