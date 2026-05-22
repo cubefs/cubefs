@@ -212,6 +212,30 @@ type PutOptions struct {
 	// behaviour.
 	GID *uint32
 
+	// ResumeOffset, when > 0, instructs the backend to resume an in-progress
+	// upload at the given byte offset. body is expected to start at the byte
+	// AFTER ResumeOffset (i.e. body covers [ResumeOffset, size) of the
+	// destination); the backend is responsible for keeping the existing
+	// [0, ResumeOffset) bytes intact and stitching the new bytes onto the end.
+	//
+	// Cross-backend semantics:
+	//   - local: writes into a deterministic partial file (`<dst>.syncnode.partial`)
+	//            that survives failed Puts. ResumeOffset > 0 opens the partial,
+	//            verifies its size >= ResumeOffset, seeks, and continues writing.
+	//            When ComputeChecksum is also true, the partial's existing bytes
+	//            [0, ResumeOffset) are hashed into the same sha256 sink before
+	//            tee'ing the body, so PutResult.Checksum reflects the WHOLE file.
+	//   - cfs:   currently IGNORED (cfs Put truncates first); Caps.ResumeOffsetWrite
+	//            reports false. Tracked separately — see p2-local-resume-fix.md §6.
+	//   - s3:    currently IGNORED (manager.Uploader does not expose UploadID for
+	//            resume); Caps.ResumeOffsetWrite reports false. Tracked separately.
+	//
+	// Backends that do not advertise Caps.ResumeOffsetWrite must silently ignore
+	// ResumeOffset for backward compatibility. The executor checks the cap before
+	// setting this field, so unsupported backends never see a non-zero value in
+	// practice; the silent-ignore contract is a belt-and-suspenders defence.
+	ResumeOffset int64
+
 	// Xattrs, when non-empty, persists extended attributes alongside the
 	// object body. Keys are full xattr names ("user.foo",
 	// "system.posix_acl_access", ...). Values are raw bytes — the
@@ -288,6 +312,18 @@ type Caps struct {
 	// reports true subject to the 2 KiB user-metadata budget (overflow
 	// returns ErrMetadataTooLarge from Put).
 	NativeXattrWrite bool
+
+	// ResumeOffsetWrite reports whether Put honors PutOptions.ResumeOffset
+	// by stitching the supplied body onto the destination at the requested
+	// offset (P2 breakpoint resume, see docs/plan/syncnode/p2-local-resume-fix.md).
+	// local reports true (deterministic partial file + seek + write); cfs and
+	// s3 currently report false (the cfs Put truncates first, the s3 Put uses
+	// the high-level manager.Uploader which does not surface UploadID for
+	// resume). The executor consults this flag before threading resumeOffset
+	// into PutOptions; backends that report false continue to receive the
+	// existing "best-effort streaming from source offset" behaviour and the
+	// caller treats partial bytes as wasted.
+	ResumeOffsetWrite bool
 }
 
 // Common errors returned by Backend implementations. Callers can use

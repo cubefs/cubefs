@@ -664,6 +664,16 @@ func (e *Executor) transferOnce(
 	// PutOptions.StorageClass would be sourced from the rule config
 	// (dst.storageClass) — see design.md §4.2.
 
+	// Thread resumeOffset into PutOptions only for backends that
+	// honour it (currently: local). Other backends (cfs / s3) ignore
+	// the field but we still gate on Caps to avoid misleading future
+	// readers. resumeOffset>0 means the executor has a Breakpoint and
+	// expects the dst to append starting at that byte offset; the body
+	// piped in below already starts at resumeOffset (via Src.Get range).
+	if resumeOffset > 0 && t.Dst.Capabilities().ResumeOffsetWrite {
+		putOpts.ResumeOffset = resumeOffset
+	}
+
 	type putOutcome struct {
 		res backend.PutResult
 		err error

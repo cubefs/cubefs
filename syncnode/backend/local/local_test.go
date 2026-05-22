@@ -143,6 +143,9 @@ func TestCapabilities(t *testing.T) {
 	if caps.ListMaxKeys != 0 {
 		t.Errorf("ListMaxKeys = %d, want 0", caps.ListMaxKeys)
 	}
+	if !caps.ResumeOffsetWrite {
+		t.Error("ResumeOffsetWrite must be true (local supports partial-file resume)")
+	}
 }
 
 // -----------------------------------------------------------------------
@@ -1015,4 +1018,274 @@ func TestServerSideCopy_LocalUnsupported(t *testing.T) {
 	if caps := bb.Capabilities(); caps.ServerSideCopy {
 		t.Errorf("Caps.ServerSideCopy = true, want false for local")
 	}
+}
+
+// -----------------------------------------------------------------------
+// ResumeOffset / partial-file resume (P2)
+// -----------------------------------------------------------------------
+
+// seedPartial writes prefix bytes to <root>/<key>.syncnode.partial, simulating
+// a previous Put that crashed mid-write and left its partial on disk.
+func seedPartial(t *testing.T, root, key string, prefix []byte) {
+	t.Helper()
+	partial := filepath.Join(root, key) + ".syncnode.partial"
+	if err := os.MkdirAll(filepath.Dir(partial), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(partial, prefix, 0o644); err != nil {
+		t.Fatalf("WriteFile partial: %v", err)
+	}
+}
+
+// TestPut_ResumeOffset_HappyPath simulates the P2 acceptance scenario:
+// 50KiB partial already on disk, caller resumes with ResumeOffset=50KiB and
+// streams the remaining 50KiB; the final file must equal the 100KiB source
+// byte-for-byte and no partial must remain.
+func TestPut_ResumeOffset_HappyPath(t *testing.T) {
+	t.Parallel()
+	b, root := newBackend(t)
+
+	const half = 50 * 1024
+	src := make([]byte, 2*half)
+	if _, err := rand.Read(src); err != nil {
+		t.Fatalf("rand.Read: %v", err)
+	}
+	key := "resume/happy.bin"
+	seedPartial(t, root, key, src[:half])
+
+	res, err := b.Put(context.Background(), key, bytes.NewReader(src[half:]), int64(len(src)), backend.PutOptions{
+		ResumeOffset: int64(half),
+	})
+	if err != nil {
+		t.Fatalf("Put(resume): %v", err)
+	}
+	if res.BytesPut != int64(len(src)) {
+		t.Errorf("BytesPut = %d, want %d", res.BytesPut, len(src))
+	}
+
+	got, err := os.ReadFile(filepath.Join(root, key))
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if !bytes.Equal(got, src) {
+		t.Fatalf("dst content mismatch: len=%d want=%d, sha256(got)=%x sha256(src)=%x",
+			len(got), len(src), sha256.Sum256(got), sha256.Sum256(src))
+	}
+	if _, err := os.Stat(filepath.Join(root, key) + ".syncnode.partial"); !os.IsNotExist(err) {
+		t.Errorf("partial should be renamed away after success, stat err = %v", err)
+	}
+}
+
+// TestPut_ResumeOffset_PreservesChecksum verifies that PutResult.Checksum is
+// the sha256 of the WHOLE file (prefix + body), not just the resumed body.
+// This is critical: data-integrity-p0-p2.md uses this checksum to validate
+// the destination against the source after resume.
+func TestPut_ResumeOffset_PreservesChecksum(t *testing.T) {
+	t.Parallel()
+	b, root := newBackend(t)
+
+	const half = 50 * 1024
+	src := make([]byte, 2*half)
+	if _, err := rand.Read(src); err != nil {
+		t.Fatalf("rand.Read: %v", err)
+	}
+	key := "resume/checksum.bin"
+	seedPartial(t, root, key, src[:half])
+
+	res, err := b.Put(context.Background(), key, bytes.NewReader(src[half:]), int64(len(src)), backend.PutOptions{
+		ResumeOffset:    int64(half),
+		ComputeChecksum: true,
+	})
+	if err != nil {
+		t.Fatalf("Put(resume,checksum): %v", err)
+	}
+	if res.Algorithm != backend.ChecksumAlgorithmSHA256 {
+		t.Errorf("Algorithm = %q, want sha256", res.Algorithm)
+	}
+	want := sha256.Sum256(src)
+	wantHex := hexEncode(want[:])
+	if res.Checksum != wantHex {
+		t.Errorf("Checksum = %q, want sha256(whole) = %q", res.Checksum, wantHex)
+	}
+}
+
+// TestPut_ResumeOffset_StalePartial guards against the caller pointing at a
+// partial that does NOT actually contain ResumeOffset bytes. Continuing would
+// either Seek past end (sparse hole) or skip a chunk — both silent
+// corruption. Local must reject with ErrConfigInvalid.
+func TestPut_ResumeOffset_StalePartial(t *testing.T) {
+	t.Parallel()
+	b, root := newBackend(t)
+
+	const half = 50 * 1024
+	src := make([]byte, 2*half)
+	if _, err := rand.Read(src); err != nil {
+		t.Fatalf("rand.Read: %v", err)
+	}
+	key := "resume/stale.bin"
+	// Seed a partial that is SHORTER than ResumeOffset.
+	seedPartial(t, root, key, src[:half-1024])
+
+	_, err := b.Put(context.Background(), key, bytes.NewReader(src[half:]), int64(len(src)), backend.PutOptions{
+		ResumeOffset: int64(half),
+	})
+	if err == nil || !errors.Is(err, backend.ErrConfigInvalid) {
+		t.Fatalf("expected ErrConfigInvalid for stale partial, got %v", err)
+	}
+}
+
+// TestPut_ResumeOffset_StalePartialMissing covers the boundary where the
+// partial file does not exist at all but the caller claims a non-zero
+// ResumeOffset (e.g. operator manually wiped /tmp). Must surface as
+// ErrConfigInvalid so the executor can decide to restart from offset 0.
+func TestPut_ResumeOffset_StalePartialMissing(t *testing.T) {
+	t.Parallel()
+	b, _ := newBackend(t)
+
+	src := make([]byte, 100*1024)
+	if _, err := rand.Read(src); err != nil {
+		t.Fatalf("rand.Read: %v", err)
+	}
+	_, err := b.Put(context.Background(), "resume/missing.bin", bytes.NewReader(src[50*1024:]), int64(len(src)), backend.PutOptions{
+		ResumeOffset: 50 * 1024,
+	})
+	if err == nil || !errors.Is(err, backend.ErrConfigInvalid) {
+		t.Fatalf("expected ErrConfigInvalid when partial missing, got %v", err)
+	}
+}
+
+// TestPut_ResumeOffset_FreshStartLeavesNoPartial verifies the ResumeOffset==0
+// happy path: no pre-seeded partial required, write completes, and the
+// partial file is renamed away (i.e. no stale .syncnode.partial residue).
+func TestPut_ResumeOffset_FreshStartLeavesNoPartial(t *testing.T) {
+	t.Parallel()
+	b, root := newBackend(t)
+
+	src := make([]byte, 4*1024)
+	if _, err := rand.Read(src); err != nil {
+		t.Fatalf("rand.Read: %v", err)
+	}
+	key := "resume/fresh.bin"
+	if _, err := b.Put(context.Background(), key, bytes.NewReader(src), int64(len(src)), backend.PutOptions{
+		ResumeOffset: 0,
+	}); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(root, key))
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if !bytes.Equal(got, src) {
+		t.Fatalf("dst content mismatch")
+	}
+	if _, err := os.Stat(filepath.Join(root, key) + ".syncnode.partial"); !os.IsNotExist(err) {
+		t.Errorf("partial should not exist after fresh Put, stat err = %v", err)
+	}
+}
+
+// TestPut_ResumeOffset_TruncatesExtraBytes ensures that if a previous failed
+// attempt wrote MORE bytes than the breakpoint recorded (e.g. crashed after
+// io.Copy but before persisting bytesDone), the resume run truncates the
+// excess back to ResumeOffset so the final file is exactly prefix+body,
+// not prefix+extra+body.
+func TestPut_ResumeOffset_TruncatesExtraBytes(t *testing.T) {
+	t.Parallel()
+	b, root := newBackend(t)
+
+	const half = 50 * 1024
+	src := make([]byte, 2*half)
+	if _, err := rand.Read(src); err != nil {
+		t.Fatalf("rand.Read: %v", err)
+	}
+	key := "resume/truncate.bin"
+	// Seed partial with half + 1024 random bytes of "junk" that the caller's
+	// breakpoint did not record.
+	junk := make([]byte, 1024)
+	if _, err := rand.Read(junk); err != nil {
+		t.Fatalf("rand.Read junk: %v", err)
+	}
+	seedPartial(t, root, key, append(append([]byte{}, src[:half]...), junk...))
+
+	if _, err := b.Put(context.Background(), key, bytes.NewReader(src[half:]), int64(len(src)), backend.PutOptions{
+		ResumeOffset: int64(half),
+	}); err != nil {
+		t.Fatalf("Put(resume): %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(root, key))
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if !bytes.Equal(got, src) {
+		t.Fatalf("dst content mismatch: junk was not truncated. len(got)=%d want=%d",
+			len(got), len(src))
+	}
+}
+
+// TestList_HidesPartialFiles ensures the resume scratch suffix
+// (.syncnode.partial) does not leak through List. Partial files are an
+// implementation detail of Put; surfacing them would force every caller —
+// executor, retention, dashboard — to know about the suffix.
+func TestList_HidesPartialFiles(t *testing.T) {
+	t.Parallel()
+	b, root := newBackend(t)
+	const base = "listhide"
+
+	if err := os.MkdirAll(filepath.Join(root, base, "nest"), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	// Real, complete file in the listing space.
+	if _, err := b.Put(context.Background(), base+"/good.bin", bytes.NewReader([]byte("ok")), 2, backend.PutOptions{}); err != nil {
+		t.Fatalf("Put good: %v", err)
+	}
+	// Drop stray partials straight onto disk (simulating crashed Puts).
+	if err := os.WriteFile(filepath.Join(root, base, "stale.bin.syncnode.partial"), []byte("xx"), 0o644); err != nil {
+		t.Fatalf("WriteFile partial: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, base, "nest", "deep.bin.syncnode.partial"), []byte("xx"), 0o644); err != nil {
+		t.Fatalf("WriteFile nested partial: %v", err)
+	}
+
+	// Recursive
+	ch, err := b.List(context.Background(), base, true)
+	if err != nil {
+		t.Fatalf("List recursive: %v", err)
+	}
+	var keys []string
+	for e := range ch {
+		if e.Err != nil {
+			t.Fatalf("List entry err: %v", e.Err)
+		}
+		keys = append(keys, e.Key)
+	}
+	for _, k := range keys {
+		if strings.HasSuffix(k, ".syncnode.partial") {
+			t.Errorf("List leaked partial file: %q (full set: %v)", k, keys)
+		}
+	}
+
+	// Shallow
+	ch, err = b.List(context.Background(), base, false)
+	if err != nil {
+		t.Fatalf("List shallow: %v", err)
+	}
+	for e := range ch {
+		if e.Err != nil {
+			t.Fatalf("List entry err: %v", e.Err)
+		}
+		if strings.HasSuffix(e.Key, ".syncnode.partial") {
+			t.Errorf("List(shallow) leaked partial file: %q", e.Key)
+		}
+	}
+}
+
+// hexEncode mirrors encoding/hex.EncodeToString without dragging the import
+// just for tests — keeps test imports compact.
+func hexEncode(b []byte) string {
+	const hexdigits = "0123456789abcdef"
+	out := make([]byte, len(b)*2)
+	for i, v := range b {
+		out[i*2] = hexdigits[v>>4]
+		out[i*2+1] = hexdigits[v&0x0f]
+	}
+	return string(out)
 }

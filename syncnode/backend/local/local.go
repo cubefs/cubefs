@@ -28,7 +28,6 @@ package local
 import (
 	"context"
 	"crypto/md5" //nolint:gosec
-	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -42,6 +41,17 @@ import (
 
 	"github.com/cubefs/cubefs/syncnode/backend"
 )
+
+// partialSuffix is the deterministic suffix appended to a destination key when
+// Put writes data into the local FS. Put renames the partial file onto the
+// destination on success; on failure (or mid-stream context cancellation) the
+// partial is left behind so a subsequent Put with PutOptions.ResumeOffset > 0
+// can pick up where the previous attempt left off.
+//
+// The suffix is deliberately distinctive ("syncnode" prefix) so operator
+// sweeps can locate orphans, and so a future local.List filter can exclude
+// them from the namespace.
+const partialSuffix = ".syncnode.partial"
 
 // kindName is the registered backend kind for local POSIX storage.
 const kindName = "local"
@@ -204,6 +214,10 @@ func (b *Backend) Capabilities() backend.Caps {
 		NativeModeWrite:  posixMetaSupported,
 		NativeOwnerWrite: posixMetaSupported,
 		NativeXattrWrite: posixMetaSupported,
+		// P2 breakpoint resume: Put honors PutOptions.ResumeOffset by writing
+		// into a deterministic `<dst>.syncnode.partial` and stitching the new
+		// body onto the existing bytes. See p2-local-resume-fix.md.
+		ResumeOffsetWrite: true,
 	}
 }
 
@@ -440,15 +454,35 @@ func (b *Backend) Head(ctx context.Context, key string) (int64, string, time.Tim
 	return info.Size(), "", info.ModTime(), nil
 }
 
-// Put implements backend.Backend. The write is atomic: bytes go into a temp
-// file alongside the destination and we os.Rename into place on success.
-// A failed Put leaves no half-written destination, only an orphan temp file
-// that operators can sweep.
+// Put implements backend.Backend. The write is atomic at the destination: bytes
+// go into a deterministic partial file (`<dst>.syncnode.partial`) and only
+// once the body finishes do we os.Rename the partial onto the destination.
+//
+// Failure semantics differ from a transient temp file: on copy / close / write
+// errors we LEAVE the partial behind so a subsequent Put with
+// PutOptions.ResumeOffset > 0 can stitch the rest of the body onto the
+// already-written prefix. Operators (or a future GC sweep) clean up stale
+// partials.
+//
+// PutOptions.ResumeOffset semantics:
+//   - 0 (default): open the partial with O_TRUNC|O_CREATE, write the whole
+//     body, rename to dst. Equivalent to the legacy atomic-rename behaviour.
+//   - > 0: open the existing partial (Stat must report size >= ResumeOffset,
+//     otherwise we return ErrConfigInvalid because the breakpoint is stale).
+//     Seek to ResumeOffset, write body, rename to dst. The body must contain
+//     exactly the suffix [ResumeOffset, total) — the executor guarantees this
+//     by calling t.Src.Get(key, ResumeOffset, 0) upstream.
 //
 // When opts.ComputeChecksum is true, the body stream is tee'd through a
-// sha256 hasher during the copy so the checksum costs no extra read. The
-// resulting digest is returned in PutResult.Checksum (algorithm "sha256")
-// and primed into the in-memory cache so a subsequent GetChecksum is O(1).
+// sha256 hasher during the copy so the checksum costs no extra read for the
+// non-resume path. For a resume Put we first hash the existing partial's
+// [0, ResumeOffset) prefix into the same sink, then tee the body — so
+// PutResult.Checksum is the sha256 over the WHOLE assembled file (callers
+// expect a whole-file digest, not the suffix-only digest).
+//
+// The resulting digest (whole-file or non-resume single-shot) is returned in
+// PutResult.Checksum (algorithm "sha256") and primed into the in-memory cache
+// so a subsequent GetChecksum is O(1).
 func (b *Backend) Put(ctx context.Context, key string, body io.Reader, size int64, opts backend.PutOptions) (backend.PutResult, error) {
 	path, err := b.resolveSafe(key, false)
 	if err != nil {
@@ -479,38 +513,125 @@ func (b *Backend) Put(ctx context.Context, key string, body io.Reader, size int6
 		bufSize = minBufferSize
 	}
 
-	tmpName, err := tempName(path)
-	if err != nil {
-		return backend.PutResult{}, err
+	if opts.ResumeOffset < 0 {
+		return backend.PutResult{}, fmt.Errorf("%w: ResumeOffset must be >= 0, got %d", backend.ErrConfigInvalid, opts.ResumeOffset)
 	}
-	f, err := os.OpenFile(tmpName, os.O_WRONLY|os.O_CREATE|os.O_EXCL|os.O_TRUNC, 0o644)
-	if err != nil {
-		return backend.PutResult{}, fmt.Errorf("create temp %q: %w", tmpName, err)
-	}
-	cleanup := func() { _ = os.Remove(tmpName) }
 
-	src := body
-	var sumFn func() string
+	partial := path + partialSuffix
+
+	// Prepare the sha256 sink up front so we can prefill it with the existing
+	// partial bytes BEFORE tee'ing the body. For non-resume Puts this is a
+	// straight Tee of body; the prefill loop is skipped because the partial
+	// gets truncated.
+	var (
+		hashSink  io.Writer
+		sumFn     func() string
+		teeBody   io.Reader = body
+		startSize int64
+	)
 	if opts.ComputeChecksum {
 		h, fn := backend.NewSHA256Sink()
-		src = io.TeeReader(body, h)
+		hashSink = h
 		sumFn = fn
 	}
 
-	written, cerr := copyWithBufferCtx(ctx, f, src, bufSize)
+	var f *os.File
+	if opts.ResumeOffset > 0 {
+		// Stale-breakpoint guard: the partial must exist and be at least as
+		// long as ResumeOffset, otherwise the caller's breakpoint claim is
+		// inconsistent and continuing would write at a hole or past the end
+		// (Seek past end on POSIX is legal but yields a sparse file with
+		// undefined content in the gap — exactly the kind of silent
+		// corruption we are trying to fix).
+		info, statErr := os.Stat(partial)
+		if statErr != nil {
+			if os.IsNotExist(statErr) {
+				return backend.PutResult{}, fmt.Errorf("%w: resume requested at offset %d but partial %q does not exist",
+					backend.ErrConfigInvalid, opts.ResumeOffset, partial)
+			}
+			return backend.PutResult{}, fmt.Errorf("stat partial %q: %w", partial, statErr)
+		}
+		if info.Size() < opts.ResumeOffset {
+			return backend.PutResult{}, fmt.Errorf("%w: stale partial %q size=%d < ResumeOffset=%d",
+				backend.ErrConfigInvalid, partial, info.Size(), opts.ResumeOffset)
+		}
+		// Truncate any junk past ResumeOffset (e.g. the previous attempt
+		// flushed extra bytes the caller's breakpoint did not yet record).
+		// This keeps the post-write file exactly [0, ResumeOffset)+body.
+		if info.Size() > opts.ResumeOffset {
+			if err := os.Truncate(partial, opts.ResumeOffset); err != nil {
+				return backend.PutResult{}, fmt.Errorf("truncate partial %q to %d: %w", partial, opts.ResumeOffset, err)
+			}
+		}
+		startSize = opts.ResumeOffset
+
+		// For ComputeChecksum, hash the existing prefix into the same sink
+		// BEFORE writing new bytes. Open a read-only handle to the partial,
+		// CopyN(prefix into hashSink), close — then open the write handle.
+		// Splitting read/write handles is intentional: the write handle
+		// seeks past the prefix and we do not want a shared file offset to
+		// confuse the two flows.
+		if hashSink != nil {
+			rh, oerr := os.Open(partial)
+			if oerr != nil {
+				return backend.PutResult{}, fmt.Errorf("open partial for checksum prefix %q: %w", partial, oerr)
+			}
+			if _, cerr := io.CopyN(hashSink, rh, opts.ResumeOffset); cerr != nil {
+				_ = rh.Close()
+				return backend.PutResult{}, fmt.Errorf("hash partial prefix %q [0,%d): %w", partial, opts.ResumeOffset, cerr)
+			}
+			_ = rh.Close()
+		}
+
+		// Open the partial for append-style write at the resume offset. We
+		// do not use O_APPEND because POSIX O_APPEND ignores Seek; an
+		// explicit Seek + Write gives us deterministic positioning even if
+		// some libc inserts a hidden seek-to-end before the write.
+		wh, oerr := os.OpenFile(partial, os.O_WRONLY, 0o644)
+		if oerr != nil {
+			return backend.PutResult{}, fmt.Errorf("open partial for resume write %q: %w", partial, oerr)
+		}
+		if _, serr := wh.Seek(opts.ResumeOffset, io.SeekStart); serr != nil {
+			_ = wh.Close()
+			return backend.PutResult{}, fmt.Errorf("seek partial %q to %d: %w", partial, opts.ResumeOffset, serr)
+		}
+		f = wh
+	} else {
+		// Fresh write. O_TRUNC clobbers any stale partial left over from a
+		// previous failed Put that the caller did not intend to resume
+		// (e.g. ResumeOffset deliberately zeroed). We intentionally do NOT
+		// use O_EXCL because a stale partial is the expected resume state
+		// and we want to overwrite it cleanly when the caller asks for a
+		// fresh start.
+		wh, oerr := os.OpenFile(partial, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+		if oerr != nil {
+			return backend.PutResult{}, fmt.Errorf("create partial %q: %w", partial, oerr)
+		}
+		f = wh
+	}
+
+	if hashSink != nil {
+		teeBody = io.TeeReader(body, hashSink)
+	}
+
+	written, cerr := copyWithBufferCtx(ctx, f, teeBody, bufSize)
 	if cerr != nil {
 		_ = f.Close()
-		cleanup()
-		return backend.PutResult{}, fmt.Errorf("copy to %q: %w", tmpName, cerr)
+		// Intentionally LEAVE the partial behind. Resume hinges on the
+		// caller being able to find this file with at least
+		// (startSize + written) bytes durably on disk.
+		return backend.PutResult{}, fmt.Errorf("copy to %q: %w", partial, cerr)
 	}
 	if err := f.Close(); err != nil {
-		cleanup()
-		return backend.PutResult{}, fmt.Errorf("close temp %q: %w", tmpName, err)
+		// Same rationale: partial stays on close error.
+		return backend.PutResult{}, fmt.Errorf("close partial %q: %w", partial, err)
 	}
-	if err := os.Rename(tmpName, path); err != nil {
-		cleanup()
-		return backend.PutResult{}, fmt.Errorf("rename %q -> %q: %w", tmpName, path, err)
+	if err := os.Rename(partial, path); err != nil {
+		return backend.PutResult{}, fmt.Errorf("rename %q -> %q: %w", partial, path, err)
 	}
+	// Effective bytes-put includes the resumed prefix so callers comparing
+	// BytesPut against entry.Size still see equality.
+	written += startSize
 
 	// Apply POSIX metadata (mode / uid+gid / xattrs) BEFORE touching atime/mtime
 	// so the final Chtimes wins (chmod/chown/setxattr all bump ctime but only
@@ -714,6 +835,13 @@ func (b *Backend) walkShallow(ctx context.Context, base, prefix string, ch chan<
 			return
 		default:
 		}
+		// Hide our own resume scratch files. They are an implementation
+		// detail of Put's deterministic-partial design; surfacing them
+		// would force every caller (executor, dashboard, retention,
+		// contract tests) to know to filter them.
+		if strings.HasSuffix(de.Name(), partialSuffix) {
+			continue
+		}
 		absPath := filepath.Join(base, de.Name())
 		key := joinKey(prefix, de.Name())
 
@@ -814,6 +942,11 @@ func (b *Backend) walkRecursive(ctx context.Context, base, prefix string, ch cha
 		}
 		// Skip the base directory itself (no policy applies to it).
 		if p == base {
+			return nil
+		}
+
+		// Hide our own resume scratch files. See walkShallow for rationale.
+		if strings.HasSuffix(d.Name(), partialSuffix) {
 			return nil
 		}
 
@@ -1054,16 +1187,6 @@ func emit(ctx context.Context, ch chan<- backend.Entry, e backend.Entry) bool {
 // -----------------------------------------------------------------------
 // Internal helpers
 // -----------------------------------------------------------------------
-
-// tempName returns a sibling path with the form
-// "<dst>.tmp.<16-hex>" — atomic with os.Rename on the same filesystem.
-func tempName(dst string) (string, error) {
-	var b [8]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return "", fmt.Errorf("tempName: %w", err)
-	}
-	return dst + ".tmp." + hex.EncodeToString(b[:]), nil
-}
 
 // copyWithBufferCtx is io.Copy with an explicit buffer size *and* context
 // cancellation between chunks. Plain io.Copy / io.CopyBuffer honour
