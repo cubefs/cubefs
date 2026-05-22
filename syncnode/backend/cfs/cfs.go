@@ -123,6 +123,13 @@ type metaClient interface {
 	ReadDir_ll(parentID uint64) ([]proto.Dentry, error)
 	BatchInodeGet(inodes []uint64) []*proto.InodeInfo
 	Setattr(inode uint64, valid, mode, uid, gid uint32, atime, mtime int64) error
+	// XAttrSet_ll writes a single xattr; metanode persists the (name,value)
+	// pair under the inode. value may be empty but name must be non-empty.
+	XAttrSet_ll(inode uint64, name, value []byte) error
+	// XAttrGetAll_ll returns every xattr defined on the inode. We prefer
+	// this over the list+get-per-name combination because it is a single
+	// RPC; metanode reads them out of one inode lookup.
+	XAttrGetAll_ll(inode uint64) (*proto.XAttrInfo, error)
 	Close() error
 }
 
@@ -262,6 +269,14 @@ func (b *Backend) Capabilities() backend.Caps {
 		// 写路径必须流式过 ExtentClient.Write，没有原生的 same-volume copy
 		// 接口，所以同实例的 Get→Put 仍然走通用路径。
 		ServerSideCopy: false,
+		// metanode keeps the POSIX mode/uid/gid on the inode and exposes
+		// them via Setattr; full mode word (incl. setuid/setgid/sticky)
+		// is preserved on the wire because proto.AttrMode uses uint32.
+		NativeModeWrite:  true,
+		NativeOwnerWrite: true,
+		// metanode supports per-inode xattr storage via XAttrSet_ll; the
+		// executor handles namespace filtering before handing them down.
+		NativeXattrWrite: true,
 	}
 }
 
@@ -374,6 +389,44 @@ func (b *Backend) Head(_ context.Context, key string) (int64, string, time.Time,
 		return 0, "", time.Time{}, translateErr("inode get "+full, err)
 	}
 	return int64(info.Size), "", info.ModifyTime, nil
+}
+
+// Stat implements backend.Stater. It returns the full POSIX-style metadata
+// for key — size/mtime/mode/uid/gid from the inode plus any xattrs the
+// metanode stores. Xattr retrieval is best-effort: a hard failure on
+// XAttrGetAll_ll is downgraded to "no xattrs" so a partially-degraded
+// metanode does not break Stat for callers that only need mode/owner.
+func (b *Backend) Stat(_ context.Context, key string) (backend.Stat, error) {
+	full := normalizeKey(key)
+	ino, err := b.mw.LookupPath(full)
+	if err != nil {
+		return backend.Stat{}, translateErr("lookup "+full, err)
+	}
+	info, err := b.mw.InodeGet_ll(ino)
+	if err != nil {
+		return backend.Stat{}, translateErr("inode get "+full, err)
+	}
+	mode := info.Mode
+	uid := info.Uid
+	gid := info.Gid
+	st := backend.Stat{
+		Size:  int64(info.Size),
+		Mtime: info.ModifyTime,
+		Mode:  &mode,
+		UID:   &uid,
+		GID:   &gid,
+	}
+	// Best-effort xattr read: empty/error → nil map. Callers (executor)
+	// already tolerate a nil Xattrs map and will degrade per the rule's
+	// OnMetadataUnsupported policy.
+	if xinfo, xerr := b.mw.XAttrGetAll_ll(ino); xerr == nil && xinfo != nil && len(xinfo.XAttrs) > 0 {
+		out := make(map[string][]byte, len(xinfo.XAttrs))
+		for name, value := range xinfo.XAttrs {
+			out[name] = []byte(value)
+		}
+		st.Xattrs = out
+	}
+	return st, nil
 }
 
 // Delete removes the file at key. ENOENT is silently treated as success
@@ -599,18 +652,57 @@ func (b *Backend) Put(ctx context.Context, key string, body io.Reader, size int6
 		return backend.PutResult{}, fmt.Errorf("cfs put close stream %s: %w", full, err)
 	}
 
-	// Preserve source mtime when requested. Called after CloseStream so the
-	// data path is finalized first; if Setattr fails the data is still good
-	// and we return the error so the caller knows the requested timestamp
-	// was not applied (an idempotency comparison that keys off mtime would
-	// otherwise silently mis-match on the next sync run).
+	// Preserve POSIX metadata when requested. Called after CloseStream so
+	// the data path is finalized first; mode/owner/mtime are batched into a
+	// single Setattr call so metanode applies them atomically and a partial
+	// failure cannot leave us with mtime set but owner not (which would
+	// break idempotency on the next sync run).
 	//
 	// CubeFS stores mtime as Unix-seconds on the wire (metanode reconstructs
 	// via time.Unix(mt, 0)) so sub-second precision is truncated. Callers
 	// that need ns-precision comparison must tolerate this on cfs backends.
-	if opts.Mtime != nil {
-		if err := b.mw.Setattr(ino, proto.AttrModifyTime, 0, 0, 0, 0, opts.Mtime.Unix()); err != nil {
-			return backend.PutResult{}, fmt.Errorf("cfs put setattr mtime %s: %w", full, err)
+	if opts.Mode != nil || opts.UID != nil || opts.GID != nil || opts.Mtime != nil {
+		var (
+			valid uint32
+			mode  uint32
+			uid   uint32
+			gid   uint32
+			mtime int64
+		)
+		if opts.Mode != nil {
+			valid |= proto.AttrMode
+			// Setattr persists the mode word as supplied — the executor is
+			// responsible for masking out file-type bits (S_IFREG etc.) if
+			// they leaked from a Stat result. Pass the permission/setuid/
+			// setgid/sticky bits intact.
+			mode = *opts.Mode
+		}
+		if opts.UID != nil {
+			valid |= proto.AttrUid
+			uid = *opts.UID
+		}
+		if opts.GID != nil {
+			valid |= proto.AttrGid
+			gid = *opts.GID
+		}
+		if opts.Mtime != nil {
+			valid |= proto.AttrModifyTime
+			mtime = opts.Mtime.Unix()
+		}
+		if err := b.mw.Setattr(ino, valid, mode, uid, gid, 0, mtime); err != nil {
+			return backend.PutResult{}, fmt.Errorf("cfs put setattr %s: %w", full, err)
+		}
+	}
+
+	// xattrs: per-name RPC (metanode has no batch-write that round-trips
+	// raw bytes; BatchSetXAttr_ll takes map[string]string which would force
+	// a UTF-8 round-trip and silently corrupt binary values).
+	for name, value := range opts.Xattrs {
+		if name == "" {
+			continue
+		}
+		if err := b.mw.XAttrSet_ll(ino, []byte(name), value); err != nil {
+			return backend.PutResult{}, fmt.Errorf("cfs put xattr %s name=%s: %w", full, name, err)
 		}
 	}
 

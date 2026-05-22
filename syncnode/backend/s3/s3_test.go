@@ -1163,3 +1163,230 @@ func TestHeadFallsBackToLastModified(t *testing.T) {
 		t.Errorf("mtime %s earlier than put time %s — fallback to LastModified failed", mtime, beforePut)
 	}
 }
+
+// putPosixOpts is a small fixture of representative POSIX metadata exercised
+// by the round-trip tests below. setuid (0o4755) covers the higher mode bits;
+// the xattr map combines a printable value, an empty value, and binary bytes
+// to lock in the base64(JSON{base64}) encoding contract.
+func putPosixOpts(mtime *time.Time) backend.PutOptions {
+	mode := uint32(0o4755)
+	uid := uint32(1000)
+	gid := uint32(2000)
+	return backend.PutOptions{
+		Mtime: mtime,
+		Mode:  &mode,
+		UID:   &uid,
+		GID:   &gid,
+		Xattrs: map[string][]byte{
+			"user.syncnode.k":     []byte("hello"),
+			"user.syncnode.empty": {},
+			"user.syncnode.bin":   {0x00, 0x01, 0xff, 0xfe, 0x80},
+		},
+	}
+}
+
+// assertPosixStat validates that a Stat result matches the expected POSIX
+// metadata produced by putPosixOpts. Pulled out so single-shot and multipart
+// tests share the assertions (drift between paths is exactly what we want to
+// surface).
+func assertPosixStat(t *testing.T, st backend.Stat, want backend.PutOptions) {
+	t.Helper()
+	if st.Mode == nil || *st.Mode != *want.Mode {
+		t.Errorf("Mode: got %v, want %o", st.Mode, *want.Mode)
+	}
+	if st.UID == nil || *st.UID != *want.UID {
+		t.Errorf("UID: got %v, want %d", st.UID, *want.UID)
+	}
+	if st.GID == nil || *st.GID != *want.GID {
+		t.Errorf("GID: got %v, want %d", st.GID, *want.GID)
+	}
+	if len(st.Xattrs) != len(want.Xattrs) {
+		t.Errorf("Xattrs len: got %d, want %d (%+v)", len(st.Xattrs), len(want.Xattrs), st.Xattrs)
+	}
+	for k, v := range want.Xattrs {
+		got, ok := st.Xattrs[k]
+		if !ok {
+			t.Errorf("xattr %q missing in Stat result", k)
+			continue
+		}
+		if string(got) != string(v) {
+			t.Errorf("xattr %q: got %q, want %q", k, got, v)
+		}
+	}
+}
+
+// TestPut_PreservesPOSIX_SingleShot drives mode/uid/gid/xattr through the
+// small-body PutObject path (no multipart, no follow-up CopyObject) and
+// verifies Stat round-trips them all.
+func TestPut_PreservesPOSIX_SingleShot(t *testing.T) {
+	t.Parallel()
+	m := newMockS3("test-bucket")
+	defer m.close()
+	b := newTestBackend(t, m)
+	defer b.Close()
+
+	ctx := context.Background()
+	body := []byte("posix-single")
+	mtime := time.Date(2025, 2, 3, 4, 5, 6, 7, time.UTC)
+	opts := putPosixOpts(&mtime)
+	if _, err := b.Put(ctx, "posix-small.bin", strings.NewReader(string(body)), int64(len(body)), opts); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	st, err := b.Stat(ctx, "posix-small.bin")
+	if err != nil {
+		t.Fatalf("Stat: %v", err)
+	}
+	if st.Size != int64(len(body)) {
+		t.Errorf("Stat Size: got %d, want %d", st.Size, len(body))
+	}
+	if !st.Mtime.Equal(mtime) {
+		t.Errorf("Stat Mtime: got %s, want %s", st.Mtime, mtime)
+	}
+	assertPosixStat(t, st, opts)
+}
+
+// TestPut_PreservesPOSIX_Multipart drives the same metadata through the
+// multipart Upload path (size > MultipartThresholdMiB=8) which writes the
+// metadata up-front via the initial PutObject *and* via the post-upload
+// CopyObject(REPLACE) that stamps sha256. Both stages must keep the POSIX
+// fields intact.
+func TestPut_PreservesPOSIX_Multipart(t *testing.T) {
+	t.Parallel()
+	m := newMockS3("test-bucket")
+	defer m.close()
+	b := newTestBackend(t, m)
+	defer b.Close()
+
+	ctx := context.Background()
+	size := 10 * mib
+	body := make([]byte, size)
+	for i := range body {
+		body[i] = byte(i % 251)
+	}
+	mtime := time.Date(2025, 2, 3, 4, 5, 6, 7, time.UTC)
+	opts := putPosixOpts(&mtime)
+	opts.ComputeChecksum = true
+
+	if _, err := b.Put(ctx, "posix-big.bin", strings.NewReader(string(body)), int64(size), opts); err != nil {
+		t.Fatalf("Put multipart: %v", err)
+	}
+	st, err := b.Stat(ctx, "posix-big.bin")
+	if err != nil {
+		t.Fatalf("Stat: %v", err)
+	}
+	if st.Size != int64(size) {
+		t.Errorf("Stat Size: got %d, want %d", st.Size, size)
+	}
+	if !st.Mtime.Equal(mtime) {
+		t.Errorf("Stat Mtime: got %s, want %s", st.Mtime, mtime)
+	}
+	assertPosixStat(t, st, opts)
+
+	// Sanity: the post-multipart CopyObject(REPLACE) must not have dropped the
+	// POSIX entries (it owns the entire metadata map after REPLACE).
+	m.mu.Lock()
+	obj := m.objects["posix-big.bin"]
+	m.mu.Unlock()
+	if obj == nil {
+		t.Fatalf("mock object missing after multipart put")
+	}
+	if _, ok := obj.metadata[backend.ModeMetadataKey]; !ok {
+		t.Errorf("mode dropped by CopyObject(REPLACE) sha256-stamp: %+v", obj.metadata)
+	}
+	if _, ok := obj.metadata[backend.XattrsMetadataKey]; !ok {
+		t.Errorf("xattrs dropped by CopyObject(REPLACE) sha256-stamp: %+v", obj.metadata)
+	}
+}
+
+// TestStat_RcloneNakedFallback inserts an object directly into the mock with
+// the rclone naked metadata keys (no syncnode- prefix) so Stat is forced
+// through the fallback branch. Mode is decimal-formatted as rclone does it
+// historically — Stat must accept either octal or decimal.
+func TestStat_RcloneNakedFallback(t *testing.T) {
+	t.Parallel()
+	m := newMockS3("test-bucket")
+	defer m.close()
+	b := newTestBackend(t, m)
+	defer b.Close()
+
+	m.mu.Lock()
+	m.objects["rclone.bin"] = &mockObject{
+		body:     []byte("rclone-naked"),
+		etag:     "deadbeefdeadbeefdeadbeefdeadbeef",
+		modified: time.Now(),
+		metadata: map[string]string{
+			backend.RcloneModeKey: "0640",
+			backend.RcloneUIDKey:  "33",
+			backend.RcloneGIDKey:  "34",
+		},
+	}
+	m.mu.Unlock()
+
+	st, err := b.Stat(context.Background(), "rclone.bin")
+	if err != nil {
+		t.Fatalf("Stat: %v", err)
+	}
+	if st.Mode == nil || *st.Mode != 0o640 {
+		t.Errorf("Mode (rclone fallback): got %v, want %o", st.Mode, 0o640)
+	}
+	if st.UID == nil || *st.UID != 33 {
+		t.Errorf("UID (rclone fallback): got %v, want 33", st.UID)
+	}
+	if st.GID == nil || *st.GID != 34 {
+		t.Errorf("GID (rclone fallback): got %v, want 34", st.GID)
+	}
+}
+
+// TestStat_NotFound asserts the Stater contract: missing key returns
+// backend.ErrKeyNotFound (NOT a wrapped/raw SDK error) so the executor can
+// route through the standard not-found handling.
+func TestStat_NotFound(t *testing.T) {
+	t.Parallel()
+	m := newMockS3("test-bucket")
+	defer m.close()
+	b := newTestBackend(t, m)
+	defer b.Close()
+
+	_, err := b.Stat(context.Background(), "nope")
+	if !errors.Is(err, backend.ErrKeyNotFound) {
+		t.Fatalf("Stat: got %v, want ErrKeyNotFound", err)
+	}
+}
+
+// TestPut_MetadataTooLarge constructs an xattr payload large enough to push
+// the encoded user-metadata bytes past the 2 KiB S3 cap. The Put must reject
+// with ErrMetadataTooLarge so the executor can route through the rule's
+// OnMetadataUnsupported policy (warn/skip/error) instead of letting the
+// server reject the upload with an opaque 400.
+func TestPut_MetadataTooLarge(t *testing.T) {
+	t.Parallel()
+	m := newMockS3("test-bucket")
+	defer m.close()
+	b := newTestBackend(t, m)
+	defer b.Close()
+
+	// 3 KiB of binary bytes — base64 grows to ~4 KiB, then JSON wraps it, then
+	// base64 again ≈ 5.5 KiB. Well over the 2 KiB cap.
+	big := make([]byte, 3*1024)
+	for i := range big {
+		big[i] = byte(i % 256)
+	}
+	opts := backend.PutOptions{
+		Xattrs: map[string][]byte{
+			"user.syncnode.bloat": big,
+		},
+	}
+	body := []byte("metadata too large")
+	_, err := b.Put(context.Background(), "bloat.bin", strings.NewReader(string(body)), int64(len(body)), opts)
+	if !errors.Is(err, backend.ErrMetadataTooLarge) {
+		t.Fatalf("Put: got %v, want ErrMetadataTooLarge", err)
+	}
+	// Object must not have been written when the cap is exceeded — failing
+	// fast is the whole point.
+	m.mu.Lock()
+	_, exists := m.objects["bloat.bin"]
+	m.mu.Unlock()
+	if exists {
+		t.Errorf("bloat.bin was written despite ErrMetadataTooLarge")
+	}
+}

@@ -30,12 +30,15 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -49,6 +52,13 @@ import (
 
 	"github.com/cubefs/cubefs/syncnode/backend"
 )
+
+// maxUserMetadataBytes is the S3 limit on combined user-defined metadata.
+// AWS documents it as 2 KB (decimal) computed as the UTF-8 byte length of
+// every key + every value. Backends that exceed this on Put return
+// backend.ErrMetadataTooLarge so the executor can route through the
+// OnMetadataUnsupported policy (warn / skip / error).
+const maxUserMetadataBytes = 2 * 1024
 
 // Default thresholds — see design.md §9 C-2 for rationale.
 const (
@@ -265,6 +275,16 @@ func (b *Backend) Capabilities() backend.Caps {
 		// See ServerSideCopy below. Executor checks SameInstance AND this
 		// flag before invoking the fast path.
 		ServerSideCopy: true,
+		// POSIX metadata round-trips through user metadata
+		// (`x-amz-meta-syncnode-mode/uid/gid/xattrs`). Stat returns the
+		// values; List does NOT (ListObjectsV2 omits user metadata) — that
+		// asymmetry is documented in backend.go. Put returns
+		// ErrMetadataTooLarge when the encoded payload exceeds the 2 KiB
+		// S3 user-metadata cap; the executor maps that to the rule's
+		// OnMetadataUnsupported policy.
+		NativeModeWrite:  true,
+		NativeOwnerWrite: true,
+		NativeXattrWrite: true,
 	}
 }
 
@@ -385,6 +405,97 @@ func parseSyncnodeMtime(md map[string]string) time.Time {
 	return t
 }
 
+// Stat implements backend.Stater. Returns size + mtime + POSIX metadata
+// (mode/uid/gid/xattrs) by parsing the user-metadata map from HeadObject.
+//
+// Fallback strategy for mode/uid/gid: when the syncnode-prefixed key is
+// absent, look up the rclone naked keys (`mode` / `uid` / `gid`) so objects
+// written by rclone --metadata interoperate without a separate adapter.
+// Xattrs have no naked fallback — the encoding is syncnode-specific.
+func (b *Backend) Stat(ctx context.Context, key string) (backend.Stat, error) {
+	out, err := b.client.HeadObject(ctx, &awss3.HeadObjectInput{
+		Bucket: aws.String(b.bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		if isNotFound(err) {
+			return backend.Stat{}, backend.ErrKeyNotFound
+		}
+		return backend.Stat{}, fmt.Errorf("s3 Stat %s/%s: %w", b.bucket, key, err)
+	}
+	st := backend.Stat{}
+	if out.ContentLength != nil {
+		st.Size = *out.ContentLength
+	}
+	st.Mtime = parseSyncnodeMtime(out.Metadata)
+	if st.Mtime.IsZero() && out.LastModified != nil {
+		st.Mtime = *out.LastModified
+	}
+	if out.Metadata != nil {
+		if v := pickMetadata(out.Metadata, backend.ModeMetadataKey, backend.RcloneModeKey); v != "" {
+			if m, ok := parseOctalUint32(v); ok {
+				st.Mode = &m
+			}
+		}
+		if v := pickMetadata(out.Metadata, backend.UIDMetadataKey, backend.RcloneUIDKey); v != "" {
+			if u, ok := parseDecimalUint32(v); ok {
+				st.UID = &u
+			}
+		}
+		if v := pickMetadata(out.Metadata, backend.GIDMetadataKey, backend.RcloneGIDKey); v != "" {
+			if g, ok := parseDecimalUint32(v); ok {
+				st.GID = &g
+			}
+		}
+		if v, ok := out.Metadata[backend.XattrsMetadataKey]; ok && v != "" {
+			// Corrupt xattr payload returns an error rather than silently
+			// dropping — caller sees the failure and the bench/perf paths can
+			// flag a producer/consumer encoding mismatch.
+			x, derr := decodeXattrs(v)
+			if derr != nil {
+				return backend.Stat{}, fmt.Errorf("s3 Stat %s/%s: decode xattrs: %w", b.bucket, key, derr)
+			}
+			st.Xattrs = x
+		}
+	}
+	return st, nil
+}
+
+// pickMetadata returns md[primary] if set, else md[fallback], else "".
+// Both keys are looked up directly — aws-sdk-go-v2 already lowercases
+// metadata map keys after stripping the x-amz-meta- prefix.
+func pickMetadata(md map[string]string, primary, fallback string) string {
+	if v, ok := md[primary]; ok && v != "" {
+		return v
+	}
+	if v, ok := md[fallback]; ok && v != "" {
+		return v
+	}
+	return ""
+}
+
+// parseOctalUint32 accepts strings like "0644", "4755", "0o755". Returns
+// ok=false on any parse failure so the caller can leave the field nil.
+func parseOctalUint32(s string) (uint32, bool) {
+	// strconv.ParseUint with base=0 honours the leading "0" / "0o" octal
+	// prefix; with base=8 we accept bare octal like "644". Try base=0 first.
+	if n, err := strconv.ParseUint(s, 0, 32); err == nil {
+		return uint32(n), true
+	}
+	if n, err := strconv.ParseUint(s, 8, 32); err == nil {
+		return uint32(n), true
+	}
+	return 0, false
+}
+
+// parseDecimalUint32 is the decimal cousin of parseOctalUint32.
+func parseDecimalUint32(s string) (uint32, bool) {
+	if n, err := strconv.ParseUint(s, 10, 32); err == nil {
+		return uint32(n), true
+	}
+	return 0, false
+}
+
 // Put implements Backend. Routes between simple PutObject and multipart
 // Upload based on size and opts.Multipart. Multipart path uses
 // manager.Uploader which handles AbortMultipartUpload on error
@@ -442,10 +553,15 @@ func (b *Backend) Put(ctx context.Context, key string, body io.Reader, size int6
 		if opts.ContentType != "" {
 			input.ContentType = aws.String(opts.ContentType)
 		}
-		// Merge caller metadata + (optionally) sha256 + (optionally) source
-		// mtime so the single-shot path can stamp everything in the original
-		// PUT — no follow-up Copy needed, saves one round trip.
-		md := mergeMetadata(opts.Metadata, sumFn, opts.Mtime)
+		// Merge caller metadata + (optionally) sha256 + source mtime + POSIX
+		// metadata (mode/uid/gid/xattrs) so the single-shot path can stamp
+		// everything in the original PUT — no follow-up Copy needed.
+		// ErrMetadataTooLarge is surfaced here for the executor to map to the
+		// OnMetadataUnsupported policy.
+		md, err := mergeMetadata(opts.Metadata, sumFn, opts)
+		if err != nil {
+			return backend.PutResult{}, err
+		}
 		if len(md) > 0 {
 			input.Metadata = md
 		}
@@ -484,11 +600,15 @@ func (b *Backend) Put(ctx context.Context, key string, body io.Reader, size int6
 	if opts.ContentType != "" {
 		input.ContentType = aws.String(opts.ContentType)
 	}
-	// Mtime is known up-front (does not require the stream to finish), so we
-	// stamp it on the original multipart Upload. sha256 still needs a post-
-	// upload CopyObject because the digest is only known once the body is
-	// drained.
-	if md := mergeMetadata(opts.Metadata, nil, opts.Mtime); len(md) > 0 {
+	// Mtime + POSIX metadata are known up-front (do not require the stream
+	// to finish), so we stamp them on the original multipart Upload. sha256
+	// still needs a post-upload CopyObject because the digest is only known
+	// once the body is drained.
+	md, err := mergeMetadata(opts.Metadata, nil, opts)
+	if err != nil {
+		return backend.PutResult{}, err
+	}
+	if len(md) > 0 {
 		input.Metadata = md
 	}
 	out, err := b.uploader.Upload(ctx, input, func(u *manager.Uploader) {
@@ -507,9 +627,15 @@ func (b *Backend) Put(ctx context.Context, key string, body io.Reader, size int6
 		res.Checksum = hexSum
 		res.Algorithm = backend.ChecksumAlgorithmSHA256
 		// Stamp metadata via REPLACE-mode CopyObject. We must preserve
-		// caller-supplied opts.Metadata AND the mtime entry that was already
-		// on the original Upload — REPLACE overwrites the whole map.
-		copyMeta := mergeMetadata(opts.Metadata, func() string { return hexSum }, opts.Mtime)
+		// caller-supplied opts.Metadata AND the mtime/POSIX entries already
+		// on the original Upload — REPLACE overwrites the whole map. Reuse
+		// mergeMetadata so the encoding stays consistent with the Put path
+		// (including the 2 KiB cap; if the original Upload fit, so will this).
+		copyMeta, merr := mergeMetadata(opts.Metadata, func() string { return hexSum }, opts)
+		if merr != nil {
+			fmt.Fprintf(os.Stderr, "s3 Put %s/%s: build sha256 metadata: %v\n", b.bucket, key, merr)
+			return res, nil
+		}
 		if cerr := b.stampSHA256Metadata(ctx, key, storageClass, opts.ContentType, copyMeta); cerr != nil {
 			// Best-effort: surface as a warning. Do NOT fail the Put — the
 			// checksum is still in res.Checksum and the executor can act on
@@ -521,25 +647,106 @@ func (b *Backend) Put(ctx context.Context, key string, body io.Reader, size int6
 }
 
 // mergeMetadata returns a new map with caller-supplied entries plus the
-// sha256 entry sourced from sumFn (if any) and the syncnode-mtime entry
-// derived from mtime (if non-nil). Returns nil when all sources are empty so
-// callers can leave PutObjectInput.Metadata unset rather than passing an
-// empty map (some servers treat empty-map differently).
-func mergeMetadata(user map[string]string, sumFn func() string, mtime *time.Time) map[string]string {
-	if sumFn == nil && len(user) == 0 && mtime == nil {
-		return nil
+// sha256 / mtime / POSIX-metadata entries derived from opts. Returns nil
+// when all sources are empty so callers can leave PutObjectInput.Metadata
+// unset rather than passing an empty map (some servers treat empty-map
+// differently). Returns backend.ErrMetadataTooLarge when the encoded
+// payload exceeds the S3 2 KiB user-metadata cap.
+func mergeMetadata(user map[string]string, sumFn func() string, opts backend.PutOptions) (map[string]string, error) {
+	if sumFn == nil && len(user) == 0 && opts.Mtime == nil &&
+		opts.Mode == nil && opts.UID == nil && opts.GID == nil && len(opts.Xattrs) == 0 {
+		return nil, nil
 	}
-	out := make(map[string]string, len(user)+2)
+	out := make(map[string]string, len(user)+5)
 	for k, v := range user {
 		out[k] = v
 	}
 	if sumFn != nil {
 		out[backend.SHA256MetadataKey] = sumFn()
 	}
-	if mtime != nil {
-		out[backend.MtimeMetadataKey] = mtime.UTC().Format(time.RFC3339Nano)
+	if opts.Mtime != nil {
+		out[backend.MtimeMetadataKey] = opts.Mtime.UTC().Format(time.RFC3339Nano)
 	}
-	return out
+	if opts.Mode != nil {
+		// Octal, leading 0 — matches POSIX `chmod` / `ls -l` convention and
+		// the rclone naked encoding.
+		out[backend.ModeMetadataKey] = fmt.Sprintf("0%o", *opts.Mode)
+	}
+	if opts.UID != nil {
+		out[backend.UIDMetadataKey] = strconv.FormatUint(uint64(*opts.UID), 10)
+	}
+	if opts.GID != nil {
+		out[backend.GIDMetadataKey] = strconv.FormatUint(uint64(*opts.GID), 10)
+	}
+	if len(opts.Xattrs) > 0 {
+		encoded, err := encodeXattrs(opts.Xattrs)
+		if err != nil {
+			return nil, fmt.Errorf("s3: encode xattrs: %w", err)
+		}
+		out[backend.XattrsMetadataKey] = encoded
+	}
+	if err := assertUserMetadataBudget(out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// encodeXattrs serialises a name→bytes map as base64(json{name: base64(value)})
+// — one base64 layer on each value so binary-safe, one more base64 around the
+// JSON so the final header value is safe for any HTTP transport.
+func encodeXattrs(xattrs map[string][]byte) (string, error) {
+	inner := make(map[string]string, len(xattrs))
+	for k, v := range xattrs {
+		inner[k] = base64.StdEncoding.EncodeToString(v)
+	}
+	raw, err := json.Marshal(inner)
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(raw), nil
+}
+
+// decodeXattrs is the inverse of encodeXattrs. Returns (nil, nil) on missing
+// or empty input — callers treat zero-result as "no xattrs". Hard errors
+// (invalid base64, bad JSON, bad value encoding) are surfaced so a corrupt
+// header is visible rather than silently dropped.
+func decodeXattrs(s string) (map[string][]byte, error) {
+	if s == "" {
+		return nil, nil
+	}
+	raw, err := base64.StdEncoding.DecodeString(s)
+	if err != nil {
+		return nil, fmt.Errorf("decode outer base64: %w", err)
+	}
+	var inner map[string]string
+	if err := json.Unmarshal(raw, &inner); err != nil {
+		return nil, fmt.Errorf("decode xattrs json: %w", err)
+	}
+	if len(inner) == 0 {
+		return nil, nil
+	}
+	out := make(map[string][]byte, len(inner))
+	for k, v := range inner {
+		dec, err := base64.StdEncoding.DecodeString(v)
+		if err != nil {
+			return nil, fmt.Errorf("decode xattr %q value: %w", k, err)
+		}
+		out[k] = dec
+	}
+	return out, nil
+}
+
+// assertUserMetadataBudget enforces the S3 2 KiB user-metadata cap. The
+// budget is the UTF-8 byte sum of every key and every value in md.
+func assertUserMetadataBudget(md map[string]string) error {
+	var total int
+	for k, v := range md {
+		total += len(k) + len(v)
+	}
+	if total > maxUserMetadataBytes {
+		return fmt.Errorf("%w: %d bytes > %d byte cap", backend.ErrMetadataTooLarge, total, maxUserMetadataBytes)
+	}
+	return nil
 }
 
 // stampSHA256Metadata performs a CopyObject onto key with
@@ -707,7 +914,10 @@ func (b *Backend) serverSideCopySingle(ctx context.Context, srcKey, dstKey strin
 		input.StorageClass = s3types.StorageClass(opts.StorageClass)
 	}
 
-	md, replace := buildCopyMetadata(opts)
+	md, replace, err := buildCopyMetadata(opts)
+	if err != nil {
+		return backend.PutResult{}, err
+	}
 	if replace {
 		input.MetadataDirective = s3types.MetadataDirectiveReplace
 		input.Metadata = md
@@ -742,7 +952,10 @@ func (b *Backend) serverSideCopyMultipart(ctx context.Context, srcKey, dstKey st
 	if opts.StorageClass != "" {
 		createIn.StorageClass = s3types.StorageClass(opts.StorageClass)
 	}
-	md, replace := buildCopyMetadata(opts)
+	md, replace, err := buildCopyMetadata(opts)
+	if err != nil {
+		return backend.PutResult{}, err
+	}
 	if replace {
 		createIn.Metadata = md
 		if opts.ContentType != "" {
@@ -824,21 +1037,26 @@ func (b *Backend) serverSideCopyMultipart(ctx context.Context, srcKey, dstKey st
 
 // buildCopyMetadata assembles the user-metadata map to apply on the
 // destination object, plus a boolean signaling whether the caller passed
-// any directive that requires MetadataDirective=REPLACE. Mtime is encoded
-// the same way Put does (RFC3339Nano under x-amz-meta-syncnode-mtime) so
-// Head reads it back consistently.
-func buildCopyMetadata(opts backend.PutOptions) (map[string]string, bool) {
-	if len(opts.Metadata) == 0 && opts.Mtime == nil && opts.ContentType == "" {
-		return nil, false
+// any directive that requires MetadataDirective=REPLACE. All fields encode
+// the same way Put does (RFC3339Nano mtime, octal mode, decimal uid/gid,
+// double-base64 xattrs) so Stat/Head read them back consistently. The 2 KiB
+// S3 user-metadata cap is enforced — ErrMetadataTooLarge propagates so the
+// executor can route through OnMetadataUnsupported instead of silently
+// dropping the extras.
+func buildCopyMetadata(opts backend.PutOptions) (map[string]string, bool, error) {
+	if len(opts.Metadata) == 0 && opts.Mtime == nil && opts.ContentType == "" &&
+		opts.Mode == nil && opts.UID == nil && opts.GID == nil && len(opts.Xattrs) == 0 {
+		return nil, false, nil
 	}
-	md := make(map[string]string, len(opts.Metadata)+1)
-	for k, v := range opts.Metadata {
-		md[k] = v
+	// Reuse mergeMetadata so the encoding contract stays single-sourced.
+	// sumFn=nil because server-side copy does not restream bytes — sha256
+	// must be carried in opts.Metadata by the caller if it wants to preserve
+	// it (the executor already does this when piping through the fast path).
+	md, err := mergeMetadata(opts.Metadata, nil, opts)
+	if err != nil {
+		return nil, false, err
 	}
-	if opts.Mtime != nil {
-		md[backend.MtimeMetadataKey] = opts.Mtime.UTC().Format(time.RFC3339Nano)
-	}
-	return md, true
+	return md, true, nil
 }
 
 // List implements Backend. Streams entries on the returned channel.

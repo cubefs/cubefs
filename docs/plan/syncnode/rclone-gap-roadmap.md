@@ -332,3 +332,51 @@ i18n key 名（dashboard）：
 - `ruleDryRunHint`
 - `ruleTypeMirrorHint`
 - `ruleConfirmHint`
+
+---
+
+## 验证结果（test-k3d e2e）
+
+**运行环境**：test-k3d 集群（namespace=storage-cfs），master=10.89.6.4:17010
+**运行时间**：2026-05-22T04:28:55Z
+**syncnode 二进制**：`cf139f45f`（分支 `ft_bugfix_syncnode`）
+**镜像**：`hub.shiyak-office.com/storage/cubefs:v3.5.3.1.rc6`
+**参与 pod**：cubefs-syncnode-5ggkh / cubefs-syncnode-chflb / cubefs-syncnode-ms4g9
+
+**全量自动覆盖**：驱动脚本 `/tmp/e2e-rclone-gap/run.sh` 直接打 master `/syncRule/create + /syncRule/trigger`，每个特性独立 case + 验证脚本（dst 内容 / sha256 / mtime / 计数器 / dryRun stats），不动 dashboard UI。
+
+| Case | Status | 验证点 |
+|------|--------|--------|
+| dryrun | PASS | dst 仍为空（dryRun 被 master/executor 链路完整尊重） |
+| symlink-follow | PASS | symlink 目标内容正确同步 |
+| symlink-skip | PASS | regular.txt 同步、link.txt 跳过 |
+| onexisting-newer | PASS | dst-newer 文件被保留（`--update` 语义） |
+| onexisting-always-skip | PASS | 已存在文件全部跳过（`--ignore-existing`） |
+| mirror | PASS | 多余 extra.txt 被删除、keep.txt 保留（真 sync 语义） |
+| mtime | PASS | dst 文件 mtime=1750000000 与 src 一致 |
+
+**Summary：PASS=7 / FAIL=0**
+
+### 排障记录：master ↔ syncnode 镜像 skew
+
+初次 e2e 全部失败（dryRun 等新字段在 master 侧被丢弃）。根因不是协议或 JSON tag 问题，而是 **master DaemonSet 还在 rc3、syncnode 已经在 rc6**——rc3 的 `proto.SyncRuleConfig` 结构体没有这些字段，`json.Unmarshal` 静默丢弃，executor 收到的 config 永远是零值。
+
+定位手段：
+
+```bash
+kubectl get pods -n storage-cfs -o custom-columns='NAME:.metadata.name,IMAGE:.spec.containers[0].image'
+```
+
+发现 master/metanode/datanode-hdd/objectnode 还在旧版本。修复：
+
+```bash
+make ENV=test-k3d apply-master apply-metanode apply-datanode-hdd apply-objectnode
+```
+
+滚到 rc6 后立刻 7/7 全过。
+
+**教训**：
+
+- 新字段加在 `proto.SyncRuleConfig` 上时，master 也要同步升级，否则用户/驱动会看到"字段被悄悄丢弃"的诡异行为。
+- 每次 syncnode 加新规则字段，e2e 前先核对 master / metanode / datanode / objectnode / syncnode 镜像版本一致。
+- Terragrunt `apply-<component>` 之所以必须按组件单独跑，是因为 `images.hcl` bump 只改镜像 reference；要让 DaemonSet 真正滚动，必须对每个组件触发一次 apply。

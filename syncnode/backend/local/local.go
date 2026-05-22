@@ -198,7 +198,55 @@ func (b *Backend) Capabilities() backend.Caps {
 		// optimization tracked outside the rclone-gap roadmap and isn't
 		// required for the cross-backend correctness story.
 		ServerSideCopy: false,
+		// POSIX metadata: linux/darwin builds honor mode (syscall.Chmod),
+		// owner (os.Lchown), and xattr (unix.Lsetxattr). The non-unix stub
+		// reports posixMetaSupported=false so we degrade gracefully.
+		NativeModeWrite:  posixMetaSupported,
+		NativeOwnerWrite: posixMetaSupported,
+		NativeXattrWrite: posixMetaSupported,
 	}
+}
+
+// Stat implements backend.Stater. Returns full POSIX metadata
+// (mode/uid/gid/xattrs) alongside size/mtime. On platforms without
+// xattr support (or filesystems without xattr enabled), Xattrs is nil
+// and the rest is still populated.
+func (b *Backend) Stat(ctx context.Context, key string) (backend.Stat, error) {
+	path, err := b.resolveSafe(key, true)
+	if err != nil {
+		return backend.Stat{}, err
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return backend.Stat{}, backend.ErrKeyNotFound
+		}
+		return backend.Stat{}, fmt.Errorf("lstat %q: %w", path, err)
+	}
+	st := backend.Stat{
+		Size:  info.Size(),
+		Mtime: info.ModTime(),
+	}
+	mode, uid, gid, xattrs, err := readPosixMeta(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return backend.Stat{}, backend.ErrKeyNotFound
+		}
+		// readPosixMeta returns a hard error only for stat-level failures;
+		// surface it so the executor can fail fast instead of writing a
+		// destination with truncated metadata.
+		return backend.Stat{}, fmt.Errorf("readPosixMeta %q: %w", path, err)
+	}
+	m := mode
+	u := uid
+	g := gid
+	st.Mode = &m
+	st.UID = &u
+	st.GID = &g
+	if len(xattrs) > 0 {
+		st.Xattrs = xattrs
+	}
+	return st, nil
 }
 
 // SameInstance reports whether other is another local backend rooted at
@@ -462,6 +510,18 @@ func (b *Backend) Put(ctx context.Context, key string, body io.Reader, size int6
 	if err := os.Rename(tmpName, path); err != nil {
 		cleanup()
 		return backend.PutResult{}, fmt.Errorf("rename %q -> %q: %w", tmpName, path, err)
+	}
+
+	// Apply POSIX metadata (mode / uid+gid / xattrs) BEFORE touching atime/mtime
+	// so the final Chtimes wins (chmod/chown/setxattr all bump ctime but only
+	// some bump mtime depending on the filesystem). A failure here is
+	// propagated because the caller explicitly asked for the metadata to be
+	// preserved; degrading silently would surprise callers comparing
+	// destination state against source.
+	if opts.Mode != nil || opts.UID != nil || opts.GID != nil || len(opts.Xattrs) > 0 {
+		if err := applyPosixMeta(path, opts.Mode, opts.UID, opts.GID, opts.Xattrs); err != nil {
+			return backend.PutResult{}, fmt.Errorf("apply posix metadata %q: %w", path, err)
+		}
 	}
 
 	// Preserve source mtime if requested. atime is set to now to avoid

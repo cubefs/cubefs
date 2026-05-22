@@ -219,6 +219,61 @@ type SyncRuleConfig struct {
 	// Confirm (the rule-level config validator forbids Confirm=true outside
 	// destructive types so the field cannot accumulate unused state).
 	Confirm bool `json:"confirm,omitempty"`
+
+	// PreserveMode toggles persisting the source POSIX file mode bits
+	// (rwx + setuid/setgid/sticky) on the destination. See plan doc
+	// docs/plan/syncnode/posix-metadata-preservation.md.
+	//   - local dst : syscall.Chmod after rename
+	//   - cfs   dst : mw.Setattr with proto.AttrMode
+	//   - s3    dst : x-amz-meta-syncnode-mode header (octal string);
+	//                 Stat falls back to rclone naked `x-amz-meta-mode`
+	// When the dst backend reports !Caps.NativeModeWrite the executor
+	// honors OnMetadataUnsupported (warn / skip / error).
+	PreserveMode bool `json:"preserveMode,omitempty"`
+
+	// PreserveOwner persists POSIX uid AND gid as a single switch. uid and
+	// gid are almost always set together via Chown, so a single switch
+	// matches the operator mental model; split this only if a real
+	// "preserve gid but not uid" use case emerges.
+	//   - local dst : syscall.Lchown
+	//   - cfs   dst : mw.Setattr with proto.AttrUid|proto.AttrGid
+	//   - s3    dst : x-amz-meta-syncnode-uid / x-amz-meta-syncnode-gid
+	//                 (decimal). Stat falls back to rclone naked
+	//                 `x-amz-meta-uid` / `x-amz-meta-gid`.
+	// EPERM on a non-root syncnode process is treated as Caps mismatch →
+	// OnMetadataUnsupported.
+	PreserveOwner bool `json:"preserveOwner,omitempty"`
+
+	// PreserveXattr persists user.* and system.posix_acl_* extended
+	// attributes. Other namespaces (security.* / trusted.* / other
+	// system.*) are filtered server-side by the executor — they tend to
+	// be LSM- or kernel-managed and rarely meaningful to migrate.
+	//
+	// Wire encoding on s3:
+	//   x-amz-meta-syncnode-xattrs = base64(JSON({name: base64(value), ...}))
+	// S3 user-metadata is capped at 2 KiB total; if encoded payload +
+	// other syncnode headers exceed the budget the executor falls back to
+	// OnMetadataUnsupported (warn/skip/error).
+	//
+	// POSIX ACL is intentionally NOT a first-class field: the kernel
+	// stores it in system.posix_acl_access / system.posix_acl_default
+	// xattrs already, so PreserveXattr covers it on local↔local and
+	// local↔cfs. Cross-backend POSIX↔S3 ACL translation is explicitly
+	// out of scope (rclone behaves the same way) — set the endpoint-level
+	// S3 canned ACL via SyncEndpointConfig if you need a bucket-wide policy.
+	PreserveXattr bool `json:"preserveXattr,omitempty"`
+
+	// OnMetadataUnsupported controls behaviour when the dst backend cannot
+	// honor a requested PreserveXxx (Caps mismatch, S3 user-metadata
+	// budget overflow, non-root Chown EPERM, etc).
+	//   ""      → "warn" default; record stats + log + continue with body
+	//   "warn"  → same as default; the file is still transferred
+	//   "skip"  → the entire file is skipped (counted in FilesSkipped)
+	//   "error" → the file fails the task (counted in FilesFailed)
+	// The choice trades off "best-effort migration" (warn) versus
+	// "strict fidelity" (error) — pick error only when the destination
+	// MUST not drift in mode/owner/xattr.
+	OnMetadataUnsupported string `json:"onMetadataUnsupported,omitempty"`
 }
 
 // SyncLastRunSummary captures the post-run state written back after a

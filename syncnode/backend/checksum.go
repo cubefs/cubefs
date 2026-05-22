@@ -49,6 +49,41 @@ const SHA256MetadataKey = "syncnode-sha256"
 // surfacing Metadata maps, so backend code looks up the bare key.
 const MtimeMetadataKey = "syncnode-mtime"
 
+// ModeMetadataKey is the user-metadata key under which object-store backends
+// persist the POSIX mode bits supplied via PutOptions.Mode. Encoded as an
+// octal string (e.g. "0644", "04755"). Stat falls back to the rclone naked
+// `mode` key when the syncnode-prefixed value is absent, so interop with
+// rclone-written objects works out of the box.
+const ModeMetadataKey = "syncnode-mode"
+
+// UIDMetadataKey is the user-metadata key under which object-store backends
+// persist the POSIX uid supplied via PutOptions.UID. Encoded as a decimal
+// string (e.g. "1000"). Falls back to rclone naked `uid` on Stat.
+const UIDMetadataKey = "syncnode-uid"
+
+// GIDMetadataKey is the user-metadata key under which object-store backends
+// persist the POSIX gid supplied via PutOptions.GID. Encoded as a decimal
+// string. Falls back to rclone naked `gid` on Stat.
+const GIDMetadataKey = "syncnode-gid"
+
+// XattrsMetadataKey is the user-metadata key under which object-store
+// backends persist extended attributes supplied via PutOptions.Xattrs.
+// Encoding: base64(json.Marshal(map[string]string{name: base64(value)})) —
+// xattr values are arbitrary bytes (zero-byte, non-UTF-8, etc.), so each
+// value is base64-encoded inside the JSON object, then the whole map is
+// base64-encoded one more time so the final value is HTTP-header safe. No
+// rclone naked fallback — this layout is syncnode-specific.
+const XattrsMetadataKey = "syncnode-xattrs"
+
+// RcloneModeKey / RcloneUIDKey / RcloneGIDKey are the bare user-metadata
+// keys rclone writes (no syncnode prefix). syncnode Stat reads these as
+// fallback so objects written by rclone --metadata interop with syncnode.
+const (
+	RcloneModeKey = "mode"
+	RcloneUIDKey  = "uid"
+	RcloneGIDKey  = "gid"
+)
+
 // NewSHA256Sink returns a fresh sha256.Hash plus a closure that returns the
 // hex-encoded digest. Backends typically call this once per Put, wrap the
 // body with `io.TeeReader(body, h)`, then call sum() once the upload

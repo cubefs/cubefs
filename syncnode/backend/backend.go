@@ -98,6 +98,39 @@ type Backend interface {
 	Close() error
 }
 
+// Stater is an optional capability interface for backends that can
+// return full POSIX-style metadata (mode/uid/gid/xattrs) in a single
+// call. The executor uses this when any PreserveXxx flag is set on the
+// rule; backends that don't implement Stater are treated as if every
+// metadata field is unset (zero-value Stat populated from Head).
+//
+// Implementations:
+//   - local: syscall.Lstat + listxattr/getxattr
+//   - cfs:   mw.InodeGet + mw.XAttrList_ll/XAttrGet_ll
+//   - s3:    HeadObject → parse `x-amz-meta-syncnode-*` (with
+//            `x-amz-meta-*` rclone-naked fallback)
+type Stater interface {
+	// Stat returns full metadata for key. Backends that don't natively
+	// support a field leave it at zero/nil; callers must tolerate
+	// missing fields. Returns ErrKeyNotFound when key is missing.
+	Stat(ctx context.Context, key string) (Stat, error)
+}
+
+// Stat carries the full POSIX-style metadata returned by Stater.Stat.
+// Fields that the backend does not natively support are left as their
+// zero value (nil for the pointer fields). Callers use the pointer
+// pattern to distinguish "unset" from "explicitly zero".
+type Stat struct {
+	Size  int64
+	ETag  string
+	Mtime time.Time
+
+	Mode   *uint32           // POSIX mode bits; nil when not stored
+	UID    *uint32           // POSIX uid; nil when not stored
+	GID    *uint32           // POSIX gid; nil when not stored
+	Xattrs map[string][]byte // xattr name → raw bytes; nil/empty when none
+}
+
 // ServerSideCopier is an optional capability interface for backends that
 // can copy bytes between two keys without round-tripping through the
 // executor. The executor will only invoke ServerSideCopy after asserting
@@ -156,6 +189,45 @@ type PutOptions struct {
 	// A nil pointer (default) preserves prior behavior — the backend uses
 	// its own write-time.
 	Mtime *time.Time
+
+	// Mode, when non-nil, persists the POSIX file mode bits (rwx + setuid/
+	// setgid/sticky) on the written object. Implementations:
+	//   - local: syscall.Chmod(dst, *Mode) after rename
+	//   - cfs:   mw.Setattr with proto.AttrMode
+	//   - s3:    user metadata `x-amz-meta-syncnode-mode` (octal string,
+	//            e.g. "0644"). Stat falls back to rclone naked
+	//            `x-amz-meta-mode` for interop.
+	Mode *uint32
+
+	// UID, when non-nil, persists the POSIX uid. Always set together with
+	// GID by the executor (PreserveOwner is a single switch); split only
+	// here because the backends accept them on separate syscalls.
+	//   - local: syscall.Lchown(dst, *UID, *GID)
+	//   - cfs:   mw.Setattr with proto.AttrUid
+	//   - s3:    user metadata `x-amz-meta-syncnode-uid` (decimal); Stat
+	//            falls back to rclone naked `x-amz-meta-uid`.
+	UID *uint32
+
+	// GID, when non-nil, persists the POSIX gid. See UID for cross-backend
+	// behaviour.
+	GID *uint32
+
+	// Xattrs, when non-empty, persists extended attributes alongside the
+	// object body. Keys are full xattr names ("user.foo",
+	// "system.posix_acl_access", ...). Values are raw bytes — the
+	// backend handles base64/hex encoding internally.
+	//   - local: syscall.Setxattr(dst, name, value, 0) per entry
+	//   - cfs:   mw.XAttrSet_ll per entry
+	//   - s3:    single user-metadata header
+	//            `x-amz-meta-syncnode-xattrs` =
+	//              base64(JSON({name: base64(value), ...}))
+	//            S3 user-metadata is capped at 2 KiB total; on overflow
+	//            Put returns ErrMetadataTooLarge so the executor can apply
+	//            OnMetadataUnsupported (warn/skip/error).
+	// Namespace filtering (user.*/system.posix_acl_*/skip security|trusted)
+	// is the executor's responsibility — the backend writes whatever it
+	// is handed.
+	Xattrs map[string][]byte
 }
 
 // PutResult is the result of a Put call. ETag is backend-native (e.g. s3
@@ -199,6 +271,23 @@ type Caps struct {
 	// blocked on a metanode inode-clone API). The executor checks
 	// SameInstance AND this flag before attempting a server-side copy.
 	ServerSideCopy bool
+
+	// NativeModeWrite reports whether PutOptions.Mode is persisted such
+	// that a subsequent Stat returns the same bits. local/cfs report true
+	// (syscall.Chmod / mw.Setattr); s3 reports true via user-metadata
+	// header but only round-trips through Stat (not List).
+	NativeModeWrite bool
+
+	// NativeOwnerWrite reports whether PutOptions.UID/GID are persisted.
+	// All three in-tree backends report true; the s3 round-trip is
+	// header-based (Stat only, not List).
+	NativeOwnerWrite bool
+
+	// NativeXattrWrite reports whether PutOptions.Xattrs survives Put +
+	// Stat with full key/value fidelity. local/cfs report true; s3
+	// reports true subject to the 2 KiB user-metadata budget (overflow
+	// returns ErrMetadataTooLarge from Put).
+	NativeXattrWrite bool
 }
 
 // Common errors returned by Backend implementations. Callers can use
@@ -220,4 +309,12 @@ var (
 	// ErrConfigInvalid is returned by a Backend constructor when the
 	// provided BackendConfig fails validation specific to that backend.
 	ErrConfigInvalid = errors.New("backend: invalid config")
+
+	// ErrMetadataTooLarge is returned by Put when the requested
+	// PutOptions.Metadata + PutOptions.Mtime/Mode/UID/GID/Xattrs encoding
+	// exceeds the backend-specific user-metadata budget (S3: 2 KiB total).
+	// The executor maps this to the rule's OnMetadataUnsupported policy:
+	// warn (default) records a counter and proceeds without metadata;
+	// skip aborts the single object; error fails the whole rule.
+	ErrMetadataTooLarge = errors.New("backend: metadata too large")
 )

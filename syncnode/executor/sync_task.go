@@ -46,6 +46,41 @@ func ServerSideCopyStats() (ok, fallback, errs int64) {
 	return serverSideCopyOK.Load(), serverSideCopyFallback.Load(), serverSideCopyErr.Load()
 }
 
+// Metadata-unsupported counters (P2 POSIX metadata). Mirror the
+// server-side-copy stats pattern: one atomic counter per OnMetadataUnsupported
+// branch syncOneFile takes when the dst backend can't honour a Preserve*
+// request. Metrics scraper / tests read via MetadataUnsupportedStats().
+//
+// `warn` counts files where we logged + proceeded without the offending
+// metadata (the data still made it).
+// `skip` counts files where the file itself was skipped (FilesSkipped++).
+// `error` counts files where the failure was propagated up (FilesFailed++).
+var (
+	metadataUnsupportedWarn  atomic.Int64
+	metadataUnsupportedSkip  atomic.Int64
+	metadataUnsupportedError atomic.Int64
+)
+
+// MetadataUnsupportedStatsSnapshot is the structured form returned by
+// MetadataUnsupportedStats(). Same pattern as DryRunStatsSnapshot — caller
+// downstream wants to log named counters, not positional ints.
+type MetadataUnsupportedStatsSnapshot struct {
+	Warn  int64 `json:"warn"`
+	Skip  int64 `json:"skip"`
+	Error int64 `json:"error"`
+}
+
+// MetadataUnsupportedStats returns the cumulative metadata-unsupported
+// counters. Exposed primarily for tests; production scrapers can read this
+// from a metrics exporter without locking.
+func MetadataUnsupportedStats() MetadataUnsupportedStatsSnapshot {
+	return MetadataUnsupportedStatsSnapshot{
+		Warn:  metadataUnsupportedWarn.Load(),
+		Skip:  metadataUnsupportedSkip.Load(),
+		Error: metadataUnsupportedError.Load(),
+	}
+}
+
 // Dry-run counters (子项 2). Mirror the server-side-copy stats pattern: one
 // atomic counter per "would_*" branch syncOneFile can take when DryRun=true.
 // A metrics exporter can scrape these as
@@ -152,6 +187,190 @@ func nonZeroMtimePtr(t time.Time) *time.Time {
 		return nil
 	}
 	return &t
+}
+
+// filterXattrs keeps only POSIX user.* xattrs and the system.posix_acl_*
+// pair, dropping security.* / trusted.* / other system.* names. The
+// rationale:
+//   - user.*           — application metadata, always portable.
+//   - system.posix_acl_access / system.posix_acl_default — POSIX ACLs.
+//   - security.*       — SELinux/SMACK labels; rarely portable across
+//                        hosts and a copy can break security policy.
+//   - trusted.*        — root-only; copying these silently changes
+//                        privileged metadata.
+//   - other system.*   — kernel-managed, not user-settable.
+//
+// Returns a fresh map; nil/empty input returns nil so PutOptions.Xattrs
+// stays at its zero value when nothing was kept.
+func filterXattrs(in map[string][]byte) map[string][]byte {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string][]byte, len(in))
+	for name, val := range in {
+		if strings.HasPrefix(name, "user.") {
+			out[name] = val
+			continue
+		}
+		if name == "system.posix_acl_access" || name == "system.posix_acl_default" {
+			out[name] = val
+			continue
+		}
+		// security.*, trusted.*, other system.* — drop silently.
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// metadataExtras carries the POSIX metadata pulled from src.Stat() that the
+// per-attempt transferOnce should thread into PutOptions. Separated out so
+// the retry loop can mutate it (the warn policy on ErrMetadataTooLarge
+// strips fields and retries).
+type metadataExtras struct {
+	Mode   *uint32
+	UID    *uint32
+	GID    *uint32
+	Xattrs map[string][]byte
+}
+
+// hasAny reports whether any preserve* field is set. Used to short-circuit
+// the metadataExtras merge into PutOptions when nothing was requested.
+func (m metadataExtras) hasAny() bool {
+	return m.Mode != nil || m.UID != nil || m.GID != nil || len(m.Xattrs) > 0
+}
+
+// buildMetadataExtras resolves the source's POSIX metadata (one src.Stat
+// call) and returns the subset the dst backend can honour. Capability
+// mismatches (e.g. dst.Caps.NativeXattrWrite=false but PreserveXattr=true)
+// trigger the OnMetadataUnsupported policy via applyMetadataPolicy.
+//
+// Returns:
+//   - extras: the PutOptions metadata to thread through transferOnce / SSC.
+//   - skip:   true when policy=skip fired during capability check; caller
+//             should account FilesSkipped and return nil.
+//   - err:    non-nil when policy=error fired or src.Stat returned a real
+//             error (other than missing-Stater, which is benign).
+//
+// When the source backend does not implement Stater, returns a zero
+// extras + nil error — this is "src can't supply the metadata", a property
+// of the source, not a policy violation.
+func buildMetadataExtras(ctx context.Context, t *Task, entry backend.Entry) (metadataExtras, bool, error) {
+	if !t.PreserveMode && !t.PreserveOwner && !t.PreserveXattr {
+		return metadataExtras{}, false, nil
+	}
+	stater, ok := t.Src.(backend.Stater)
+	if !ok {
+		// Source can't supply POSIX bits — silently proceed without.
+		// Not a policy violation; the source is the limitation.
+		log.LogDebugf("syncnode: task=%s src does not implement Stater for %q; metadata preservation skipped",
+			t.ID, entry.Key)
+		return metadataExtras{}, false, nil
+	}
+	st, serr := stater.Stat(ctx, entry.Key)
+	if serr != nil {
+		// Couldn't read src metadata. Treat as transient — log warn and
+		// proceed without (don't propagate; the file copy itself should
+		// still succeed).
+		log.LogWarnf("syncnode: task=%s stat src %q for metadata: %v", t.ID, entry.Key, serr)
+		return metadataExtras{}, false, nil
+	}
+
+	caps := t.Dst.Capabilities()
+	var extras metadataExtras
+	// mode
+	if t.PreserveMode && st.Mode != nil {
+		if caps.NativeModeWrite {
+			extras.Mode = st.Mode
+		} else {
+			if skip, err := applyMetadataPolicy(t, entry, "mode"); err != nil {
+				return metadataExtras{}, false, err
+			} else if skip {
+				return metadataExtras{}, true, nil
+			}
+		}
+	}
+	// owner (uid+gid travel together; PreserveOwner is single switch but
+	// the backends accept them on separate fields)
+	if t.PreserveOwner && (st.UID != nil || st.GID != nil) {
+		if caps.NativeOwnerWrite {
+			extras.UID = st.UID
+			extras.GID = st.GID
+		} else {
+			if skip, err := applyMetadataPolicy(t, entry, "owner"); err != nil {
+				return metadataExtras{}, false, err
+			} else if skip {
+				return metadataExtras{}, true, nil
+			}
+		}
+	}
+	// xattrs (namespace-filtered before deciding capability)
+	if t.PreserveXattr {
+		kept := filterXattrs(st.Xattrs)
+		if len(kept) > 0 {
+			if caps.NativeXattrWrite {
+				extras.Xattrs = kept
+			} else {
+				if skip, err := applyMetadataPolicy(t, entry, "xattrs"); err != nil {
+					return metadataExtras{}, false, err
+				} else if skip {
+					return metadataExtras{}, true, nil
+				}
+			}
+		}
+	}
+	return extras, false, nil
+}
+
+// applyMetadataPolicy dispatches on t.OnMetadataUnsupported when the dst
+// cannot honour the requested metadata field (or returned
+// ErrMetadataTooLarge / ErrBackendUnsupported at Put time).
+//
+// Returns:
+//   - skip=true when the policy is "skip" — caller treats the file as skipped.
+//   - err  non-nil when the policy is "error" — caller propagates upward.
+//   - skip=false, err=nil when the policy is "warn" — caller logs + proceeds
+//     without that metadata field.
+//
+// validateTask normalises empty → "warn" so dispatch is closed-set; default
+// branch defends against future drift and treats unknown values as "warn".
+func applyMetadataPolicy(t *Task, entry backend.Entry, field string) (bool, error) {
+	switch t.OnMetadataUnsupported {
+	case OnMetadataUnsupportedSkip:
+		metadataUnsupportedSkip.Add(1)
+		log.LogWarnf("syncnode: task=%s key=%s metadata field %q unsupported by dst (policy=skip)",
+			t.ID, entry.Key, field)
+		return true, nil
+	case OnMetadataUnsupportedError:
+		metadataUnsupportedError.Add(1)
+		return false, fmt.Errorf("metadata %q unsupported by dst for %q: policy=error", field, entry.Key)
+	default:
+		// warn (default) and any unknown future value
+		metadataUnsupportedWarn.Add(1)
+		log.LogWarnf("syncnode: task=%s key=%s metadata field %q unsupported by dst (policy=warn): proceeding without",
+			t.ID, entry.Key, field)
+		return false, nil
+	}
+}
+
+// applyPutOptionsExtras merges the metadata bits from extras into base.
+// Caller-supplied base fields (Mtime / ComputeChecksum / StorageClass / …)
+// are preserved untouched.
+func applyPutOptionsExtras(base backend.PutOptions, extras metadataExtras) backend.PutOptions {
+	if extras.Mode != nil {
+		base.Mode = extras.Mode
+	}
+	if extras.UID != nil {
+		base.UID = extras.UID
+	}
+	if extras.GID != nil {
+		base.GID = extras.GID
+	}
+	if len(extras.Xattrs) > 0 {
+		base.Xattrs = extras.Xattrs
+	}
+	return base
 }
 
 // runSync is the entry point for TaskTypeSync. Called from Executor.Run.
@@ -421,6 +640,7 @@ func (e *Executor) transferOnce(
 	resumeOffset int64,
 	resumeUploadID string,
 	computeChecksum bool,
+	extras metadataExtras,
 ) (transferResult, error) {
 	pr, pw := io.Pipe()
 
@@ -433,6 +653,12 @@ func (e *Executor) transferOnce(
 	if !entry.Mtime.IsZero() {
 		mt := entry.Mtime
 		putOpts.Mtime = &mt
+	}
+	// Merge POSIX metadata (mode/uid/gid/xattrs) when the rule requested
+	// preservation AND the dst backend advertises native support. extras
+	// is empty when neither side is in play; the merge is a no-op then.
+	if extras.hasAny() {
+		putOpts = applyPutOptionsExtras(putOpts, extras)
 	}
 	// Note: StorageClass intentionally not threaded through here.
 	// PutOptions.StorageClass would be sourced from the rule config
@@ -528,6 +754,28 @@ func (e *Executor) syncOneFile(
 		srcPre = snap
 	}
 
+	// 1.5) Resolve POSIX metadata extras (mode/uid/gid/xattrs) once, before
+	// we enter the SSC fast path / retry loop. extras is a per-file constant
+	// (the src metadata doesn't change between transferOnce attempts) so the
+	// Stat call is amortised across retries.
+	//
+	// buildMetadataExtras may decide the file is skipped by policy (capability
+	// mismatch + OnMetadataUnsupported=skip) or fail it outright (policy=error)
+	// — handle both before doing any other work.
+	metaExtras, metaSkip, metaErr := buildMetadataExtras(ctx, t, entry)
+	if metaErr != nil {
+		return metaErr
+	}
+	if metaSkip {
+		atomic.AddInt64(&p.FilesSkipped, 1)
+		atomic.AddInt64(&p.BytesSkipped, entry.Size)
+		if p.Sampler != nil {
+			p.Sampler.add(entry.Key)
+		}
+		r.OnFileDone(entry.Key, 0, nil)
+		return nil
+	}
+
 	// 2) Idempotent skip: dispatch on Task.OnExisting (rclone-style overwrite
 	// strategy). validateTask normalises empty → verify_then_skip and rejects
 	// unknown values, so dispatch is closed-set:
@@ -590,9 +838,13 @@ func (e *Executor) syncOneFile(
 			return accountDryRun(t, entry, dryRunActionServerSideCopy, r, p)
 		}
 		if copier, ok := t.Src.(backend.ServerSideCopier); ok {
-			pr, cerr := copier.ServerSideCopy(ctx, entry.Key, dstKey, backend.PutOptions{
+			sscOpts := backend.PutOptions{
 				Mtime: nonZeroMtimePtr(entry.Mtime),
-			})
+			}
+			if metaExtras.hasAny() {
+				sscOpts = applyPutOptionsExtras(sscOpts, metaExtras)
+			}
+			pr, cerr := copier.ServerSideCopy(ctx, entry.Key, dstKey, sscOpts)
 			if cerr == nil {
 				serverSideCopyOK.Add(1)
 				if t.AfterCopy == AfterCopyVerifyThenDeleteSrc {
@@ -651,8 +903,9 @@ func (e *Executor) syncOneFile(
 	// rounds backoff before transferOnce. lastErr is the most recent
 	// failure we've observed; on exhaustion it's what the caller sees.
 	var (
-		lastErr  error
-		bytesAck int64
+		lastErr           error
+		bytesAck          int64
+		metadataStripped  bool
 	)
 	strongMode := t.ChecksumMode == "strong"
 	for attempt := 0; attempt <= t.MaxRetries; attempt++ {
@@ -663,8 +916,42 @@ func (e *Executor) syncOneFile(
 			backoffSleep(ctx, attempt)
 		}
 
-		result, terr := e.transferOnce(ctx, t, entry, dstKey, resumeOffset, resumeUploadID, strongMode)
+		result, terr := e.transferOnce(ctx, t, entry, dstKey, resumeOffset, resumeUploadID, strongMode, metaExtras)
 		if terr != nil {
+			// ErrMetadataTooLarge: dst's user-metadata budget is exhausted
+			// (s3: 2 KiB cap). Dispatch on OnMetadataUnsupported:
+			//   warn   → strip extras and retry without consuming an attempt
+			//   skip   → FilesSkipped++ and return nil
+			//   error  → propagate the failure
+			//
+			// metadataStripped guards against re-entering the warn branch
+			// after we've already cleared extras — defends against backends
+			// that return ErrMetadataTooLarge for non-metadata reasons.
+			if errors.Is(terr, backend.ErrMetadataTooLarge) && metaExtras.hasAny() && !metadataStripped {
+				switch t.OnMetadataUnsupported {
+				case OnMetadataUnsupportedSkip:
+					metadataUnsupportedSkip.Add(1)
+					log.LogWarnf("syncnode: task=%s key=%s ErrMetadataTooLarge (policy=skip)", t.ID, entry.Key)
+					atomic.AddInt64(&p.FilesSkipped, 1)
+					atomic.AddInt64(&p.BytesSkipped, entry.Size)
+					if p.Sampler != nil {
+						p.Sampler.add(entry.Key)
+					}
+					r.OnFileDone(entry.Key, 0, nil)
+					return nil
+				case OnMetadataUnsupportedError:
+					metadataUnsupportedError.Add(1)
+					return fmt.Errorf("metadata too large for %q (policy=error): %w", entry.Key, terr)
+				default:
+					// warn (default): strip and retry without burning an attempt.
+					metadataUnsupportedWarn.Add(1)
+					log.LogWarnf("syncnode: task=%s key=%s ErrMetadataTooLarge (policy=warn): retrying without POSIX metadata", t.ID, entry.Key)
+					metaExtras = metadataExtras{}
+					metadataStripped = true
+					attempt--
+					continue
+				}
+			}
 			lastErr = terr
 			// Persist breakpoint when we have something to resume from.
 			if t.ResumeEnabled && e.inprogress != nil && result.partialBytes > 0 {
