@@ -43,6 +43,6 @@ func registerSyncRuleGet(s *server.MCPServer, mc *masterclient.Client) {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		q := url.Values{"id": {id}}
-		return forwardGet(ctx, mc, "/syncRule/get", q)
+		return forwardGetRedacted(ctx, mc, "/syncRule/get", q)
 	})
 }

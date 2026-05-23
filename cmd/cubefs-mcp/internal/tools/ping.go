@@ -51,16 +51,16 @@ func registerPing(s *server.MCPServer, mc *masterclient.Client) {
 				"first-step health check from Claude.",
 		),
 		mcp.WithString("message",
-			mcp.Required(),
-			mcp.Description("Arbitrary string echoed back in the response."),
+			mcp.Description(
+				"Optional arbitrary string echoed back in the response. "+
+					"Defaults to \"healthcheck\" when omitted so callers "+
+					"can run a pure reachability probe without crafting a payload.",
+			),
 		),
 	)
 
 	s.AddTool(tool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		msg, err := req.RequireString("message")
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
+		msg := req.GetString("message", "healthcheck")
 
 		probeCtx, cancel := context.WithTimeout(ctx, pingProbeTimeout)
 		defer cancel()

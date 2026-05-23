@@ -44,6 +44,6 @@ func registerSyncRuleUpdate(s *server.MCPServer, mc *masterclient.Client) {
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		return forwardPostJSON(ctx, mc, "/syncRule/update", nil, body)
+		return forwardPostJSONRedacted(ctx, mc, "/syncRule/update", nil, body)
 	})
 }

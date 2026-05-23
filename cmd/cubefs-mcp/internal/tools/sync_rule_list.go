@@ -44,6 +44,6 @@ func registerSyncRuleList(s *server.MCPServer, mc *masterclient.Client) {
 		if v := req.GetString("state", ""); v != "" {
 			q.Set("state", v)
 		}
-		return forwardGet(ctx, mc, "/syncRule/list", q)
+		return forwardGetRedacted(ctx, mc, "/syncRule/list", q)
 	})
 }

@@ -157,6 +157,88 @@ func rawJSONResult(body []byte) (*mcp.CallToolResult, error) {
 	return mcp.NewToolResultText(string(body)), nil
 }
 
+// redactedMask is the placeholder substituted for any sensitive JSON value
+// surfaced through cubefs-mcp. The same constant is used master-side
+// (master/sync_rule_view.go) so callers can rely on a single signal —
+// when they see "***" in a field, do NOT echo it back into an update.
+const redactedMask = "***"
+
+// sensitiveJSONKeys names the JSON keys whose string values must be
+// redacted before forwarding to the LLM. The list is intentionally tight:
+// only credential-bearing fields (S3 access/secret keys) — extending it
+// requires explicit review because false positives mask legitimate data.
+//
+// Matching is case-sensitive against the canonical wire shape; both
+// camelCase (LLM/dashboard) and PascalCase (master internal struct dump)
+// variants are listed in case any handler accidentally emits the Go field
+// name instead of the json tag.
+var sensitiveJSONKeys = map[string]struct{}{
+	"accessKey": {}, "AccessKey": {},
+	"secretKey": {}, "SecretKey": {},
+}
+
+// redactSensitiveJSON walks an arbitrary JSON document and replaces every
+// non-empty string value whose key matches sensitiveJSONKeys with
+// redactedMask. The document is round-tripped through encoding/json so
+// formatting (whitespace, key order) may change — callers must not rely
+// on byte-equality with the master body.
+//
+// Defense-in-depth layer (see plan doc docs/plan/mcp/healthcheck-findings-fixes.md
+// §P0): even though master is the primary redactor, this catches leaks
+// from any path that bypasses the master view layer (future endpoints,
+// raw debug dumps, accidental struct printing). On marshal/unmarshal
+// failure the original body is returned unchanged — the caller's
+// json.Valid gate already rejected non-JSON bodies upstream.
+func redactSensitiveJSON(body []byte) []byte {
+	var doc any
+	if err := json.Unmarshal(body, &doc); err != nil {
+		return body
+	}
+	redactJSONValue(doc)
+	out, err := json.Marshal(doc)
+	if err != nil {
+		return body
+	}
+	return out
+}
+
+// redactJSONValue recurses through maps and slices, replacing matching
+// keys' string values with redactedMask. Non-string values keyed by a
+// sensitive name are left alone (an int / object under "accessKey" is
+// schema corruption, not a leak — surfacing it intact aids debugging).
+// Empty strings are also left alone so the omitempty contract is
+// preserved on the wire.
+func redactJSONValue(v any) {
+	switch t := v.(type) {
+	case map[string]any:
+		for k, val := range t {
+			if _, ok := sensitiveJSONKeys[k]; ok {
+				if s, isStr := val.(string); isStr && s != "" {
+					t[k] = redactedMask
+					continue
+				}
+			}
+			redactJSONValue(val)
+		}
+	case []any:
+		for _, e := range t {
+			redactJSONValue(e)
+		}
+	}
+}
+
+// redactedJSONResult is the credential-aware counterpart of rawJSONResult.
+// Use for any tool whose master endpoint can carry AK/SK in its envelope
+// (sync rules today; bench rules reserved for the future). The body must
+// already be valid JSON — non-JSON 2xx bodies are rare from master and
+// are handled by rawJSONResult's gate when callers fall back to it.
+func redactedJSONResult(body []byte) (*mcp.CallToolResult, error) {
+	if !json.Valid(body) {
+		return mcp.NewToolResultErrorf("master returned non-JSON body: %s", truncate(string(body), 256)), nil
+	}
+	return mcp.NewToolResultText(string(redactSensitiveJSON(body))), nil
+}
+
 // forwardError converts a masterclient call error into a structured tool
 // error result. HTTPError is rendered with its status + body so the LLM
 // can reason about why the call failed; transport errors are forwarded as
@@ -238,6 +320,50 @@ func forwardPostJSON(ctx context.Context, mc *masterclient.Client, path string, 
 		return forwardError(err)
 	}
 	return rawJSONResult(body)
+}
+
+// forwardGetRedacted is forwardGet plus redactSensitiveJSON on the body.
+// Use this for any read-only endpoint that can carry AK/SK (sync_rule
+// list/get today). Keeping a distinct entry point — rather than baking
+// redaction into rawJSONResult — preserves byte-faithful forwarding for
+// callers that don't need it (export NDJSON, cluster stats, etc.).
+func forwardGetRedacted(ctx context.Context, mc *masterclient.Client, path string, query url.Values) (*mcp.CallToolResult, error) {
+	callCtx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
+	body, err := mc.Get(callCtx, path, query)
+	if err != nil {
+		return forwardError(err)
+	}
+	return redactedJSONResult(body)
+}
+
+// forwardPostRedacted is forwardPost plus redactSensitiveJSON on the
+// body. Used by sync_rule pause/resume whose master response carries the
+// updated rule envelope.
+func forwardPostRedacted(ctx context.Context, mc *masterclient.Client, path string, query url.Values) (*mcp.CallToolResult, error) {
+	callCtx, cancel := context.WithTimeout(ctx, writeTimeout)
+	defer cancel()
+	body, err := mc.Post(callCtx, path, query, nil)
+	if err != nil {
+		return forwardError(err)
+	}
+	return redactedJSONResult(body)
+}
+
+// forwardPostJSONRedacted is forwardPostJSON plus redactSensitiveJSON.
+// Used by sync_rule create/update whose master response echoes back the
+// stored rule envelope.
+func forwardPostJSONRedacted(ctx context.Context, mc *masterclient.Client, path string, query url.Values, jsonBody string) (*mcp.CallToolResult, error) {
+	if jsonBody == "" {
+		return mcp.NewToolResultError("empty body: this endpoint requires a JSON document"), nil
+	}
+	callCtx, cancel := context.WithTimeout(ctx, writeTimeout)
+	defer cancel()
+	body, err := mc.Post(callCtx, path, query, []byte(jsonBody))
+	if err != nil {
+		return forwardError(err)
+	}
+	return redactedJSONResult(body)
 }
 
 // truncate keeps error blobs from blowing up the LLM context. Master 5xx

@@ -57,26 +57,68 @@ import (
 // RawJSON is omitempty: rules that pre-date RC8 #119 (loaded from rocksdb
 // in the legacy bare-BenchRule format) have an empty RawJSON and the
 // field is dropped from the response.
+//
+// LastRunAt / LastRunStatus mirror SyncRule's envelope and are derived at
+// view-construction time from benchTaskLedger; bench rules don't persist
+// their own last-run summary (no pause state machine either, see the plan
+// doc docs/plan/mcp/healthcheck-findings-fixes.md §P2). Both are omitempty
+// so rules that have never run keep the response shape clean.
 type benchRuleView struct {
 	*spec.BenchRule
-	RawJSON string `json:"rawJSON,omitempty"`
+	RawJSON       string `json:"rawJSON,omitempty"`
+	LastRunAt     int64  `json:"lastRunAt,omitempty"`
+	LastRunStatus string `json:"lastRunStatus,omitempty"`
+}
+
+// latestBenchRun looks up the most recent terminal bench task for ruleID
+// in the supplied ledger and returns (updatedAt_ms, status). Shard
+// records (ParentTaskID != "") are skipped so we only consider the
+// authoritative parent / single-task entry. Returns (0, "") when no
+// terminal task exists for the rule.
+func latestBenchRun(ledger *BenchTaskLedger, ruleID string) (int64, string) {
+	if ledger == nil || ruleID == "" {
+		return 0, ""
+	}
+	var bestAt int64
+	var bestStatus BenchTaskStatus
+	for _, r := range ledger.List(ruleID, "") {
+		if r == nil || r.ParentTaskID != "" {
+			continue
+		}
+		if !r.Status.IsTerminal() {
+			continue
+		}
+		if r.UpdatedAt > bestAt {
+			bestAt = r.UpdatedAt
+			bestStatus = r.Status
+		}
+	}
+	return bestAt, string(bestStatus)
 }
 
 // newBenchRuleView wraps a *spec.BenchRule for outbound JSON serialisation.
 // Callers MUST pass a value that won't be mutated afterwards (the store's
-// Get / List already return copies).
-func newBenchRuleView(r *spec.BenchRule) *benchRuleView {
+// Get / List already return copies). ledger is used to derive
+// LastRunAt / LastRunStatus; pass nil to skip the lookup (e.g. in tests
+// that don't care about the run summary).
+func newBenchRuleView(r *spec.BenchRule, ledger *BenchTaskLedger) *benchRuleView {
 	if r == nil {
 		return nil
 	}
-	return &benchRuleView{BenchRule: r, RawJSON: r.RawJSON}
+	lastAt, lastStatus := latestBenchRun(ledger, r.ID)
+	return &benchRuleView{
+		BenchRule:     r,
+		RawJSON:       r.RawJSON,
+		LastRunAt:     lastAt,
+		LastRunStatus: lastStatus,
+	}
 }
 
 // newBenchRuleViews wraps a slice of *spec.BenchRule for list responses.
-func newBenchRuleViews(rs []*spec.BenchRule) []*benchRuleView {
+func newBenchRuleViews(rs []*spec.BenchRule, ledger *BenchTaskLedger) []*benchRuleView {
 	out := make([]*benchRuleView, 0, len(rs))
 	for _, r := range rs {
-		out = append(out, newBenchRuleView(r))
+		out = append(out, newBenchRuleView(r, ledger))
 	}
 	return out
 }
@@ -121,10 +163,10 @@ func (m *Server) listBenchRules(w http.ResponseWriter, r *http.Request) {
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: gerr.Error()})
 			return
 		}
-		sendOkReply(w, r, newSuccessHTTPReply(newBenchRuleView(rule)))
+		sendOkReply(w, r, newSuccessHTTPReply(newBenchRuleView(rule, m.cluster.benchTaskLedger)))
 		return
 	}
-	sendOkReply(w, r, newSuccessHTTPReply(newBenchRuleViews(m.cluster.benchRuleStore.List())))
+	sendOkReply(w, r, newSuccessHTTPReply(newBenchRuleViews(m.cluster.benchRuleStore.List(), m.cluster.benchTaskLedger)))
 }
 
 // createBenchRule handles POST /benchRule/create.
@@ -158,7 +200,7 @@ func (m *Server) createBenchRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	created, _ := m.cluster.benchRuleStore.Get(rule.ID)
-	sendOkReply(w, r, newSuccessHTTPReply(newBenchRuleView(created)))
+	sendOkReply(w, r, newSuccessHTTPReply(newBenchRuleView(created, m.cluster.benchTaskLedger)))
 }
 
 // getBenchRule handles GET /benchRule/get?id=.
@@ -179,7 +221,7 @@ func (m *Server) getBenchRule(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: gerr.Error()})
 		return
 	}
-	sendOkReply(w, r, newSuccessHTTPReply(newBenchRuleView(rule)))
+	sendOkReply(w, r, newSuccessHTTPReply(newBenchRuleView(rule, m.cluster.benchTaskLedger)))
 }
 
 // updateBenchRule handles POST /benchRule/update.
@@ -209,7 +251,7 @@ func (m *Server) updateBenchRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	updated, _ := m.cluster.benchRuleStore.Get(rule.ID)
-	sendOkReply(w, r, newSuccessHTTPReply(newBenchRuleView(updated)))
+	sendOkReply(w, r, newSuccessHTTPReply(newBenchRuleView(updated, m.cluster.benchTaskLedger)))
 }
 
 // deleteBenchRule handles POST /benchRule/delete?id=.

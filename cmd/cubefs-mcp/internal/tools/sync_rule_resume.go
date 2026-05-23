@@ -46,6 +46,6 @@ func registerSyncRuleResume(s *server.MCPServer, mc *masterclient.Client) {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		q := url.Values{"id": {id}}
-		return forwardPost(ctx, mc, "/syncRule/resume", q)
+		return forwardPostRedacted(ctx, mc, "/syncRule/resume", q)
 	})
 }
