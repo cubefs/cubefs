@@ -128,3 +128,7 @@
 - 凭证落盘加密 / 走外部 secret store。
 - BenchRule 加 pause 状态机(若运维真有需求)。
 - master 通用响应中间件加 redact(把当前 syncRule 的手工 redact 收成框架级)。
+
+## P3 衍生(已完成)
+
+P2 落地后 2026-05-23 体检又暴露了 master `triggerBenchRule` 静默放行缺 `backendEndpoint` 的 S3 rule、批量产出 failed BenchTaskRecord 的设计缺陷。承接计划与验收记录见 [`docs/plan/master/bench-rule-validation.md`](../master/bench-rule-validation.md)。已 2026-05-23 完成实现 + e2e 验证,master 镜像 bump 到 `cubefs:v3.5.3.1.rc11`(cubefs commit `49a461f45`)。

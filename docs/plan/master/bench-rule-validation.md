@@ -28,19 +28,25 @@
 
 ## 单一事实来源
 
-把"需要 BackendEndpoint"这条业务规则收敛到 `spec.BenchRule` 上：
+把"需要 BackendEndpoint"这条业务规则收敛到 `spec.BenchStorageType` 上（落在类型上而不是 BenchRule 实例上——这条信息**只**取决于 storageType，不取决于其他规则字段，把它做成类型方法可以让 master 持久化校验时不必构造完整 BenchRule 就能复用）：
 
 ```go
-// RequiresBackendEndpoint reports whether this rule needs an
-// EndpointConfig populated before dispatch / execution. True for S3
-// and SDK storage types; false for POSIX / mdtest / IOR which only
-// use MountPath.
-func (r *BenchRule) RequiresBackendEndpoint() bool {
-    return r.StorageType == BenchStorageS3 || r.StorageType == BenchStorageSDK
+// RequiresBackendEndpoint reports whether this storage type needs an
+// EndpointConfig populated before a bench task can be dispatched. True
+// for S3 and SDK (which talk to an external backend resolved by the
+// dashboard from BackendID); false for POSIX / mdtest / IOR which only
+// use a local mount path.
+func (t BenchStorageType) RequiresBackendEndpoint() bool {
+    switch t {
+    case BenchStorageS3, BenchStorageSDK:
+        return true
+    default:
+        return false
+    }
 }
 ```
 
-之后 master 和 syncnode 都调这个方法，避免两边 `storageType == "s3" || storageType == "sdk"` 各写一遍——未来新增 storageType（比如 RC9 计划的 OSS 直连）只需要改 spec 一处。
+之后 master 和 syncnode 都调这个方法，避免两边 `storageType == "s3" || storageType == "sdk"` 各写一遍——未来新增 storageType（比如 RC9 计划的 OSS 直连）只需要改 spec 一处 + spec 单测加一条 case。
 
 ## 校验矩阵
 
@@ -89,4 +95,30 @@ trigger 的错误消息要带上 rule ID 和 backendID，方便 dashboard / 排�
 ## 进度
 
 - 2026-05-23 09:xx — 落 plan doc。
-- 2026-05-23 — 实现 + 单测 + 构建 + 部署 + e2e 验证（待）。
+- 2026-05-23 10:xx — 实现 spec helper + master handler + syncnode runner 替换 + 单测补齐（commit `49a461f45`）。
+- 2026-05-23 11:xx — 构建 `cubefs:v3.5.3.1.rc11` 推私库。
+- 2026-05-23 11:xx — bump `_envcommon/images.hcl` → rc11，`terragrunt apply-master` 滚动完成。master pod 镜像确认 rc11（3/3 ready，T03:55–03:57 UTC）。
+- 2026-05-23 11:xx — e2e 5 场景全部通过（见下方验收结果）。
+
+## 验收结果
+
+`/tmp/bench-validation-e2e.sh` 在 test-k3d 上 5 个场景全部通过：
+
+| 编号 | 场景 | 期望 | 实际 | 结论 |
+| --- | --- | --- | --- | --- |
+| A | `POST /benchRule/create` storageType=s3 缺 backendID | code=2，msg 含 `backendID` | `code=2, msg="bench rule "...-create": storageType="s3" requires backendID"` | ✅ |
+| B | 先创建合法 s3 rule（backendID=99），再 `update` 去掉 backendID | code=2，msg 含 `backendID` | `code=2, msg="...requires backendID"` | ✅ |
+| C | `POST /benchRule/trigger` 对存量 s3 rule 不带 body | code=2，msg 含 `backendEndpoint`，BenchTaskRecord 计数不变 | `code=2, msg="...requires backendEndpoint in trigger body (backendID="1")"`；baseline=0 → 0（**无泄漏**） | ✅ |
+| D | trigger 同 s3 rule，body 带 backendEndpoint | code=0，进入 dispatch 路径 | `code=0, taskID=bench-smoke-test-001-mpdhdqyw-1779508816600716986`，4 个 shard 进入 running | ✅ |
+| E | sanity：create storageType=posix 不带 backendID | code=0 | code=0 | ✅ |
+
+关键验证点：
+- **不再泄漏 failed task**：Test C 触发拒绝后 `benchTask.list?ruleID=...` 计数 0 → 0，master 在 fan-out 前就拦下了，syncnode 侧再没收到坏 payload。
+- **错误文本可定位**：reject 消息全部带 rule ID + 拒绝原因（backendID / backendEndpoint），dashboard / 运行手册可直接展示。
+- **happy path 未误伤**：注入 backendEndpoint 后正常 dispatch，4 个 shard 都进入 running（后续 S3 凭据 / 网络错误不归本次修复管）。
+- **syncnode runner 兜底仍在**：`runner.go` 已替换为 `rule.StorageType.RequiresBackendEndpoint()`，error 文本保持 `requires BackendEndpoint (BackendID=...) but it is nil` 不变。
+
+镜像 / 部署：
+- 镜像：`hub.shiyak-office.com/storage/cubefs:v3.5.3.1.rc11`（cubefs commit `49a461f45`）。
+- test-k3d master 已全部滚动到 rc11（agent-0/1/2，3 pod ready）。
+- cubefs-deploy 侧 images.hcl bump 不入仓（只在本地工作树）。
