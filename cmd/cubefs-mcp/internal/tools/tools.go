@@ -55,31 +55,64 @@ type BuildInfo struct {
 // Register attaches every cubefs-mcp tool to the given MCP server. Call
 // exactly once during startup, before server.ServeStdio.
 //
-// Adding a new tool: drop a `registerXxx(s, ...)` line below and implement
-// the registrar in its own file under this package.
+// Adding a new tool: drop a `registerXxx(s, ...)` line below in the right
+// category section and implement the registrar in its own file under this
+// package. Each new file should be ~30-50 lines and reuse the shared
+// forward* helpers; do not add direct masterclient calls in tool files.
 func Register(s *server.MCPServer, mc *masterclient.Client, build BuildInfo) {
+	// Meta. Link-validation + build info.
 	registerPing(s, mc)
 	registerVersion(s, mergeBuildInfo(build))
 
-	// Bench tools (S1.2). Read-only listing + a single trigger / cancel pair.
-	// Create / update / delete are intentionally NOT exposed; rule lifecycle
-	// stays in human-driven UIs.
+	// Cluster.
+	registerClusterStat(s, mc)
+	registerClusterHealth(s, mc)
+
+	// Bench Rule. CRUD + trigger; rule lifecycle is exposed since the LLM
+	// is expected to drive bench scenarios end-to-end without falling back
+	// to dashboard / curl. Write ops are flagged MUTATES / DESTRUCTIVE.
 	registerBenchRuleList(s, mc)
 	registerBenchRuleGet(s, mc)
+	registerBenchRuleCreate(s, mc)
+	registerBenchRuleUpdate(s, mc)
+	registerBenchRuleDelete(s, mc)
 	registerBenchRuleTrigger(s, mc)
+
+	// Bench Task. Read + cancel/retry/delete. master rejects retry/delete
+	// based on state, errors are forwarded verbatim.
 	registerBenchTaskList(s, mc)
 	registerBenchTaskGet(s, mc)
 	registerBenchTaskCancel(s, mc)
+	registerBenchTaskRetry(s, mc)
+	registerBenchTaskDelete(s, mc)
 
-	// Sync tools (S1.3). Same shape: read + cancel only.
+	// Sync Rule. Full CRUD + pause/resume/trigger; same rationale as bench
+	// rule above.
+	registerSyncRuleList(s, mc)
+	registerSyncRuleGet(s, mc)
+	registerSyncRuleCreate(s, mc)
+	registerSyncRuleUpdate(s, mc)
+	registerSyncRuleDelete(s, mc)
+	registerSyncRulePause(s, mc)
+	registerSyncRuleResume(s, mc)
+	registerSyncRuleTrigger(s, mc)
+
+	// Sync Task. Read + cancel/retry/delete/export. export is NDJSON via
+	// forwardGetText.
 	registerSyncTaskList(s, mc)
 	registerSyncTaskGet(s, mc)
 	registerSyncTaskCancel(s, mc)
-	registerSyncNodeList(s, mc)
+	registerSyncTaskRetry(s, mc)
+	registerSyncTaskDelete(s, mc)
+	registerSyncTaskExport(s, mc)
 
-	// Cluster tools (S1.3).
-	registerClusterStat(s, mc)
-	registerClusterHealth(s, mc)
+	// Sync Node. Inventory + dispatch-ring management. decommission carries
+	// the DESTRUCTIVE warning since force=true orphans in-flight tasks.
+	registerSyncNodeList(s, mc)
+	registerSyncNodeTasks(s, mc)
+	registerSyncNodeDrain(s, mc)
+	registerSyncNodeRestore(s, mc)
+	registerSyncNodeDecommission(s, mc)
 }
 
 // mergeBuildInfo lets callers omit fields and fall back to versionDefaults.
@@ -163,6 +196,44 @@ func forwardPost(ctx context.Context, mc *masterclient.Client, path string, quer
 	callCtx, cancel := context.WithTimeout(ctx, writeTimeout)
 	defer cancel()
 	body, err := mc.Post(callCtx, path, query, nil)
+	if err != nil {
+		return forwardError(err)
+	}
+	return rawJSONResult(body)
+}
+
+// forwardGetText is the read-only forwarder for endpoints that return
+// non-JSON payloads (e.g. /syncTask/export emits NDJSON). The body is
+// surfaced verbatim as MCP text without json.Valid() gating, since
+// NDJSON would always fail that check.
+//
+// Callers must reserve this for paths whose content-type we control;
+// any HTML 5xx body from a misbehaving proxy still flows through, but
+// the masterclient already promoted non-2xx into HTTPError so only 2xx
+// responses reach this branch.
+func forwardGetText(ctx context.Context, mc *masterclient.Client, path string, query url.Values) (*mcp.CallToolResult, error) {
+	callCtx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
+	body, err := mc.Get(callCtx, path, query)
+	if err != nil {
+		return forwardError(err)
+	}
+	return mcp.NewToolResultText(string(body)), nil
+}
+
+// forwardPostJSON is the mutating forwarder for endpoints that accept a
+// JSON document body (e.g. /benchRule/create, /syncRule/update). The
+// raw body string is forwarded byte-for-byte; master applies its own
+// schema validation (DisallowUnknownFields on the bench side, spec
+// package on the sync side), so we only validate that the caller did
+// not hand us an empty body.
+func forwardPostJSON(ctx context.Context, mc *masterclient.Client, path string, query url.Values, jsonBody string) (*mcp.CallToolResult, error) {
+	if jsonBody == "" {
+		return mcp.NewToolResultError("empty body: this endpoint requires a JSON document"), nil
+	}
+	callCtx, cancel := context.WithTimeout(ctx, writeTimeout)
+	defer cancel()
+	body, err := mc.Post(callCtx, path, query, []byte(jsonBody))
 	if err != nil {
 		return forwardError(err)
 	}
