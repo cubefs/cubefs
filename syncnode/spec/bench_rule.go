@@ -29,6 +29,26 @@ const (
 	BenchStorageIOR BenchStorageType = "ior"
 )
 
+// RequiresBackendEndpoint reports whether this storage type needs an
+// EndpointConfig populated before a bench task can be dispatched. True
+// for S3 and SDK (which talk to an external backend resolved by the
+// dashboard from BackendID); false for POSIX / mdtest / IOR which only
+// use a local mount path.
+//
+// This is the single source of truth used by both the master handlers
+// (reject create / update with missing BackendID, reject trigger with
+// missing BackendEndpoint) and the syncnode runner (final pre-dispatch
+// safety net). Adding a new BenchStorageType means updating this method
+// and adding a case to the spec unit test.
+func (t BenchStorageType) RequiresBackendEndpoint() bool {
+	switch t {
+	case BenchStorageS3, BenchStorageSDK:
+		return true
+	default:
+		return false
+	}
+}
+
 // BenchRule is the persisted configuration for a distributed benchmark task.
 // StorageType selects the executor path (S3/SDK object ops vs POSIX fio).
 // Parallelism controls the number of shards dispatched across nodes.

@@ -848,8 +848,12 @@ func (r *Runner) TriggerBench(ctx context.Context, rule *spec.BenchRule, taskID 
 		ShardIndex: shardIdx,
 	}
 
-	// For S3/SDK bench, build a backend from the pre-resolved endpoint config.
-	if rule.StorageType == spec.BenchStorageS3 || rule.StorageType == spec.BenchStorageSDK {
+	// For storage types that require an external backend (S3/SDK), build a
+	// backend from the pre-resolved endpoint config. This is a defence in
+	// depth — master also rejects trigger requests when BackendEndpoint is
+	// missing — but kept here so direct executor callers (tests, internal
+	// retries) cannot accidentally dispatch a half-formed rule.
+	if rule.StorageType.RequiresBackendEndpoint() {
 		if rule.BackendEndpoint == nil {
 			return nil, fmt.Errorf("TriggerBench: rule %q requires BackendEndpoint (BackendID=%q) but it is nil", rule.ID, rule.BackendID)
 		}

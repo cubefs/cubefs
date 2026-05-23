@@ -123,6 +123,45 @@ func newBenchRuleViews(rs []*spec.BenchRule, ledger *BenchTaskLedger) []*benchRu
 	return out
 }
 
+// validateBenchRuleForPersist enforces structural requirements that must
+// hold at create / update time, independent of any per-trigger state.
+// Currently:
+//   - non-empty ID;
+//   - when StorageType requires an external backend (S3/SDK), BackendID must
+//     be non-empty so the dashboard can later resolve the EndpointConfig.
+//
+// Returns a 400-suitable error or nil. Centralising the check keeps the
+// create and update handlers byte-for-byte aligned and lets us unit test
+// the policy without spinning up a *Server.
+func validateBenchRuleForPersist(rule *spec.BenchRule) error {
+	if rule == nil {
+		return errors.New("bench rule is nil")
+	}
+	if rule.ID == "" {
+		return errors.New("bench rule id is required")
+	}
+	if rule.StorageType.RequiresBackendEndpoint() && rule.BackendID == "" {
+		return fmt.Errorf("bench rule %q: storageType=%q requires backendID", rule.ID, rule.StorageType)
+	}
+	return nil
+}
+
+// validateBenchRuleForTrigger enforces dispatch-time requirements: when
+// the storage type needs an external backend, the caller must have
+// injected a BackendEndpoint (resolved from MySQL credentials by the
+// dashboard). Returning an error here prevents the silent "creates N
+// BenchTaskRecord then all fail at syncnode" failure mode.
+func validateBenchRuleForTrigger(rule *spec.BenchRule) error {
+	if rule == nil {
+		return errors.New("bench rule is nil")
+	}
+	if rule.StorageType.RequiresBackendEndpoint() && rule.BackendEndpoint == nil {
+		return fmt.Errorf("bench rule %q: storageType=%q requires backendEndpoint in trigger body (backendID=%q)",
+			rule.ID, rule.StorageType, rule.BackendID)
+	}
+	return nil
+}
+
 // decodeBenchRuleStrict reads the request body and decodes a BenchRule
 // with DisallowUnknownFields enabled. Returns the decoded rule and the
 // raw body bytes (for RawJSON persistence) or an error suitable for an
@@ -189,9 +228,9 @@ func (m *Server) createBenchRule(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: derr.Error()})
 		return
 	}
-	if rule.ID == "" {
-		err = errors.New("bench rule id is required")
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+	if verr := validateBenchRuleForPersist(rule); verr != nil {
+		err = verr
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: verr.Error()})
 		return
 	}
 	rule.RawJSON = string(raw)
@@ -240,9 +279,9 @@ func (m *Server) updateBenchRule(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: derr.Error()})
 		return
 	}
-	if rule.ID == "" {
-		err = errors.New("bench rule id is required")
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+	if verr := validateBenchRuleForPersist(rule); verr != nil {
+		err = verr
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: verr.Error()})
 		return
 	}
 	rule.RawJSON = string(raw)
@@ -329,6 +368,15 @@ func (m *Server) triggerBenchRule(w http.ResponseWriter, r *http.Request) {
 		if derr := json.NewDecoder(r.Body).Decode(&body); derr == nil && body.BackendEndpoint != nil {
 			rule.BackendEndpoint = body.BackendEndpoint
 		}
+	}
+
+	// Reject trigger early when storageType needs a backend but caller
+	// didn't inject one. Previously this silently dispatched to syncnode
+	// and produced N identical "BackendEndpoint nil" failures per shard.
+	if verr := validateBenchRuleForTrigger(rule); verr != nil {
+		err = verr
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: verr.Error()})
+		return
 	}
 
 	parallelism := rule.Parallelism

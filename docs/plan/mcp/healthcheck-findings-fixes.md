@@ -110,6 +110,12 @@
 3. **P0 master + mcp redact** → 单测先过 → master 镜像 + mcp binary 同时更新 → `sync_rule_list` 看到 `accessKey: "***"`、cache 内仍是明文(看 master 日志或 trigger 一次 sync 验证凭证还能用)。
 4. 全部完成后再跑一次完整体检脚本(`/tmp/cubefs-mcp-e2e/healthcheck.py`),确认三个问题都消失。
 
+## 验收结果(test-k3d, 2026-05-23)
+
+- P1 ✅ — `ping {}` 不传 message,wrapper 直连 healthcheck.py 返回 `{"ok":true,"raw_err":null}`,默认 echo `healthcheck`。
+- P2 ✅ — master 重建为 `cubefs:v3.5.3.1.rc10` 后触发 `bench-smoke-test-001-mpdhdqyw`,`bench_rule_get` 返回 `lastRunAt: 1779506692531`、`lastRunStatus: "failed"`,与 `bench_task_list` 中该 rule parent task 的 UpdatedAt / Status 一致。
+- P0 ✅ — 绕过 cubefs-mcp 直 `curl master:17010/syncRule/list`:11 条 rule、6 个带凭证字段全部 `"***"`、零 plain leak;mcp 兜底层在老 master 镜像(rc8/9)环境下也已能完整脱敏。
+
 ## 不做什么
 
 - **不**改 spec.BenchRule schema(避免 rocksdb 兼容性问题)。

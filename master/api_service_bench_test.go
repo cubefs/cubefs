@@ -88,7 +88,7 @@ func TestDecodeBenchRuleStrict_EmptyBody(t *testing.T) {
 // 提升到顶层 "rawJSON" 字段（虽然 BenchRule 本身的 JSON tag 是 "-"）。
 func TestBenchRuleView_ExposesRawJSON(t *testing.T) {
 	r := &spec.BenchRule{ID: "r1", Name: "n", RawJSON: `{"id":"r1"}`}
-	enc, err := json.Marshal(newBenchRuleView(r))
+	enc, err := json.Marshal(newBenchRuleView(r, nil))
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
@@ -106,7 +106,7 @@ func TestBenchRuleView_ExposesRawJSON(t *testing.T) {
 // 必须被 omitempty 跳过，避免给老 rule 增加噪声字段。
 func TestBenchRuleView_OmitsRawJSONWhenEmpty(t *testing.T) {
 	r := &spec.BenchRule{ID: "r1", Name: "n"}
-	enc, err := json.Marshal(newBenchRuleView(r))
+	enc, err := json.Marshal(newBenchRuleView(r, nil))
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
@@ -126,11 +126,121 @@ func TestBenchRuleView_NilSafe(t *testing.T) {
 // TestBenchRuleViews_EmptySlice: List 返回 0 条时 wrapper 应给出空切片
 // 而不是 nil（便于 dashboard 直接 .map(...)）。
 func TestBenchRuleViews_EmptySlice(t *testing.T) {
-	views := newBenchRuleViews(nil)
+	views := newBenchRuleViews(nil, nil)
 	if views == nil {
 		t.Fatalf("newBenchRuleViews(nil) must return non-nil empty slice")
 	}
 	if len(views) != 0 {
 		t.Errorf("expected empty slice, got %v", views)
+	}
+}
+
+// TestValidateBenchRuleForPersist: create / update handler 调的公共校验。
+// 关键覆盖：S3/SDK rule 缺 backendID 必须 400；posix / mdtest / ior 不需要 backendID
+// 时不能被错杀；nil rule / 空 ID 也必须被拒绝。
+func TestValidateBenchRuleForPersist(t *testing.T) {
+	cases := []struct {
+		name      string
+		in        *spec.BenchRule
+		wantErr   bool
+		wantInMsg string
+	}{
+		{"nil rule", nil, true, "nil"},
+		{"empty id", &spec.BenchRule{}, true, "id is required"},
+		{
+			"s3 without backendID",
+			&spec.BenchRule{ID: "r1", StorageType: spec.BenchStorageS3},
+			true, "backendID",
+		},
+		{
+			"sdk without backendID",
+			&spec.BenchRule{ID: "r2", StorageType: spec.BenchStorageSDK},
+			true, "backendID",
+		},
+		{
+			"s3 with backendID",
+			&spec.BenchRule{ID: "r3", StorageType: spec.BenchStorageS3, BackendID: "1"},
+			false, "",
+		},
+		{
+			"posix without backendID is fine",
+			&spec.BenchRule{ID: "r4", StorageType: spec.BenchStoragePosix},
+			false, "",
+		},
+		{
+			"mdtest without backendID is fine",
+			&spec.BenchRule{ID: "r5", StorageType: spec.BenchStorageMdtest},
+			false, "",
+		},
+		{
+			"ior without backendID is fine",
+			&spec.BenchRule{ID: "r6", StorageType: spec.BenchStorageIOR},
+			false, "",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := validateBenchRuleForPersist(c.in)
+			if c.wantErr && err == nil {
+				t.Fatalf("expected error, got nil")
+			}
+			if !c.wantErr && err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if c.wantErr && !strings.Contains(err.Error(), c.wantInMsg) {
+				t.Errorf("error %q must contain %q", err, c.wantInMsg)
+			}
+		})
+	}
+}
+
+// TestValidateBenchRuleForTrigger: trigger handler 调的公共校验。S3/SDK
+// 必须带 backendEndpoint（dashboard 注入），否则 master 直接 400，不能再像
+// 之前那样落 BenchTaskRecord 然后让 syncnode 全军覆没。
+func TestValidateBenchRuleForTrigger(t *testing.T) {
+	endpoint := &spec.EndpointConfig{} // sentinel; type-only — fields are not inspected
+	cases := []struct {
+		name    string
+		in      *spec.BenchRule
+		wantErr bool
+	}{
+		{"nil rule", nil, true},
+		{
+			"s3 without endpoint", &spec.BenchRule{ID: "r1", StorageType: spec.BenchStorageS3, BackendID: "1"}, true,
+		},
+		{
+			"sdk without endpoint", &spec.BenchRule{ID: "r2", StorageType: spec.BenchStorageSDK, BackendID: "2"}, true,
+		},
+		{
+			"s3 with endpoint",
+			&spec.BenchRule{ID: "r3", StorageType: spec.BenchStorageS3, BackendID: "1", BackendEndpoint: endpoint},
+			false,
+		},
+		{
+			"posix needs no endpoint",
+			&spec.BenchRule{ID: "r4", StorageType: spec.BenchStoragePosix},
+			false,
+		},
+		{
+			"mdtest needs no endpoint",
+			&spec.BenchRule{ID: "r5", StorageType: spec.BenchStorageMdtest},
+			false,
+		},
+		{
+			"ior needs no endpoint",
+			&spec.BenchRule{ID: "r6", StorageType: spec.BenchStorageIOR},
+			false,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := validateBenchRuleForTrigger(c.in)
+			if c.wantErr && err == nil {
+				t.Fatalf("expected error, got nil")
+			}
+			if !c.wantErr && err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
 	}
 }

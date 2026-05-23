@@ -178,3 +178,26 @@ func TestBenchRule_RawJSON_StrictDecodeRejectsField(t *testing.T) {
 		t.Errorf("error must name the offending field, got %v", err)
 	}
 }
+
+// TestBenchStorageType_RequiresBackendEndpoint: 单一事实来源——master / syncnode
+// 两侧都用它判断"这条 rule 需不需要 BackendEndpoint"。S3 / SDK 必须为 true，
+// 其余必须为 false。新增 BenchStorageType 时务必同步更新这张表。
+func TestBenchStorageType_RequiresBackendEndpoint(t *testing.T) {
+	cases := []struct {
+		in   BenchStorageType
+		want bool
+	}{
+		{BenchStorageS3, true},
+		{BenchStorageSDK, true},
+		{BenchStoragePosix, false},
+		{BenchStorageMdtest, false},
+		{BenchStorageIOR, false},
+		{"", false},
+		{"bogus", false},
+	}
+	for _, c := range cases {
+		if got := c.in.RequiresBackendEndpoint(); got != c.want {
+			t.Errorf("%q.RequiresBackendEndpoint() = %v, want %v", c.in, got, c.want)
+		}
+	}
+}
