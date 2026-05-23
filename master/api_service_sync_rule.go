@@ -365,6 +365,12 @@ func validateSyncRuleShape(rule *proto.SyncRule) error {
 	if rule.Config.ShardingStrategy == "prefix" && len(rule.Config.ShardPrefixes) == 0 {
 		return errors.New("shardingStrategy=prefix requires non-empty shardPrefixes")
 	}
+	if rule.Config.ShardCount < 0 {
+		return errors.New("invalid shardCount: must be >= 0")
+	}
+	if rule.Config.Parallelism < 0 {
+		return errors.New("invalid parallelism: must be >= 0")
+	}
 	return nil
 }
 

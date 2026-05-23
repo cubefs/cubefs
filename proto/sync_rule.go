@@ -123,7 +123,21 @@ type SyncRuleConfig struct {
 	SampleRate                  float64             `json:"sampleRate"`
 	BandwidthLimitMBps          int                 `json:"bandwidthLimitMBps"`
 	AggregateBandwidthLimitMBps int                 `json:"aggregateBandwidthLimitMBps"`
-	Parallelism                 int                 `json:"parallelism"`
+	// Parallelism controls the per-shard, per-syncnode in-process file
+	// concurrency (how many objects a single syncnode worker copies in
+	// parallel). It is INDEPENDENT of ShardCount (which controls cross-
+	// syncnode fan-out). 0 means "syncnode default".
+	Parallelism int `json:"parallelism"`
+	// ShardCount controls how many parallel sub-tasks the master fans a
+	// single rule trigger into. Decoupled from Parallelism.
+	//   - hash mode:  capped by min(ShardCount, online syncnodes); ≤1 = no fan-out
+	//   - prefix mode: capped by min(ShardCount, len(ShardPrefixes))
+	//   - auto mode:  uses ShardCount on prefix-cache hit; falls back to
+	//                 hash with the same ShardCount on cache miss
+	// Zero means "legacy fallback": derive from Parallelism when > 0
+	// (backward compatibility for rules persisted before this field
+	// landed); otherwise no fan-out (single dispatch).
+	ShardCount int `json:"shardCount,omitempty"`
 	// ShardingStrategy selects how the master fans a single rule
 	// trigger into N sub-tasks across the cluster:
 	//   "" / "hash"  → FNV-1a hash on object key (default; even distribution)

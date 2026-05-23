@@ -225,19 +225,45 @@ func (m *SyncRuleManager) fireRule(ruleID string) {
 	m.cluster.syncRuleCache.Put(&updated)
 }
 
+// effectiveShardCount resolves how many parallel shards the master should
+// fan a single rule trigger into. Sources, in priority order:
+//
+//  1. cfg.ShardCount (>0): operator-declared explicit cross-syncnode fan-out width.
+//  2. cfg.Parallelism (>0): legacy fallback for rules persisted before
+//     ShardCount existed — historically Parallelism doubled as the shard
+//     cap. Keeps already-running rules behaviour-stable across upgrade.
+//  3. 1: single dispatch (no fan-out).
+//
+// The returned value is later further capped by domain-specific limits
+// (online candidate count for hash mode; len(prefixes) for prefix mode).
+func effectiveShardCount(cfg *proto.SyncRuleConfig) int {
+	if cfg.ShardCount > 0 {
+		return cfg.ShardCount
+	}
+	if cfg.Parallelism > 0 {
+		return cfg.Parallelism
+	}
+	return 1
+}
+
 // dispatchRule routes a rule fire to the appropriate dispatch backend.
 // Splits into:
 //
-//   - hash mode (default): if Parallelism > 1 and we have multiple
+//   - hash mode (default): if effectiveShardCount > 1 and we have multiple
 //     candidates, fan out via SyncFanout.DispatchN with hash-mode
 //     sub-tasks. Otherwise single Dispatch to the lowest-load node.
 //   - prefix mode (P2-5): bucketsForPrefix packs the operator-declared
-//     ShardPrefixes into shards (≤ Parallelism); each shard gets its
-//     bucket on SubTaskInfo.Prefixes. The receiving syncnode executor
+//     ShardPrefixes into shards (≤ effectiveShardCount); each shard gets
+//     its bucket on SubTaskInfo.Prefixes. The receiving syncnode executor
 //     filters via prefix match instead of hash.
 //   - auto mode: probe a candidate's backend.List for top-level
 //     prefixes, then route through prefix mode. (Phase 5b — wire op
 //     OpSyncNodeListPrefixes lands separately.)
+//
+// NOTE: ShardCount controls cross-syncnode fan-out width and is decoupled
+// from Parallelism (per-shard, per-syncnode in-process file concurrency).
+// ShardCount==0 falls back to Parallelism for backward compatibility with
+// rules created before the split; see effectiveShardCount.
 func (m *SyncRuleManager) dispatchRule(taskID string, rule *proto.SyncRule) error {
 	disp := m.cluster.syncDispatcher
 	if disp == nil {
@@ -245,14 +271,17 @@ func (m *SyncRuleManager) dispatchRule(taskID string, rule *proto.SyncRule) erro
 	}
 	payload := buildRunTaskRequest(taskID, rule, nil)
 	strategy := rule.Config.ShardingStrategy
-	parallelism := rule.Config.Parallelism
+	shardCount := effectiveShardCount(&rule.Config)
+	if rule.Config.ShardCount <= 0 && rule.Config.Parallelism > 0 {
+		log.LogDebugf("SyncRuleManager.dispatchRule rule=%q legacy fallback: deriving shardCount=%d from parallelism", rule.ID(), shardCount)
+	}
 
 	switch strategy {
 	case "prefix":
 		if len(rule.Config.ShardPrefixes) == 0 {
 			return fmt.Errorf("rule %q: shardingStrategy=prefix requires non-empty shardPrefixes", rule.ID())
 		}
-		return m.dispatchPrefix(taskID, rule, payload, rule.Config.ShardPrefixes, parallelism)
+		return m.dispatchPrefix(taskID, rule, payload, rule.Config.ShardPrefixes, shardCount)
 	case "auto":
 		// Try cache first; on hit, dispatch via prefix mode using the
 		// cached probe result. On miss, kick off an async probe and
@@ -261,20 +290,20 @@ func (m *SyncRuleManager) dispatchRule(taskID string, rule *proto.SyncRule) erro
 		key := syncPrefixCacheKey(rule)
 		if cached, ok := m.prefixCache.get(key); ok && len(cached) > 0 {
 			log.LogInfof("SyncRuleManager.dispatchRule rule=%q auto cache HIT, %d prefix(es)", rule.ID(), len(cached))
-			return m.dispatchPrefix(taskID, rule, payload, cached, parallelism)
+			return m.dispatchPrefix(taskID, rule, payload, cached, shardCount)
 		}
 		log.LogInfof("SyncRuleManager.dispatchRule rule=%q auto cache MISS, kicking probe and falling back to hash", rule.ID())
 		_, _ = m.probePrefixes(rule) // best-effort kick; ignore pending sentinel
-		return m.dispatchHash(taskID, rule, payload, parallelism)
+		return m.dispatchHash(taskID, rule, payload, shardCount)
 	case "", "hash":
-		return m.dispatchHash(taskID, rule, payload, parallelism)
+		return m.dispatchHash(taskID, rule, payload, shardCount)
 	default:
 		return fmt.Errorf("rule %q unknown shardingStrategy %q", rule.ID(), strategy)
 	}
 }
 
 // dispatchPrefix routes the prefix-mode fan-out path. shardTotal is
-// min(len(prefixes), parallelism). Each shard owns a subset of the
+// min(len(prefixes), shardCount). Each shard owns a subset of the
 // prefix list (bucketsForPrefix packs deterministically).
 //
 // Unlike hash-mode fan-out, prefix shards are NOT capped by candidate
@@ -282,15 +311,15 @@ func (m *SyncRuleManager) dispatchRule(taskID string, rule *proto.SyncRule) erro
 // prefix subset), not load balancing. A single-node cluster runs all
 // shards on the same node sequentially via its queue — distinct task
 // records per prefix are still created and tracked independently.
-func (m *SyncRuleManager) dispatchPrefix(taskID string, rule *proto.SyncRule, payload *SyncRunTaskRequest, prefixes []string, parallelism int) error {
+func (m *SyncRuleManager) dispatchPrefix(taskID string, rule *proto.SyncRule, payload *SyncRunTaskRequest, prefixes []string, shardCount int) error {
 	disp := m.cluster.syncDispatcher
 	cands := disp.Candidates(dispatcherStaleness)
 	if len(cands) == 0 {
 		return fmt.Errorf("rule %q: %w", rule.ID(), ErrNoCandidates)
 	}
-	// Cap shard count by prefix list length and parallelism; NOT by
+	// Cap shard count by prefix list length and shardCount; NOT by
 	// candidate count (multiple shards may share a single node).
-	limit := parallelism
+	limit := shardCount
 	if limit <= 0 || limit > len(prefixes) {
 		limit = len(prefixes)
 	}
@@ -317,14 +346,14 @@ func (m *SyncRuleManager) dispatchPrefix(taskID string, rule *proto.SyncRule, pa
 }
 
 // dispatchHash routes hash-mode dispatch — single Dispatch when no
-// fan-out is requested, DispatchN when Parallelism > 1.
-func (m *SyncRuleManager) dispatchHash(taskID string, rule *proto.SyncRule, payload *SyncRunTaskRequest, parallelism int) error {
+// fan-out is requested, DispatchN when shardCount > 1.
+func (m *SyncRuleManager) dispatchHash(taskID string, rule *proto.SyncRule, payload *SyncRunTaskRequest, shardCount int) error {
 	disp := m.cluster.syncDispatcher
 	cands := disp.Candidates(dispatcherStaleness)
 	if len(cands) == 0 {
 		return fmt.Errorf("rule %q: %w", rule.ID(), ErrNoCandidates)
 	}
-	if parallelism <= 1 || len(cands) <= 1 {
+	if shardCount <= 1 || len(cands) <= 1 {
 		// Single dispatch path.
 		sendFn := m.singleSendFn(payload)
 		addr, err := disp.Dispatch(taskID, sendFn, 3)
@@ -340,7 +369,7 @@ func (m *SyncRuleManager) dispatchHash(taskID string, rule *proto.SyncRule, payl
 		return nil
 	}
 	// Fan-out path.
-	shardTotal := parallelism
+	shardTotal := shardCount
 	if shardTotal > len(cands) {
 		shardTotal = len(cands)
 	}

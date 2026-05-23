@@ -48,6 +48,7 @@ func TestSyncRule_JSONRoundTrip(t *testing.T) {
 		ShardingStrategy:            "prefix",
 		ShardPrefixes:               []string{"2024/", "2025/"},
 		Parallelism:                 4,
+		ShardCount:                  5,
 		BandwidthLimitMBps:          100,
 		AggregateBandwidthLimitMBps: 500,
 	})
@@ -62,6 +63,7 @@ func TestSyncRule_JSONRoundTrip(t *testing.T) {
 	for _, needle := range []string{
 		`"shardingStrategy":"prefix"`,
 		`"shardPrefixes":["2024/","2025/"]`,
+		`"shardCount":5`,
 		`"insecureSkipTLS":true`,
 		`"accessKeyEnv":"AWS_ACCESS_KEY_ID"`,
 		`"state":"active"`,
@@ -87,11 +89,15 @@ func TestSyncRule_JSONRoundTrip(t *testing.T) {
 	if len(got.Config.ShardPrefixes) != 2 || got.Config.ShardPrefixes[0] != "2024/" {
 		t.Errorf("ShardPrefixes: got %v", got.Config.ShardPrefixes)
 	}
+	if got.Config.ShardCount != 5 {
+		t.Errorf("ShardCount: got %d want 5", got.Config.ShardCount)
+	}
 }
 
 // TestSyncRule_ShardPrefixesOmitEmpty verifies that the hash-mode default
 // (no prefixes) doesn't leak an empty array onto the wire, so older
-// callers that don't understand the field stay quiet.
+// callers that don't understand the field stay quiet. ShardCount=0 must
+// likewise be omitted so legacy callers see no new field.
 func TestSyncRule_ShardPrefixesOmitEmpty(t *testing.T) {
 	r := NewSyncRule(SyncRuleConfig{
 		ID:               "r-hash",
@@ -104,6 +110,9 @@ func TestSyncRule_ShardPrefixesOmitEmpty(t *testing.T) {
 	}
 	if strings.Contains(string(blob), "shardPrefixes") {
 		t.Errorf("empty ShardPrefixes leaked into JSON; body:\n%s", blob)
+	}
+	if strings.Contains(string(blob), "shardCount") {
+		t.Errorf("zero ShardCount leaked into JSON; body:\n%s", blob)
 	}
 }
 
