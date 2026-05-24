@@ -223,7 +223,7 @@ func TestObserveFIOInterval_GaugesAndDeltas(t *testing.T) {
 	}
 
 	// Cleanup
-	cleanupFIOInterval(taskID, shard, stage)
+	CleanupTaskFIOSeries(taskID)
 }
 
 // TestObserveFIOInterval_NegativeDeltaResetsBaseline simulates a fio restart
@@ -250,12 +250,15 @@ func TestObserveFIOInterval_NegativeDeltaResetsBaseline(t *testing.T) {
 		t.Errorf("after restart+progress counter = %v, want 600", v)
 	}
 
-	cleanupFIOInterval(taskID, shard, stage)
+	CleanupTaskFIOSeries(taskID)
 }
 
-// TestCleanupFIOInterval verifies cleanup removes both metric label series
-// and the internal cum-state, so a subsequent observation starts fresh.
-func TestCleanupFIOInterval(t *testing.T) {
+// TestCleanupFIOIntervalCumState verifies the in-process cum-state map gets
+// cleared (so the next observation re-establishes a baseline and does NOT
+// generate a spurious large delta) WHILE the Prom label series is preserved
+// — this is the new stage-boundary contract: keep series for scrape, drop
+// only the offset state.
+func TestCleanupFIOIntervalCumState(t *testing.T) {
 	taskID, shard, stage, op := "fio-cleanup", 3, "soak", "read"
 	ObserveFIOInterval(taskID, shard, stage, op, 10, 20, 30, 10, 100, 1000, 1024, 0)
 	ObserveFIOInterval(taskID, shard, stage, op, 10, 20, 30, 10, 100, 2000, 2048, 1)
@@ -263,50 +266,118 @@ func TestCleanupFIOInterval(t *testing.T) {
 		t.Fatalf("pre-cleanup counter = %v, want 1000", v)
 	}
 
-	cleanupFIOInterval(taskID, shard, stage)
+	cleanupFIOIntervalCumState(taskID, shard, stage)
 
-	if v := fioGaugeValue(t, "syncnode_bench_fio_interval_lat_p99_us", taskID, "3", stage, op); v != -1 {
-		t.Errorf("cleanup did not drop gauge series, got %v", v)
+	// Prom series MUST still be present after stage-boundary cleanup —
+	// scrape lag would otherwise drop the last frame.
+	if v := fioGaugeValue(t, "syncnode_bench_fio_interval_lat_p99_us", taskID, "3", stage, op); v == -1 {
+		t.Errorf("stage-boundary cleanup must NOT drop gauge series")
 	}
-	if v := fioCounterValue(t, "syncnode_bench_fio_interval_total_ios_total", taskID, "3", stage, op); v != -1 {
-		t.Errorf("cleanup did not drop counter series, got %v", v)
+	if v := fioCounterValue(t, "syncnode_bench_fio_interval_total_ios_total", taskID, "3", stage, op); v == -1 {
+		t.Errorf("stage-boundary cleanup must NOT drop counter series")
 	}
 
-	// After cleanup, next observation must be a fresh baseline (no Add).
+	// After cum-state cleanup, next observation must establish a fresh
+	// baseline (no Add) — counter value must NOT jump by the raw cumulative.
 	ObserveFIOInterval(taskID, shard, stage, op, 10, 20, 30, 10, 100, 5000, 4096, 0)
-	if v := fioCounterValue(t, "syncnode_bench_fio_interval_total_ios_total", taskID, "3", stage, op); v != -1 && v != 0 {
-		t.Errorf("post-cleanup first observation must be baseline (-1 or 0), got %v", v)
+	if v := fioCounterValue(t, "syncnode_bench_fio_interval_total_ios_total", taskID, "3", stage, op); v != 1000 {
+		t.Errorf("post-cum-cleanup first observation must NOT add (baseline only), counter = %v, want 1000", v)
 	}
 
-	cleanupFIOInterval(taskID, shard, stage)
+	CleanupTaskFIOSeries(taskID)
 }
 
-// TestSetStageState_TriggersFIOCleanup confirms the SetStageState hook removes
-// fio interval series when a stage transitions to Done or Failed.
-func TestSetStageState_TriggersFIOCleanup(t *testing.T) {
+// TestCleanupTaskFIOSeries verifies the task-level cleanup batch-drops every
+// fio_interval series carrying task_id=<id> across ALL stages and ops in one
+// pass via DeletePartialMatch, and clears the cum-state map for the same task.
+func TestCleanupTaskFIOSeries(t *testing.T) {
+	taskID := "fio-task-cleanup"
+
+	// Seed two stages × two ops on shard 0 and one stage on shard 4.
+	ObserveFIOInterval(taskID, 0, "rw", "read", 10, 20, 30, 10, 100, 1000, 1024, 0)
+	ObserveFIOInterval(taskID, 0, "rw", "read", 10, 20, 30, 10, 100, 2000, 2048, 0)
+	ObserveFIOInterval(taskID, 0, "rw", "write", 10, 20, 30, 10, 100, 500, 512, 0)
+	ObserveFIOInterval(taskID, 0, "soak", "read", 10, 20, 30, 10, 100, 7000, 7000, 0)
+	ObserveFIOInterval(taskID, 4, "rw", "read", 10, 20, 30, 10, 100, 3000, 3000, 0)
+
+	// Sentinel from a different task — must survive cleanup.
+	other := "fio-other-task"
+	ObserveFIOInterval(other, 0, "rw", "read", 10, 20, 30, 10, 100, 100, 100, 0)
+
+	CleanupTaskFIOSeries(taskID)
+
+	for _, c := range []struct {
+		shard      string
+		stage, op  string
+	}{
+		{"0", "rw", "read"},
+		{"0", "rw", "write"},
+		{"0", "soak", "read"},
+		{"4", "rw", "read"},
+	} {
+		if v := fioGaugeValue(t, "syncnode_bench_fio_interval_lat_p99_us", taskID, c.shard, c.stage, c.op); v != -1 {
+			t.Errorf("task cleanup did not drop p99 gauge for shard=%s stage=%s op=%s, got %v", c.shard, c.stage, c.op, v)
+		}
+		if v := fioCounterValue(t, "syncnode_bench_fio_interval_total_ios_total", taskID, c.shard, c.stage, c.op); v != -1 {
+			t.Errorf("task cleanup did not drop ios counter for shard=%s stage=%s op=%s, got %v", c.shard, c.stage, c.op, v)
+		}
+	}
+
+	// Sentinel must remain.
+	if v := fioGaugeValue(t, "syncnode_bench_fio_interval_lat_p99_us", other, "0", "rw", "read"); v == -1 {
+		t.Errorf("task cleanup must NOT touch other task's series")
+	}
+
+	// Cum-state map for taskID must be empty — a fresh observation must
+	// re-baseline (counter stays absent / does not jump by raw cum).
+	ObserveFIOInterval(taskID, 0, "rw", "read", 10, 20, 30, 10, 100, 9999, 9999, 0)
+	if v := fioCounterValue(t, "syncnode_bench_fio_interval_total_ios_total", taskID, "0", "rw", "read"); v != -1 && v != 0 {
+		t.Errorf("post-task-cleanup re-observation must baseline, counter = %v want -1 or 0", v)
+	}
+
+	CleanupTaskFIOSeries(taskID)
+	CleanupTaskFIOSeries(other)
+}
+
+// TestSetStageState_StageBoundaryKeepsPromSeries confirms the new stage-end
+// contract: SetStageState(...Done|Failed) clears only the cum-state map, NOT
+// the Prom label series. This protects against scrape-interval-vs-stage-runtime
+// races where Prometheus has not yet pulled the final Gauge frame at the
+// instant the stage transitions.
+func TestSetStageState_StageBoundaryKeepsPromSeries(t *testing.T) {
 	taskID, shard, stage := "fio-hook", 1, "rw"
 	ObserveFIOInterval(taskID, shard, stage, "read", 10, 20, 30, 10, 100, 1000, 1024, 0)
 	ObserveFIOInterval(taskID, shard, stage, "read", 10, 20, 30, 10, 100, 2000, 2048, 0)
 
-	// Running state must NOT trigger cleanup.
+	// Running state must NOT touch any state.
 	SetStageState(taskID, shard, stage, StageStateRunning)
 	if v := fioCounterValue(t, "syncnode_bench_fio_interval_total_ios_total", taskID, "1", stage, "read"); v != 1000 {
-		t.Errorf("Running state should not clean up, counter = %v, want 1000", v)
+		t.Errorf("Running state should be a no-op, counter = %v want 1000", v)
 	}
 
-	// Done state must trigger cleanup.
+	// Done state must keep Prom series alive (cum state is internal).
 	SetStageState(taskID, shard, stage, StageStateDone)
-	if v := fioCounterValue(t, "syncnode_bench_fio_interval_total_ios_total", taskID, "1", stage, "read"); v != -1 {
-		t.Errorf("Done state must trigger cleanup, counter = %v, want -1 (absent)", v)
+	if v := fioCounterValue(t, "syncnode_bench_fio_interval_total_ios_total", taskID, "1", stage, "read"); v != 1000 {
+		t.Errorf("Done state must NOT drop Prom counter, got %v want 1000", v)
+	}
+	if v := fioGaugeValue(t, "syncnode_bench_fio_interval_lat_p99_us", taskID, "1", stage, "read"); v == -1 {
+		t.Errorf("Done state must NOT drop Prom gauge series")
+	}
+	// But the next observation in the SAME stage must re-baseline (cum cleared).
+	ObserveFIOInterval(taskID, shard, stage, "read", 10, 20, 30, 10, 100, 5000, 5000, 0)
+	if v := fioCounterValue(t, "syncnode_bench_fio_interval_total_ios_total", taskID, "1", stage, "read"); v != 1000 {
+		t.Errorf("post-Done observation must baseline (no Add), counter = %v want 1000", v)
 	}
 
-	// Failed state must also trigger cleanup (different op).
+	// Failed state: same contract.
 	ObserveFIOInterval(taskID, shard, stage, "write", 10, 20, 30, 10, 100, 500, 512, 0)
 	ObserveFIOInterval(taskID, shard, stage, "write", 10, 20, 30, 10, 100, 800, 1024, 0)
 	SetStageState(taskID, shard, stage, StageStateFailed)
-	if v := fioCounterValue(t, "syncnode_bench_fio_interval_total_ios_total", taskID, "1", stage, "write"); v != -1 {
-		t.Errorf("Failed state must trigger cleanup, counter = %v, want -1 (absent)", v)
+	if v := fioCounterValue(t, "syncnode_bench_fio_interval_total_ios_total", taskID, "1", stage, "write"); v != 300 {
+		t.Errorf("Failed state must NOT drop Prom counter, got %v want 300", v)
 	}
+
+	CleanupTaskFIOSeries(taskID)
 }
 
 // TestGeometricBuckets sanity-checks the bucket layout used by the latency

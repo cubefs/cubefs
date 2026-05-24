@@ -656,6 +656,15 @@ func (e *Executor) Run(ctx context.Context, t *Task, r Reporter) Result {
 	}
 	finalProg := snapshotProgress(&progress, startedAt, tracker)
 	r.OnProgress(finalProg)
+	// Defer Prom 系列清理到 task 终态后 60s（≈4× 默认 scrape interval=15s），
+	// 给抓取链路足够时间捕获最后一帧 Gauge；按 task_id 一次批量删除整 task
+	// 的所有 fio_interval 系列，避免长跑 syncnode 上的标签基数累积。
+	if t.Type == TaskTypeBench {
+		go func(id string) {
+			time.Sleep(60 * time.Second)
+			CleanupTaskFIOSeries(id)
+		}(t.ID)
+	}
 	return Result{
 		TaskID:      t.ID,
 		Status:      status,

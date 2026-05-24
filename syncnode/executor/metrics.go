@@ -152,14 +152,21 @@ func IncErr(taskID string, shard int, stage, op, kind string) {
 	benchOpErrors.WithLabelValues(taskID, shardLabel(shard), stage, op, kind).Inc()
 }
 
-// SetStageState updates the per-stage gauge. Done/Failed transitions also
-// trigger cleanup of any per-stage append-only series (currently fio interval
-// gauges/counters + cum state) so cardinality stays bounded over long-running
-// syncnode processes.
+// SetStageState updates the per-stage gauge. Done/Failed transitions clear
+// the in-process fio interval cum-state for the stage so the next stage starts
+// from a fresh baseline; the Prometheus label series themselves are NOT
+// dropped here — see CleanupTaskFIOSeries for task-level cardinality cleanup.
+//
+// Why: fio_interval gauges are scraped on Prometheus' own interval (default
+// 15s). Dropping the series the instant a stage flips to Done races with the
+// next scrape — short stages (runtime ≈ scrape_interval) routinely yield zero
+// samples in TSDB even though the data was reported. Holding the series until
+// after the task ends (plus a buffer ≥ scrape_interval) gives Prom a window
+// to capture the final snapshot of every stage.
 func SetStageState(taskID string, shard int, stage string, state float64) {
 	benchStageState.WithLabelValues(taskID, shardLabel(shard), stage).Set(state)
 	if state == StageStateDone || state == StageStateFailed {
-		cleanupFIOInterval(taskID, shard, stage)
+		cleanupFIOIntervalCumState(taskID, shard, stage)
 	}
 }
 
@@ -357,9 +364,10 @@ func observeErrorAttr(task, shard, stage, op, category string) {
 //     delta-based Add：维护 fioIntervalCumState[key] 累积状态，进入 helper 时
 //     与上次状态 diff，diff > 0 才 Add；首次出现或 diff < 0（fio 重启 / stage
 //     重跑 / overflow）只记录新基准不 Add，保证 Counter 单调。
-//   - stage Done/Failed 时通过 SetStageState 触发 cleanupFIOInterval 清理
-//     cumState + DeleteLabelValues，防止 long-running syncnode 上 cardinality
-//     无限增长。
+//   - stage Done/Failed 时仅清 cumState（让下一 stage 从新基线起）；Prom 标签
+//     序列保留到 task 终态后由 CleanupTaskFIOSeries 异步批量删（DeletePartialMatch
+//     按 task_id 一次清掉 N 个 stage × M 个 op 的所有序列），避免短 stage 与
+//     scrape interval 撞 race 导致样本被漏抓。
 //
 // 详细设计：docs/plan/syncnode/bench-live-trend.md §3.1
 // ---------------------------------------------------------------------------
@@ -481,23 +489,41 @@ func ObserveFIOInterval(
 	}
 }
 
-// cleanupFIOInterval 删除某 (taskID, shard, stage) 下所有 op 的 fio interval
-// 累计状态与对应 metric label 序列。由 SetStageState 在 Done/Failed 切换时调用。
-// 多次调用幂等：DeleteLabelValues 对不存在的序列静默返回 false。
-func cleanupFIOInterval(taskID string, shard int, stage string) {
-	s := shardLabel(shard)
+// cleanupFIOIntervalCumState 清掉某 (taskID, shard, stage) 下所有 op 的
+// fio interval 累积状态。stage Done/Failed 时调用，让下一 stage 从全新基线
+// 起；不动 Prom 标签序列（那是 CleanupTaskFIOSeries 在 task 终态后做的事）。
+func cleanupFIOIntervalCumState(taskID string, shard int, stage string) {
+	fioIntervalCumMu.Lock()
+	defer fioIntervalCumMu.Unlock()
 	for _, op := range []string{"read", "write"} {
-		benchFIOIntervalLatP50Us.DeleteLabelValues(taskID, s, stage, op)
-		benchFIOIntervalLatP95Us.DeleteLabelValues(taskID, s, stage, op)
-		benchFIOIntervalLatP99Us.DeleteLabelValues(taskID, s, stage, op)
-		benchFIOIntervalThroughputMBs.DeleteLabelValues(taskID, s, stage, op)
-		benchFIOIntervalIOPS.DeleteLabelValues(taskID, s, stage, op)
-		benchFIOIntervalTotalIOs.DeleteLabelValues(taskID, s, stage, op)
-		benchFIOIntervalTotalBytes.DeleteLabelValues(taskID, s, stage, op)
-		benchFIOIntervalErrors.DeleteLabelValues(taskID, s, stage, op)
-
-		fioIntervalCumMu.Lock()
 		delete(fioIntervalCumState, fioCumKey(taskID, shard, stage, op))
-		fioIntervalCumMu.Unlock()
 	}
+}
+
+// CleanupTaskFIOSeries 删除某 task 下所有 (shard, stage, op) 维度的 fio interval
+// Prom 标签序列与残留 cumState。任务真正结束（Done / Failed / Cancelled）后由
+// executor 异步延迟调用，延迟时长应至少 ≥ Prometheus scrape interval × 2，
+// 给最后一帧 Gauge 留够被抓取的窗口。
+//
+// 用 DeletePartialMatch 按 task_id 批量清理，O(1) 调用、无需枚举 stage / op；
+// 对不存在的序列幂等。
+func CleanupTaskFIOSeries(taskID string) {
+	taskLabel := prometheus.Labels{"task_id": taskID}
+	benchFIOIntervalLatP50Us.DeletePartialMatch(taskLabel)
+	benchFIOIntervalLatP95Us.DeletePartialMatch(taskLabel)
+	benchFIOIntervalLatP99Us.DeletePartialMatch(taskLabel)
+	benchFIOIntervalThroughputMBs.DeletePartialMatch(taskLabel)
+	benchFIOIntervalIOPS.DeletePartialMatch(taskLabel)
+	benchFIOIntervalTotalIOs.DeletePartialMatch(taskLabel)
+	benchFIOIntervalTotalBytes.DeletePartialMatch(taskLabel)
+	benchFIOIntervalErrors.DeletePartialMatch(taskLabel)
+
+	prefix := taskID + "|"
+	fioIntervalCumMu.Lock()
+	for k := range fioIntervalCumState {
+		if strings.HasPrefix(k, prefix) {
+			delete(fioIntervalCumState, k)
+		}
+	}
+	fioIntervalCumMu.Unlock()
 }

@@ -214,7 +214,7 @@ func TestDrainFIOStdout_TwoAdjacentObjects(t *testing.T) {
 
 	// Cleanup so this test's labels don't bleed into other tests sharing the
 	// global benchRegistry.
-	cleanupFIOInterval(taskID, shard, stage)
+	CleanupTaskFIOSeries(taskID)
 }
 
 // TestDrainFIOStdout_BraceInsideString verifies the brace-balance state
@@ -257,7 +257,7 @@ func TestDrainFIOStdout_BraceInsideString(t *testing.T) {
 		t.Errorf("iops gauge = %v, want 500", v)
 	}
 
-	cleanupFIOInterval(taskID, shard, stage)
+	CleanupTaskFIOSeries(taskID)
 }
 
 // TestDrainFIOStdout_EscapedQuoteInString verifies `\"` inside a string
@@ -287,7 +287,7 @@ func TestDrainFIOStdout_EscapedQuoteInString(t *testing.T) {
 		t.Errorf("iops gauge = %v, want 7", v)
 	}
 
-	cleanupFIOInterval(taskID, shard, stage)
+	CleanupTaskFIOSeries(taskID)
 }
 
 // TestDrainFIOStdout_EmptyStream verifies an empty reader returns no error
