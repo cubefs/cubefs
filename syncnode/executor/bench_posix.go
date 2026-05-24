@@ -15,6 +15,7 @@
 package executor
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -119,10 +120,6 @@ func runBenchPosix(ctx context.Context, rule *spec.BenchRule, taskID string, sha
 // returns a BenchStageResult. The result file is written to os.TempDir() and
 // removed after parsing.
 func runFIOStage(ctx context.Context, defaults spec.FIOConfig, stage spec.FIOStage, workDir, taskID string, shardIdx, pushIntervalSec int) (*spec.BenchStageResult, error) {
-	safeID := strings.ReplaceAll(taskID, "/", "_")
-	resultFile := filepath.Join(os.TempDir(), fmt.Sprintf("fio-%s-%d-%s.json", safeID, shardIdx, stage.Name))
-	defer os.Remove(resultFile)
-
 	// fio doesn't expose a per-op hook, so we only carry stage-level state
 	// + (below) increment the error counter when fio itself fails. The
 	// /metrics/bench histogram stays empty for fio paths — dashboards use
@@ -150,10 +147,16 @@ func runFIOStage(ctx context.Context, defaults spec.FIOConfig, stage spec.FIOSta
 		si = 5
 	}
 
+	// S3.5: 故意不再设置 `--output=<file>`。fio 在带 `--output=` 时把所有
+	// status-interval 快照与 final summary 全部 concat 写入文件，stdout 只
+	// 剩下 banner / 进度文本；drainFIOStdout 拿不到 JSON，实时趋势 metric
+	// 无法落点。改为让 fio 把全部 JSON 写到 stdout，由 drainFIOStdout 做
+	// brace-balance 流式解析，每个 interval object 既送入
+	// /metrics/bench fio_interval_* 序列，最后一个 object 直接回填到
+	// parseFIOResultBytes 作为本 stage 的 final summary（省掉 tmpfile）。
 	args := buildFIOArgs(defaults, stage, workDir)
 	args = append(args,
 		"--output-format=json+",
-		"--output="+resultFile,
 		"--status-interval="+strconv.Itoa(si),
 	)
 
@@ -173,16 +176,34 @@ func runFIOStage(ctx context.Context, defaults spec.FIOConfig, stage spec.FIOSta
 		observeErrorAttr(taskID, shardLabel(shardIdx), stage.Name, "fio", ClassifyErr(err))
 		return nil, fmt.Errorf("fio start: %w", err)
 	}
-	go drainFIOStdout(stdout, taskID, shardIdx, stage.Name)
+
+	// drainer 一定要先于 cmd.Wait() 把 stdout 读到 EOF，否则 fio 的 stdout
+	// pipe buffer 会写满阻塞 fio 进程。用 channel 把 drainer 返回的 last
+	// object 带回主路径，主路径在 Wait 之后再消费。
+	type drainResult struct {
+		last []byte
+		err  error
+	}
+	drainCh := make(chan drainResult, 1)
+	go func() {
+		last, derr := drainFIOStdout(stdout, taskID, shardIdx, stage.Name)
+		drainCh <- drainResult{last: last, err: derr}
+	}()
+
 	if err := cmd.Wait(); err != nil {
+		// 即便 fio 失败也要把 drainer 收尾（防泄漏 goroutine/未关闭 pipe）。
+		<-drainCh
 		SetStageState(taskID, shardIdx, stage.Name, StageStateFailed)
 		IncErr(taskID, shardIdx, stage.Name, "fio", ClassifyError(err))
-		// S3.4: 错误归因 metric。
 		observeErrorAttr(taskID, shardLabel(shardIdx), stage.Name, "fio", ClassifyErr(err))
 		return nil, fmt.Errorf("fio wait: %w", err)
 	}
+	dr := <-drainCh
+	if dr.err != nil {
+		log.LogWarnf("bench posix: fio[%s shard=%d stage=%s] drain stdout: %v", taskID, shardIdx, stage.Name, dr.err)
+	}
 
-	sr, err := parseFIOResult(resultFile, stage.Name)
+	sr, err := parseFIOResultBytes(dr.last, stage.Name)
 	if err != nil {
 		// Propagate: fio finished with exit 0 but produced no JSON output
 		// (typically because something else wrote/removed it, or the path
@@ -193,8 +214,8 @@ func runFIOStage(ctx context.Context, defaults spec.FIOConfig, stage spec.FIOSta
 		IncErr(taskID, shardIdx, stage.Name, "fio", "other")
 		// S3.4: 错误归因 metric。
 		observeErrorAttr(taskID, shardLabel(shardIdx), stage.Name, "fio", ClassifyErr(err))
-		log.LogWarnf("bench posix: parse fio result %q: %v", resultFile, err)
-		return nil, fmt.Errorf("parse fio result %q: %w", resultFile, err)
+		log.LogWarnf("bench posix: parse fio stdout (stage=%s): %v", stage.Name, err)
+		return nil, fmt.Errorf("parse fio stdout stage %q: %w", stage.Name, err)
 	}
 	sr.DurationSec = time.Since(t0).Seconds()
 	return sr, nil
@@ -285,20 +306,137 @@ func orDefaultStr(stageVal, defaultVal, fallback string) string {
 	return fallback
 }
 
-// drainFIOStdout reads fio's stdout (status-interval lines) and emits debug
-// log lines. It must run in its own goroutine to prevent the pipe from
-// blocking the fio process.
-func drainFIOStdout(r io.Reader, taskID string, shardIdx int, stageName string) {
-	buf := make([]byte, 4096)
+// drainFIOStdout streams fio's stdout, parsing each complete top-level JSON
+// object as it arrives. Every object is a `--status-interval` snapshot (or
+// the final summary) — we emit per-op observations to /metrics/bench via
+// parseFIOInterval+emitFIOInterval, then return the bytes of the last object
+// so the caller can feed it back into parseFIOResultBytes as the stage
+// summary. This goroutine MUST drain to EOF; otherwise fio's pipe buffer
+// blocks the child process.
+//
+// Parser is a byte-level brace-balance state machine: track depth, ignore
+// braces inside JSON strings (with `\"` escape support). When depth returns
+// to zero we have a complete object. The state machine never allocates more
+// than one object's worth of buffer at a time.
+//
+// S3.5 锚点：参见 docs/plan/syncnode/bench-live-trend.md §3.2。
+func drainFIOStdout(r io.Reader, taskID string, shardIdx int, stageName string) ([]byte, error) {
+	rd := bufio.NewReader(r)
+	var (
+		buf      []byte
+		depth    int
+		inString bool
+		esc      bool
+		lastObj  []byte
+	)
 	for {
-		n, err := r.Read(buf)
-		if n > 0 {
-			log.LogDebugf("fio[%s shard=%d stage=%s]: %s", taskID, shardIdx, stageName, string(buf[:n]))
-		}
+		b, err := rd.ReadByte()
 		if err != nil {
-			return
+			if err == io.EOF {
+				return lastObj, nil
+			}
+			return lastObj, err
+		}
+		// Skip anything outside a top-level object (whitespace, banner text,
+		// fio's `Starting ...` lines fio prints before the first JSON dump).
+		if depth == 0 && b != '{' {
+			continue
+		}
+		buf = append(buf, b)
+		if inString {
+			if esc {
+				esc = false
+			} else if b == '\\' {
+				esc = true
+			} else if b == '"' {
+				inString = false
+			}
+			continue
+		}
+		switch b {
+		case '"':
+			inString = true
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				obj := make([]byte, len(buf))
+				copy(obj, buf)
+				if err := parseFIOInterval(obj, func(op string, s fioJobStats) {
+					emitFIOInterval(taskID, shardIdx, stageName, op, s)
+				}); err != nil {
+					log.LogWarnf("fio[%s shard=%d stage=%s]: parse interval (%d bytes): %v", taskID, shardIdx, stageName, len(obj), err)
+				}
+				lastObj = obj
+				buf = buf[:0]
+			}
 		}
 	}
+}
+
+// parseFIOInterval unmarshals a single fio `--status-interval` JSON object
+// and calls observer once per active op (read/write). Helper extracted so
+// unit tests can pass a fake observer; drainFIOStdout wires observer to
+// emitFIOInterval which pushes into the Prometheus vectors.
+//
+// Op-active heuristic: any of iops/bw_bytes/total_ios > 0. fio reports both
+// read and write blocks even for one-sided workloads, so we filter out the
+// dormant side to avoid emitting zero-rate gauges that would muddy charts.
+//
+// With --group_reporting (always set in buildFIOArgs) fio collapses all jobs
+// into a single Jobs[0] entry, so the for-loop is normally a single
+// iteration; we still iterate to be defensive against future buildFIOArgs
+// changes.
+func parseFIOInterval(data []byte, observer func(op string, s fioJobStats)) error {
+	var r fioJSONResult
+	if err := json.Unmarshal(data, &r); err != nil {
+		return err
+	}
+	var rd, wr fioJobStats
+	var hasRd, hasWr bool
+	for _, j := range r.Jobs {
+		if j.Read.IOPS > 0 || j.Read.BWBytes > 0 || j.Read.TotalIOs > 0 {
+			hasRd = true
+			rd = j.Read
+		}
+		if j.Write.IOPS > 0 || j.Write.BWBytes > 0 || j.Write.TotalIOs > 0 {
+			hasWr = true
+			wr = j.Write
+		}
+	}
+	if hasRd {
+		observer("read", rd)
+	}
+	if hasWr {
+		observer("write", wr)
+	}
+	return nil
+}
+
+// pickFIOPercentile reads percentile `key` (e.g. "50.000000") from clat_ns
+// first and falls back to lat_ns; returns 0 when neither populated. ns→µs
+// conversion is baked in so callers don't have to remember the unit shift.
+func pickFIOPercentile(s fioJobStats, key string) float64 {
+	pct := s.ClatNs.Percentile
+	if len(pct) == 0 {
+		pct = s.LatNs.Percentile
+	}
+	if v, ok := pct[key]; ok {
+		return v / 1000
+	}
+	return 0
+}
+
+// emitFIOInterval pushes one (taskID, shard, stage, op) observation to the
+// /metrics/bench fio_interval_* vectors. Throughput is converted bytes/s→MB/s
+// to match the dashboard's existing unit convention.
+func emitFIOInterval(taskID string, shardIdx int, stageName, op string, s fioJobStats) {
+	p50 := pickFIOPercentile(s, "50.000000")
+	p95 := pickFIOPercentile(s, "95.000000")
+	p99 := pickFIOPercentile(s, "99.000000")
+	thrMBs := float64(s.BWBytes) / (1024 * 1024)
+	ObserveFIOInterval(taskID, shardIdx, stageName, op, p50, p95, p99, thrMBs, s.IOPS, s.TotalIOs, s.IOBytes, s.TotalErr)
 }
 
 // fioJSONResult is a minimal subset of the fio JSON+ output needed for
@@ -327,20 +465,37 @@ type fioJobStats struct {
 		Percentile map[string]float64 `json:"percentile"`
 	} `json:"clat_ns"`
 	TotalIOs int64 `json:"total_ios"`
+	// IOBytes (`io_bytes`) 与 TotalErr (`total_err`) 是 fio --status-interval
+	// 快照中累计单调字段，S3.5 实时趋势用它们做 Counter 的 cumulative→delta
+	// 输入。final summary 路径里 parseFIOResultBytes 不需要这两个字段，但
+	// 解到同一结构体里是无害的（json 多余字段忽略不了，但少了不报错）。
+	IOBytes  int64 `json:"io_bytes"`
+	TotalErr int64 `json:"total_err"`
 }
 
 // parseFIOResult reads the fio JSON+ result file, extracts the last JSON
 // object (fio may prepend status-interval snapshots), and builds a
-// BenchStageResult.
+// BenchStageResult. Used by runFIOStageMixed which still routes fio output
+// through `--output=resultFile`; runFIOStage instead captures stdout via
+// drainFIOStdout and goes straight through parseFIOResultBytes.
 func parseFIOResult(resultFile, stageName string) (*spec.BenchStageResult, error) {
 	data, err := os.ReadFile(resultFile)
 	if err != nil {
 		return nil, fmt.Errorf("read result: %w", err)
 	}
 	// fio json+ may have multiple JSON objects concatenated; take the last one.
-	last := lastJSONObject(data)
+	return parseFIOResultBytes(lastJSONObject(data), stageName)
+}
+
+// parseFIOResultBytes builds a BenchStageResult from a single fio JSON+
+// object's bytes. Callers that already isolated the final object (e.g.
+// drainFIOStdout's return value) should use this directly.
+func parseFIOResultBytes(data []byte, stageName string) (*spec.BenchStageResult, error) {
+	if len(data) == 0 {
+		return nil, fmt.Errorf("empty fio json")
+	}
 	var r fioJSONResult
-	if err := json.Unmarshal(last, &r); err != nil {
+	if err := json.Unmarshal(data, &r); err != nil {
 		return nil, fmt.Errorf("unmarshal fio json: %w", err)
 	}
 

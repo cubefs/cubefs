@@ -20,6 +20,7 @@ import (
 	"math"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -151,9 +152,15 @@ func IncErr(taskID string, shard int, stage, op, kind string) {
 	benchOpErrors.WithLabelValues(taskID, shardLabel(shard), stage, op, kind).Inc()
 }
 
-// SetStageState updates the per-stage gauge.
+// SetStageState updates the per-stage gauge. Done/Failed transitions also
+// trigger cleanup of any per-stage append-only series (currently fio interval
+// gauges/counters + cum state) so cardinality stays bounded over long-running
+// syncnode processes.
 func SetStageState(taskID string, shard int, stage string, state float64) {
 	benchStageState.WithLabelValues(taskID, shardLabel(shard), stage).Set(state)
+	if state == StageStateDone || state == StageStateFailed {
+		cleanupFIOInterval(taskID, shard, stage)
+	}
 }
 
 // ClassifyError maps an arbitrary error into a stable kind label used by the
@@ -336,4 +343,161 @@ func observeCacheDrop(task, where string, err error) {
 
 func observeErrorAttr(task, shard, stage, op, category string) {
 	benchErrorAttrTotal.WithLabelValues(task, shard, stage, op, category).Inc()
+}
+
+// ---------------------------------------------------------------------------
+// S3.5 FIO interval — append-only metrics. 给 fio 路径补 per-interval 中间趋势
+// （latency p50/p95/p99 / throughput MB/s / IOPS）以及累积 IO/bytes/errors。
+// 与既有 bench 指标完全并列、不修改原有 label 集合，旧 dashboard 100% 兼容。
+// 后续 sprint 应在本块末尾继续追加 `// S3.6 ... append-only metrics` 锚点。
+//
+// 设计要点：
+//   - Gauge 5 个（每 interval Set 当前快照）；Counter 3 个（累积 IO/bytes/errors）。
+//   - fio interval JSON 报告的是 stage 内累积值，Counter 不能 Set，故采用
+//     delta-based Add：维护 fioIntervalCumState[key] 累积状态，进入 helper 时
+//     与上次状态 diff，diff > 0 才 Add；首次出现或 diff < 0（fio 重启 / stage
+//     重跑 / overflow）只记录新基准不 Add，保证 Counter 单调。
+//   - stage Done/Failed 时通过 SetStageState 触发 cleanupFIOInterval 清理
+//     cumState + DeleteLabelValues，防止 long-running syncnode 上 cardinality
+//     无限增长。
+//
+// 详细设计：docs/plan/syncnode/bench-live-trend.md §3.1
+// ---------------------------------------------------------------------------
+
+var (
+	benchFIOIntervalLatP50Us = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "syncnode_bench_fio_interval_lat_p50_us",
+		Help: "FIO interval-level clat p50 latency (microseconds).",
+	}, []string{"task_id", "shard", "stage", "op"})
+
+	benchFIOIntervalLatP95Us = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "syncnode_bench_fio_interval_lat_p95_us",
+		Help: "FIO interval-level clat p95 latency (microseconds).",
+	}, []string{"task_id", "shard", "stage", "op"})
+
+	benchFIOIntervalLatP99Us = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "syncnode_bench_fio_interval_lat_p99_us",
+		Help: "FIO interval-level clat p99 latency (microseconds).",
+	}, []string{"task_id", "shard", "stage", "op"})
+
+	benchFIOIntervalThroughputMBs = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "syncnode_bench_fio_interval_throughput_mbs",
+		Help: "FIO interval-level throughput (MB/s).",
+	}, []string{"task_id", "shard", "stage", "op"})
+
+	benchFIOIntervalIOPS = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "syncnode_bench_fio_interval_iops",
+		Help: "FIO interval-level IOPS.",
+	}, []string{"task_id", "shard", "stage", "op"})
+
+	benchFIOIntervalTotalIOs = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "syncnode_bench_fio_interval_total_ios_total",
+		Help: "Cumulative IO count reported by fio interval snapshots (delta-applied).",
+	}, []string{"task_id", "shard", "stage", "op"})
+
+	benchFIOIntervalTotalBytes = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "syncnode_bench_fio_interval_total_bytes_total",
+		Help: "Cumulative bytes transferred reported by fio interval snapshots (delta-applied).",
+	}, []string{"task_id", "shard", "stage", "op"})
+
+	benchFIOIntervalErrors = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "syncnode_bench_fio_interval_errors_total",
+		Help: "Cumulative IO errors reported by fio interval snapshots (delta-applied).",
+	}, []string{"task_id", "shard", "stage", "op"})
+)
+
+func init() {
+	benchRegistry.MustRegister(
+		benchFIOIntervalLatP50Us,
+		benchFIOIntervalLatP95Us,
+		benchFIOIntervalLatP99Us,
+		benchFIOIntervalThroughputMBs,
+		benchFIOIntervalIOPS,
+		benchFIOIntervalTotalIOs,
+		benchFIOIntervalTotalBytes,
+		benchFIOIntervalErrors,
+	)
+}
+
+// fioIntervalCum 保存某 (taskID, shard, stage, op) 上一次观察到的 fio 累计计数，
+// 用于把 fio cumulative 值转成 Counter 单调增量。
+type fioIntervalCum struct {
+	totalIOs   int64
+	totalBytes int64
+	errors     int64
+}
+
+var (
+	fioIntervalCumMu    sync.Mutex
+	fioIntervalCumState = make(map[string]fioIntervalCum)
+)
+
+func fioCumKey(taskID string, shard int, stage, op string) string {
+	return taskID + "|" + shardLabel(shard) + "|" + stage + "|" + op
+}
+
+// ObserveFIOInterval 在 fio --status-interval 解析到一个 interval 快照时调用。
+// latency / throughput / IOPS 直接 Set 到 gauge；total_ios / total_bytes /
+// errors 是 fio stage 内累计值，本函数做 delta 计算后 Add 到 Counter，保证
+// Counter 单调。
+//
+// 首次见到某 (taskID, shard, stage, op)：仅记录基线，不 Add；否则只在 delta>0
+// 时 Add（delta<0 视为 fio 重启 / stage 重跑 / overflow，重置基线不 Add）。
+func ObserveFIOInterval(
+	taskID string, shard int, stage, op string,
+	latP50Us, latP95Us, latP99Us float64,
+	thrMBs, iops float64,
+	totalIOs, totalBytes, errs int64,
+) {
+	s := shardLabel(shard)
+	benchFIOIntervalLatP50Us.WithLabelValues(taskID, s, stage, op).Set(latP50Us)
+	benchFIOIntervalLatP95Us.WithLabelValues(taskID, s, stage, op).Set(latP95Us)
+	benchFIOIntervalLatP99Us.WithLabelValues(taskID, s, stage, op).Set(latP99Us)
+	benchFIOIntervalThroughputMBs.WithLabelValues(taskID, s, stage, op).Set(thrMBs)
+	benchFIOIntervalIOPS.WithLabelValues(taskID, s, stage, op).Set(iops)
+
+	key := fioCumKey(taskID, shard, stage, op)
+	fioIntervalCumMu.Lock()
+	prev, ok := fioIntervalCumState[key]
+	fioIntervalCumState[key] = fioIntervalCum{
+		totalIOs:   totalIOs,
+		totalBytes: totalBytes,
+		errors:     errs,
+	}
+	fioIntervalCumMu.Unlock()
+
+	if !ok {
+		// 首次观察：仅记录基线，避免把 stage 启动前的累计回填到 Counter。
+		return
+	}
+	if d := totalIOs - prev.totalIOs; d > 0 {
+		benchFIOIntervalTotalIOs.WithLabelValues(taskID, s, stage, op).Add(float64(d))
+	}
+	if d := totalBytes - prev.totalBytes; d > 0 {
+		benchFIOIntervalTotalBytes.WithLabelValues(taskID, s, stage, op).Add(float64(d))
+	}
+	if d := errs - prev.errors; d > 0 {
+		benchFIOIntervalErrors.WithLabelValues(taskID, s, stage, op).Add(float64(d))
+	}
+}
+
+// cleanupFIOInterval 删除某 (taskID, shard, stage) 下所有 op 的 fio interval
+// 累计状态与对应 metric label 序列。由 SetStageState 在 Done/Failed 切换时调用。
+// 多次调用幂等：DeleteLabelValues 对不存在的序列静默返回 false。
+func cleanupFIOInterval(taskID string, shard int, stage string) {
+	s := shardLabel(shard)
+	for _, op := range []string{"read", "write"} {
+		benchFIOIntervalLatP50Us.DeleteLabelValues(taskID, s, stage, op)
+		benchFIOIntervalLatP95Us.DeleteLabelValues(taskID, s, stage, op)
+		benchFIOIntervalLatP99Us.DeleteLabelValues(taskID, s, stage, op)
+		benchFIOIntervalThroughputMBs.DeleteLabelValues(taskID, s, stage, op)
+		benchFIOIntervalIOPS.DeleteLabelValues(taskID, s, stage, op)
+		benchFIOIntervalTotalIOs.DeleteLabelValues(taskID, s, stage, op)
+		benchFIOIntervalTotalBytes.DeleteLabelValues(taskID, s, stage, op)
+		benchFIOIntervalErrors.DeleteLabelValues(taskID, s, stage, op)
+
+		fioIntervalCumMu.Lock()
+		delete(fioIntervalCumState, fioCumKey(taskID, shard, stage, op))
+		fioIntervalCumMu.Unlock()
+	}
 }
