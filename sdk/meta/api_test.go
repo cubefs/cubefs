@@ -19,6 +19,7 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/btree"
 	"github.com/stretchr/testify/require"
@@ -108,4 +109,19 @@ func TestDeleteLlEXMarksParentDirtyWhenNearReadEnabled(t *testing.T) {
 	_, err := mw.Delete_ll_EX(parentID, "subdir", true, 0, "/parent/subdir", false)
 	require.Equal(t, syscall.ENOTEMPTY, err)
 	require.True(t, mw.dirtyInodes.isDirty(parentID))
+}
+
+// TestRename_ll_TxDstExistsNoOverwriteReturnsEEXIST covers api.go txRename_ll change in commit 85c657c:
+// when overwritten=false and dst dentry exists, return EEXIST (not EAGAIN).
+func TestRename_ll_TxDstExistsNoOverwriteReturnsEEXIST(t *testing.T) {
+	var lookupCalls int32
+	addr, cleanup := startMockMetaPacketListener(t, mockLookupAlwaysOKHandler(t, &lookupCalls))
+	t.Cleanup(cleanup)
+
+	mw := newTrashDeleteTestMetaWrapper(t, addr)
+	mw.EnableTransaction = proto.TxOpMaskRename
+
+	err := mw.Rename_ll(150, "src", 180, "dst", "/data/src", "/.Trash/Current/bucket/dst", false, false)
+	require.ErrorIs(t, err, syscall.EEXIST)
+	require.Equal(t, int32(2), lookupCalls)
 }

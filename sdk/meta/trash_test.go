@@ -286,3 +286,109 @@ func TestRenameToTrashTempFile_OtherENOENT_NoRetry(t *testing.T) {
 func TestRenameRetryLimitPositive(t *testing.T) {
 	require.Greater(t, renameRetryLimit, 0)
 }
+
+// mockLookupAlwaysOKHandler answers every lookup with OpOk (used for LookupPath / tx rename dst-exists).
+func mockLookupAlwaysOKHandler(t *testing.T, lookupCalls *int32) func(net.Conn) error {
+	t.Helper()
+	return func(conn net.Conn) error {
+		for {
+			pkt := proto.NewPacket()
+			if err := pkt.ReadFromConnWithVer(conn, proto.ReadDeadlineTime); err != nil {
+				return err
+			}
+			resp := proto.NewPacketReqID()
+			resp.ReqID = pkt.ReqID
+			resp.Opcode = pkt.Opcode
+			resp.PartitionID = pkt.PartitionID
+
+			var body []byte
+			switch pkt.Opcode {
+			case proto.OpMetaLookup, proto.OpMetaAsyncLookup:
+				atomic.AddInt32(lookupCalls, 1)
+				resp.ResultCode = proto.OpOk
+				body, _ = json.Marshal(&proto.LookupResponse{Inode: 4242, Mode: 0o644})
+			default:
+				t.Errorf("unexpected opcode %v", pkt.Opcode)
+				resp.ResultCode = proto.OpErr
+			}
+
+			if body != nil {
+				resp.Data = body
+				resp.Size = uint32(len(body))
+			}
+			if err := resp.WriteToConn(conn); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+// TestPathIsExist_FullTrashBucketPath verifies commit 85c657c: existence check uses
+// LookupPath on the full bucket path, not a single basename lookup under Current.
+func TestPathIsExist_FullTrashBucketPath(t *testing.T) {
+	var lookupCalls int32
+	addr, cleanup := startMockMetaPacketListener(t, mockLookupAlwaysOKHandler(t, &lookupCalls))
+	t.Cleanup(cleanup)
+
+	mw := newTrashUnitTestMetaWrapper(t, addr)
+	trash := newTrashUnitTestTrash(mw)
+
+	fullPath := path.Join("/.Trash", CurrentName, BucketRootPrefix, "abc12345", "tmp-file.txt")
+	exists, err := trash.pathIsExist(fullPath, false)
+	require.NoError(t, err)
+	require.True(t, exists)
+	// .Trash, Current, .buckets, bucket hash, file name
+	require.GreaterOrEqual(t, lookupCalls, int32(5))
+}
+
+func TestPathIsExist_CacheHit(t *testing.T) {
+	mw := newConnTestMetaWrapper()
+	t.Cleanup(func() { mw.conns.Close() })
+	trash := newTrashUnitTestTrash(mw)
+
+	fullPath := path.Join("/.Trash", CurrentName, BucketRootPrefix, "abc12345", "tmp-file.txt")
+	trash.subDirCache.Put(fullPath, &proto.InodeInfo{Inode: 99})
+
+	exists, err := trash.pathIsExist(fullPath, false)
+	require.NoError(t, err)
+	require.True(t, exists)
+}
+
+func TestPathIsExist_NotFound(t *testing.T) {
+	var lookupCalls int32
+	addr, cleanup := startMockMetaPacketListener(t, mockTrashMetaHandler(t, &lookupCalls, true, false, false))
+	t.Cleanup(cleanup)
+
+	mw := newTrashUnitTestMetaWrapper(t, addr)
+	trash := newTrashUnitTestTrash(mw)
+
+	fullPath := path.Join("/.Trash", CurrentName, BucketRootPrefix, "abc12345", "tmp-file.txt")
+	exists, err := trash.pathIsExist(fullPath, false)
+	require.NoError(t, err)
+	require.False(t, exists)
+	require.GreaterOrEqual(t, lookupCalls, int32(1))
+}
+
+func TestRenameToTrashTempFile_DstExists_ReturnsShouldRetry(t *testing.T) {
+	var lookupCalls int32
+	addr, cleanup := startMockMetaPacketListener(t, mockLookupAlwaysOKHandler(t, &lookupCalls))
+	t.Cleanup(cleanup)
+
+	mw := newTrashUnitTestMetaWrapper(t, addr)
+	mw.EnableTransaction = proto.TxOpMaskRename
+	trash := newTrashUnitTestTrash(mw)
+
+	const parentIno = uint64(150)
+	const dstParentIno = uint64(180)
+	dstDir := path.Join("/.Trash", CurrentName, "bucket")
+	trash.subDirCache.Put(dstDir, &proto.InodeInfo{Inode: dstParentIno})
+
+	shouldRetry, err := trash.renameToTrashTempFile(
+		parentIno, dstParentIno,
+		"/data/file.txt", path.Join(dstDir, "tmp-file.txt"),
+		false,
+	)
+	require.ErrorIs(t, err, syscall.EEXIST)
+	require.True(t, shouldRetry)
+	require.Equal(t, int32(2), lookupCalls)
+}

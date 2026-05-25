@@ -298,7 +298,7 @@ func (trash *Trash) MoveToTrash(parentPathAbsolute string, parentIno uint64, fil
 	dstPath := path.Join(bucketDir, tmpFileName)
 	startCheck := time.Now()
 	for {
-		exists, checkErr := trash.pathIsExistInTrash(dstPath, isAsync)
+		exists, checkErr := trash.pathIsExist(dstPath, isAsync)
 		if checkErr != nil {
 			log.LogWarnf("action[MoveToTrash] check path in trash failed: %v", checkErr)
 			return checkErr
@@ -338,21 +338,28 @@ func (trash *Trash) MoveToTrash(parentPathAbsolute string, parentIno uint64, fil
 		if err == nil || !shouldRetry {
 			break
 		}
-		log.LogWarnf("action[MoveToTrash] retry rename due to missing dst parent inode, attempt(%d) srcPath(%v) dstPath(%v) dstParentIno(%v)",
-			retry+1, srcPath, dstPath, trashCurrentIno)
+		log.LogWarnf("action[MoveToTrash] retry rename, attempt(%d) srcPath(%v) dstPath(%v) dstParentIno(%v) err(%v)",
+			retry+1, srcPath, dstPath, trashCurrentIno, err)
 		for {
-			bucketDir, bucketInfo, err = trash.ensureBucketDir(bucketName, isAsync)
-			if err == nil {
+			var ensureErr error
+			bucketDir, bucketInfo, ensureErr = trash.ensureBucketDir(bucketName, isAsync)
+			if ensureErr == nil {
 				break
 			}
-			if !strings.Contains(err.Error(), syscall.ENOENT.Error()) {
-				log.LogWarnf("action[MoveToTrash] ensureBucketDir during rename retry failed: %v", err)
-				return err
+			if !strings.Contains(ensureErr.Error(), syscall.ENOENT.Error()) {
+				log.LogWarnf("action[MoveToTrash] ensureBucketDir during rename retry failed: %v", ensureErr)
+				return ensureErr
 			}
 			time.Sleep(ensureBucketBackoff)
 		}
 		trashCurrentIno = bucketInfo.Inode
 		dstPath = path.Join(bucketDir, path.Base(dstPath))
+		if !isDir && err == syscall.EEXIST {
+			log.LogWarnf("action[MoveToTrash] retry rename due to dst exists (race), attempt(%d) srcPath(%v) dstPath(%v)",
+				retry+1, srcPath, dstPath)
+			dstPath = fmt.Sprintf("%s_%v", dstPath, time.Now().UnixNano())
+		}
+		continue
 	}
 	log.LogDebugf("action[MoveToTrash]  rename: srcPath(%v) dstPath(%v) consume %v", srcPath, dstPath, time.Since(startRename).Seconds())
 	if err != nil {
@@ -740,29 +747,6 @@ func (trash *Trash) pathIsExist(path string, isAsync bool) (bool, error) {
 	return true, nil
 }
 
-func (trash *Trash) pathIsExistInTrash(filePath string, isAsync bool) (bool, error) {
-	// check cache first
-	if value := trash.subDirCache.Get(filePath); value != nil {
-		return true, nil
-	}
-	// check trashCurrent cache
-	trashCurrent := path.Join(trash.trashRoot, CurrentName)
-	if info := trash.subDirCache.Get(trashCurrent); info == nil {
-		// current is rename
-		return false, nil
-	} else {
-		currentIno := info.Inode
-		_, _, err := trash.mw.Lookup_ll(currentIno, path.Base(filePath), isAsync)
-		if err != nil {
-			if strings.Contains(err.Error(), syscall.ENOENT.Error()) {
-				return false, nil
-			}
-			return false, err
-		}
-		return true, nil
-	}
-}
-
 func (trash *Trash) CreateDirectory(pino uint64, name string, mode, uid, gid uint32, fullName string, isAsync bool) (info *proto.InodeInfo, err error) {
 	fuseMode := mode & 0o777
 	fuseMode |= uint32(os.ModeDir)
@@ -911,7 +895,10 @@ func (trash *Trash) createParentPathInTrash(parentPath, rootDir string) (err err
 }
 
 func (trash *Trash) renameToTrashTempFile(parentIno, currentIno uint64, oldPath, newPath string, isAsync bool) (bool, error) {
-	err := trash.mw.Rename_ll(parentIno, path.Base(oldPath), currentIno, path.Base(newPath), oldPath, newPath, true, isAsync)
+	err := trash.mw.Rename_ll(parentIno, path.Base(oldPath), currentIno, path.Base(newPath), oldPath, newPath, false, isAsync)
+	if err == syscall.EEXIST {
+		return true, err
+	}
 	if err == syscall.ENOENT {
 		log.LogErrorf("action[renameToTrashTempFile] rename src %v err ENOENT", oldPath)
 		srcParentMP := trash.mw.getPartitionByInode(parentIno)

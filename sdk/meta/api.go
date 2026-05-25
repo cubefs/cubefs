@@ -1319,6 +1319,9 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 			newSt, newErr = mw.txDcreate(tx, dstParentMP, dstParentID, dstName, srcInode, srcMode, []uint32{}, dstFullPath, false)
 			return newSt, newErr
 		})
+	} else if err == nil && status == statusOK {
+		// Dst dentry already exists; align with rename_ll (!overwritten) -> EEXIST.
+		return syscall.EEXIST
 	} else {
 		return statusToErrno(status)
 	}
