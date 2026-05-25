@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CubeFS 知识图谱</title>
+    <meta
+      name="description"
+      content="CubeFS 知识图谱静态页，基于 understand-anything 生成的完整知识图谱做模块级聚合展示。"
+    >
+    <link rel="stylesheet" href="../assets/plan-docs.css">
+    <script src="graph-data.js" defer></script>
+    <script src="../assets/plan-knowledge-graph.js" defer></script>
+  </head>
+  <body class="graph-page">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand-link" href="../index.html">CubeFS 计划文档</a>
+        <div class="topbar-meta">
+          <span class="topbar-pill">Understand Anything</span>
+          <span class="topbar-pill">Knowledge Graph</span>
+        </div>
+      </div>
+    </header>
+
+    <main class="index-shell graph-shell">
+      <section class="hero-card graph-hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Understand Anything</p>
+          <h1>CubeFS 知识图谱</h1>
+          <p>
+            图谱由 <code>understand-anything</code> 直接生成，本页对完整图谱做模块级聚合，
+            适合在 <code>docs/plan</code> 静态站内快速查看分层、主干模块和热点依赖。
+          </p>
+        </div>
+        <div class="hero-stats graph-stat-grid">
+          <article>
+            <span>图谱节点</span>
+            <strong data-stat="nodes">-</strong>
+          </article>
+          <article>
+            <span>图谱边</span>
+            <strong data-stat="edges">-</strong>
+          </article>
+          <article>
+            <span>模块数</span>
+            <strong data-stat="modules">-</strong>
+          </article>
+          <article>
+            <span>层次 / Tour</span>
+            <strong data-stat="layers">-</strong>
+          </article>
+        </div>
+        <div class="hero-search graph-hero-actions">
+          <div class="hero-action-row">
+            <a class="button-pill" href="../index.html">返回文档首页</a>
+            <a class="button-pill" href="knowledge-graph.json">完整图谱 JSON</a>
+            <a class="button-pill" href="summary.json">聚合摘要 JSON</a>
+          </div>
+          <p class="hero-footnote">
+            分析提交：<code data-git-hash>加载中</code>
+            <span class="footnote-divider">/</span>
+            生成时间：<span data-generated-at>加载中</span>
+          </p>
+        </div>
+      </section>
+
+      <section class="content-card graph-meta-card">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Project Snapshot</p>
+            <h2>项目画像</h2>
+          </div>
+        </div>
+        <p class="intro-copy" data-project-description>加载中。</p>
+        <div class="meta-chip-row" data-project-meta></div>
+        <div class="meta-chip-row" data-node-types></div>
+      </section>
+
+      <section class="graph-layout">
+        <article class="content-card graph-canvas-card">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Module Graph</p>
+              <h2>模块关系图</h2>
+            </div>
+            <input
+              class="search-input graph-search-inline"
+              type="search"
+              placeholder="按模块名过滤，如 master / syncnode / blobstore"
+              data-module-search
+            >
+          </div>
+          <div class="graph-canvas-shell">
+            <svg
+              class="module-graph"
+              data-module-graph
+              viewBox="0 0 1280 760"
+              preserveAspectRatio="xMidYMid meet"
+              aria-label="CubeFS 模块依赖图"
+            ></svg>
+            <div class="graph-empty is-hidden" data-graph-empty>没有可展示的模块节点。</div>
+          </div>
+          <div class="graph-legend" data-layer-legend></div>
+          <p class="hero-footnote">
+            这里展示的是从完整知识图谱聚合出的跨模块关系。点击节点或下方模块卡片，可以查看该模块的主层次、热点文件和依赖方向。
+          </p>
+        </article>
+
+        <aside class="sidebar-card graph-inspector-card">
+          <div class="sidebar-inner graph-inspector-inner">
+            <p class="eyebrow">Module Focus</p>
+            <h2 data-active-module-title>加载中</h2>
+            <p class="intro-copy" data-active-module-summary></p>
+
+            <div class="module-inspector-metrics" data-active-module-metrics></div>
+
+            <section class="inspector-block">
+              <h3>主要依赖</h3>
+              <ul class="inspector-list" data-active-module-dependencies></ul>
+            </section>
+
+            <section class="inspector-block">
+              <h3>上游依赖</h3>
+              <ul class="inspector-list" data-active-module-dependents></ul>
+            </section>
+
+            <section class="inspector-block">
+              <h3>热点文件</h3>
+              <ul class="inspector-list file-list" data-active-module-files></ul>
+            </section>
+          </div>
+        </aside>
+      </section>
+
+      <section class="content-card module-browser-card">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Module Index</p>
+            <h2>模块清单</h2>
+          </div>
+        </div>
+        <div class="module-card-grid" data-module-list></div>
+        <p class="empty-state is-hidden" data-module-empty>当前筛选条件下没有匹配的模块。</p>
+      </section>
+
+      <section class="layer-tour-grid">
+        <article class="content-card">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Layers</p>
+              <h2>分层视角</h2>
+            </div>
+          </div>
+          <div class="layer-card-grid" data-layer-list></div>
+        </article>
+
+        <article class="content-card">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Guided Tour</p>
+              <h2>推荐阅读路径</h2>
+            </div>
+          </div>
+          <div class="tour-card-list" data-tour-list></div>
+        </article>
+      </section>
+
+      <section class="table-card-grid">
+        <article class="content-card">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Hotspots</p>
+              <h2>被依赖最多的文件</h2>
+            </div>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table" data-table="imported"></table>
+          </div>
+        </article>
+
+        <article class="content-card">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Outbound</p>
+              <h2>依赖最广的文件</h2>
+            </div>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table" data-table="importing"></table>
+          </div>
+        </article>
+
+        <article class="content-card">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Cross Module</p>
+              <h2>跨模块关系 Top 40</h2>
+            </div>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table" data-table="module-edges"></table>
+          </div>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>
