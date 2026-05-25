@@ -805,9 +805,11 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool, ful
 		return nil, syscall.ENOENT
 	}
 
-	if mw.nearReadEnabled(parentMP) {
-		mw.dirtyInodes.mark(parentID)
-	}
+	defer func() {
+		if mw.nearReadEnabled(parentMP) {
+			mw.dirtyInodes.mark(parentID)
+		}
+	}()
 
 	if !mw.disableTrash && !mw.disableTrashByClient {
 		if mw.trashPolicy == nil {
@@ -962,9 +964,11 @@ func (mw *MetaWrapper) Delete_ll_EX(parentID uint64, name string, isDir bool, ve
 		return nil, syscall.ENOENT
 	}
 
-	if mw.nearReadEnabled(parentMP) {
-		mw.dirtyInodes.mark(parentID)
-	}
+	defer func() {
+		if mw.nearReadEnabled(parentMP) {
+			mw.dirtyInodes.mark(parentID)
+		}
+	}()
 
 	if !mw.disableTrash && !mw.disableTrashByClient {
 		if mw.trashPolicy == nil {
@@ -1139,9 +1143,11 @@ func (mw *MetaWrapper) deletewithcond_ll(parentID, cond uint64, name string, isD
 		return nil, syscall.ENOENT
 	}
 
-	if mw.nearReadEnabled(parentMP) {
-		mw.dirtyInodes.mark(parentID)
-	}
+	defer func() {
+		if mw.nearReadEnabled(parentMP) {
+			mw.dirtyInodes.mark(parentID)
+		}
+	}()
 
 	if isDir {
 		status, inode, mode, err = mw.lookup(parentMP, parentID, name, mw.LastVerSeq, isAsync)
@@ -1227,13 +1233,6 @@ func (mw *MetaWrapper) Rename_ll(srcParentID uint64, srcName string, dstParentID
 }
 
 func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParentID uint64, dstName string, srcFullPath string, dstFullPath string, overwritten bool, isAsync bool) (err error) {
-	var tx *Transaction
-	defer func() {
-		if tx != nil {
-			err = tx.OnDone(err, mw)
-		}
-	}()
-
 	srcParentMP := mw.getPartitionByInode(srcParentID)
 	if srcParentMP == nil {
 		return syscall.ENOENT
@@ -1243,13 +1242,19 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 		return syscall.ENOENT
 	}
 
-	if mw.nearReadEnabled(srcParentMP) {
-		mw.dirtyInodes.mark(srcParentID)
-	}
+	var tx *Transaction
+	defer func() {
+		if tx != nil {
+			err = tx.OnDone(err, mw)
+		}
+		if mw.nearReadEnabled(srcParentMP) {
+			mw.dirtyInodes.mark(srcParentID)
+		}
 
-	if mw.nearReadEnabled(dstParentMP) {
-		mw.dirtyInodes.mark(dstParentID)
-	}
+		if mw.nearReadEnabled(dstParentMP) {
+			mw.dirtyInodes.mark(dstParentID)
+		}
+	}()
 	// look up for the src ino
 	status, srcInode, srcMode, err := mw.lookup(srcParentMP, srcParentID, srcName, mw.LastVerSeq, isAsync)
 	if err != nil || status != statusOK {
@@ -1382,13 +1387,15 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 		return syscall.ENOENT
 	}
 
-	if mw.nearReadEnabled(srcParentMP) {
-		mw.dirtyInodes.mark(srcParentID)
-	}
+	defer func() {
+		if mw.nearReadEnabled(srcParentMP) {
+			mw.dirtyInodes.mark(srcParentID)
+		}
 
-	if mw.nearReadEnabled(dstParentMP) {
-		mw.dirtyInodes.mark(dstParentID)
-	}
+		if mw.nearReadEnabled(dstParentMP) {
+			mw.dirtyInodes.mark(dstParentID)
+		}
+	}()
 
 	status, info, err := mw.iget(dstParentMP, dstParentID, mw.VerReadSeq, isAsync)
 	if err != nil || status != statusOK {
@@ -1753,13 +1760,15 @@ func (mw *MetaWrapper) txLink(parentID uint64, name string, ino uint64, fullPath
 		return nil, syscall.ENOENT
 	}
 
-	if mw.nearReadEnabled(parentMP) {
-		mw.dirtyInodes.mark(parentID)
-	}
+	defer func() {
+		if mw.nearReadEnabled(parentMP) {
+			mw.dirtyInodes.mark(parentID)
+		}
 
-	if mw.nearReadEnabled(mp) {
-		mw.dirtyInodes.mark(ino)
-	}
+		if mw.nearReadEnabled(mp) {
+			mw.dirtyInodes.mark(ino)
+		}
+	}()
 
 	var tx *Transaction
 
@@ -1861,13 +1870,15 @@ func (mw *MetaWrapper) link(parentID uint64, name string, ino uint64, fullPath s
 		return nil, syscall.ENOENT
 	}
 
-	if mw.nearReadEnabled(parentMP) {
-		mw.dirtyInodes.mark(parentID)
-	}
+	defer func() {
+		if mw.nearReadEnabled(parentMP) {
+			mw.dirtyInodes.mark(parentID)
+		}
 
-	if mw.nearReadEnabled(mp) {
-		mw.dirtyInodes.mark(ino)
-	}
+		if mw.nearReadEnabled(mp) {
+			mw.dirtyInodes.mark(ino)
+		}
+	}()
 
 	// increase inode nlink
 	status, info, err = mw.ilink(mp, ino, fullPath, false)
@@ -1908,9 +1919,11 @@ func (mw *MetaWrapper) Evict(inode uint64, fullPath string, isAsync bool) error 
 		return syscall.EINVAL
 	}
 
-	if mw.nearReadEnabled(mp) {
-		mw.dirtyInodes.mark(inode)
-	}
+	defer func() {
+		if mw.nearReadEnabled(mp) {
+			mw.dirtyInodes.mark(inode)
+		}
+	}()
 
 	log.LogDebugf("Evict: ino(%v) mp(%v)", inode, mp.PartitionID)
 

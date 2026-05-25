@@ -524,9 +524,11 @@ func (mw *MetaWrapper) txDcreate(tx *Transaction, mp *MetaPartition, parentID ui
 		return statusExist, nil
 	}
 
-	if mw.nearReadEnabled(mp) {
-		mw.dirtyInodes.mark(parentID)
-	}
+	defer func() {
+		if mw.nearReadEnabled(mp) {
+			mw.dirtyInodes.mark(parentID)
+		}
+	}()
 
 	req := &proto.TxCreateDentryRequest{
 		VolName:     mw.volname,
@@ -585,9 +587,11 @@ func (mw *MetaWrapper) quotaDcreate(mp *MetaPartition, parentID uint64, name str
 		return statusExist, nil
 	}
 
-	if mw.nearReadEnabled(mp) {
-		mw.dirtyInodes.mark(parentID)
-	}
+	defer func() {
+		if mw.nearReadEnabled(mp) {
+			mw.dirtyInodes.mark(parentID)
+		}
+	}()
 
 	req := &proto.QuotaCreateDentryRequest{
 		VolName:     mw.volname,
@@ -647,9 +651,11 @@ func (mw *MetaWrapper) dcreate(mp *MetaPartition, parentID uint64, name string, 
 		return statusExist, nil
 	}
 
-	if mw.nearReadEnabled(mp) {
-		mw.dirtyInodes.mark(parentID)
-	}
+	defer func() {
+		if mw.nearReadEnabled(mp) {
+			mw.dirtyInodes.mark(parentID)
+		}
+	}()
 
 	req := &proto.CreateDentryRequest{
 		VolName:     mw.volname,
@@ -710,9 +716,11 @@ func (mw *MetaWrapper) txDupdate(tx *Transaction, mp *MetaPartition, parentID ui
 		return statusExist, 0, nil
 	}
 
-	if mw.nearReadEnabled(mp) {
-		mw.dirtyInodes.mark(parentID)
-	}
+	defer func() {
+		if mw.nearReadEnabled(mp) {
+			mw.dirtyInodes.mark(parentID)
+		}
+	}()
 
 	req := &proto.TxUpdateDentryRequest{
 		VolName:     mw.volname,
@@ -751,9 +759,11 @@ func (mw *MetaWrapper) dupdate(mp *MetaPartition, parentID uint64, name string, 
 		return statusExist, 0, nil
 	}
 
-	if mw.nearReadEnabled(mp) {
-		mw.dirtyInodes.mark(parentID)
-	}
+	defer func() {
+		if mw.nearReadEnabled(mp) {
+			mw.dirtyInodes.mark(parentID)
+		}
+	}()
 
 	req := &proto.UpdateDentryRequest{
 		VolName:     mw.volname,
@@ -902,9 +912,11 @@ func (mw *MetaWrapper) txDdelete(tx *Transaction, mp *MetaPartition, parentID, i
 	}
 	req.FullPaths = []string{fullPath}
 
-	if mw.nearReadEnabled(mp) {
-		mw.dirtyInodes.mark(parentID)
-	}
+	defer func() {
+		if mw.nearReadEnabled(mp) {
+			mw.dirtyInodes.mark(parentID)
+		}
+	}()
 
 	resp := new(proto.TxDeleteDentryResponse)
 
@@ -929,9 +941,11 @@ func (mw *MetaWrapper) ddelete(mp *MetaPartition, parentID uint64, name string, 
 		stat.EndStat("ddelete", err, bgTime, 1)
 	}()
 
-	if mw.nearReadEnabled(mp) {
-		mw.dirtyInodes.mark(parentID)
-	}
+	defer func() {
+		if mw.nearReadEnabled(mp) {
+			mw.dirtyInodes.mark(parentID)
+		}
+	}()
 
 	req := &proto.DeleteDentryRequest{
 		VolName:         mw.volname,

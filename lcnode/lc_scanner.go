@@ -406,6 +406,7 @@ func (s *LcScanner) scanInodesByMpAndPool(partitionID uint64, poolId uint8, minS
 		if err != nil {
 			log.LogWarnf("scanInodesByMpAndPool: ScanInodeByPool failed partitionID(%v) poolId(%v) startInode(%v) err: %v",
 				partitionID, poolId, startInode, err)
+			atomic.AddInt64(&s.currentStat.ErrorReadDirNum, 1)
 			return
 		}
 

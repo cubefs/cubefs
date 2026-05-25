@@ -48,10 +48,11 @@ func (m *inodeGetTrackingMW) InodeGet_ll(inode uint64, isAsync bool) (*proto.Ino
 type scanInodeByPoolMW struct {
 	*MockMetaWrapper
 	resp *proto.ScanInodeByPoolResponse
+	err  error
 }
 
 func (m *scanInodeByPoolMW) ScanInodeByPool(req *proto.ScanInodeByPoolRequest) (*proto.ScanInodeByPoolResponse, error) {
-	return m.resp, nil
+	return m.resp, m.err
 }
 
 func TestLcScanner(t *testing.T) {
@@ -457,6 +458,27 @@ func TestScanInodesByMpAndPoolStopsOnSignal(t *testing.T) {
 	}
 	close(scanner.stopC)
 	scanner.scanInodesByMpAndPool(6003, proto.DefaultSSDPoolId, 0)
+}
+
+func TestScanInodesByMpAndPoolIncrementsReadDirErrorOnScanFailure(t *testing.T) {
+	scanner := &LcScanner{
+		mw: &scanInodeByPoolMW{
+			MockMetaWrapper: NewMockMetaWrapper(),
+			err:             fmt.Errorf("scan inode by pool failed"),
+		},
+		fileChan:    make(chan interface{}, 1),
+		stopC:       make(chan bool),
+		currentStat: &proto.LcNodeRuleTaskStatistics{},
+	}
+
+	scanner.scanInodesByMpAndPool(6004, proto.DefaultSSDPoolId, 0)
+
+	require.Equal(t, int64(1), scanner.currentStat.ErrorReadDirNum)
+	select {
+	case v := <-scanner.fileChan:
+		t.Fatalf("unexpected scan dentry after scan failure: %v", v)
+	default:
+	}
 }
 
 func TestScanInodesByMpAndPoolEnqueuesInodeOnly(t *testing.T) {

@@ -3,6 +3,9 @@ package meta
 import (
 	"encoding/json"
 	"net"
+	"os"
+	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -123,5 +126,222 @@ func TestLookupSkipsNearReadWhenParentInodeDirty(t *testing.T) {
 		require.Equal(t, uint32(0), got.ArgLen, "lookup with dirty parent should not use near-read flag")
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for lookup request on leader")
+	}
+}
+
+func TestDentryWriteMarksParentDirtyAfterRequestCompletes(t *testing.T) {
+	type result struct {
+		status int
+		inode  uint64
+		err    error
+	}
+
+	tests := []struct {
+		name string
+		call func(mw *MetaWrapper, mp *MetaPartition, parentID uint64) result
+	}{
+		{
+			name: "dcreate",
+			call: func(mw *MetaWrapper, mp *MetaPartition, parentID uint64) result {
+				status, err := mw.dcreate(mp, parentID, "entry", parentID+1, 0o644, "/entry", false)
+				return result{status: status, err: err}
+			},
+		},
+		{
+			name: "dupdate",
+			call: func(mw *MetaWrapper, mp *MetaPartition, parentID uint64) result {
+				status, inode, err := mw.dupdate(mp, parentID, "entry", parentID+2, "/entry", false)
+				return result{status: status, inode: inode, err: err}
+			},
+		},
+		{
+			name: "ddelete",
+			call: func(mw *MetaWrapper, mp *MetaPartition, parentID uint64) result {
+				status, inode, _, err := mw.ddelete(mp, parentID, "entry", 0, 0, "/entry", false)
+				return result{status: status, inode: inode, err: err}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			requestReceived := make(chan struct{})
+			releaseResponse := make(chan struct{})
+			addr, cleanup := startMockMetaPacketListener(t, mockBlockedDentryWriteHandler(t, requestReceived, releaseResponse))
+			t.Cleanup(cleanup)
+
+			mw := newConnTestMetaWrapper()
+			t.Cleanup(func() { mw.conns.Close() })
+
+			mp := &MetaPartition{
+				PartitionID: 88,
+				Start:       1,
+				End:         1 << 20,
+				LeaderAddr:  addr,
+				Members:     []string{addr},
+			}
+			const parentID = uint64(100)
+
+			resultCh := make(chan result, 1)
+			go func() {
+				resultCh <- tt.call(mw, mp, parentID)
+			}()
+
+			select {
+			case <-requestReceived:
+			case <-time.After(5 * time.Second):
+				t.Fatal("timed out waiting for dentry request")
+			}
+
+			require.False(t, mw.dirtyInodes.isDirty(parentID), "parent should not be marked while the write request is still in flight")
+
+			close(releaseResponse)
+
+			select {
+			case got := <-resultCh:
+				require.NoError(t, got.err)
+				require.Equal(t, statusOK, got.status)
+			case <-time.After(5 * time.Second):
+				t.Fatal("timed out waiting for dentry write to finish")
+			}
+
+			require.True(t, mw.dirtyInodes.isDirty(parentID), "parent should be marked after the write function returns")
+		})
+	}
+}
+
+func TestDeleteLlEXMarksParentDirtyAfterFunctionReturns(t *testing.T) {
+	const (
+		parentID   = uint64(100)
+		childInode = uint64(200)
+	)
+	dirMode := uint32(os.ModeDir | 0o755)
+
+	requestReceived := make(chan struct{})
+	releaseResponse := make(chan struct{})
+	addr, cleanup := startMockMetaPacketListener(t, mockBlockedLookupThenIgetHandler(t, requestReceived, releaseResponse, childInode, dirMode, 3))
+	t.Cleanup(cleanup)
+
+	mw := newTrashDeleteTestMetaWrapper(t, addr)
+	mw.FollowerRead = true
+	mw.NearRead = true
+
+	resultCh := make(chan error, 1)
+	go func() {
+		_, err := mw.Delete_ll_EX(parentID, "subdir", true, 0, "/parent/subdir", false)
+		resultCh <- err
+	}()
+
+	select {
+	case <-requestReceived:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for lookup request")
+	}
+
+	require.False(t, mw.dirtyInodes.isDirty(parentID), "parent should not be marked before Delete_ll_EX returns")
+
+	close(releaseResponse)
+
+	select {
+	case err := <-resultCh:
+		require.Equal(t, syscall.ENOTEMPTY, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for Delete_ll_EX to finish")
+	}
+
+	require.True(t, mw.dirtyInodes.isDirty(parentID), "parent should be marked by the deferred dirty mark")
+}
+
+func mockBlockedDentryWriteHandler(t *testing.T, requestReceived chan<- struct{}, releaseResponse <-chan struct{}) func(net.Conn) error {
+	t.Helper()
+	var signalOnce sync.Once
+	return func(conn net.Conn) error {
+		pkt := proto.NewPacket()
+		if err := pkt.ReadFromConnWithVer(conn, proto.ReadDeadlineTime); err != nil {
+			return err
+		}
+		signalOnce.Do(func() {
+			close(requestReceived)
+		})
+		<-releaseResponse
+
+		resp := proto.NewPacketReqID()
+		resp.ReqID = pkt.ReqID
+		resp.Opcode = pkt.Opcode
+		resp.PartitionID = pkt.PartitionID
+		resp.ResultCode = proto.OpOk
+
+		var body []byte
+		var err error
+		switch pkt.Opcode {
+		case proto.OpMetaCreateDentry, proto.OpMetaAsyncCreateDentry:
+		case proto.OpMetaUpdateDentry, proto.OpMetaAsyncUpdateDentry:
+			body, err = json.Marshal(&proto.UpdateDentryResponse{Inode: 101})
+		case proto.OpMetaDeleteDentry, proto.OpMetaAsyncDeleteDentry:
+			body, err = json.Marshal(&proto.DeleteDentryResponse{Inode: 102})
+		default:
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if body != nil {
+			resp.Data = body
+			resp.Size = uint32(len(body))
+		}
+		return resp.WriteToConn(conn)
+	}
+}
+
+func mockBlockedLookupThenIgetHandler(t *testing.T, requestReceived chan<- struct{}, releaseResponse <-chan struct{},
+	lookupInode uint64, lookupMode uint32, igetNlink uint32,
+) func(net.Conn) error {
+	t.Helper()
+	var signalOnce sync.Once
+	return func(conn net.Conn) error {
+		for step := 0; step < 2; step++ {
+			pkt := proto.NewPacket()
+			if err := pkt.ReadFromConnWithVer(conn, proto.ReadDeadlineTime); err != nil {
+				return err
+			}
+			if step == 0 {
+				signalOnce.Do(func() {
+					close(requestReceived)
+				})
+				<-releaseResponse
+			}
+
+			resp := proto.NewPacketReqID()
+			resp.ReqID = pkt.ReqID
+			resp.Opcode = pkt.Opcode
+			resp.PartitionID = pkt.PartitionID
+			resp.ResultCode = proto.OpOk
+
+			var body []byte
+			var err error
+			switch pkt.Opcode {
+			case proto.OpMetaLookup:
+				body, err = json.Marshal(&proto.LookupResponse{Inode: lookupInode, Mode: lookupMode})
+			case proto.OpMetaInodeGet:
+				body, err = json.Marshal(&proto.InodeGetResponse{
+					Info: &proto.InodeInfo{
+						Inode: lookupInode,
+						Mode:  lookupMode,
+						Nlink: igetNlink,
+					},
+				})
+			default:
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			resp.Data = body
+			resp.Size = uint32(len(body))
+			if err = resp.WriteToConn(conn); err != nil {
+				return err
+			}
+		}
+		return nil
 	}
 }
