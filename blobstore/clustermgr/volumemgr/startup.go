@@ -61,6 +61,10 @@ type VolumeMgrConfig struct {
 	// the number of volume partitions that can be allocated
 	ShardNum int `json:"shard_num"`
 
+	MinAllocableHealthVolumeCount int  `json:"min_allocable_health_vol_count"`
+	CheckHealthyVolumeIntervalS   int  `json:"check_healthy_volume_interval_s"`
+	EnableDegradeRetain           bool `json:"degrade_retain_ratio"`
+
 	// the volume in Proxy which free size small than FreezeThreshold treat filled
 	FreezeThreshold  uint64            `json:"-"`
 	IDC              []string          `json:"-"`
@@ -110,6 +114,12 @@ func (c *VolumeMgrConfig) checkAndFix() {
 	if c.RouteItemTruncateIntervalNum <= 0 {
 		c.RouteItemTruncateIntervalNum = defaultRouteItemTruncateIntervalNum
 	}
+	if c.MinAllocableHealthVolumeCount <= 0 {
+		c.MinAllocableHealthVolumeCount = c.MinAllocableVolumeCount * 2 / 3
+	}
+	if c.CheckHealthyVolumeIntervalS <= 0 {
+		c.CheckHealthyVolumeIntervalS = defaultCheckExpiredVolumeIntervalS
+	}
 }
 
 // NewVolumeMgr constructs a new volume manager.
@@ -140,21 +150,22 @@ func NewVolumeMgr(conf VolumeMgrConfig, diskMgr cluster.BlobNodeManagerAPI, scop
 	rand.Seed(time.Now().UnixNano())
 	// initial volumeMgr
 	volumeMgr := &VolumeMgr{
-		all:             newShardedVolumes(conf.VolumeSliceMapNum),
-		volumeTbl:       volumeTable,
-		transitedTbl:    transitedTable,
-		createVolChan:   make(chan struct{}, 1),
-		closeLoopChan:   make(chan struct{}, 1),
-		codeMode:        make(map[codemode.CodeMode]codeModeConf),
-		taskMgr:         newTaskManager(10),
-		applyTaskPool:   base.NewTaskDistribution(int(conf.ApplyConcurrency), 1),
-		diskMgr:         diskMgr,
-		scopeMgr:        scopeMgr,
-		configMgr:       configMgr,
-		routeMgr:        base.NewRouteMgr(conf.RouteItemTruncateIntervalNum, true, routeRecordToRouteItem, volumeTable),
-		blobNodeClient:  blobnode.New(&conf.BlobNodeConfig),
-		stat:            newVolumeStat(conf.VolumeSliceMapNum, conf.FreezeThreshold, conf.AllocatableSize),
-		VolumeMgrConfig: conf,
+		all:                 newShardedVolumes(conf.VolumeSliceMapNum),
+		volumeTbl:           volumeTable,
+		transitedTbl:        transitedTable,
+		createVolChan:       make(chan struct{}, 1),
+		closeLoopChan:       make(chan struct{}, 1),
+		codeMode:            make(map[codemode.CodeMode]codeModeConf),
+		taskMgr:             newTaskManager(10),
+		applyTaskPool:       base.NewTaskDistribution(int(conf.ApplyConcurrency), 1),
+		diskMgr:             diskMgr,
+		scopeMgr:            scopeMgr,
+		configMgr:           configMgr,
+		routeMgr:            base.NewRouteMgr(conf.RouteItemTruncateIntervalNum, true, routeRecordToRouteItem, volumeTable),
+		blobNodeClient:      blobnode.New(&conf.BlobNodeConfig),
+		stat:                newVolumeStat(conf.VolumeSliceMapNum, conf.FreezeThreshold, conf.AllocatableSize),
+		VolumeMgrConfig:     conf,
+		healthVolumeChecker: make(map[codemode.CodeMode]time.Time),
 	}
 
 	for _, policy := range conf.CodeModePolicies {

@@ -45,6 +45,7 @@ type allocConfig struct {
 type idleItem struct {
 	head    *list.List
 	element *list.Element
+	health  int
 }
 
 type idleVolumes struct {
@@ -52,6 +53,7 @@ type idleVolumes struct {
 	allocatableShards []*list.List
 	notAllocatable    *list.List
 	shardNum          int
+	healths           []int // idx * -1 is health score, and value is volume count,
 	sync.RWMutex
 }
 
@@ -74,14 +76,39 @@ func (i *idleVolumes) statAllocatableNum() int {
 	return len(i.m) - i.notAllocatable.Len()
 }
 
+func (i *idleVolumes) statHealthyAllocatableNum() int {
+	i.RLock()
+	defer i.RUnlock()
+	if len(i.healths) == 0 {
+		return 0
+	}
+	return i.healths[0]
+}
+
+func (i *idleVolumes) statHealthyAllocatable() []int {
+	i.RLock()
+	defer i.RUnlock()
+	if len(i.healths) <= 1 {
+		return i.healths
+	}
+	ret := make([]int, len(i.healths))
+	ret[0] = i.healths[0]
+	for k := 1; k < len(i.healths); k++ {
+		ret[k] = i.healths[k] + ret[k-1]
+	}
+	return ret
+}
+
 func (i *idleVolumes) addAllocatable(vol *volume) {
 	i.Lock()
 	if item, ok := i.m[vol.vid]; ok {
 		item.head.Remove(item.element)
+		i.healths[abs(item.health)]--
 	}
 	idx := int(vol.vid) % i.shardNum
 	e := i.allocatableShards[idx].PushFront(vol)
-	i.m[vol.vid] = idleItem{element: e, head: i.allocatableShards[idx]}
+	i.m[vol.vid] = idleItem{element: e, head: i.allocatableShards[idx], health: vol.volInfoBase.HealthScore}
+	i.healths[abs(vol.volInfoBase.HealthScore)]++
 	i.Unlock()
 }
 
@@ -89,9 +116,11 @@ func (i *idleVolumes) addNotAllocatable(vol *volume) {
 	i.Lock()
 	if item, ok := i.m[vol.vid]; ok {
 		item.head.Remove(item.element)
+		i.healths[abs(item.health)]--
 	}
 	e := i.notAllocatable.PushFront(vol)
-	i.m[vol.vid] = idleItem{element: e, head: i.notAllocatable}
+	i.m[vol.vid] = idleItem{element: e, head: i.notAllocatable, health: vol.volInfoBase.HealthScore}
+	i.healths[abs(vol.volInfoBase.HealthScore)]++
 	i.Unlock()
 }
 
@@ -100,6 +129,7 @@ func (i *idleVolumes) delete(vid proto.Vid) {
 	if item, ok := i.m[vid]; ok {
 		item.head.Remove(item.element)
 		delete(i.m, vid)
+		i.healths[abs(item.health)]--
 	}
 	i.Unlock()
 }
@@ -119,6 +149,7 @@ func (i *idleVolumes) allocFromOptions(optionalVids []proto.Vid, count int) (suc
 	for _, vid := range optionalVids {
 		if item, ok := i.m[vid]; ok {
 			item.head.Remove(item.element)
+			i.healths[abs(item.health)]--
 			delete(i.m, vid)
 			succeed = append(succeed, vid)
 			if len(succeed) >= count {
@@ -134,6 +165,7 @@ type volumeMap map[proto.Vid]*volume
 type activeVolumes struct {
 	allocatorVols map[string]volumeMap
 	diskLoad      map[proto.DiskID]int
+	counts        map[codemode.CodeMode]int
 	sync.RWMutex
 }
 
@@ -178,6 +210,10 @@ func newVolumeAllocator(cfg allocConfig) *volumeAllocator {
 			allocatableShards: allocatableShard,
 			shardNum:          cfg.shardNum,
 			notAllocatable:    list.New(),
+			healths:           make([]int, modeConf.mode.GetShardNum()+1),
+		}
+		for i := 0; i < modeConf.mode.GetShardNum(); i++ {
+			idles[modeConf.mode].healths[i] = 0
 		}
 	}
 	return &volumeAllocator{
@@ -185,6 +221,7 @@ func newVolumeAllocator(cfg allocConfig) *volumeAllocator {
 		actives: &activeVolumes{
 			allocatorVols: make(map[string]volumeMap),
 			diskLoad:      make(map[proto.DiskID]int),
+			counts:        make(map[codemode.CodeMode]int),
 		},
 		allocConfig: cfg,
 	}
@@ -360,6 +397,32 @@ func (a *volumeAllocator) StatAllocatable() (ret map[codemode.CodeMode]int) {
 	return allocVolNum
 }
 
+func (a *volumeAllocator) StatHealthyAllocable() (ret map[codemode.CodeMode]int) {
+	allocVolNum := make(map[codemode.CodeMode]int)
+	for mode := range a.idles {
+		allocVolNum[mode] = a.idles[mode].statHealthyAllocatableNum()
+	}
+	return allocVolNum
+}
+
+func (a *volumeAllocator) StatHealthyAllocables() (ret map[codemode.CodeMode][]int) {
+	alloc := make(map[codemode.CodeMode][]int)
+	for mode := range a.idles {
+		alloc[mode] = a.idles[mode].statHealthyAllocatable()
+	}
+	return alloc
+}
+
+func (a *volumeAllocator) ActiveVolumeCount() map[codemode.CodeMode]int {
+	a.actives.RLock()
+	ret := make(map[codemode.CodeMode]int)
+	for mode, count := range a.actives.counts {
+		ret[mode] = count
+	}
+	a.actives.RUnlock()
+	return ret
+}
+
 func (a *volumeAllocator) GetExpiredVolumes() (expiredVids []proto.Vid) {
 	a.actives.RLock()
 	actives := make([]*volume, 0)
@@ -404,6 +467,7 @@ func (a *volumeAllocator) insertAllocatedVolumes(v *volume, host string) {
 		a.actives.allocatorVols[host] = volM
 	}
 	volM[v.vid] = v
+	a.actives.counts[v.volInfoBase.CodeMode]++
 
 	for _, unit := range v.vUnits {
 		a.actives.diskLoad[unit.vuInfo.DiskID]++
@@ -420,6 +484,7 @@ func (a *volumeAllocator) removeAllocatedVolumes(vid proto.Vid, host string) {
 			for _, unit := range vol.vUnits {
 				a.actives.diskLoad[unit.vuInfo.DiskID]--
 			}
+			a.actives.counts[vol.volInfoBase.CodeMode]--
 		}
 		delete(volM, vid)
 	}
@@ -510,4 +575,11 @@ func (a *volumeAllocator) sortVidByHealthAndDiskLoad(mode codemode.CodeMode, vid
 	}
 
 	return ret
+}
+
+func abs(x int) int {
+	if x < 0 {
+		return -x
+	}
+	return x
 }
