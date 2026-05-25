@@ -131,6 +131,15 @@ func runMdtestStage(ctx context.Context, defaults spec.MdtestConfig, stage spec.
 	mdtestBin := orStr(defaults.MdtestBin, "mdtest")
 	numTasks := orInt(stage.NumTasks, defaults.NumTasks, 1)
 
+	// mdtest 的 -n（total items）与 -I（items per directory）互斥，mdtest 内部
+	// valid_tests 校验失败会输出 "only specify the number of items or the number
+	// of items per directory: No such file or directory"。spec 同时暴露这两个字段
+	// 是为了承载两种工作模式（按总量 vs 按目录拓扑），但运行时必须二选一。
+	if stage.NumItems > 0 && stage.ItemsPerDir > 0 {
+		return nil, fmt.Errorf("mdtest stage %q: NumItems(%d) 和 ItemsPerDir(%d) 互斥，请二选一（前者控制总量，后者配合 Depth/Branching 控制目录拓扑）",
+			stage.Name, stage.NumItems, stage.ItemsPerDir)
+	}
+
 	args := []string{
 		"-n", strconv.Itoa(numTasks),
 		"--allow-run-as-root", // common in container deployments
