@@ -152,11 +152,9 @@
 stateDiagram-v2
     direction LR
     [*] --> running: trigger\n创建 BenchTaskRecord
-    state fanout <<choice>>
-    running --> fanout
-    fanout --> shardA: shard 0..N\n派发到 N 个 syncnode
-    fanout --> shardB
-    fanout --> shardC
+    running --> shardA: shard 0\n派发到 syncnode
+    running --> shardB: shard 1
+    running --> shardC: shard N
     shardA --> aggregating: ShardResult\n上报
     shardB --> aggregating
     shardC --> aggregating
@@ -168,6 +166,9 @@ stateDiagram-v2
     succeeded --> [*]
     failed --> [*]
     cancelled --> [*]
+    note right of running
+      master 按 Parallelism\n并行派发 N 个 shard\n到不同 syncnode
+    end note
               </div>
               <p class="mermaid-caption">
                 状态字符串来自 <code>master/bench_task_ledger.go</code>：<code>running / succeeded / failed / cancelled</code>。
