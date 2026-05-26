@@ -149,26 +149,23 @@
             <h2 id="lifecycle">任务生命周期</h2>
             <div class="mermaid-wrap reveal">
               <div class="mermaid" id="diagram-bench">
-stateDiagram-v2
-    direction LR
-    [*] --> running: trigger\n创建 BenchTaskRecord
-    running --> shardA: shard 0\n派发到 syncnode
-    running --> shardB: shard 1
-    running --> shardC: shard N
-    shardA --> aggregating: ShardResult\n上报
+flowchart LR
+    trigger([trigger]) --> running[running<br/>创建 BenchTaskRecord]
+    running -- "shard 0" --> shardA[shard A<br/>syncnode-1]
+    running -- "shard 1" --> shardB[shard B<br/>syncnode-2]
+    running -- "shard N" --> shardC[shard N<br/>syncnode-N]
+    shardA -- "ShardResult 上报" --> aggregating[aggregating]
     shardB --> aggregating
     shardC --> aggregating
-    aggregating --> succeeded: 全部 done\n+ HDR 合并\n+ SLA 通过
-    aggregating --> failed: 任一 failed\n或 SLA 不通过
-    running --> cancelled: cancel\n（仅 running 可取消）
-    failed --> running: retry\n（终态可重试）
-    cancelled --> running: retry
-    succeeded --> [*]
-    failed --> [*]
-    cancelled --> [*]
-    note right of running
-      master 按 Parallelism\n并行派发 N 个 shard\n到不同 syncnode
-    end note
+    aggregating -- "全部 done<br/>+ HDR 合并<br/>+ SLA 通过" --> succeeded([succeeded])
+    aggregating -- "任一 failed<br/>或 SLA 不通过" --> failed([failed])
+    running -- "cancel（仅 running 可取消）" --> cancelled([cancelled])
+    failed -- "retry（终态可重试）" --> running
+    cancelled -- "retry" --> running
+    classDef terminal fill:#f5f3ef,stroke:#cdc7bd,color:#221f1c;
+    classDef live fill:#e8f0ff,stroke:#94aee0,color:#1d2c5a;
+    class running,shardA,shardB,shardC,aggregating live
+    class succeeded,failed,cancelled terminal
               </div>
               <p class="mermaid-caption">
                 状态字符串来自 <code>master/bench_task_ledger.go</code>：<code>running / succeeded / failed / cancelled</code>。

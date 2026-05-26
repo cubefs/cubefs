@@ -267,19 +267,19 @@ maxRetries: 3</code></pre>
             <h2 id="lifecycle">任务生命周期</h2>
             <div class="mermaid-wrap reveal">
               <div class="mermaid" id="diagram-lifecycle">
-stateDiagram-v2
-    direction LR
-    [*] --> pending : trigger / cron
-    pending --> queued : master 拆 shard 入队
-    queued --> running : syncnode 领取
-    running --> done : 全部对象拷贝 + 校验通过
-    running --> failed : 不可恢复错误
-    running --> cancelled : 用户 / mcp cancel
-    failed --> queued : retry
-    cancelled --> queued : retry
-    done --> [*]
-    failed --> [*]
-    cancelled --> [*]
+flowchart LR
+    start([trigger / cron]) --> pending[pending]
+    pending -- "master 拆 shard 入队" --> queued[queued]
+    queued -- "syncnode 领取" --> running[running]
+    running -- "全部对象拷贝<br/>+ 校验通过" --> done([done])
+    running -- "不可恢复错误" --> failed([failed])
+    running -- "用户 / mcp cancel" --> cancelled([cancelled])
+    failed -- "retry" --> queued
+    cancelled -- "retry" --> queued
+    classDef terminal fill:#f5f3ef,stroke:#cdc7bd,color:#221f1c;
+    classDef live fill:#e8f0ff,stroke:#94aee0,color:#1d2c5a;
+    class pending,queued,running live
+    class done,failed,cancelled terminal
               </div>
               <span class="mermaid-caption">图 1 · SyncTask 状态机（master 视角）。<code>running</code> 内部的 per-file 子状态依次是 <code>head src → list → copy → verify dst →（move 时）delete src</code>；每步失败计入 <code>FilesFailed / FilesSkipped</code>，到达 <code>maxRetries</code> 之前都在 <code>running</code> 内自循环重试。</span>
             </div>
