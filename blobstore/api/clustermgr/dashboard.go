@@ -16,6 +16,7 @@ package clustermgr
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -31,18 +32,21 @@ type SimulateAgrs struct {
 	Nodes []string `json:"nodes"`
 }
 
-type DashboardScore int
+type DashboardScore struct {
+	Score  int    `json:"score"`
+	Reason string `json:"reason,omitempty"`
+}
 
 const (
-	DashboardScoreOK       DashboardScore = 0
-	DashboardScoreNotice   DashboardScore = 1
-	DashboardScoreWarning  DashboardScore = 2
-	DashboardScoreMajor    DashboardScore = 3
-	DashboardScoreCritical DashboardScore = 4
+	DashboardScoreOK       = 0
+	DashboardScoreNotice   = 1
+	DashboardScoreWarning  = 2
+	DashboardScoreMajor    = 3
+	DashboardScoreCritical = 4
 )
 
 func (a DashboardScore) String() string {
-	switch a {
+	switch a.Score {
 	case DashboardScoreOK:
 		return "OK"
 	case DashboardScoreNotice:
@@ -61,7 +65,9 @@ func (a DashboardScore) String() string {
 func (a DashboardScore) Max(others ...DashboardScore) DashboardScore {
 	m := a
 	for _, b := range others {
-		m = util.Max(m, b)
+		if b.Score > m.Score {
+			m = b
+		}
 	}
 	return m
 }
@@ -158,6 +164,7 @@ type VolumeStat struct {
 	ByFree             VolumeFreeStat   `json:"by_free"`
 	AllocatableByScore VolumeScoreStat  `json:"allocatable_by_score"`
 	AllocatableByFree  VolumeFreeStat   `json:"allocatable_by_free"`
+	DiskLoadThreshold  int              `json:"disk_load_threshold"`
 	TopDiskLoad        []TopDiskLoad    `json:"top_disk_load"`
 }
 
@@ -167,14 +174,25 @@ type VolumeStat struct {
 //	OK:      threshold ≤ 0, or no disks recorded, or maxLoad ≤ threshold
 //	Warning: maxLoad > threshold
 //	Major:   maxLoad > 2 × threshold
-func (v *VolumeStat) CalcScore(diskLoadThreshold int) {
-	if v.Status.ActiveTotal == 0 || v.Status.IdleTotal == 0 {
-		v.Score = DashboardScoreCritical
+func (v *VolumeStat) CalcScore() {
+	diskLoadThreshold := v.DiskLoadThreshold
+	if v.Status.ActiveTotal == 0 {
+		v.Score = DashboardScore{
+			Score:  DashboardScoreCritical,
+			Reason: "no active volume",
+		}
+		return
+	}
+	if v.Status.IdleTotal == 0 {
+		v.Score = DashboardScore{
+			Score:  DashboardScoreCritical,
+			Reason: "no idle volume",
+		}
 		return
 	}
 
+	v.Score = DashboardScore{}
 	if diskLoadThreshold <= 0 || len(v.TopDiskLoad) == 0 {
-		v.Score = DashboardScoreOK
 		return
 	}
 	maxLoad := 0
@@ -183,13 +201,13 @@ func (v *VolumeStat) CalcScore(diskLoadThreshold int) {
 			maxLoad = tl.TopN[0].Load
 		}
 	}
+	reason := fmt.Sprintf("disk_overload: maxLoad=%d > threshold=%d", maxLoad, diskLoadThreshold)
 	switch {
 	case maxLoad > diskLoadThreshold*2:
-		v.Score = DashboardScoreMajor
+		v.Score = DashboardScore{Score: DashboardScoreMajor, Reason: reason}
 	case maxLoad > diskLoadThreshold:
-		v.Score = DashboardScoreWarning
+		v.Score = DashboardScore{Score: DashboardScoreWarning, Reason: reason}
 	default:
-		v.Score = DashboardScoreOK
 	}
 }
 
@@ -241,10 +259,11 @@ func (s *DiskStat) SumIDC(status string) int {
 //	Major   >= t×3
 func (s *DiskStat) CalcScore() {
 	total := s.SumIDC("__total__")
-	unavailable := s.SumIDC(proto.DiskStatusBroken.String()) +
-		s.SumIDC(proto.DiskStatusRepairing.String())
+	broken := s.SumIDC(proto.DiskStatusBroken.String())
+	repairing := s.SumIDC(proto.DiskStatusRepairing.String())
+	unavailable := broken + repairing
 	if total == 0 || unavailable == 0 {
-		s.Score = DashboardScoreOK
+		s.Score = DashboardScore{}
 		return
 	}
 
@@ -261,13 +280,17 @@ func (s *DiskStat) CalcScore() {
 	u100 := unavailable * 100
 	switch {
 	case u100 >= total*noticePct*3:
-		s.Score = DashboardScoreMajor
+		s.Score.Score = DashboardScoreMajor
 	case u100 >= total*noticePct*2:
-		s.Score = DashboardScoreWarning
+		s.Score.Score = DashboardScoreWarning
 	case u100 >= total*noticePct:
-		s.Score = DashboardScoreNotice
+		s.Score.Score = DashboardScoreNotice
 	default:
-		s.Score = DashboardScoreOK
+		s.Score.Score = DashboardScoreOK
+	}
+	if s.Score.Score > DashboardScoreOK {
+		s.Score.Reason = fmt.Sprintf("broken_disk:%d + repairing_disk:%d / total:%d",
+			broken, repairing, total)
 	}
 }
 
@@ -276,15 +299,18 @@ type ScopeStat struct {
 	Scopes []ScopeUsage   `json:"scopes"`
 }
 
-// CalcScore any scope whose Current > MaxValue/2 sets Notice; otherwise OK.
 func (su *ScopeStat) CalcScore() {
+	su.Score = DashboardScore{}
 	for _, s := range su.Scopes {
 		if s.Current > s.MaxValue/2 {
-			su.Score = DashboardScoreNotice
+			su.Score = DashboardScore{
+				Score: DashboardScoreNotice,
+				Reason: fmt.Sprintf("scope_near_limit: %s=%.4f%%",
+					s.Name, float64(s.Current)*100/float64(s.MaxValue)),
+			}
 			return
 		}
 	}
-	su.Score = DashboardScoreOK
 }
 
 // ScopeUsage records the current allocation progress of a single scope counter.
@@ -308,16 +334,22 @@ type ServiceStat struct {
 }
 
 func (s *ServiceStat) CalcScore() {
-	score := DashboardScoreOK
+	score := DashboardScore{}
 
-	idcScore := func(byIDC map[string]int) DashboardScore {
-		sc := DashboardScoreOK
-		for _, cnt := range byIDC {
+	idcScore := func(svc string, byIDC map[string]int) DashboardScore {
+		sc := DashboardScore{}
+		for idc, cnt := range byIDC {
 			switch cnt {
 			case 0:
-				sc = sc.Max(DashboardScoreMajor)
+				sc = sc.Max(DashboardScore{
+					Score:  DashboardScoreMajor,
+					Reason: fmt.Sprintf("%s has no service in idc %s", svc, idc),
+				})
 			case 1:
-				sc = sc.Max(DashboardScoreWarning)
+				sc = sc.Max(DashboardScore{
+					Score:  DashboardScoreWarning,
+					Reason: fmt.Sprintf("%s has only one service in idc %s", svc, idc),
+				})
 			}
 		}
 		return sc
@@ -329,29 +361,46 @@ func (s *ServiceStat) CalcScore() {
 	} {
 		byIDC, ok := s.OnlineByTypeIDC[svc]
 		if !ok {
-			score = score.Max(DashboardScoreMajor)
+			score = score.Max(DashboardScore{
+				Score:  DashboardScoreMajor,
+				Reason: svc + " has no service",
+			})
 		} else {
-			score = score.Max(idcScore(byIDC))
+			score = score.Max(idcScore(svc, byIDC))
 		}
 	}
 
+	total := 0
 	if byIDC, ok := s.OnlineByTypeIDC[proto.ServiceNameScheduler]; ok {
-		total := 0
 		for _, cnt := range byIDC {
 			total += cnt
 		}
-		if total == 0 {
-			score = score.Max(DashboardScoreWarning)
-		}
-	} else {
-		score = score.Max(DashboardScoreWarning)
+	}
+	if total == 0 {
+		score = score.Max(DashboardScore{
+			Score:  DashboardScoreWarning,
+			Reason: proto.ServiceNameScheduler + " has no service",
+		})
 	}
 
 	if s.ExpiredDisks > 0 {
-		score = score.Max(DashboardScoreNotice)
+		score = score.Max(DashboardScore{
+			Score:  DashboardScoreNotice,
+			Reason: fmt.Sprintf("expired_disk:%d", s.ExpiredDisks),
+		})
 	}
 	if s.ExpiredDisks > 120 {
-		score = score.Max(DashboardScoreWarning)
+		score = score.Max(DashboardScore{
+			Score:  DashboardScoreWarning,
+			Reason: fmt.Sprintf("expired_disk:%d", s.ExpiredDisks),
+		})
+	}
+
+	if len(s.OfflineNodes) > 0 {
+		score = score.Max(DashboardScore{
+			Score:  DashboardScoreNotice,
+			Reason: fmt.Sprintf("offline_node:%d", len(s.OfflineNodes)),
+		})
 	}
 
 	s.Score = score

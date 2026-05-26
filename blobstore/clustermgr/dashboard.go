@@ -301,17 +301,17 @@ func (d *dashboardMgr) fresh(ctx context.Context, force bool) {
 	d.volMu.Unlock()
 
 	score := scope.Score.Max(disk.Score, service.Score, volume.Score, safety.Score)
-	d.snapshot.Store(&dashboardSnapshot{
-		dashboard: clustermgr.ClusterDashboard{
-			Score:        score,
-			Scope:        scope,
-			Disk:         disk,
-			Service:      service,
-			Volume:       volume,
-			VolumeSafety: safety,
-			GeneratedAt:  now.UnixNano(),
-		},
-	})
+	snapshot := clustermgr.ClusterDashboard{
+		Score:        score,
+		Scope:        scope,
+		Disk:         disk,
+		Service:      service,
+		Volume:       volume,
+		VolumeSafety: safety,
+		GeneratedAt:  now.UnixNano(),
+	}
+	d.snapshot.Store(&dashboardSnapshot{dashboard: snapshot})
+	d.service.reportDashboard(snapshot)
 
 	d.processLock.Lock()
 	ch := d.processCh
@@ -605,9 +605,10 @@ func buildVolume(volumes map[proto.Vid]*clustermgr.VolumeBasic,
 		ByFree:             byFree,
 		AllocatableByScore: allocatableByScore,
 		AllocatableByFree:  allocatableByFree,
+		DiskLoadThreshold:  diskLoadThreshold,
 		TopDiskLoad:        topLoads,
 	}
-	stat.CalcScore(diskLoadThreshold)
+	stat.CalcScore()
 	return stat
 }
 
@@ -688,7 +689,7 @@ func buildVolumeSafety(
 		}
 
 		var level string
-		var volScore clustermgr.DashboardScore
+		var volScore int
 		switch {
 		case unsafeCount > tolerance:
 			level = "data_loss"
@@ -707,7 +708,7 @@ func buildVolumeSafety(
 			volScore = clustermgr.DashboardScoreNotice
 			degraded++
 		}
-		score = score.Max(volScore)
+		score = score.Max(clustermgr.DashboardScore{Score: volScore, Reason: level})
 
 		if level == "at_risk" || level == "data_loss" {
 			details = append(details, clustermgr.VolumeSafetyEntry{
@@ -725,6 +726,15 @@ func buildVolumeSafety(
 	})
 	if len(details) > maxUnsafeDetails {
 		details = details[:maxUnsafeDetails]
+	}
+
+	switch {
+	case dataLoss > 0:
+		score.Reason = fmt.Sprintf("data_loss:%d", dataLoss)
+	case atRisk > 0:
+		score.Reason = fmt.Sprintf("at_risk:%d", atRisk)
+	case degraded > 0:
+		score.Reason = fmt.Sprintf("degraded:%d", degraded)
 	}
 
 	return clustermgr.VolumeSafetyStat{

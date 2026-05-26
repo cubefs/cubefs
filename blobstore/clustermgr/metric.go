@@ -18,8 +18,10 @@ import (
 	"context"
 	"strconv"
 
-	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
 var (
@@ -77,6 +79,16 @@ var (
 		},
 		[]string{"region", "cluster", "shard_id"},
 	)
+
+	dashboardMetric = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: "blobstore",
+			Subsystem: "clusterMgr",
+			Name:      "dashboard",
+			Help:      "cluster dashboard raw counts per item",
+		},
+		[]string{"region", "cluster", "item"},
+	)
 )
 
 func init() {
@@ -85,6 +97,7 @@ func init() {
 	prometheus.MustRegister(volInconsistencyMetric)
 	prometheus.MustRegister(brokenChunkNumInVolumeMetric)
 	prometheus.MustRegister(brokenShardUnitNumInShardMetric)
+	prometheus.MustRegister(dashboardMetric)
 }
 
 func (s *Service) report(ctx context.Context) {
@@ -120,6 +133,43 @@ func (s *Service) reportBrokenChunkNumInVolume(vids map[proto.Vid]int) {
 	for vid, num := range vids {
 		brokenChunkNumInVolumeMetric.WithLabelValues(s.Region, s.ClusterID.ToString(), vid.ToString()).Set(float64(num))
 	}
+}
+
+func (s *Service) reportDashboard(d clustermgr.ClusterDashboard) {
+	region := s.Region
+	cluster := s.ClusterID.ToString()
+
+	set := func(item string, val int) {
+		dashboardMetric.WithLabelValues(region, cluster, item).Set(float64(val))
+	}
+
+	dashboardMetric.Reset()
+
+	set("disk_broken", d.Disk.SumIDC(proto.DiskStatusBroken.String()))
+	set("disk_repairing", d.Disk.SumIDC(proto.DiskStatusRepairing.String()))
+
+	set("service_offline", len(d.Service.OfflineNodes))
+	set("service_expired_disk", d.Service.ExpiredDisks)
+
+	set("volume_active", d.Volume.Status.ActiveTotal)
+	set("volume_idle", d.Volume.Status.IdleTotal)
+
+	// global TopDiskLoad entry (CodeMode == "") holds cross-codemode disk load ranking.
+	for _, tl := range d.Volume.TopDiskLoad {
+		if tl.CodeMode == "" {
+			if len(tl.TopN) > 0 {
+				set("volume_diskload_top1", tl.TopN[0].Load)
+			}
+			if len(tl.TopN) >= 10 {
+				set("volume_diskload_top10", tl.TopN[9].Load)
+			}
+			break
+		}
+	}
+
+	set("safety_degraded", d.VolumeSafety.DegradedVolumes)
+	set("safety_at_risk", d.VolumeSafety.AtRiskVolumes)
+	set("safety_data_loss", d.VolumeSafety.DataLossVolumes)
 }
 
 func (s *Service) reportBrokenUnitNumInShard(shardIDs map[proto.ShardID]int) {
