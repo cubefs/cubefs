@@ -78,6 +78,11 @@ type BenchTaskRecord struct {
 	DoneAt      int64                  `json:"doneAt,omitempty"`
 	Error       string                 `json:"error,omitempty"`
 	BenchResult *spec.BenchShardResult `json:"benchResult,omitempty"` // populated on terminal
+	// Owner is the syncnode addr that currently holds the task. Set at
+	// dispatch time and used by the orphan scan to detect "owner addr is
+	// dead or unknown → mark failed". Empty for parent fan-out records
+	// (the parent doesn't run on a single node; only shards do).
+	Owner string `json:"owner,omitempty"`
 	// Fan-out fields (only set when Parallelism > 1)
 	ShardTotal   int                `json:"shardTotal,omitempty"`   // parent: total shards
 	ShardsDone   int                `json:"shardsDone,omitempty"`   // parent: shards completed
@@ -260,6 +265,23 @@ func (l *BenchTaskLedger) Complete(taskID string, result spec.BenchShardResult) 
 	return true
 }
 
+// SetOwner records which syncnode addr currently holds taskID. Called by
+// the dispatcher right after the bench task is sent (single-shot path) so
+// the orphan scan can later answer "is this owner still alive?". No-op
+// when the record is absent. Safe to call repeatedly; the most recent
+// owner wins (covers future redispatch paths, even though the current
+// design marks failed instead of redispatching).
+func (l *BenchTaskLedger) SetOwner(taskID, owner string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	r, ok := l.tasks[taskID]
+	if !ok {
+		return
+	}
+	r.Owner = owner
+	r.UpdatedAt = time.Now().UnixMilli()
+}
+
 // SetSLAResult stores the SLA evaluation outcome on a terminal record.
 // Returns true when the record exists and the field was written. A nil
 // result is allowed (and stored as nil) so callers can explicitly mark
@@ -280,8 +302,12 @@ func (l *BenchTaskLedger) SetSLAResult(taskID string, result *spec.BenchSLAResul
 // AddShards inserts a parent record and N shard records atomically. The
 // parent record must have ShardTotal == len(shardIDs) and Status==running.
 // Each shard record is seeded with the parent's RuleID and marked running.
-// Eviction applies per-insertion; the parent is inserted first.
-func (l *BenchTaskLedger) AddShards(parent *BenchTaskRecord, shardIDs []string) {
+// shardOwners (parallel slice to shardIDs) carries the syncnode addr each
+// shard was dispatched to; nil or short slice → owner is left empty for
+// missing positions (orphan scan will still flag them once UpdatedAt
+// crosses the silence threshold). Eviction applies per-insertion; the
+// parent is inserted first.
+func (l *BenchTaskLedger) AddShards(parent *BenchTaskRecord, shardIDs []string, shardOwners []string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := time.Now().UnixMilli()
@@ -304,14 +330,18 @@ func (l *BenchTaskLedger) AddShards(parent *BenchTaskRecord, shardIDs []string) 
 	}
 	insertOne(parent)
 	for i, sid := range shardIDs {
+		owner := ""
+		if i < len(shardOwners) {
+			owner = shardOwners[i]
+		}
 		shard := &BenchTaskRecord{
 			TaskID:       sid,
 			RuleID:       parent.RuleID,
 			Status:       BenchTaskStatusRunning,
 			ParentTaskID: parent.TaskID,
+			Owner:        owner,
 			CreatedAt:    now,
 		}
-		_ = i
 		insertOne(shard)
 	}
 }

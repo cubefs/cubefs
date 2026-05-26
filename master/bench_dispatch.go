@@ -23,13 +23,15 @@ import (
 )
 
 // dispatchBenchTask picks an active syncnode and sends an OpSyncNodeRunTask
-// packet with the BenchRule embedded in the request payload. Returns nil on
-// success. The BenchRule is dispatched as-is; BackendEndpoint should be
+// packet with the BenchRule embedded in the request payload. Returns the
+// chosen syncnode addr on success so the caller can record it as the task's
+// Owner in the ledger (used by the orphan scan to detect a dead owner).
+// The BenchRule is dispatched as-is; BackendEndpoint should be
 // pre-populated by the caller for S3/SDK storage types.
-func (c *Cluster) dispatchBenchTask(taskID string, rule *spec.BenchRule) error {
+func (c *Cluster) dispatchBenchTask(taskID string, rule *spec.BenchRule) (string, error) {
 	sn, err := c.pickActiveSyncNode()
 	if err != nil {
-		return err
+		return "", err
 	}
 	payload := &SyncRunTaskRequest{
 		TaskID:    taskID,
@@ -38,18 +40,19 @@ func (c *Cluster) dispatchBenchTask(taskID string, rule *spec.BenchRule) error {
 	task := proto.NewAdminTaskEx(proto.OpSyncNodeRunTask, sn.Addr, payload, taskID)
 	sn.TaskManager.AddTask(task)
 	log.LogInfof("dispatchBenchTask: task=%q rule=%q dispatched to syncnode=%q", taskID, rule.ID, sn.Addr)
-	return nil
+	return sn.Addr, nil
 }
 
 // dispatchBenchShards dispatches n shard tasks for a single bench rule,
 // spreading across available synconodes (round-robin over the active set).
-// Returns the shard task IDs on success; partial results are returned on
-// error along with the error.
+// Returns the shard task IDs + a parallel slice of owner addrs (so the
+// caller can record per-shard ownership in the ledger). Partial results
+// are returned on error along with the error.
 //
 // Shard IDs follow the "<parentID>/<idx>" convention used by SyncFanout.
 // Each shard is dispatched with ShardIdx set in the SyncRunTaskRequest so
 // the executor can include the correct index in its result.
-func (c *Cluster) dispatchBenchShards(parentID string, rule *spec.BenchRule, n int) ([]string, error) {
+func (c *Cluster) dispatchBenchShards(parentID string, rule *spec.BenchRule, n int) ([]string, []string, error) {
 	// Collect all active synconodes.
 	var nodes []*SyncNode
 	c.syncNodes.Range(func(_, v interface{}) bool {
@@ -64,10 +67,11 @@ func (c *Cluster) dispatchBenchShards(parentID string, rule *spec.BenchRule, n i
 		return true
 	})
 	if len(nodes) == 0 {
-		return nil, fmt.Errorf("no active syncnode available for bench shard dispatch")
+		return nil, nil, fmt.Errorf("no active syncnode available for bench shard dispatch")
 	}
 
 	shardIDs := make([]string, 0, n)
+	shardOwners := make([]string, 0, n)
 	for i := 0; i < n; i++ {
 		shardID := fmt.Sprintf("%s/%d", parentID, i)
 		target := nodes[i%len(nodes)]
@@ -83,10 +87,11 @@ func (c *Cluster) dispatchBenchShards(parentID string, rule *spec.BenchRule, n i
 		task := proto.NewAdminTaskEx(proto.OpSyncNodeRunTask, target.Addr, payload, shardID)
 		target.TaskManager.AddTask(task)
 		shardIDs = append(shardIDs, shardID)
+		shardOwners = append(shardOwners, target.Addr)
 		log.LogInfof("dispatchBenchShards: shard=%q rule=%q dispatched to syncnode=%q (shard %d/%d)",
 			shardID, rule.ID, target.Addr, i+1, n)
 	}
-	return shardIDs, nil
+	return shardIDs, shardOwners, nil
 }
 
 // pickActiveSyncNode returns the first active syncnode it finds in the

@@ -390,7 +390,8 @@ func (m *Server) triggerBenchRule(w http.ResponseWriter, r *http.Request) {
 			CreatedAt: time.Now().UnixMilli(),
 		}
 		m.cluster.benchTaskLedger.Add(rec)
-		if derr := m.cluster.dispatchBenchTask(taskID, rule); derr != nil {
+		owner, derr := m.cluster.dispatchBenchTask(taskID, rule)
+		if derr != nil {
 			m.cluster.benchTaskLedger.Fail(taskID, derr.Error())
 			err = derr
 			sendOkReply(w, r, newSuccessHTTPReply(map[string]interface{}{
@@ -400,6 +401,7 @@ func (m *Server) triggerBenchRule(w http.ResponseWriter, r *http.Request) {
 			}))
 			return
 		}
+		m.cluster.benchTaskLedger.SetOwner(taskID, owner)
 		sendOkReply(w, r, newSuccessHTTPReply(map[string]string{"taskID": taskID, "status": string(BenchTaskStatusRunning)}))
 		return
 	}
@@ -413,7 +415,7 @@ func (m *Server) triggerBenchRule(w http.ResponseWriter, r *http.Request) {
 		ShardTotal: parallelism,
 		CreatedAt:  time.Now().UnixMilli(),
 	}
-	shardIDs, derr := m.cluster.dispatchBenchShards(parentID, rule, parallelism)
+	shardIDs, shardOwners, derr := m.cluster.dispatchBenchShards(parentID, rule, parallelism)
 	if derr != nil {
 		// Could not dispatch any shards — mark parent failed immediately.
 		parent.Status = BenchTaskStatusFailed
@@ -427,7 +429,7 @@ func (m *Server) triggerBenchRule(w http.ResponseWriter, r *http.Request) {
 		}))
 		return
 	}
-	m.cluster.benchTaskLedger.AddShards(parent, shardIDs)
+	m.cluster.benchTaskLedger.AddShards(parent, shardIDs, shardOwners)
 	sendOkReply(w, r, newSuccessHTTPReply(map[string]interface{}{
 		"taskID":       parentID,
 		"shardTaskIDs": shardIDs,

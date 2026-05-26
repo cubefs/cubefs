@@ -1186,6 +1186,14 @@ func (c *Cluster) checkSyncNodeHeartbeat() {
 			c.syncDispatcher.handleNodeDeath(addr)
 		}
 	}
+	// Run the orphan-shard scan on the same tick. It must come AFTER
+	// checkLiveness has flipped IsActive on the dead nodes so the scan
+	// sees the fresh state and can mark their in-flight tasks failed in
+	// the same cycle. The scan holds no SyncNode lock across its ledger
+	// updates (it RLocks each owner briefly to read IsActive, then
+	// releases before calling ledger.Fail), so it does not violate the
+	// lock ordering documented above.
+	c.checkOrphanShards()
 }
 
 func (c *Cluster) scheduleToCheckMetaPartitions() {

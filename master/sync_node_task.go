@@ -287,9 +287,104 @@ func (c *Cluster) handleSyncNodeHeartbeatResp(nodeAddr string, resp *proto.SyncN
 		}
 	}
 
+	// Heartbeat ledger reconcile (defect 2): cross-check ledger Running
+	// records owned by this addr against the authoritative list the
+	// syncnode just reported. Records that claim Owner=addr but are
+	// absent from RunningTaskIDs are ledger drift — the syncnode crashed-
+	// restarted, the task vanished, or master+syncnode disagree for some
+	// other reason — and must be marked failed so the dashboard stops
+	// showing them as running. orphan_scan also catches this case via the
+	// 90s silence threshold; heartbeat reconcile narrows the detection
+	// window to ~heartbeatReconcileGrace.
+	c.reconcileLedgerFromHeartbeat(addr, resp.RunningTaskIDs)
+
 	log.LogInfof("action[handleSyncNodeHeartbeatResp], syncNode[%v], running[%v], queued[%v], rules[%v], bolt[%v]",
 		nodeAddr, resp.RunningTasks, resp.QueuedTasks, resp.ScheduledRules, resp.BoltDBHealthy)
 	return
+}
+
+// heartbeatReconcileGrace is the minimum age (StartedAt → now) of a
+// Running record before reconcileLedgerFromHeartbeat will fail it for
+// being absent from the syncnode's reported RunningTaskIDs. The grace
+// window absorbs the dispatch → queue → executor-pickup race: a task
+// that was just dispatched has Owner=addr in the ledger but may not yet
+// have surfaced in executor.RunningSnapshots() on the syncnode side.
+// 30s is comfortably larger than any reasonable queue wait + executor
+// startup latency, and far shorter than orphanShardSilenceThreshold (90s)
+// — so reconcile catches drift faster than the orphan scan when the
+// owner is still actively heartbeating.
+const heartbeatReconcileGrace = 30 * time.Second
+
+// reconcileLedgerFromHeartbeat enforces the invariant "every Running
+// ledger record with Owner=addr must appear in addr's most-recent
+// RunningTaskIDs heartbeat". Violations are marked failed. Empty input
+// (syncnode reports no running tasks) means the syncnode is idle —
+// every Running record on addr is reconcilable. Grace window applies
+// per-record via StartedAt.
+//
+// Lock ordering: holds no SyncNode lock across ledger Fail calls; the
+// only RW state touched is the per-ledger mutex (matches orphan_scan.go).
+func (c *Cluster) reconcileLedgerFromHeartbeat(addr string, reportedIDs []string) {
+	if c == nil || addr == "" {
+		return
+	}
+	reported := make(map[string]struct{}, len(reportedIDs))
+	for _, id := range reportedIDs {
+		if id == "" {
+			continue
+		}
+		reported[id] = struct{}{}
+	}
+	now := time.Now()
+
+	// SyncTask side: scan Running records owned by addr.
+	if c.syncTaskLedger != nil {
+		for _, rec := range c.syncTaskLedger.ListByOwner(addr, SyncTaskStatusRunning) {
+			if rec == nil {
+				continue
+			}
+			if _, present := reported[rec.TaskID]; present {
+				continue
+			}
+			if !rec.StartedAt.IsZero() && now.Sub(rec.StartedAt) < heartbeatReconcileGrace {
+				continue
+			}
+			reason := fmt.Sprintf("owner %q heartbeat did not report task as running (StartedAt=%s)",
+				addr, rec.StartedAt.Format(time.RFC3339))
+			if c.syncTaskLedger.Fail(rec.TaskID, reason) {
+				log.LogWarnf("reconcileLedgerFromHeartbeat: sync task %q on owner %q marked failed: %s",
+					rec.TaskID, addr, reason)
+			}
+		}
+	}
+
+	// BenchTask side: BenchTaskLedger has no ListByOwner; iterate the
+	// Running set and filter on Owner manually. Skip parent fan-out
+	// records (Owner == "") — they roll up via shard aggregation only.
+	if c.benchTaskLedger != nil {
+		for _, rec := range c.benchTaskLedger.List("", string(BenchTaskStatusRunning)) {
+			if rec == nil || rec.Owner != addr {
+				continue
+			}
+			if _, present := reported[rec.TaskID]; present {
+				continue
+			}
+			startedAt := time.UnixMilli(rec.CreatedAt)
+			if !startedAt.IsZero() && now.Sub(startedAt) < heartbeatReconcileGrace {
+				continue
+			}
+			reason := fmt.Sprintf("owner %q heartbeat did not report task as running (CreatedAt=%s)",
+				addr, startedAt.Format(time.RFC3339))
+			if !c.benchTaskLedger.Fail(rec.TaskID, reason) {
+				continue
+			}
+			log.LogWarnf("reconcileLedgerFromHeartbeat: bench task %q on owner %q marked failed: %s",
+				rec.TaskID, addr, reason)
+			if rec.ParentTaskID != "" {
+				c.benchTaskLedger.CompleteShardAndAggregate(rec.TaskID)
+			}
+		}
+	}
 }
 
 // cancelOrphanedTasksOnReconnect detects tasks that the dispatcher's
