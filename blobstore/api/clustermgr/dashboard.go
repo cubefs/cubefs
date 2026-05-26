@@ -41,6 +41,23 @@ const (
 	DashboardScoreCritical DashboardScore = 4
 )
 
+func (a DashboardScore) String() string {
+	switch a {
+	case DashboardScoreOK:
+		return "OK"
+	case DashboardScoreNotice:
+		return "NOTICE"
+	case DashboardScoreWarning:
+		return "WARNING"
+	case DashboardScoreMajor:
+		return "MAJOR"
+	case DashboardScoreCritical:
+		return "CRITICAL"
+	default:
+		return "UNKNOWN"
+	}
+}
+
 func (a DashboardScore) Max(others ...DashboardScore) DashboardScore {
 	m := a
 	for _, b := range others {
@@ -342,5 +359,10 @@ func (s *ServiceStat) CalcScore() {
 
 func (c *Client) Dashboard(ctx context.Context, args *DashboardArgs) (ret ClusterDashboard, err error) {
 	err = c.GetWith(ctx, "/cluster/dashboard?force="+util.Any2String(args.Force), &ret)
+	return
+}
+
+func (c *Client) Simulate(ctx context.Context, args *SimulateAgrs) (ret ClusterDashboard, err error) {
+	err = c.PostWith(ctx, "/cluster/simulate", &ret, args)
 	return
 }
