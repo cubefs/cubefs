@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>同步：规则、任务、排障 · CubeFS Sync &amp; Bench</title>
+    <meta name="description" content="SyncRule 的 copy / move 语义，6 种 backend 组合的 yaml 写法，shard / parallelism 调度模型，任务生命周期，常用 dashboard / mcp 操作，以及 8 条高频排障路径。">
+    <link rel="stylesheet" href="assets/docs.css">
+    <script defer src="assets/docs.js"></script>
+  </head>
+  <body data-section="sync">
+    <div class="page-shell">
+      <header class="site-header">
+        <div class="site-header__inner">
+          <a class="brand" href="index.html">
+            <span class="brand-mark">CF</span>
+            <div class="brand-meta">
+              <p class="brand-title">CubeFS Sync &amp; Bench</p>
+              <p class="brand-subtitle">使用者文档站</p>
+            </div>
+          </a>
+          <nav class="site-nav" aria-label="主导航">
+            <a class="nav-link" data-nav="architecture" href="architecture.html">架构</a>
+            <a class="nav-link" data-nav="deploy" href="deploy.html">部署</a>
+            <a class="nav-link is-active" data-nav="sync" href="sync.html">同步</a>
+            <a class="nav-link" data-nav="test" href="test.html">测试</a>
+            <a class="nav-link" data-nav="mcp" href="mcp.html">MCP</a>
+            <a class="nav-cta" href="understand-anything/index.html">代码图谱 →</a>
+          </nav>
+          <button class="nav-toggle" type="button" aria-label="切换导航" aria-expanded="false">
+            <span></span><span></span><span></span>
+          </button>
+        </div>
+      </header>
+
+      <main>
+        <nav class="breadcrumb" aria-label="面包屑">
+          <a href="index.html">总览</a>
+          <span class="breadcrumb__sep">/</span>
+          <span>同步：规则、任务、排障</span>
+        </nav>
+
+        <section class="page-intro reveal" aria-labelledby="page-intro-title">
+          <p class="page-intro__eyebrow">03 · Sync</p>
+          <h1 id="page-intro-title" class="page-intro__title">同步：规则、任务、排障</h1>
+          <p class="page-intro__lead">
+            CubeFS Sync 的核心是 <strong>SyncRule</strong>（规则 = 配置）与 <strong>SyncTask</strong>（任务 = 一次执行）。
+            读完本页可以回答：copy / move 怎么选；怎么写各种 backend 组合的 yaml；shard 与 parallelism 是两条独立的并发轴；
+            任务从触发到入库经过哪些状态；以及最常踩的 8 个坑分别怎么收。
+          </p>
+          <ul class="meta-grid">
+            <li><span>规则类型</span><strong>copy · move（mirror 演进中）</strong></li>
+            <li><span>backend</span><strong>cfs · s3 · local（任意组合）</strong></li>
+            <li><span>并发轴</span><strong>ShardCount × Parallelism</strong></li>
+            <li><span>面向读者</span><strong>SyncRule 设计者 / 运维 / 排障值班</strong></li>
+          </ul>
+        </section>
+
+        <div class="doc-layout">
+          <article class="prose prose-markdown reveal">
+            <h2 id="model">SyncRule 概念模型</h2>
+            <p>
+              一条 <code>SyncRule</code> 描述「<strong>从 src 到 dst</strong>，用什么策略、过滤器、并发度、校验强度，做哪一类操作」。
+              它是 <em>声明</em>，不是 <em>动作</em>——动作叫 <code>SyncTask</code>，由 <code>trigger</code> 或 <code>schedule</code>（cron）派发。
+              规则永远存在 master raft 上；任务由 master 入队、syncnode 领取并执行。
+            </p>
+
+            <h3 id="model-types">两种 type</h3>
+            <table>
+              <thead>
+                <tr><th>type</th><th>语义</th><th>src 写入</th><th>dst 写入</th><th>典型场景</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>copy</code></td>
+                  <td>把 src 拷到 dst，校验通过即停手；src 原样保留</td>
+                  <td>只读</td>
+                  <td>写</td>
+                  <td>数据搬迁、跨集群灾备、归档落湖</td>
+                </tr>
+                <tr>
+                  <td><code>move</code></td>
+                  <td>copy 完且 dst 校验通过 → 删除 src 对应 key（<code>afterCopy=verify_then_delete_src</code>）</td>
+                  <td>校验后删除</td>
+                  <td>写</td>
+                  <td>清理冷数据、跨 backend 迁移老分区</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <p class="callout callout--note">
+              <strong>move 的安全护栏</strong>：<code>type=move</code> 强制要求 <code>checksumMode = strong</code>（始终 sha256），
+              <code>onExisting</code> 只接受 <code>""</code> 或 <code>verify_then_skip</code>；如果同时设了 <code>confirm=true</code>，必须先以
+              <code>dryRun=true</code> 跑一次预演（产出 <code>would_*</code> 事件），再以 <code>dryRun=false + confirm=false</code> 真删。
+              单一布尔位翻转就把演练变真删——这是被故意拒绝的设计。
+            </p>
+
+            <h3 id="model-backends">三类 backend，6 种组合</h3>
+            <p>
+              <code>src</code> 和 <code>dst</code> 各自是一个 <code>SyncEndpointConfig</code>，目前支持 3 类 <code>kind</code>：
+            </p>
+            <ul>
+              <li><code>cfs</code>：CubeFS 卷（<code>vol</code> + <code>path</code>）。走 CubeFS SDK 读写 metanode / datanode。</li>
+              <li><code>s3</code>：任意 S3 兼容存储（火山 TOS / 阿里 OSS / MinIO / Ceph RGW）。<code>endpoint</code> / <code>region</code> / <code>bucket</code> / <code>prefix</code>，凭证可以走 <code>accessKey/secretKey</code> 内联或 <code>accessKeyEnv/secretKeyEnv</code> 间接。</li>
+              <li><code>local</code>：syncnode pod 内的 POSIX 路径（hostPath / PVC / GPFS）。<code>path</code> 必须落在 <code>allowedRoots</code> 之下；可以调 <code>bufferSizeKiB</code> / <code>directIO</code> / <code>fadviseSequential</code> 优化大文件吞吐。</li>
+            </ul>
+            <p>
+              <strong>组合自由</strong>：cfs↔s3、s3↔s3、cfs↔cfs、local↔cfs、local↔s3、local↔local 全部支持，由 master 在 dispatch 时根据 src/dst kind 组合选 backend builder。
+              <code>PreserveMode / PreserveOwner / PreserveXattr</code> 三个 POSIX 元数据开关在跨 backend 时由 <code>onMetadataUnsupported</code>（warn / skip / error）收口。
+            </p>
+
+            <h2 id="examples">配置示例</h2>
+
+            <h3 id="ex-cfs-s3">示例 1 · cfs → s3 归档（copy + 强校验）</h3>
+<pre><code class="language-yaml">id: archive-cfs-vol-to-tos
+type: copy
+schedule: ""              # 不开 cron，仅通过 dashboard / mcp trigger
+src:
+  kind: cfs
+  vol: ai-training-2024
+  path: /datasets/imagenet
+dst:
+  kind: s3
+  endpoint: https://tos-s3-cn-beijing.volces.com
+  region: cn-beijing
+  bucket: cubefs-archive
+  prefix: ai-training-2024/imagenet/
+  storageClass: STANDARD_IA
+  accessKeyEnv: TOS_AK
+  secretKeyEnv: TOS_SK
+filter:
+  include: ["*.tar", "*.tfrecord"]
+  exclude: ["*.tmp"]
+  minSize: 1MB
+parallelism: 16           # 单 shard 内 16 个对象并行
+shardCount: 8             # 整体拆 8 个并行 shard（受在线 syncnode 上限收敛）
+shardingStrategy: hash
+checksumMode: strong      # sha256 src + 对比 dst checksum
+onExisting: verify_then_skip
+maxRetries: 3
+resumeEnabled: true       # 断点续传（s3 multipart UploadID / cfs BytesDone）
+bandwidthLimitMBps: 0
+aggregateBandwidthLimitMBps: 800</code></pre>
+
+            <h3 id="ex-s3-s3">示例 2 · s3 → s3 跨账号迁移（move + 演练）</h3>
+<pre><code class="language-yaml">id: migrate-cold-tier
+type: move
+src:
+  kind: s3
+  endpoint: https://oss-cn-shanghai.aliyuncs.com
+  bucket: legacy-bucket
+  prefix: 2023/
+  accessKey: AKxxx        # 内联凭证（dashboard Approach C 推荐）
+  secretKey: SKxxx
+dst:
+  kind: s3
+  endpoint: https://tos-s3-cn-shanghai.volces.com
+  bucket: new-bucket
+  prefix: 2023/
+  accessKeyEnv: NEW_AK
+  secretKeyEnv: NEW_SK
+shardingStrategy: prefix
+shardPrefixes:            # 用前缀显式分区，分发到不同 syncnode
+  - "2023/01/"
+  - "2023/02/"
+  - "2023/03/"
+shardCount: 3
+parallelism: 32
+checksumMode: strong       # move 必须
+afterCopy: verify_then_delete_src
+onExisting: verify_then_skip
+onSourceMutated: fail      # src 在拷贝过程中变了 → 这个 file 计 failed，绝不删 src
+dryRun: true               # 第一次跑只生成 would_copy / would_delete_src 事件
+maxRetries: 3</code></pre>
+            <p>
+              检查 dry-run 事件没有意外的 <code>would_delete_src</code> 之后，把 <code>dryRun</code> 改回 <code>false</code> 再 trigger 一次才真做删除。
+            </p>
+
+            <h3 id="ex-local-cfs">示例 3 · local → cfs 从挂载点入仓（保留 POSIX 元数据）</h3>
+<pre><code class="language-yaml">id: ingest-gpfs-snapshot
+type: copy
+src:
+  kind: local
+  path: /mnt/pfs/snapshots/20260520
+  bufferSizeKiB: 1024
+  directIO: true
+  fadviseSequential: true
+  onSymlink: skip
+dst:
+  kind: cfs
+  vol: data-lake
+  path: /snapshots/20260520
+filter:
+  minSize: 0
+  maxAge: 24h
+parallelism: 24
+shardCount: 4
+preserveMode: true
+preserveOwner: true
+preserveXattr: true
+onMetadataUnsupported: warn
+checksumMode: size_etag
+maxRetries: 5
+resumeEnabled: true</code></pre>
+
+            <h3 id="ex-cron">示例 4 · 周期化（cron 触发）</h3>
+<pre><code class="language-yaml">id: nightly-snapshot
+type: copy
+schedule: "30 2 * * *"   # 每天 02:30 自动 trigger
+src: { kind: cfs, vol: hot, path: / }
+dst: { kind: cfs, vol: warm, path: / }
+shardCount: 8
+parallelism: 16
+checksumMode: size_etag
+onExisting: newer_only   # 类似 rclone --update，dst 比 src 新就跳过
+maxRetries: 3</code></pre>
+
+            <h2 id="scheduling">调度模型：ShardCount × Parallelism</h2>
+            <p>
+              <strong>这是两条独立的并发轴</strong>，搞混会导致要么没扇出、要么 OOM：
+            </p>
+            <table>
+              <thead>
+                <tr><th>字段</th><th>层级</th><th>作用</th><th>实际生效上限</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>shardCount</code></td>
+                  <td>master 拆分</td>
+                  <td>一次 trigger 拆成 N 个并行 sub-task，分发到不同 syncnode</td>
+                  <td>hash 模式：<code>min(N, 在线 syncnode 数)</code>；prefix 模式：<code>min(N, len(shardPrefixes))</code></td>
+                </tr>
+                <tr>
+                  <td><code>parallelism</code></td>
+                  <td>单 syncnode 内</td>
+                  <td>单个 shard 内同时拷贝几个对象（worker pool）</td>
+                  <td>受 syncnode 自身资源（<code>resources.limits</code>）约束</td>
+                </tr>
+                <tr>
+                  <td><code>maxConcurrentTasks</code></td>
+                  <td>单 syncnode 内</td>
+                  <td>该 syncnode 同时领多少个 task（不限来源是哪个 rule）</td>
+                  <td>由 syncnode 启动参数定义（生产默认 8，测试常压 1 验证排队）</td>
+                </tr>
+                <tr>
+                  <td><code>bandwidthLimitMBps</code></td>
+                  <td>每 pod</td>
+                  <td>单 syncnode pod 的写带宽上限</td>
+                  <td>0 = 不限</td>
+                </tr>
+                <tr>
+                  <td><code>aggregateBandwidthLimitMBps</code></td>
+                  <td>规则全局</td>
+                  <td>所有 shard 加起来的总带宽上限</td>
+                  <td>0 = 不限</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <h3 id="sharding-strategy">三种 shardingStrategy</h3>
+            <ul>
+              <li><code>""</code> / <code>hash</code>（默认）：对每个对象 key 算 FNV-1a 哈希再取模，均匀分布。<strong>不要求 key 有意义</strong>。</li>
+              <li><code>prefix</code>：算子明确写出 <code>shardPrefixes</code>，每个前缀一个 shard。适合按业务日期 / 客户 ID 自然分区的场景。</li>
+              <li><code>auto</code>：master 在 trigger 时探针 src backend 的顶层前缀（cfs：mw 列目录；s3：ListObjects v2 with delimiter），命中缓存就按 prefix 拆，没命中回落到 hash。<strong>推荐 default</strong>，但 backend 必须能列前缀。</li>
+            </ul>
+
+            <h2 id="lifecycle">任务生命周期</h2>
+            <div class="mermaid-wrap reveal">
+              <div class="mermaid" id="diagram-lifecycle">
+stateDiagram-v2
+    [*] --> pending : trigger / cron
+    pending --> queued : master 拆 shard 入队
+    queued --> running : syncnode 领取
+    running --> done : 全部对象拷贝 + 校验通过
+    running --> failed : 不可恢复错误
+    running --> cancelled : 用户 / mcp cancel
+    running --> running : 单文件重试（maxRetries 内）
+    failed --> queued : retry（手动 / API）
+    cancelled --> queued : retry（手动）
+    done --> [*]
+    failed --> [*] : 不重试
+    cancelled --> [*] : 不重试
+
+    note right of running
+        per-file 子状态：
+        head src → list → copy →
+        verify dst → (move 时) delete src
+        每步失败计入 FilesFailed / FilesSkipped
+    end note
+              </div>
+              <span class="mermaid-caption">图 1 · SyncTask 状态机（master 视角）</span>
+            </div>
+
+            <p>
+              <strong>分片任务的聚合</strong>：master 用 <code>sync_fanout</code> 维护父任务的状态——所有 shard 全部 <code>done</code> 父才 done；
+              任意一个 shard <code>failed</code> 父也 <code>failed</code>（不会因为部分成功就糊弄上去）。
+              <code>LastRunStatus</code> 持久化到规则上，dashboard 看到的「最近一次状态」就是这里来的。
+            </p>
+
+            <p>
+              <strong>断点续传</strong>：<code>resumeEnabled: true</code> 时 syncnode 在本地 BoltDB 维护
+              <code>InProgressStore</code>。文件级别记 <code>BytesDone</code>（local / cfs）或 <code>UploadID + parts</code>（s3 multipart）。
+              syncnode 重启 → 领回原来的 task → 从断点继续，不会从头来过。这是 P2 修复的核心能力。
+            </p>
+
+            <h2 id="ops">常用操作</h2>
+
+            <p>三个入口，能力一致：</p>
+            <ul>
+              <li><strong>Dashboard UI</strong>「同步管理 / SyncRule」：图形化创建、trigger、pause / resume、看任务历史与失败明细。最适合一次性运维。</li>
+              <li><strong>cubefs-mcp</strong>（LLM）：把下面这些操作包成 MCP tool（<code>sync_rule_create</code> / <code>sync_rule_trigger</code> / <code>sync_task_list</code> / <code>sync_task_cancel</code> / <code>sync_task_retry</code> / ...）。详见 <a href="mcp.html">05 · MCP</a>。</li>
+              <li><strong>master REST</strong>：所有底层 API 都暴露在 master 上，dashboard / mcp 只是封装。</li>
+            </ul>
+
+            <h3 id="ops-rest">直接打 master REST 的速查</h3>
+<pre><code class="language-bash"># 列规则
+curl -s http://&lt;master&gt;:17010/syncRule/list | jq
+
+# 触发一次（同步入队，立即返回 task envelope）
+curl -s -XPOST "http://&lt;master&gt;:17010/syncRule/trigger?id=archive-cfs-vol-to-tos"
+
+# 暂停 / 恢复（cron 不再触发，已在跑的任务不受影响）
+curl -s -XPOST "http://&lt;master&gt;:17010/syncRule/pause?id=..."
+curl -s -XPOST "http://&lt;master&gt;:17010/syncRule/resume?id=..."
+
+# 看正在跑 + 历史任务
+curl -s "http://&lt;master&gt;:17010/syncTask/list?ruleID=...&amp;status=running" | jq
+
+# 取消单个任务（master 决定能不能取消，状态机不允许就拒绝）
+curl -s -XPOST "http://&lt;master&gt;:17010/syncTask/cancel?id=&lt;task-id&gt;"
+
+# 终态任务重试（failed / cancelled 才可以；running / queued 拒绝）
+curl -s -XPOST "http://&lt;master&gt;:17010/syncTask/retry?id=&lt;task-id&gt;"</code></pre>
+
+            <h2 id="troubleshooting">高频排障 · 8 条</h2>
+
+            <h3 id="t1">1 · rule 创建失败：<code>validation: ...</code></h3>
+            <p>
+              master 在写入前做了严格校验（type / backend kind / 凭证 / shardingStrategy / move 安全护栏全套）。
+              先看 master log 里的 reason，常见两类：(a) <code>type=move</code> 没显式 <code>checksumMode=strong</code>；
+              (b) <code>shardingStrategy=prefix</code> 但 <code>shardPrefixes</code> 为空。
+            </p>
+
+            <h3 id="t2">2 · 任务卡 <code>pending</code> / <code>queued</code> 不进 running</h3>
+            <p>
+              master 在等 syncnode 来领。三件事按顺序排查：
+            </p>
+            <ul>
+              <li>有没有可用 syncnode：<code>curl http://&lt;master&gt;:17010/syncNode/list</code>。如果为空，syncnode 心跳没上来——回 <a href="deploy.html#t2">02 · 部署 / 现象 2</a>。</li>
+              <li>所有在线 syncnode 是不是都被压满了（<code>maxConcurrentTasks</code> = 1 + 已有 1 个任务 + 队列还没空）。test-k3d 故意设 1，排队就是预期。</li>
+              <li>任务是不是被 master 拒绝派发（某个 shard 的 <code>shardPrefixes</code> 没对应 backend 路径）。看 master log <code>fanout dispatch</code> 关键字。</li>
+            </ul>
+
+            <h3 id="t3">3 · 任务一直 <code>running</code> 但 FilesDone 不涨</h3>
+            <p>
+              syncnode 在重试同一个文件。看 syncnode pod log：
+              <code>kubectl -n storage-cfs logs &lt;pod&gt; -c cubefs-syncnode | grep -E "retry|backoff"</code>。
+              常见根因：dst backend 临时不可达（network / TLS）、src 文件被 holdered（locked）、s3 multipart UploadID 失效。
+              如果 <code>maxRetries</code> 不够，调高到 3-5；如果是 backend 真坏，先 <code>cancel</code> 任务、修好 backend 再 <code>retry</code>。
+            </p>
+
+            <h3 id="t4">4 · move 任务执行后 src 没删干净</h3>
+            <p>
+              一定是 <code>afterCopy != verify_then_delete_src</code> 或 <code>checksumMode != strong</code>——executor 在双校验不通过时绝不删 src。
+              dry-run 跑一次，看 <code>would_delete_src</code> 列出来的对象数和你的预期是不是一致；
+              不一致就是过滤器 / 前缀写错了，要先修 rule 再跑。
+            </p>
+
+            <h3 id="t5">5 · cfs↔s3 校验失败（dst checksum 对不上）</h3>
+            <p>
+              CubeFS 对象没有原生 ETag，s3 multipart 的 ETag 又是各 part MD5 再 hash，不能直接对 sha256。
+              executor 的做法：<code>checksumMode=strong</code> 时 src 边读边算 sha256，dst 校验回落到 Head 拿 size + 任意可获得的 checksum 头；
+              s3 端必须确保桶策略允许 <code>x-amz-meta-syncnode-sha256</code> 透传，不然 Head 拿不到 dst checksum，executor 会把文件标 failed。
+              生产对接新 backend 时先用单文件 dry-run + 看 log 中的 verify reason。
+            </p>
+
+            <h3 id="t6">6 · stale globalmount / mount 撞车（cfs backend）</h3>
+            <p>
+              syncnode 升级后大批量 stuck，根因是没走 OnDelete SOP。
+              回到 <a href="deploy.html#ondelete-sop">02 · 部署 / OnDelete SOP</a>，串行 delete 每个 pod。
+              非升级场景如果偶现，可能是 cubefs-csi 自身的 stale，<code>kubectl -n storage-cfs delete pod &lt;syncnode pod&gt;</code> 单独触发一次重新 NodeStage 即可。
+            </p>
+
+            <h3 id="t7">7 · POSIX 元数据迁移不全（mode/uid/gid/xattr 丢了）</h3>
+            <p>
+              检查 dst backend 是否声明 <code>NativeModeWrite</code> / <code>NativeXattrWrite</code>（s3 backend 是用 user-metadata 头模拟的，受 2 KiB 总额限制）。
+              <code>onMetadataUnsupported</code> 默认 <code>warn</code>——文件照样传，但元数据丢；改成 <code>error</code> 可以让任务在不能完整迁移时 fail，避免静默漂移。
+              local↔cfs / local↔local 的 mode / owner / xattr 都是原生写，没有缩水。
+            </p>
+
+            <h3 id="t8">8 · onSourceMutated 误判</h3>
+            <p>
+              executor 在每个文件 copy 前后各做一次 Head 对比（size / mtime / etag）。
+              如果 src 在拷贝期间被 append（典型场景：日志正在写），<code>onSourceMutated=fail</code> 会让这个 file 计入 FilesFailed。
+              修正：activity-tail 类的 src 改用 <code>filter.maxAge</code> 排除最近 5 分钟内修改过的 key；或者改 <code>onSourceMutated=skip</code> 让 syncnode 安静跳过。
+              <strong>不要</strong>设成 <code>retry</code>——日志一直在写就一直 retry，会刷爆任务计数。
+            </p>
+
+            <h2 id="next">下一步</h2>
+            <ul>
+              <li>跑压测：<a href="test.html">04 · 测试</a>（bench 平台与 SyncRule 共用 syncnode）</li>
+              <li>LLM 接 API：<a href="mcp.html">05 · cubefs-mcp</a>（34 个工具覆盖 rule / task / node 三层）</li>
+              <li>看代码：<a href="understand-anything/index.html">06 · 代码图谱</a>（<code>proto/sync_rule.go</code> / <code>master/sync_*</code> / <code>syncnode/</code>）</li>
+            </ul>
+          </article>
+
+          <aside class="toc-panel" aria-label="本页目录">
+            <p class="toc-panel__title">本页目录</p>
+            <div class="toc">
+              <ul>
+                <li>
+                  <a href="#model">SyncRule 概念模型</a>
+                  <ul>
+                    <li><a href="#model-types">两种 type</a></li>
+                    <li><a href="#model-backends">3 类 backend / 6 种组合</a></li>
+                  </ul>
+                </li>
+                <li>
+                  <a href="#examples">配置示例</a>
+                  <ul>
+                    <li><a href="#ex-cfs-s3">cfs → s3 归档</a></li>
+                    <li><a href="#ex-s3-s3">s3 → s3 迁移</a></li>
+                    <li><a href="#ex-local-cfs">local → cfs 入仓</a></li>
+                    <li><a href="#ex-cron">周期化</a></li>
+                  </ul>
+                </li>
+                <li>
+                  <a href="#scheduling">调度模型</a>
+                  <ul>
+                    <li><a href="#sharding-strategy">3 种 shardingStrategy</a></li>
+                  </ul>
+                </li>
+                <li><a href="#lifecycle">任务生命周期</a></li>
+                <li>
+                  <a href="#ops">常用操作</a>
+                  <ul>
+                    <li><a href="#ops-rest">master REST 速查</a></li>
+                  </ul>
+                </li>
+                <li>
+                  <a href="#troubleshooting">高频排障 · 8 条</a>
+                  <ul>
+                    <li><a href="#t1">rule 创建失败</a></li>
+                    <li><a href="#t2">卡 pending / queued</a></li>
+                    <li><a href="#t3">running 不前进</a></li>
+                    <li><a href="#t4">move 没删 src</a></li>
+                    <li><a href="#t5">cfs↔s3 校验失败</a></li>
+                    <li><a href="#t6">mount 撞车</a></li>
+                    <li><a href="#t7">POSIX 元数据丢</a></li>
+                    <li><a href="#t8">onSourceMutated 误判</a></li>
+                  </ul>
+                </li>
+                <li><a href="#next">下一步</a></li>
+              </ul>
+            </div>
+          </aside>
+        </div>
+
+        <nav class="pager-row" aria-label="相邻文档">
+          <a class="pager-link pager-link--prev" href="deploy.html">
+            <span>上一篇</span>
+            <strong>02 · 部署</strong>
+          </a>
+          <a class="pager-link pager-link--next" href="test.html">
+            <span>下一篇</span>
+            <strong>04 · 测试</strong>
+          </a>
+        </nav>
+      </main>
+
+      <footer class="site-footer">
+        <div class="site-footer__inner">
+          <p>CubeFS Sync &amp; Bench · <a href="index.html">返回总览</a> · <a href="understand-anything/index.html">代码图谱</a></p>
+        </div>
+      </footer>
+    </div>
+
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({
+        startOnLoad: true,
+        theme: "neutral",
+        securityLevel: "loose",
+        flowchart: { curve: "basis", htmlLabels: true, useMaxWidth: true },
+        sequence: { showSequenceNumbers: false, mirrorActors: false, useMaxWidth: true }
+      });
+    </script>
+  </body>
+</html>

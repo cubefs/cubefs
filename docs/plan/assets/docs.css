@@ -1932,3 +1932,32 @@ pre:hover .code-copy,
 
 button:focus-visible,
 a:focus-visible { outline-offset: 3px; }
+
+/* mermaid 容器：编辑流程图 / 时序图的统一外观（modelfs editorial-light 风格） */
+.mermaid-wrap {
+  margin: var(--space-5) 0;
+  padding: var(--space-4) var(--space-3);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow-x: auto;
+}
+.mermaid-wrap > .mermaid {
+  min-width: 600px;
+  display: flex;
+  justify-content: center;
+}
+.mermaid-wrap > .mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+.mermaid-caption {
+  display: block;
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  text-align: center;
+}
+@media (max-width: 720px) {
+  .mermaid-wrap > .mermaid { min-width: 460px; }
+}
