@@ -214,6 +214,21 @@ main {
   flex: 1;
 }
 
+/* All direct <main> children inherit container behavior so subpages
+   (breadcrumb / page-intro / doc-layout / pager-row) and the entry
+   page (section / hero-footnote) stay centered on wide screens.
+   Full-bleed blocks (.hero with its grid background) opt out below. */
+main > * {
+  max-width: var(--layout-max);
+  margin-inline: auto;
+  padding-inline: clamp(1.25rem, 4vw, 2.5rem);
+}
+
+main > .hero {
+  max-width: none;
+  padding-inline: 0;
+}
+
 /* Subpage 2-col: content + sticky right TOC */
 .doc-layout {
   display: grid;
@@ -521,9 +536,6 @@ main {
 /* 7. Entry: group / doc-card grid ---------------------------------------- */
 .section {
   padding-block: var(--space-section);
-  max-width: var(--layout-max);
-  margin-inline: auto;
-  padding-inline: clamp(1.25rem, 4vw, 2.5rem);
 }
 
 .section--subtle {
@@ -917,15 +929,18 @@ main {
 
 .prose .headerlink:hover { color: var(--accent); }
 
-/* Tables */
+/* Tables — display:block so wide tables scroll horizontally instead of
+   overflowing the article column on narrow viewports. */
 .prose table {
+  display: block;
   width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
   border-collapse: collapse;
   font-size: var(--text-sm);
   margin-block: var(--space-5);
   border: 1px solid var(--border);
   border-radius: var(--r-md);
-  overflow: hidden;
 }
 
 .prose thead { background: var(--bg-subtle); }
@@ -1089,6 +1104,10 @@ pre:hover .code-copy,
   display: flex;
   flex-direction: column;
   gap: var(--space-8);
+  max-width: var(--layout-max);
+  margin-inline: auto;
+  padding-inline: clamp(1.25rem, 4vw, 2.5rem);
+  width: 100%;
 }
 
 .graph-hero {
@@ -1192,9 +1211,6 @@ pre:hover .code-copy,
 }
 
 .hero-footnote[data-search-empty] {
-  max-width: var(--layout-max);
-  margin-inline: auto;
-  padding-inline: clamp(1.25rem, 4vw, 2.5rem);
   justify-content: center;
 }
 
