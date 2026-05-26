@@ -207,7 +207,7 @@ func TestDashboardBuildScope_EmptyScopes(t *testing.T) {
 	svc, cleanup := initTestService(t)
 	defer cleanup()
 	result := buildScope(svc.ScopeMgr.Stat())
-	require.Equal(t, clustermgr.DashboardScoreOK, result.Score)
+	require.Equal(t, clustermgr.DashboardScoreOK, result.Score.Score)
 	require.Empty(t, result.Scopes)
 }
 
@@ -240,7 +240,7 @@ func TestDashboardBuildScope_ScoreOKWhenBelowHalf(t *testing.T) {
 		"vid":    100, // MaxUint32/2 = 2147483647; 100 is far below half
 		"diskid": 1000,
 	})
-	require.Equal(t, clustermgr.DashboardScoreOK, result.Score)
+	require.Equal(t, clustermgr.DashboardScoreOK, result.Score.Score)
 }
 
 func TestDashboardBuildScope_ScoreNoticeWhenAboveHalf(t *testing.T) {
@@ -248,14 +248,14 @@ func TestDashboardBuildScope_ScoreNoticeWhenAboveHalf(t *testing.T) {
 		"vid":    math.MaxUint32/2 + 1, // just above half → Notice
 		"diskid": 100,
 	})
-	require.Equal(t, clustermgr.DashboardScoreNotice, result.Score)
+	require.Equal(t, clustermgr.DashboardScoreNotice, result.Score.Score)
 }
 
 func TestDashboardBuildScope_BidScopeNoOverflow(t *testing.T) {
 	require.Equal(t, clustermgr.DashboardScoreOK,
-		buildScope(map[string]uint64{BidScopeName: math.MaxUint64 / 2}).Score)
+		buildScope(map[string]uint64{BidScopeName: math.MaxUint64 / 2}).Score.Score)
 	require.Equal(t, clustermgr.DashboardScoreNotice,
-		buildScope(map[string]uint64{BidScopeName: math.MaxUint64/2 + 1}).Score)
+		buildScope(map[string]uint64{BidScopeName: math.MaxUint64/2 + 1}).Score.Score)
 }
 
 // buildDisk
@@ -278,7 +278,7 @@ func genDisk(nodeID proto.NodeID, path string, diskID proto.DiskID,
 func TestBuildDisk_Empty(t *testing.T) {
 	stat := buildDisk(nil, nil)
 	require.Empty(t, stat.ByStatusIDC)
-	require.Equal(t, clustermgr.DashboardScoreOK, stat.Score)
+	require.Equal(t, clustermgr.DashboardScoreOK, stat.Score.Score)
 }
 
 func TestBuildDisk_NormalDisk(t *testing.T) {
@@ -445,13 +445,13 @@ func TestDashboardDisk_EmptyOnFreshService(t *testing.T) {
 
 	snap := svc.dashboardMgr.GetSnapshot()
 	// No disks registered → Disk.Score is OK.
-	require.Equal(t, clustermgr.DashboardScoreOK, snap.dashboard.Disk.Score)
+	require.Equal(t, clustermgr.DashboardScoreOK, snap.dashboard.Disk.Score.Score)
 	// No service nodes registered → PROXY/WORKER/BLOBNODE all absent → Service.Score is Major.
-	require.Equal(t, clustermgr.DashboardScoreMajor, snap.dashboard.Service.Score)
+	require.Equal(t, clustermgr.DashboardScoreMajor, snap.dashboard.Service.Score.Score)
 	// No volumes at all → ActiveTotal==0 && IdleTotal==0 → Volume.Score is Critical.
-	require.Equal(t, clustermgr.DashboardScoreCritical, snap.dashboard.Volume.Score)
+	require.Equal(t, clustermgr.DashboardScoreCritical, snap.dashboard.Volume.Score.Score)
 	// Overall score is dominated by Volume (Critical > Major).
-	require.Equal(t, clustermgr.DashboardScoreCritical, snap.dashboard.Score)
+	require.Equal(t, clustermgr.DashboardScoreCritical, snap.dashboard.Score.Score)
 }
 
 func TestDashboardGetSnapshot_NeverNil(t *testing.T) {
@@ -507,7 +507,7 @@ func TestBuildService_AllOnline(t *testing.T) {
 		svcNode(proto.ServiceNameBlobNode, "idc1", "h2", now.Add(60*time.Second).Unix()),
 	}
 	s := buildService(services, nil, noHost)
-	require.Equal(t, clustermgr.DashboardScoreOK, s.Score)
+	require.Equal(t, clustermgr.DashboardScoreOK, s.Score.Score)
 	require.Nil(t, s.OfflineNodes)
 }
 
@@ -521,7 +521,7 @@ func TestBuildService_SomeOffline(t *testing.T) {
 		svcNode(proto.ServiceNameBlobNode, "idc1", "h1", now.Add(60*time.Second).Unix()),
 	}
 	s := buildService(services, nil, noHost)
-	require.Equal(t, clustermgr.DashboardScoreWarning, s.Score) // proxy idc1: 1 online → Warning
+	require.Equal(t, clustermgr.DashboardScoreWarning, s.Score.Score) // proxy idc1: 1 online → Warning
 	require.Equal(t, 1, s.OnlineByTypeIDC[proto.ServiceNameProxy]["idc1"])
 	require.Len(t, s.OfflineNodes, 1)
 }
@@ -570,7 +570,7 @@ func volMap(vols []clustermgr.VolumeBasic) map[proto.Vid]*clustermgr.VolumeBasic
 func TestBuildVolume_Empty(t *testing.T) {
 	// No volumes → ActiveTotal==0 && IdleTotal==0 → Critical (cluster has no usable volumes).
 	v := buildVolume(volMap(nil), 1<<30, 0, 0)
-	require.Equal(t, clustermgr.DashboardScoreCritical, v.Score)
+	require.Equal(t, clustermgr.DashboardScoreCritical, v.Score.Score)
 	require.Equal(t, 0, v.Status.ActiveTotal)
 	require.Equal(t, 0, v.Status.IdleTotal)
 	require.Empty(t, v.ByScore)
@@ -592,7 +592,7 @@ func TestBuildVolume_ByScore(t *testing.T) {
 	require.Equal(t, 1, v.Status.ActiveUnhealthy)
 	require.Equal(t, 1, v.Status.IdleTotal)
 	// score is now disk-load based; threshold=0 → always OK
-	require.Equal(t, clustermgr.DashboardScoreOK, v.Score)
+	require.Equal(t, clustermgr.DashboardScoreOK, v.Score.Score)
 
 	ec6p6Name := codemode.EC6P6.String()
 	require.Equal(t, 2, v.ByScore[ec6p6Name][0].Count)  // active score=0 + idle score=0
@@ -609,7 +609,7 @@ func TestBuildVolume_ScoreOKWhenThresholdZero(t *testing.T) {
 	}
 	// threshold=0 → CalcScore returns OK (cluster has both Active and Idle volumes).
 	v := buildVolume(volMap(vols), 1<<30, 0, 0)
-	require.Equal(t, clustermgr.DashboardScoreOK, v.Score)
+	require.Equal(t, clustermgr.DashboardScoreOK, v.Score.Score)
 }
 
 func TestBuildVolume_ScoreDiskLoad(t *testing.T) {
@@ -634,15 +634,15 @@ func TestBuildVolume_ScoreDiskLoad(t *testing.T) {
 
 	// threshold=10: load(5) ≤ 10 → OK
 	v := buildVolume(volMap(vols), 1<<30, 0, 10)
-	require.Equal(t, clustermgr.DashboardScoreOK, v.Score)
+	require.Equal(t, clustermgr.DashboardScoreOK, v.Score.Score)
 
 	// threshold=4: load(5) > 4 → Warning
 	v = buildVolume(volMap(vols), 1<<30, 0, 4)
-	require.Equal(t, clustermgr.DashboardScoreWarning, v.Score)
+	require.Equal(t, clustermgr.DashboardScoreWarning, v.Score.Score)
 
 	// threshold=2: load(5) > 2×2=4 → Major
 	v = buildVolume(volMap(vols), 1<<30, 0, 2)
-	require.Equal(t, clustermgr.DashboardScoreMajor, v.Score)
+	require.Equal(t, clustermgr.DashboardScoreMajor, v.Score.Score)
 }
 
 func TestBuildVolume_Allocatable(t *testing.T) {
@@ -714,7 +714,7 @@ func TestBuildDataSafety_AllSafe(t *testing.T) {
 		{CodeMode: codemode.EC6P6, DiskIDs: []proto.DiskID{4, 5, 6}},
 	}
 	stat := buildVolumeSafety(volMap(vols), nil)
-	require.Equal(t, clustermgr.DashboardScoreOK, stat.Score)
+	require.Equal(t, clustermgr.DashboardScoreOK, stat.Score.Score)
 	require.Equal(t, 2, stat.SafeVolumes)
 	require.Equal(t, 0, stat.DegradedVolumes)
 	require.Equal(t, 0, stat.AtRiskVolumes)
@@ -730,7 +730,7 @@ func TestBuildDataSafety_Degraded_Notice(t *testing.T) {
 	}
 	// Make disks 1 and 2 unsafe (2 unsafe units, M/2 = 3)
 	stat := buildVolumeSafety(volMap(vols), makeUnsafeSet(1, 2))
-	require.Equal(t, clustermgr.DashboardScoreNotice, stat.Score)
+	require.Equal(t, clustermgr.DashboardScoreNotice, stat.Score.Score)
 	require.Equal(t, 1, stat.DegradedVolumes)
 	require.Equal(t, 0, stat.AtRiskVolumes)
 	require.Equal(t, 0, stat.DataLossVolumes)
@@ -744,7 +744,7 @@ func TestBuildDataSafety_Degraded_Warning(t *testing.T) {
 		{CodeMode: codemode.EC6P6, DiskIDs: []proto.DiskID{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}},
 	}
 	stat := buildVolumeSafety(volMap(vols), makeUnsafeSet(1, 2, 3, 4))
-	require.Equal(t, clustermgr.DashboardScoreWarning, stat.Score)
+	require.Equal(t, clustermgr.DashboardScoreWarning, stat.Score.Score)
 	require.Equal(t, 1, stat.DegradedVolumes)
 	require.Empty(t, stat.UnsafeDetails)
 }
@@ -756,7 +756,7 @@ func TestBuildDataSafety_AtRisk(t *testing.T) {
 		{CodeMode: codemode.EC6P6, DiskIDs: []proto.DiskID{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}},
 	}
 	stat := buildVolumeSafety(volMap(vols), makeUnsafeSet(1, 2, 3, 4, 5))
-	require.Equal(t, clustermgr.DashboardScoreMajor, stat.Score)
+	require.Equal(t, clustermgr.DashboardScoreMajor, stat.Score.Score)
 	require.Equal(t, 0, stat.DegradedVolumes)
 	require.Equal(t, 1, stat.AtRiskVolumes)
 	require.Equal(t, 0, stat.DataLossVolumes)
@@ -772,7 +772,7 @@ func TestBuildDataSafety_AtRisk_EqualM(t *testing.T) {
 		{CodeMode: codemode.EC6P6, DiskIDs: []proto.DiskID{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}},
 	}
 	stat := buildVolumeSafety(volMap(vols), makeUnsafeSet(1, 2, 3, 4, 5, 6))
-	require.Equal(t, clustermgr.DashboardScoreMajor, stat.Score)
+	require.Equal(t, clustermgr.DashboardScoreMajor, stat.Score.Score)
 	require.Equal(t, 1, stat.AtRiskVolumes)
 	require.Equal(t, 0, stat.DataLossVolumes)
 	require.Len(t, stat.UnsafeDetails, 1)
@@ -787,7 +787,7 @@ func TestBuildDataSafety_DataLoss(t *testing.T) {
 		{CodeMode: codemode.EC6P6, DiskIDs: []proto.DiskID{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}},
 	}
 	stat := buildVolumeSafety(volMap(vols), makeUnsafeSet(1, 2, 3, 4, 5, 6, 7))
-	require.Equal(t, clustermgr.DashboardScoreCritical, stat.Score)
+	require.Equal(t, clustermgr.DashboardScoreCritical, stat.Score.Score)
 	require.Equal(t, 1, stat.DataLossVolumes)
 	require.Len(t, stat.UnsafeDetails, 1)
 	require.Equal(t, "data_loss", stat.UnsafeDetails[0].Level)
@@ -809,7 +809,7 @@ func TestBuildDataSafety_MixedLevels(t *testing.T) {
 		60, 61, 62, 63, 64, 65, 66, // vol4: 7 unsafe > M → data_loss
 	)
 	stat := buildVolumeSafety(volMap(vols), unsafe)
-	require.Equal(t, clustermgr.DashboardScoreCritical, stat.Score)
+	require.Equal(t, clustermgr.DashboardScoreCritical, stat.Score.Score)
 	require.Equal(t, 1, stat.DegradedVolumes)
 	require.Equal(t, 2, stat.AtRiskVolumes)
 	require.Equal(t, 1, stat.DataLossVolumes)
@@ -859,7 +859,7 @@ func (s *stubBlobnode) DisksSnapshot() ([]clustermgr.BlobNodeDiskInfo, []cluster
 // a pre-stored snapshot and the given pre-populated volumes.
 func newSimulateDashboard(
 	t *testing.T,
-	snapshotScore clustermgr.DashboardScore,
+	snapshotScore int,
 	bn *stubBlobnode,
 	vols []clustermgr.VolumeBasic,
 ) (*dashboardMgr, func()) {
@@ -868,7 +868,7 @@ func newSimulateDashboard(
 	d.blobnode = bn
 	d.volumes = volMap(vols)
 	d.snapshot.Store(&dashboardSnapshot{
-		dashboard: clustermgr.ClusterDashboard{Score: snapshotScore},
+		dashboard: clustermgr.ClusterDashboard{Score: clustermgr.DashboardScore{Score: snapshotScore}},
 	})
 	return d, cleanup
 }
@@ -899,7 +899,7 @@ func TestSimulate_NoMatch(t *testing.T) {
 	defer cleanup()
 
 	result := d.Simulate([]string{"10.0.0.99"})
-	require.Equal(t, clustermgr.DashboardScoreWarning, result.Score)
+	require.Equal(t, clustermgr.DashboardScoreWarning, result.Score.Score)
 }
 
 // TestSimulate_BlobNodeMatch_Degraded: shutdown node's Normal disk becomes
@@ -930,8 +930,8 @@ func TestSimulate_BlobNodeMatch_Degraded(t *testing.T) {
 	require.Equal(t, 1, result.VolumeSafety.DegradedVolumes)
 	require.Equal(t, 0, result.VolumeSafety.AtRiskVolumes)
 	require.Equal(t, 0, result.VolumeSafety.DataLossVolumes)
-	require.GreaterOrEqual(t, int(result.VolumeSafety.Score), int(clustermgr.DashboardScoreNotice))
-	require.GreaterOrEqual(t, int(result.Score), int(clustermgr.DashboardScoreNotice))
+	require.GreaterOrEqual(t, result.VolumeSafety.Score.Score, clustermgr.DashboardScoreNotice)
+	require.GreaterOrEqual(t, result.Score.Score, clustermgr.DashboardScoreNotice)
 }
 
 // TestSimulate_BlobNodeMatch_AtRisk: M-1 disks on the shutdown node →
@@ -955,7 +955,7 @@ func TestSimulate_BlobNodeMatch_AtRisk(t *testing.T) {
 	result := d.Simulate([]string{"10.0.0.2"})
 
 	require.Equal(t, 1, result.VolumeSafety.AtRiskVolumes)
-	require.Equal(t, clustermgr.DashboardScoreMajor, result.VolumeSafety.Score)
+	require.Equal(t, clustermgr.DashboardScoreMajor, result.VolumeSafety.Score.Score)
 	require.Len(t, result.VolumeSafety.UnsafeDetails, 1)
 	require.Equal(t, "at_risk", result.VolumeSafety.UnsafeDetails[0].Level)
 	require.Equal(t, 5, result.VolumeSafety.UnsafeDetails[0].UnsafeUnits)

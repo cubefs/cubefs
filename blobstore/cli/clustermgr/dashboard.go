@@ -111,7 +111,7 @@ func printDashboard(c *grumble.Context, d clustermgr.ClusterDashboard) {
 	}
 
 	genAt := time.Unix(0, d.GeneratedAt).Format("2006-01-02 15:04:05")
-	fmt.Printf("\nCluster Dashboard  score=%-8s  generated_at=[%s]\n", scoreStr(d.Score), genAt)
+	fmt.Printf("\nCluster Dashboard  score=%s  generated_at=[%s]\n", scoreStr(d.Score), genAt)
 }
 
 func printDashboardScope(s clustermgr.ScopeStat) {
@@ -438,8 +438,12 @@ func scoreStr(score clustermgr.DashboardScore) string {
 		common.Danger,
 		common.Dead,
 	}
-	if int(score) >= len(colors) {
-		return score.String()
+	label := score.String()
+	if score.Score < len(colors) {
+		label = colors[score.Score].Sprint(label)
 	}
-	return colors[score].Sprint(score.String())
+	if score.Reason != "" {
+		label += "  (" + score.Reason + ")"
+	}
+	return label
 }
