@@ -266,24 +266,36 @@ func (c *Cluster) handleSyncNodeHeartbeatResp(nodeAddr string, resp *proto.SyncN
 	}
 
 	// Update in-flight task progress from heartbeat reports so the ledger
-	// shows live progress without waiting for task terminal.
-	if len(resp.TaskReports) > 0 && c.syncTaskLedger != nil {
+	// shows live progress without waiting for task terminal. Heartbeat
+	// reports are unioned across both ledgers — a single taskID belongs
+	// either to a SyncTask (rule-<ts>) or a Bench shard (rule-<ts>/<idx>)
+	// by construction, so calling both is collision-free. Calling both is
+	// also the simplest fix for the orphan_scan defect: BenchTaskLedger
+	// records were never UpdatedAt-refreshed on heartbeats and were
+	// guaranteed to cross the 90s silence threshold; see
+	// BenchTaskLedger.Heartbeat for the full rationale.
+	if len(resp.TaskReports) > 0 {
 		for _, report := range resp.TaskReports {
 			if report.TaskID == "" {
 				continue
 			}
-			c.syncTaskLedger.UpdateProgress(report.TaskID, SyncTaskProgress{
-				FilesTotal:           report.Progress.FilesTotal,
-				FilesDone:            report.Progress.FilesDone,
-				FilesSkipped:         report.Progress.FilesSkipped,
-				FilesFailed:          report.Progress.FilesFailed,
-				BytesTotal:           report.Progress.BytesTotal,
-				BytesDone:            report.Progress.BytesDone,
-				BytesSkipped:         report.Progress.BytesSkipped,
-				ThroughputMBps:       report.Progress.ThroughputMBps,
-				CurrentBandwidthMBps: report.Progress.CurrentBandwidthMBps,
-				SkippedSamples:       report.Progress.SkippedSamples,
-			})
+			if c.syncTaskLedger != nil {
+				c.syncTaskLedger.UpdateProgress(report.TaskID, SyncTaskProgress{
+					FilesTotal:           report.Progress.FilesTotal,
+					FilesDone:            report.Progress.FilesDone,
+					FilesSkipped:         report.Progress.FilesSkipped,
+					FilesFailed:          report.Progress.FilesFailed,
+					BytesTotal:           report.Progress.BytesTotal,
+					BytesDone:            report.Progress.BytesDone,
+					BytesSkipped:         report.Progress.BytesSkipped,
+					ThroughputMBps:       report.Progress.ThroughputMBps,
+					CurrentBandwidthMBps: report.Progress.CurrentBandwidthMBps,
+					SkippedSamples:       report.Progress.SkippedSamples,
+				})
+			}
+			if c.benchTaskLedger != nil {
+				c.benchTaskLedger.Heartbeat(report.TaskID)
+			}
 		}
 	}
 

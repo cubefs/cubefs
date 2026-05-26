@@ -265,6 +265,42 @@ func (l *BenchTaskLedger) Complete(taskID string, result spec.BenchShardResult) 
 	return true
 }
 
+// Heartbeat refreshes UpdatedAt on a Running shard record so the orphan
+// scan's silence calculation reflects the most recent heartbeat carrying
+// that taskID. Returns true when the record exists, is still Running and
+// was actually refreshed; false when the record is absent or already in
+// a terminal state (we never resurrect a finished record's UpdatedAt).
+//
+// Why this exists: SyncTaskLedger.UpdateProgress already refreshes its
+// own UpdatedAt on every heartbeat that carries a SyncTask report, which
+// keeps sync tasks out of the 90s orphan window. BenchTaskLedger had no
+// equivalent path — the only UpdatedAt writers were state-transition
+// methods (Add / Cancel / Fail / Complete / SetOwner / AddShards / …),
+// so a long-running bench shard's UpdatedAt stayed pinned at CreatedAt
+// and orphan_scan deterministically marked it failed at the 90s mark
+// even though the owning syncnode was still actively executing it.
+//
+// Called from handleSyncNodeHeartbeatResp once per TaskReport. Safe to
+// call unconditionally — fan-out parent records and unknown IDs return
+// false silently, so the caller doesn't need to know which ledger owns
+// a given TaskID.
+func (l *BenchTaskLedger) Heartbeat(taskID string) bool {
+	if l == nil || taskID == "" {
+		return false
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	r, ok := l.tasks[taskID]
+	if !ok {
+		return false
+	}
+	if r.Status != BenchTaskStatusRunning {
+		return false
+	}
+	r.UpdatedAt = time.Now().UnixMilli()
+	return true
+}
+
 // SetOwner records which syncnode addr currently holds taskID. Called by
 // the dispatcher right after the bench task is sent (single-shot path) so
 // the orphan scan can later answer "is this owner still alive?". No-op
