@@ -61,6 +61,32 @@ func updateDisks(addr string, t *testing.T) {
 	require.Equal(t, badDisk, dn.BadDisks)
 }
 
+func TestDataNodeIsWriteAbleWithSizeNoLockRejectsPreReservedUnderflow(t *testing.T) {
+	dn := &DataNode{
+		Addr:             "10.52.134.101:17310",
+		isActive:         true,
+		Total:            13 * util.TB,
+		Used:             8 * util.TB,
+		AvailableSpace:   2 * util.MB,
+		PreReservedSpace: 6 * util.GB,
+	}
+
+	require.False(t, dn.isWriteAbleWithSizeNoLock(10*util.GB, 1))
+}
+
+func TestDataNodeIsWriteAbleWithSizeNoLockRejectsRemainingPreReservedUnderflow(t *testing.T) {
+	dn := &DataNode{
+		Addr:             "10.52.134.101:17310",
+		isActive:         true,
+		Total:            100 * util.GB,
+		Used:             95 * util.GB,
+		AvailableSpace:   20 * util.GB,
+		PreReservedSpace: 6 * util.GB,
+	}
+
+	require.False(t, dn.isWriteAbleWithSizeNoLock(10*util.GB, 1))
+}
+
 func TestCalculateDpLimitByDiskCapacity(t *testing.T) {
 	t.Run("SSD", func(t *testing.T) {
 		cfg := newClusterConfig()

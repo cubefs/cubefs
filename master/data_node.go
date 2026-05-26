@@ -511,12 +511,21 @@ func (dataNode *DataNode) isWriteAbleWithSizeNoLock(size uint64, threshold float
 		return false
 	}
 
+	if dataNode.AvailableSpace <= dataNode.PreReservedSpace {
+		log.LogWarnf("[isWriteAbleWithSizeNoLock] reject node %v because available(%v) <= preReserved(%v)",
+			dataNode.Addr, dataNode.AvailableSpace, dataNode.PreReservedSpace)
+		return false
+	}
 	availableSpace := dataNode.AvailableSpace - dataNode.PreReservedSpace
 	if availableSpace <= size {
 		return false
 	}
 
-	if dataNode.Total <= dataNode.Used || (dataNode.Total-dataNode.Used-dataNode.PreReservedSpace) <= size {
+	if dataNode.Total <= dataNode.Used {
+		return false
+	}
+	remainingSpace := dataNode.Total - dataNode.Used
+	if remainingSpace <= dataNode.PreReservedSpace || remainingSpace-dataNode.PreReservedSpace <= size {
 		return false
 	}
 
