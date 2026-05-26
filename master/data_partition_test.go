@@ -128,6 +128,38 @@ func newClusterWithDataNodesInNodeSet(t *testing.T, zoneName string, nodeSetID u
 	return cluster, ns
 }
 
+func TestPreemptLowerPriorityReleasesStaleTokenWithoutDstAddr(t *testing.T) {
+	cluster, ns := newClusterWithDataNodesInNodeSet(t, "zone-stale-token", 1, "10.52.134.101:17310")
+	vol := &Vol{
+		ID:             1,
+		Name:           "vol-stale-token",
+		dataPartitions: newDataPartitionMap("vol-stale-token"),
+	}
+	cluster.vols[vol.Name] = vol
+
+	victim := newDataPartition(28273, 3, vol.Name, vol.ID, proto.PartitionTypeNormal, proto.MediaType_SSD, 1)
+	victim.Hosts = []string{"10.52.134.101:17310", "10.52.140.80:17310", "10.52.140.70:17310"}
+	vol.dataPartitions.put(victim)
+
+	ns.decommissionDataPartitionList.updateMaxParallel(1)
+	require.True(t, ns.AcquireDecommissionToken(victim.PartitionID, lowPriorityDecommissionWeight, cluster, false))
+
+	// The victim metadata has already been reset, but its token is still in the nodeset token map.
+	victim.ResetDecommissionStatus()
+	require.Empty(t, victim.DecommissionSrcAddr)
+	require.Empty(t, victim.DecommissionDstAddr)
+	require.True(t, ns.HasDecommissionToken(victim.PartitionID))
+
+	const preemptingDPID uint64 = 28274
+	require.True(t, ns.AcquireDecommissionToken(preemptingDPID, highPriorityDecommissionWeight, cluster, true))
+
+	require.False(t, ns.HasDecommissionToken(victim.PartitionID))
+	require.True(t, ns.HasDecommissionToken(preemptingDPID))
+	require.Equal(t, DecommissionFail, victim.GetDecommissionStatus())
+	require.True(t, victim.DecommissionNeedRollback)
+	require.Equal(t, proto.ErrDecommissionTokenPreempted.Error(), victim.DecommissionErrorMessage)
+}
+
 type failingSubmitPartition struct {
 	mockPartition
 }

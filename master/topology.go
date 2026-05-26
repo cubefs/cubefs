@@ -2600,13 +2600,13 @@ func (l *DecommissionDataPartitionList) tryPreemptLowerPriority(priority int, c 
 		return false
 	}
 
+	l.releaseDecommissionToken(victimID)
 	if dp, err := c.getDataPartitionByID(victimID); err == nil && dp != nil {
 		dp.markRollbackFailed(true, "tryPreemptLowerPriority", proto.ErrDecommissionTokenPreempted.Error())
 		dp.DecommissionErrorMessage = proto.ErrDecommissionTokenPreempted.Error()
 		c.syncUpdateDataPartition(dp)
-		dp.ReleaseDecommissionToken(c)
 		dp.ReleaseDecommissionFirstHostToken(c)
-		msg := fmt.Sprintf("dp %v mark decommission failed", dp.decommissionInfo())
+		msg := fmt.Sprintf("dp %v decommission failed", dp.decommissionInfo())
 		auditlog.LogMasterOp("PreemptDecommissionToken", msg, proto.ErrDecommissionTokenPreempted)
 	}
 	return true
@@ -2812,7 +2812,7 @@ func (l *DecommissionDataPartitionList) handleDpTraverseToDecommission(dp *DataP
 		}
 		allowPreempt := false
 		// allow token preemption when encountering a “no leader” scenario during automatic decommission processing of bad disks.
-		if dp.DecommissionType == AutoDecommission && dp.DecommissionRaftForce {
+		if dp.DecommissionType == AutoDecommission && dp.DecommissionRaftForce && len(dp.Hosts) == 2 {
 			allowPreempt = true
 		}
 		if dp.AcquireDecommissionFirstHostToken(c, allowPreempt) {
