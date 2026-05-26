@@ -16,6 +16,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
 )
 
@@ -173,4 +174,205 @@ func TestClearFlashNodesDiskErrMetrics_noPanic(t *testing.T) {
 	mm.flashNodesDiskError.SetWithLabelValues(1, "10.1.1.1", "/flash/d0")
 	require.NotPanics(t, func() { mm.clearFlashNodesDiskErrMetrics() })
 	require.Contains(t, mm.flashNodesBadDisks, "/flash/d0")
+}
+
+func gaugeVecValue(t *testing.T, gv *exporter.GaugeVec, lvs ...string) float64 {
+	t.Helper()
+	m, err := gv.GaugeVec.GetMetricWithLabelValues(lvs...)
+	require.NoError(t, err)
+	var pb dto.Metric
+	require.NoError(t, m.Write(&pb))
+	return pb.GetGauge().GetValue()
+}
+
+func monitorMetricsVolTestCluster(t *testing.T) *Cluster {
+	t.Helper()
+	c := clusterStatTestCluster(t, "vol-metrics")
+	c.poolMutex.Lock()
+	if c.storagePools == nil {
+		c.storagePools = make(map[uint8]*StoragePool)
+	}
+	c.storagePools[10] = &StoragePool{
+		Id:           10,
+		Name:         "ssd-pool",
+		StorageClass: uint8(proto.StorageClass_Replica_SSD),
+		Status:       proto.PoolStatusAvailable,
+	}
+	c.storagePools[11] = &StoragePool{
+		Id:           11,
+		Name:         "hdd-pool",
+		StorageClass: uint8(proto.StorageClass_Replica_HDD),
+		Status:       proto.PoolStatusAvailable,
+	}
+	c.poolMutex.Unlock()
+	return c
+}
+
+func newMonitorMetricsForVolStatTest(t *testing.T, c *Cluster) *monitorMetrics {
+	t.Helper()
+	mm := newMonitorMetrics(c)
+	mm.volStats = newTestGaugeVec(t, "test_vol_stats", []string{"volName", "type", "media"})
+	mm.volTotalSpace = newTestGaugeVec(t, "test_vol_total_GB", []string{"volName"})
+	mm.volUsedSpace = newTestGaugeVec(t, "test_vol_used_GB", []string{"volName"})
+	mm.volUsage = newTestGaugeVec(t, "test_vol_usage_ratio", []string{"volName"})
+	mm.volMetaCount = newTestGaugeVec(t, "test_vol_meta_count", []string{"volName", "type"})
+	return mm
+}
+
+func TestSetVolMetrics_reportsPoolWritableDpByPool(t *testing.T) {
+	c := monitorMetricsVolTestCluster(t)
+	vol := clusterStatTestVol("rw-dp-vol", proto.VolStatusNormal, 100)
+	vol.dataPartitions.setReadWriteCntByPoolId(map[uint8]int{
+		10: 5,
+		11: 12,
+	})
+	vol.StatByPool = []*proto.StatOfStorageClass{
+		proto.NewStatOfStorageClassByPoolWithQuota(10, 100),
+		proto.NewStatOfStorageClassByPoolWithQuota(11, 100),
+	}
+
+	c.volMutex.Lock()
+	c.vols["rw-dp-vol"] = vol
+	c.volMutex.Unlock()
+
+	mm := newMonitorMetricsForVolStatTest(t, c)
+	mm.setVolMetrics()
+
+	require.Equal(t, float64(5), gaugeVecValue(t, mm.volStats, "rw-dp-vol", "pool_writable_dp", "ssd-pool"))
+	require.Equal(t, float64(12), gaugeVecValue(t, mm.volStats, "rw-dp-vol", "pool_writable_dp", "hdd-pool"))
+}
+
+func TestSetVolMetrics_poolWritableDpUsesUnknownPoolNameWhenPoolMissing(t *testing.T) {
+	c := monitorMetricsVolTestCluster(t)
+	vol := clusterStatTestVol("unknown-pool-vol", proto.VolStatusNormal, 50)
+	vol.dataPartitions.setReadWriteCntByPoolId(map[uint8]int{99: 3})
+
+	c.volMutex.Lock()
+	c.vols["unknown-pool-vol"] = vol
+	c.volMutex.Unlock()
+
+	mm := newMonitorMetricsForVolStatTest(t, c)
+	mm.setVolMetrics()
+
+	require.Equal(t, float64(3), gaugeVecValue(t, mm.volStats, "unknown-pool-vol", "pool_writable_dp", "UnknownPool-99"))
+}
+
+func TestSetVolMetrics_poolWritableDpPerVolume(t *testing.T) {
+	c := monitorMetricsVolTestCluster(t)
+
+	volA := clusterStatTestVol("vol-a", proto.VolStatusNormal, 100)
+	volA.dataPartitions.setReadWriteCntByPoolId(map[uint8]int{10: 2})
+
+	volB := clusterStatTestVol("vol-b", proto.VolStatusNormal, 100)
+	volB.dataPartitions.setReadWriteCntByPoolId(map[uint8]int{10: 7})
+
+	c.volMutex.Lock()
+	c.vols["vol-a"] = volA
+	c.vols["vol-b"] = volB
+	c.volMutex.Unlock()
+
+	mm := newMonitorMetricsForVolStatTest(t, c)
+	mm.setVolMetrics()
+
+	require.Equal(t, float64(2), gaugeVecValue(t, mm.volStats, "vol-a", "pool_writable_dp", "ssd-pool"))
+	require.Equal(t, float64(7), gaugeVecValue(t, mm.volStats, "vol-b", "pool_writable_dp", "ssd-pool"))
+}
+
+func newMonitorMetricsForLeaderResetTest(t *testing.T) *monitorMetrics {
+	t.Helper()
+	mm := newMonitorMetrics(&Cluster{})
+
+	mm.volTotalSpace = newTestGaugeVec(t, "test_reset_vol_total_GB", []string{"volName"})
+	mm.volUsedSpace = newTestGaugeVec(t, "test_reset_vol_used_GB", []string{"volName"})
+	mm.volUsage = newTestGaugeVec(t, "test_reset_vol_usage_ratio", []string{"volName"})
+	mm.volStats = newTestGaugeVec(t, "test_reset_vol_stats", []string{"volName", "type", "media"})
+	mm.volMetaCount = newTestGaugeVec(t, "test_reset_vol_meta_count", []string{"volName", "type"})
+	mm.diskError = newTestGaugeVec(t, "test_reset_disk_error", []string{"addr", "path"})
+	mm.flashNodesDiskError = newTestGaugeVec(t, "test_reset_flash_disk_error", []string{"addr", "path"})
+	mm.metaEqualCheckFail = newTestGaugeVec(t, "test_reset_mp_inconsistent", []string{"volume", "mpId"})
+	mm.lcVolStatus = newTestGaugeVec(t, "test_reset_lc_vol_status", []string{"id"})
+	mm.lcVolScanned = newTestGaugeVec(t, "test_reset_lc_vol_scanned", []string{"id", "type"})
+	mm.lcVolExpired = newTestGaugeVec(t, "test_reset_lc_vol_expired", []string{"id", "type"})
+	mm.lcVolMigrateBytes = newTestGaugeVec(t, "test_reset_lc_vol_migrate_bytes", []string{"id", "type"})
+	mm.lcVolError = newTestGaugeVec(t, "test_reset_lc_vol_error", []string{"id", "type"})
+	mm.partitionCreate = newTestGaugeVec(t, "test_reset_partition_create_alarm", []string{"type", "racklevel", "media"})
+	mm.dataNodeStat = newTestGaugeVec(t, "test_reset_dataNodes_stats", []string{"media", "type"})
+	mm.nodeStat = newTestGaugeVec(t, "test_reset_node_stat", []string{"type", "addr", "stat", "zone", "set", "media", "writable", "alloc", "rack", "pool", "tag"})
+	mm.diskLost = newTestGaugeVec(t, "test_reset_disk_lost", []string{"addr", "path"})
+	mm.dpNoSamePeer = newTestGaugeVec(t, "test_reset_dp_no_same_peer", []string{"dpId"})
+	mm.mpNoSamePeer = newTestGaugeVec(t, "test_reset_mp_no_same_peer", []string{"mpId"})
+	mm.badDiskDecommissionTimeOverLimit = newTestGaugeVec(t, "test_reset_bad_disk_decommission_time_over_limit", []string{"addr", "path", "firstReportTime"})
+	mm.diskDecommissionSuccess = newTestGaugeVec(t, "test_reset_disk_decommission_success", []string{"addr", "path"})
+	mm.InactiveDataNodeInfo = newTestGaugeVec(t, "test_reset_inactive_dataNodes_info", []string{"clusterName", "addr"})
+	mm.InactiveMetaNodeInfo = newTestGaugeVec(t, "test_reset_inactive_metaNodes_info", []string{"clusterName", "addr"})
+	mm.InactiveMasterInfo = newTestGaugeVec(t, "test_reset_inactive_masters_info", []string{"clusterName", "addr"})
+	mm.InactiveFlashNodeInfo = newTestGaugeVec(t, "test_reset_inactive_flashNodes_info", []string{"clusterName", "addr"})
+	mm.ReplicaMissingDPCount = newTestGaugeVec(t, "test_reset_replica_missing_dp_count", []string{"replicaNum", "media"})
+	mm.DpMissingLeaderCount = newTestGaugeVec(t, "test_reset_dp_missing_Leader_count", []string{"replicaNum", "media"})
+	mm.MpRegionInfo = newTestGaugeVec(t, "test_reset_mp_region_info", []string{"volume", "type"})
+
+	mm.dataNodesCount = exporter.NewGauge("test_reset_dataNodes_count")
+	mm.metaNodesCount = exporter.NewGauge("test_reset_metaNodes_count")
+	mm.lcNodesCount = exporter.NewGauge("test_reset_lc_nodes_count")
+	mm.volCount = exporter.NewGauge("test_reset_vol_count")
+	mm.dataNodesTotal = exporter.NewGauge("test_reset_dataNodes_total_GB")
+	mm.dataNodesUsed = exporter.NewGauge("test_reset_dataNodes_used_GB")
+	mm.dataNodeIncreased = exporter.NewGauge("test_reset_dataNodes_increased_GB")
+	mm.metaNodesTotal = exporter.NewGauge("test_reset_metaNodes_total_GB")
+	mm.metaNodesUsed = exporter.NewGauge("test_reset_metaNodes_used_GB")
+	mm.metaNodesIncreased = exporter.NewGauge("test_reset_metaNodes_increased_GB")
+	mm.badMpCount = exporter.NewGauge("test_reset_bad_mp_count")
+	mm.badDpCount = exporter.NewGauge("test_reset_bad_dp_count")
+	mm.dpUnableDecommissionCount = exporter.NewGauge("test_reset_dp_unable_decommission_count")
+	mm.dataNodesInactive = exporter.NewGauge("test_reset_dataNodes_inactive")
+	mm.metaNodesInactive = exporter.NewGauge("test_reset_metaNodes_inactive")
+	mm.mastersInactive = exporter.NewGauge("test_reset_masters_inactive")
+	mm.flashNodesInactive = exporter.NewGauge("test_reset_flashNodes_inactive")
+	mm.dataNodesNotWritable = exporter.NewGauge("test_reset_dataNodes_not_writable")
+	mm.dataNodesAllocable = exporter.NewGauge("test_reset_dataNodes_allocable")
+	mm.metaNodesNotWritable = exporter.NewGauge("test_reset_metaNodes_not_writable")
+	mm.metaNodesNotRocksdbWritable = exporter.NewGauge("test_reset_meta_rocksdb_not_writable")
+	mm.MpMissingLeaderCount = exporter.NewGauge("test_reset_mp_missing_Leader_count")
+	mm.MpMissingReplicaCount = exporter.NewGauge("test_reset_mp_missing_Replica_count")
+	mm.MpFailedRecoveryCount = exporter.NewGauge("test_reset_mp_failed_recovery_count")
+	mm.ssdNodeSetUnbalancedDPs = exporter.NewGauge("test_reset_ssd_nodeset_unbalanced_dp_count")
+	mm.ssdRackConflictDPs = exporter.NewGauge("test_reset_ssd_rack_conflict_dp_count")
+	mm.hddNodeSetUnbalancedDPs = exporter.NewGauge("test_reset_hdd_nodeset_unbalanced_dp_count")
+	mm.hddRackConflictDPs = exporter.NewGauge("test_reset_hdd_rack_conflict_dp_count")
+
+	return mm
+}
+
+func TestResetAllLeaderMetricsClearsFollowerUnsafeGaugeVecs(t *testing.T) {
+	mm := newMonitorMetricsForLeaderResetTest(t)
+
+	mm.volTotalSpace.SetWithLabelValues(10, "vol1")
+	mm.volUsedSpace.SetWithLabelValues(5, "vol1")
+	mm.volUsage.SetWithLabelValues(0.5, "vol1")
+	mm.volMetaCount.SetWithLabelValues(3, "vol1", "dp")
+	mm.volStats.SetWithLabelValues(8, "vol1", "pool_writable_dp", "ssd-pool")
+	mm.InactiveDataNodeInfo.SetWithLabelValues(1, "cluster1", "dn1")
+	mm.InactiveMetaNodeInfo.SetWithLabelValues(1, "cluster1", "mn1")
+	mm.MpRegionInfo.SetWithLabelValues(1, "vol1", "lease_timeout")
+	mm.ReplicaMissingDPCount.SetWithLabelValues(2, "3", "SSD")
+	mm.DpMissingLeaderCount.SetWithLabelValues(4, "3", "SSD")
+	mm.lcId["lc-vol1"] = struct{}{}
+	mm.lcVolStatus.SetWithLabelValues(1, "lc-vol1")
+	mm.lcVolScanned.SetWithLabelValues(6, "lc-vol1", "file")
+
+	mm.resetAllLeaderMetrics()
+
+	require.Zero(t, gaugeVecValue(t, mm.volTotalSpace, "vol1"))
+	require.Zero(t, gaugeVecValue(t, mm.volUsedSpace, "vol1"))
+	require.Zero(t, gaugeVecValue(t, mm.volUsage, "vol1"))
+	require.Zero(t, gaugeVecValue(t, mm.volMetaCount, "vol1", "dp"))
+	require.Zero(t, gaugeVecValue(t, mm.volStats, "vol1", "pool_writable_dp", "ssd-pool"))
+	require.Zero(t, gaugeVecValue(t, mm.InactiveDataNodeInfo, "cluster1", "dn1"))
+	require.Zero(t, gaugeVecValue(t, mm.InactiveMetaNodeInfo, "cluster1", "mn1"))
+	require.Zero(t, gaugeVecValue(t, mm.MpRegionInfo, "vol1", "lease_timeout"))
+	require.Zero(t, gaugeVecValue(t, mm.ReplicaMissingDPCount, "3", "SSD"))
+	require.Zero(t, gaugeVecValue(t, mm.DpMissingLeaderCount, "3", "SSD"))
+	require.Zero(t, gaugeVecValue(t, mm.lcVolStatus, "lc-vol1"))
+	require.Zero(t, gaugeVecValue(t, mm.lcVolScanned, "lc-vol1", "file"))
+	require.Empty(t, mm.lcId)
 }

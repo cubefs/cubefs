@@ -955,6 +955,10 @@ func (mm *monitorMetrics) setVolMetrics() {
 			mm.volStats.SetWithLabelValues(ratio, volName, "pool_ratio", poodIdString)
 		}
 
+		for poolId, cnt := range vol.dataPartitions.getReadWriteCntByPoolId() {
+			mm.volStats.SetWithLabelValues(float64(cnt), volName, "pool_writable_dp", mm.cluster.getPoolNameById(poolId))
+		}
+
 		for _, s := range vol.StatByDpPool {
 			used := float64(s.UsedSizeBytes / util.GB)
 			mm.volStats.SetWithLabelValues(used, volName, "dp_pool_used", mm.cluster.getPoolNameById(s.PoolId))
@@ -1481,12 +1485,11 @@ func (mm *monitorMetrics) clearLcMetrics() {
 }
 
 func (mm *monitorMetrics) clearVolMetrics() {
-	mm.cluster.volStatInfo.Range(func(key, value interface{}) bool {
-		if volName, ok := key.(string); ok {
-			mm.deleteVolMetric(volName)
-		}
-		return true
-	})
+	mm.volTotalSpace.Reset()
+	mm.volUsedSpace.Reset()
+	mm.volUsage.Reset()
+	mm.volMetaCount.Reset()
+	mm.volStats.Reset()
 }
 
 func (mm *monitorMetrics) clearDiskErrMetrics() {
@@ -1515,6 +1518,8 @@ func (mm *monitorMetrics) resetAllLeaderMetrics() {
 	mm.clearLcMetrics()
 
 	mm.partitionCreate.Reset()
+	mm.badMpCount.Set(0)
+	mm.badDpCount.Set(0)
 	mm.dataNodesCount.Set(0)
 	mm.metaNodesCount.Set(0)
 	mm.lcNodesCount.Set(0)
@@ -1539,18 +1544,22 @@ func (mm *monitorMetrics) resetAllLeaderMetrics() {
 	mm.mastersInactive.Set(0)
 	mm.flashNodesInactive.Set(0)
 
+	mm.InactiveDataNodeInfo.Reset()
+	mm.InactiveMetaNodeInfo.Reset()
 	mm.InactiveMasterInfo.Reset()
 	mm.InactiveFlashNodeInfo.Reset()
 
 	mm.dataNodesNotWritable.Set(0)
 	mm.dataNodesAllocable.Set(0)
 	mm.metaNodesNotWritable.Set(0)
+	mm.metaNodesNotRocksdbWritable.Set(0)
 
 	mm.MpMissingLeaderCount.Set(0)
 	mm.MpMissingReplicaCount.Set(0)
 	mm.MpFailedRecoveryCount.Set(0)
 	mm.ReplicaMissingDPCount.Reset()
 	mm.DpMissingLeaderCount.Reset()
+	mm.MpRegionInfo.Reset()
 
 	mm.ssdNodeSetUnbalancedDPs.Set(0)
 	mm.ssdRackConflictDPs.Set(0)

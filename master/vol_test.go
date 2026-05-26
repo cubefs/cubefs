@@ -115,7 +115,7 @@ func TestCreateColdVol(t *testing.T) {
 	require.EqualValues(t, 0, vol.domainId)
 
 	delVol(volName1, t)
-	time.Sleep(30 * time.Second)
+	deleteMarkedVolFromStore(volName1, t)
 
 	req[nameKey] = volName2
 	req[poolIdKey] = proto.DefaultECPoolId
@@ -128,6 +128,7 @@ func TestCreateColdVol(t *testing.T) {
 	require.EqualValues(t, defaultEbsBlkSize, vol.EbsBlkSize)
 
 	delVol(volName2, t)
+	deleteMarkedVolFromStore(volName2, t)
 
 	req[nameKey] = volName3
 
@@ -143,6 +144,7 @@ func TestCreateColdVol(t *testing.T) {
 	assert.True(t, view.ObjBlockSize == blkSize)
 
 	delVol(volName3, t)
+	deleteMarkedVolFromStore(volName3, t)
 
 	// NOTE: check all vols
 	timeout := time.Now().Add(100 * time.Second)
@@ -171,6 +173,18 @@ func TestCreateColdVol(t *testing.T) {
 	}
 
 	t.Errorf("Delete cold vols timeout")
+}
+
+func deleteMarkedVolFromStore(name string, t *testing.T) {
+	t.Helper()
+
+	vol, err := server.cluster.getVol(name)
+	require.NoError(t, err)
+	require.Equal(t, proto.VolStatusMarkDelete, vol.Status)
+	require.NoError(t, vol.deleteVolFromStore(server.cluster))
+
+	_, err = server.cluster.getVol(name)
+	require.ErrorIs(t, err, proto.ErrVolNotExists)
 }
 
 func checkCreateVolParam(key string, req map[string]interface{}, wrong, correct interface{}, t *testing.T) {
