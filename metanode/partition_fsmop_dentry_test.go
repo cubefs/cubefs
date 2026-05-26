@@ -220,6 +220,71 @@ func TestFsmUpdateDentry_Rocksdb(t *testing.T) {
 	testFsmUpdateDentry(t, mp)
 }
 
+func dentryInodeFromSnap(t *testing.T, snap Snapshot, parent uint64, name string) (inodeID uint64, found bool) {
+	t.Helper()
+	key := &Dentry{ParentId: parent, Name: name}
+	err := snap.Range(DentryType, func(item interface{}) bool {
+		den := item.(*Dentry)
+		if den.ParentId == key.ParentId && den.Name == key.Name {
+			inodeID = den.Inode
+			found = true
+		}
+		return true
+	})
+	require.NoError(t, err)
+	return inodeID, found
+}
+
+func testFsmUpdateDentryCopyGetSnapshot(t *testing.T, mp *metaPartition) {
+	const dirIno = 1200
+	const ino = 1201
+	const otherIno = 1202
+	prepareInodeForFsmDentryTest(t, mp, dirIno, DirModeType)
+	prepareInodeForFsmDentryTest(t, mp, ino, FileModeType)
+	prepareInodeForFsmDentryTest(t, mp, otherIno, FileModeType)
+
+	handle, err := mp.dentryTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	den := &Dentry{ParentId: dirIno, Name: "snaptest", Inode: ino}
+	status, err := mp.fsmCreateDentry(handle, den, false)
+	require.NoError(t, err)
+	require.EqualValues(t, proto.OpOk, status)
+	require.NoError(t, mp.dentryTree.CommitAndReleaseBatchWriteHandle(handle, false))
+
+	snap, err := mp.GetSnapShot()
+	require.NoError(t, err)
+	defer snap.Close()
+
+	snapIno, found := dentryInodeFromSnap(t, snap, dirIno, "snaptest")
+	require.True(t, found)
+	require.EqualValues(t, ino, snapIno)
+
+	handle, err = mp.dentryTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	den = &Dentry{ParentId: dirIno, Name: "snaptest", Inode: otherIno}
+	resp, err := mp.fsmUpdateDentry(handle, den)
+	require.NoError(t, err)
+	require.EqualValues(t, proto.OpOk, resp.Status)
+	require.NoError(t, mp.dentryTree.CommitAndReleaseBatchWriteHandle(handle, false))
+
+	live := getDentryForFsmDentryTest(t, mp, dirIno, "snaptest")
+	require.EqualValues(t, otherIno, live.Inode)
+
+	snapInoAfter, _ := dentryInodeFromSnap(t, snap, dirIno, "snaptest")
+	require.EqualValues(t, ino, snapInoAfter,
+		"mem snapshot must not observe dentry update after CopyGet")
+}
+
+func TestFsmUpdateDentryCopyGetSnapshot(t *testing.T) {
+	mp := newMpForFsmDentryTest(t, proto.StoreModeMem)
+	testFsmUpdateDentryCopyGetSnapshot(t, mp)
+}
+
+func TestFsmUpdateDentryCopyGetSnapshot_Rocksdb(t *testing.T) {
+	mp := newMpForFsmDentryTest(t, proto.StoreModeRocksDb)
+	testFsmUpdateDentryCopyGetSnapshot(t, mp)
+}
+
 func TestCleanRocksdbDentryTestDir(t *testing.T) {
 	os.RemoveAll(RocksdbDentryTestDir)
 }

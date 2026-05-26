@@ -823,7 +823,7 @@ func (mp *metaPartition) fsmExtentsTruncate(dbHandle interface{}, ino *Inode) (r
 	resp = NewInodeResponse()
 	log.LogDebugf("fsmExtentsTruncate. req ino[%v] mpId(%v)", ino, mp.config.PartitionId)
 	resp.Status = proto.OpOk
-	i, err = mp.inodeTree.Get(ino)
+	i, err = mp.inodeTree.CopyGet(ino)
 	if err != nil {
 		resp.Status = proto.OpErr
 		return
@@ -1025,7 +1025,7 @@ func (mp *metaPartition) fsmSetInodeQuotaBatch(handle interface{}, req *proto.Ba
 		var err error
 
 		extend := NewExtendWithQuota(ino)
-		treeItem, err := mp.extendTree.Get(extend)
+		treeItem, err := mp.extendTree.CopyGet(extend)
 		if err != nil {
 			resp.InodeRes[ino] = proto.OpErr
 			log.LogErrorf("fsmSetInodeQuotaBatch get inode[%v] fail.", ino)
@@ -1099,7 +1099,7 @@ func (mp *metaPartition) fsmDeleteInodeQuotaBatch(handle interface{}, req *proto
 		var err error
 		extend = extTmp
 		extend.inode = ino
-		treeItem, err := mp.extendTree.Get(extend)
+		treeItem, err := mp.extendTree.CopyGet(extend)
 		if err != nil {
 			resp.InodeRes[ino] = proto.OpErr
 			log.LogErrorf("fsmDeleteInodeQuotaBatch get inode[%v] fail.", ino)

@@ -788,7 +788,7 @@ func (tm *TransactionManager) rollbackTxInfo(dbHandle interface{}, txId string) 
 	defer tm.Unlock()
 	status = proto.OpOk
 
-	tx, err := tm.getTransaction(txId)
+	tx, err := tm.copyGetTx(txId)
 	if err != nil {
 		log.LogErrorf("[rollbackTxInfo] cannot get tx(%v) from tx tree, err(%v)", txId, err)
 		return
@@ -814,7 +814,7 @@ func (tm *TransactionManager) commitTxInfo(handle interface{}, txId string) (sta
 	tm.Lock()
 	defer tm.Unlock()
 	status = proto.OpOk
-	tx, err := tm.getTransaction(txId)
+	tx, err := tm.copyGetTx(txId)
 	if err != nil {
 		log.LogErrorf("[commitTxInfo] cannot get tx(%v) from tx tree, err(%v)", txId, err)
 		status = proto.OpErr
@@ -1583,6 +1583,11 @@ func (tr *TransactionResource) rollbackInodeInternal(handle interface{}, rbInode
 			}
 		} else {
 			ino.IncNLink(mp.verSeq)
+			if err = mp.inodeTree.Update(handle, ino); err != nil {
+				status = proto.OpErr
+				log.LogErrorf("rollbackInodeInternal: failed to update inode(%v), err(%v)", ino.Inode, err)
+				return
+			}
 		}
 
 	case TxDelete:
@@ -1790,7 +1795,7 @@ func (tr *TransactionResource) commitDentry(handle interface{}, txID string, pId
 	if rbDentry.rbType == TxAdd {
 		mp := tr.txProcessor.mp
 		var parentIno *Inode
-		parentIno, err = mp.inodeTree.Get(NewInode(pId, 0))
+		parentIno, err = mp.inodeTree.CopyGet(NewInode(pId, 0))
 		if err != nil {
 			status = proto.OpErr
 			log.LogErrorf("commitDentry: get parent inode(%v) err: %v, txId %s", pId, err, txID)

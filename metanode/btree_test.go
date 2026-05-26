@@ -627,6 +627,43 @@ func TestDentryTreeRange(t *testing.T) {
 	}
 }
 
+func TestMemInodeCopyGetUpdateSnapshotIsolation(t *testing.T) {
+	tree := &InodeBTree{BTree: NewBtree()}
+	const inoID = uint64(88001)
+
+	handle, err := tree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	origin := NewInode(inoID, FileModeType)
+	origin.Size = 4096
+	_, ok, err := tree.ReplaceOrInsert(handle, origin, true)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.NoError(t, tree.CommitAndReleaseBatchWriteHandle(handle, false))
+
+	snapTree := tree.GetTree()
+	snapInodeTree := &InodeBTree{BTree: snapTree}
+
+	working, err := tree.CopyGet(NewInode(inoID, 0))
+	require.NoError(t, err)
+	require.NotNil(t, working)
+	working.Size = 1024
+	require.NoError(t, tree.Update(nil, working))
+
+	live, err := tree.Get(NewInode(inoID, 0))
+	require.NoError(t, err)
+	require.Equal(t, uint64(1024), live.Size)
+
+	var snapSize uint64
+	err = snapInodeTree.Range(nil, nil, func(i *Inode) bool {
+		if i.Inode == inoID {
+			snapSize = i.Size
+		}
+		return true
+	})
+	require.NoError(t, err)
+	require.Equal(t, uint64(4096), snapSize)
+}
+
 func TestTreeTypeString(t *testing.T) {
 	tests := []struct {
 		tp     TreeType

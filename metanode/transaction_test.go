@@ -297,6 +297,113 @@ func TestTxMgrOp_Rocksdb(t *testing.T) {
 	testTxMgrOp(t)
 }
 
+// commitTxInfo/rollbackTxInfo use copyGetTx; mutating a stale getTransaction pointer must not
+// change the outcome of commit/rollback on the tree copy.
+func TestTxMgrCommitRollbackUseCopyGetTx(t *testing.T) {
+	initMps(t, proto.StoreModeMem)
+	txMgr := mp1.txProcessor.txManager
+
+	txInfo := proto.NewTransactionInfo(5, proto.TxTypeCreate)
+	txInfo.TxID = txMgr.nextTxID()
+	txInfo.State = proto.TxStatePreCommit
+	txInfo.CreateTime = time.Now().Unix()
+	if !txInfo.IsInitialized() {
+		mp1.initTxInfo(txInfo)
+	}
+
+	handle, err := txMgr.txTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	err = txMgr.registerTransaction(handle, txInfo)
+	require.NoError(t, err)
+	require.NoError(t, txMgr.txTree.CommitAndReleaseBatchWriteHandle(handle, false))
+
+	stale, err := txMgr.getTransaction(txInfo.TxID)
+	require.NoError(t, err)
+	require.NotNil(t, stale)
+	stale.State = proto.TxStateInit
+
+	handle, err = txMgr.txTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	status, err := txMgr.commitTxInfo(handle, txInfo.TxID)
+	require.NoError(t, err)
+	require.EqualValues(t, proto.OpOk, status)
+	require.NoError(t, txMgr.txTree.CommitAndReleaseBatchWriteHandle(handle, false))
+
+	committed, err := txMgr.getTransaction(txInfo.TxID)
+	require.NoError(t, err)
+	require.NotNil(t, committed)
+	require.True(t, committed.IsDone())
+	require.EqualValues(t, proto.TxStateCommitDone, committed.State)
+
+	txInfo2 := proto.NewTransactionInfo(5, proto.TxTypeCreate)
+	txInfo2.TxID = txMgr.nextTxID()
+	txInfo2.State = proto.TxStatePreCommit
+	txInfo2.CreateTime = time.Now().Unix()
+	if !txInfo2.IsInitialized() {
+		mp1.initTxInfo(txInfo2)
+	}
+
+	handle, err = txMgr.txTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	err = txMgr.registerTransaction(handle, txInfo2)
+	require.NoError(t, err)
+	require.NoError(t, txMgr.txTree.CommitAndReleaseBatchWriteHandle(handle, false))
+
+	stale2, err := txMgr.getTransaction(txInfo2.TxID)
+	require.NoError(t, err)
+	stale2.State = proto.TxStateCommitDone
+
+	handle, err = txMgr.txTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	_, err = txMgr.rollbackTxInfo(handle, txInfo2.TxID)
+	require.NoError(t, err)
+	require.NoError(t, txMgr.txTree.CommitAndReleaseBatchWriteHandle(handle, false))
+
+	rolled, err := txMgr.getTransaction(txInfo2.TxID)
+	require.NoError(t, err)
+	require.NotNil(t, rolled)
+	require.EqualValues(t, proto.TxStateRollbackDone, rolled.State)
+}
+
+func TestRollbackInodeInternalIncNLinkPersists(t *testing.T) {
+	initMps(t, proto.StoreModeMem)
+	const ino = 22001
+
+	handle, err := mp1.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	inode := NewInode(ino, FileModeType)
+	inode.PoolId = proto.DefaultSSDPoolId
+	inode.NLink = 1
+	_, _, err = mp1.inodeTree.ReplaceOrInsert(handle, inode, true)
+	require.NoError(t, err)
+	require.NoError(t, mp1.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false))
+
+	txMgr := mp1.txProcessor.txManager
+	txInodeInfo := proto.NewTxInodeInfo(MemberAddrs, ino, 10001)
+	txInodeInfo.TxID = txMgr.nextTxID()
+	rbInode := NewTxRollbackInode(inode, nil, txInodeInfo, TxAdd)
+
+	txRsc := mp1.txProcessor.txResource
+	handle, err = txRsc.txRbInodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	status, err := txRsc.addTxRollbackInode(handle, rbInode)
+	require.NoError(t, err)
+	require.EqualValues(t, proto.OpOk, status)
+	require.NoError(t, txRsc.txRbInodeTree.CommitAndReleaseBatchWriteHandle(handle, false))
+
+	handle, err = txRsc.txRbInodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	status, err = txRsc.rollbackInodeInternal(handle, rbInode)
+	require.NoError(t, err)
+	require.EqualValues(t, proto.OpOk, status)
+	require.NoError(t, txRsc.txRbInodeTree.CommitAndReleaseBatchWriteHandle(handle, false))
+
+	got, err := mp1.inodeTree.Get(NewInode(ino, 0))
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.EqualValues(t, 2, got.NLink)
+}
+
 func testTxRscOp(t *testing.T) {
 	txMgr := mp1.txProcessor.txManager
 

@@ -27,6 +27,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const fsmInodeQuotaID uint32 = 42
+
 const RocksdbInodeTestDir = "/tmp/cfs/fsm_inode_test"
 
 func getMpConfigForFsmInodeTest(storeMode proto.StoreMode) (config *MetaPartitionConfig) {
@@ -644,4 +646,177 @@ func TestFsmUpdateInodeMetaUpdateError(t *testing.T) {
 		PartitionID: mp.config.PartitionId,
 	})
 	require.EqualValues(t, proto.OpErr, status)
+}
+
+func prepareInodeWithExtentsForFsmInodeTest(t *testing.T, mp *metaPartition, ino uint64, size uint64) {
+	t.Helper()
+	prepareInodeForFsmInodeTest(t, mp, ino)
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	i, err := mp.inodeTree.CopyGet(NewInode(ino, 0))
+	require.NoError(t, err)
+	require.NotNil(t, i)
+	se := NewSortedExtents()
+	se.Append(proto.ExtentKey{FileOffset: 0, Size: uint32(size), ExtentId: 1, PartitionId: 1})
+	i.HybridCloudExtents.sortedEks = se
+	i.Size = size
+	require.NoError(t, mp.inodeTree.Put(handle, i))
+	require.NoError(t, mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false))
+}
+
+func inodeSizeFromSnap(t *testing.T, snap Snapshot, ino uint64) (size uint64, found bool) {
+	t.Helper()
+	err := snap.Range(InodeType, func(item interface{}) bool {
+		inode := item.(*Inode)
+		if inode.Inode == ino {
+			size = inode.Size
+			found = true
+		}
+		return true
+	})
+	require.NoError(t, err)
+	return size, found
+}
+
+func testFsmExtentsTruncateCopyGetSnapshot(t *testing.T, mp *metaPartition) {
+	const ino = 21001
+	const beforeSize = uint64(2048)
+	const afterSize = uint64(1024)
+
+	if mp.multiVersionList == nil {
+		mp.multiVersionList = &proto.VolVersionInfoList{
+			TemporaryVerMap: make(map[uint64]*proto.VolVersionInfo),
+		}
+	}
+	prepareInodeWithExtentsForFsmInodeTest(t, mp, ino, beforeSize)
+	snap, err := mp.GetSnapShot()
+	require.NoError(t, err)
+	defer snap.Close()
+
+	snapSize, found := inodeSizeFromSnap(t, snap, ino)
+	require.True(t, found)
+	require.Equal(t, beforeSize, snapSize)
+
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	req := NewInode(ino, 0)
+	req.Size = afterSize
+	req.ModifyTime = time.Now().Unix()
+	resp, err := mp.fsmExtentsTruncate(handle, req)
+	require.NoError(t, err)
+	require.EqualValues(t, proto.OpOk, resp.Status)
+	require.NoError(t, mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false))
+
+	live, err := mp.inodeTree.Get(NewInode(ino, 0))
+	require.NoError(t, err)
+	require.NotNil(t, live)
+	require.Equal(t, afterSize, live.Size)
+
+	snapSizeAfter, _ := inodeSizeFromSnap(t, snap, ino)
+	require.Equal(t, beforeSize, snapSizeAfter,
+		"mem snapshot must not observe truncate after CopyGet")
+}
+
+func TestFsmExtentsTruncateCopyGetSnapshot(t *testing.T) {
+	mp := newMpForFsmInodeTest(t, proto.StoreModeMem)
+	testFsmExtentsTruncateCopyGetSnapshot(t, mp)
+}
+
+func TestFsmExtentsTruncateCopyGetSnapshot_Rocksdb(t *testing.T) {
+	mp := newMpForFsmInodeTest(t, proto.StoreModeRocksDb)
+	testFsmExtentsTruncateCopyGetSnapshot(t, mp)
+}
+
+func TestFsmExtentsTruncateCopyGetError(t *testing.T) {
+	mp := newMpForFsmInodeTest(t, proto.StoreModeMem)
+	const ino = 21002
+	prepareInodeForFsmInodeTest(t, mp, ino)
+	base := mp.inodeTree
+	mp.inodeTree = &errInjectInodeTree{
+		InodeTree:  base,
+		copyGetErr: fmt.Errorf("copyget failed"),
+	}
+	defer func() { mp.inodeTree = base }()
+
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	req := NewInode(ino, 0)
+	req.Size = 512
+	resp, _ := mp.fsmExtentsTruncate(handle, req)
+	require.EqualValues(t, proto.OpErr, resp.Status)
+}
+
+func testFsmSetInodeQuotaBatchCopyGet(t *testing.T, mp *metaPartition) {
+	const ino = 21010
+	mp.mqMgr = NewQuotaManager(mp.config.VolName, mp.config.PartitionId)
+	prepareInodeForFsmInodeTest(t, mp, ino)
+
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	resp := mp.fsmSetInodeQuotaBatch(handle, &proto.BatchSetMetaserverQuotaReuqest{
+		QuotaId: fsmInodeQuotaID,
+		Inodes:  []uint64{ino},
+		IsRoot:  true,
+	})
+	require.EqualValues(t, proto.OpOk, resp.InodeRes[ino])
+	require.NoError(t, mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false))
+
+	extend, err := mp.extendTree.Get(NewExtendWithQuota(ino))
+	require.NoError(t, err)
+	require.NotNil(t, extend)
+	require.NotEmpty(t, extend.Quota)
+
+	var quotaMap map[uint32]*proto.MetaQuotaInfo
+	require.NoError(t, json.Unmarshal(extend.Quota, &quotaMap))
+	require.NotNil(t, quotaMap[fsmInodeQuotaID])
+}
+
+func TestFsmSetInodeQuotaBatchCopyGet(t *testing.T) {
+	mp := newMpForFsmInodeTest(t, proto.StoreModeMem)
+	testFsmSetInodeQuotaBatchCopyGet(t, mp)
+}
+
+func TestFsmSetInodeQuotaBatchCopyGet_Rocksdb(t *testing.T) {
+	mp := newMpForFsmInodeTest(t, proto.StoreModeRocksDb)
+	testFsmSetInodeQuotaBatchCopyGet(t, mp)
+}
+
+func testFsmDeleteInodeQuotaBatchCopyGet(t *testing.T, mp *metaPartition) {
+	const ino = 21011
+	mp.mqMgr = NewQuotaManager(mp.config.VolName, mp.config.PartitionId)
+	prepareInodeForFsmInodeTest(t, mp, ino)
+
+	handle, err := mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	setResp := mp.fsmSetInodeQuotaBatch(handle, &proto.BatchSetMetaserverQuotaReuqest{
+		QuotaId: fsmInodeQuotaID,
+		Inodes:  []uint64{ino},
+		IsRoot:  true,
+	})
+	require.EqualValues(t, proto.OpOk, setResp.InodeRes[ino])
+	require.NoError(t, mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false))
+
+	handle, err = mp.inodeTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	_ = mp.fsmDeleteInodeQuotaBatch(handle, &proto.BatchDeleteMetaserverQuotaReuqest{
+		QuotaId: fsmInodeQuotaID,
+		Inodes:  []uint64{ino},
+	})
+	require.NoError(t, mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false))
+
+	extend, err := mp.extendTree.Get(NewExtendWithQuota(ino))
+	require.NoError(t, err)
+	if extend != nil {
+		require.Nil(t, extend.Quota)
+	}
+}
+
+func TestFsmDeleteInodeQuotaBatchCopyGet(t *testing.T) {
+	mp := newMpForFsmInodeTest(t, proto.StoreModeMem)
+	testFsmDeleteInodeQuotaBatchCopyGet(t, mp)
+}
+
+func TestFsmDeleteInodeQuotaBatchCopyGet_Rocksdb(t *testing.T) {
+	mp := newMpForFsmInodeTest(t, proto.StoreModeRocksDb)
+	testFsmDeleteInodeQuotaBatchCopyGet(t, mp)
 }

@@ -510,7 +510,7 @@ func (mp *metaPartition) fsmUpdateDentry(dbHandle interface{}, dentry *Dentry) (
 	resp = NewDentryResponse()
 	resp.Status = proto.OpOk
 	var d *Dentry
-	d, err = mp.dentryTree.Get(dentry)
+	d, err = mp.dentryTree.CopyGet(dentry)
 	if err != nil {
 		resp.Status = proto.OpErr
 		log.LogWarnf("rocksdb op err. dentry: %v", dentry)
