@@ -961,6 +961,49 @@ func TestSimulate_BlobNodeMatch_AtRisk(t *testing.T) {
 	require.Equal(t, 5, result.VolumeSafety.UnsafeDetails[0].UnsafeUnits)
 }
 
+// TestSimulate_NonNormalDisksNotExpired: Dropped/Broken disks on a shutdown
+// node must NOT be added to expiredDisks — only DiskStatusNormal disks are.
+func TestSimulate_NonNormalDisksNotExpired(t *testing.T) {
+	const nodeID = proto.NodeID(3)
+
+	normalID := proto.DiskID(201)
+	droppedID := proto.DiskID(202)
+	brokenID := proto.DiskID(203)
+
+	bn := &stubBlobnode{
+		nodes: []clustermgr.BlobNodeInfo{
+			{NodeInfo: clustermgr.NodeInfo{NodeID: nodeID, Host: "http://10.0.0.3:9998"}},
+		},
+		allDisks: []clustermgr.BlobNodeDiskInfo{
+			{
+				DiskInfo:          clustermgr.DiskInfo{NodeID: nodeID, Status: proto.DiskStatusNormal},
+				DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{DiskID: normalID},
+			},
+			{
+				DiskInfo:          clustermgr.DiskInfo{NodeID: nodeID, Status: proto.DiskStatusDropped},
+				DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{DiskID: droppedID},
+			},
+			{
+				DiskInfo:          clustermgr.DiskInfo{NodeID: nodeID, Status: proto.DiskStatusBroken},
+				DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{DiskID: brokenID},
+			},
+		},
+	}
+
+	d, cleanup := newSimulateDashboard(t, clustermgr.DashboardScoreOK, bn, nil)
+	defer cleanup()
+
+	result := d.Simulate([]string{"10.0.0.3"})
+
+	// Only the Normal disk should appear as expired.
+	require.Equal(t, 1, result.Service.ExpiredDisks)
+	for _, ids := range result.Service.ExpiredByNode {
+		require.Contains(t, ids, normalID)
+		require.NotContains(t, ids, droppedID)
+		require.NotContains(t, ids, brokenID)
+	}
+}
+
 // TestSimulate_NoNodeMatch_SnapshotUnchanged: service IP matching requires
 // ServiceMgr to have registered nodes. Since ServiceMgr is a concrete type
 // backed by an empty DB in tests, ListServiceInfo returns nothing and the

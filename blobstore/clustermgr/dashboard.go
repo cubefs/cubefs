@@ -177,7 +177,7 @@ func (d *dashboardMgr) Simulate(nodes []string) clustermgr.ClusterDashboard {
 
 	allDisks, expiredDisks := d.blobnode.DisksSnapshot()
 	for _, di := range allDisks {
-		if _, hit := shutdownNodeIDs[di.NodeID]; hit {
+		if _, hit := shutdownNodeIDs[di.NodeID]; hit && di.Status == proto.DiskStatusNormal {
 			expiredDisks = append(expiredDisks, di)
 		}
 	}
