@@ -1002,8 +1002,8 @@ func TestCommitDentryGetParentInodeError(t *testing.T) {
 
 	base := mp.inodeTree
 	mp.inodeTree = &errInjectInodeTree{
-		InodeTree: base,
-		getErr:    fmt.Errorf("inode get failed"),
+		InodeTree:  base,
+		copyGetErr: fmt.Errorf("inode get failed"),
 	}
 	defer func() { mp.inodeTree = base }()
 

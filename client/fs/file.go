@@ -300,7 +300,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	}
 	log.LogDebugf("TRACE open ino(%v) f.super.bcacheDir(%v) needBCache(%v)", ino, f.super.bcacheDir, needBCache)
 
-	if f.super.metaCacheAcceleration {
+	if f.super.metaCacheAcceleration && !openForWrite {
 		inodeInfo, err1 := f.super.InodeGet(ino)
 		if err1 == nil && inodeInfo != nil && inodeInfo.Extents != nil {
 			f.super.ec.RefreshExtentsWithCache(inodeInfo)

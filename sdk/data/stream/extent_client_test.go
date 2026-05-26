@@ -4,6 +4,7 @@ import (
 	"errors"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
@@ -87,6 +88,59 @@ func TestOpenStreamReadToWriteCallsLoadInodeInfo(t *testing.T) {
 	require.NoError(t, client.EvictStream(inode))
 }
 
+func TestOpenStreamReadToWriteKeepsLockDuringForbiddenMigration(t *testing.T) {
+	var sawStreamerLockHeld bool
+	client := &ExtentClient{
+		streamers:                 make(map[uint64]*Streamer),
+		multiVerMgr:               &MultiVerMgr{},
+		renewalForbiddenMigration: func(uint64) error { return nil },
+		loadInodeInfo:             noopLoadInodeInfo,
+	}
+	client.forbiddenMigration = func(uint64) error {
+		if client.streamerLock.TryLock() {
+			client.streamerLock.Unlock()
+		} else {
+			sawStreamerLockHeld = true
+		}
+		return nil
+	}
+
+	const inode = uint64(77891)
+	require.NoError(t, client.OpenStream(inode, false, false, "/ro"))
+	require.NoError(t, client.OpenStream(inode, true, false, "/rw"))
+	require.True(t, sawStreamerLockHeld)
+
+	require.NoError(t, client.CloseStream(inode))
+	require.NoError(t, client.CloseStream(inode))
+	require.NoError(t, client.EvictStream(inode))
+}
+
+func TestOpenStreamReadToWriteReleasesLockBeforeLoadInodeInfo(t *testing.T) {
+	var sawStreamerLockReleased bool
+	client := &ExtentClient{
+		streamers:                 make(map[uint64]*Streamer),
+		multiVerMgr:               &MultiVerMgr{},
+		renewalForbiddenMigration: func(uint64) error { return nil },
+		forbiddenMigration:        func(uint64) error { return nil },
+	}
+	client.loadInodeInfo = func(uint64) (*proto.InodeInfo, error) {
+		if client.streamerLock.TryLock() {
+			sawStreamerLockReleased = true
+			client.streamerLock.Unlock()
+		}
+		return nil, nil
+	}
+
+	const inode = uint64(77892)
+	require.NoError(t, client.OpenStream(inode, false, false, "/ro"))
+	require.NoError(t, client.OpenStream(inode, true, false, "/rw"))
+	require.True(t, sawStreamerLockReleased)
+
+	require.NoError(t, client.CloseStream(inode))
+	require.NoError(t, client.CloseStream(inode))
+	require.NoError(t, client.EvictStream(inode))
+}
+
 func TestOpenStreamReadToWriteLoadInodeInfoErrorSetsStreamerError(t *testing.T) {
 	client := &ExtentClient{
 		streamers:                 make(map[uint64]*Streamer),
@@ -113,6 +167,41 @@ func TestOpenStreamReadToWriteLoadInodeInfoErrorSetsStreamerError(t *testing.T) 
 	s, ok := client.streamers[inode]
 	require.True(t, ok)
 	require.Equal(t, int32(StreamerError), atomic.LoadInt32(&s.status))
+}
+
+func TestOpenStreamReadToWriteFailsWhenStreamerChangesDuringLoadInodeInfo(t *testing.T) {
+	client := &ExtentClient{
+		streamers:                 make(map[uint64]*Streamer),
+		multiVerMgr:               &MultiVerMgr{},
+		renewalForbiddenMigration: func(uint64) error { return nil },
+		forbiddenMigration:        func(uint64) error { return nil },
+	}
+
+	const inode = uint64(7791)
+	original := &Streamer{
+		inode:        inode,
+		client:       client,
+		openForWrite: false,
+		extents:      NewExtentCache(inode),
+		dirtylist:    NewDirtyExtentList(),
+	}
+	client.streamers[inode] = original
+	client.loadInodeInfo = func(uint64) (*proto.InodeInfo, error) {
+		client.streamerLock.Lock()
+		client.streamers[inode] = &Streamer{
+			inode:     inode,
+			client:    client,
+			extents:   NewExtentCache(inode),
+			dirtylist: NewDirtyExtentList(),
+		}
+		client.streamerLock.Unlock()
+		return nil, nil
+	}
+
+	err := client.OpenStream(inode, true, false, "/rw")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "changed during open")
+	require.Equal(t, int32(0), atomic.LoadInt32(&original.refcnt))
 }
 
 func TestOpenStreamReuseReadToWriteForbiddenMigrationErrorSetsStreamerError(t *testing.T) {
@@ -176,4 +265,98 @@ func TestOpenStreamReadThenWriteForbiddenMigrationErrWithDebugEnabled(t *testing
 	s, ok := client.streamers[inode]
 	require.True(t, ok)
 	require.Equal(t, int32(StreamerError), atomic.LoadInt32(&s.status))
+}
+
+func TestOpenStreamReadToWriteLoadInodeInfoRefreshDoesNotDeadlock(t *testing.T) {
+	const inode = uint64(7792)
+	client := &ExtentClient{
+		streamers:                 make(map[uint64]*Streamer),
+		multiVerMgr:               &MultiVerMgr{},
+		renewalForbiddenMigration: func(uint64) error { return nil },
+		forbiddenMigration:        func(uint64) error { return nil },
+		getExtents: func(uint64, bool, bool, bool) (uint64, uint64, []proto.ExtentKey, error) {
+			return 3, 50, nil, nil
+		},
+	}
+	client.loadInodeInfo = func(ino uint64) (*proto.InodeInfo, error) {
+		return nil, client.ForceRefreshExtentsCache(ino)
+	}
+
+	require.NoError(t, client.OpenStream(inode, false, false, "/ro"))
+	require.NoError(t, client.OpenStream(inode, true, false, "/rw"))
+	require.Equal(t, uint64(3), client.streamers[inode].extents.gen)
+
+	require.NoError(t, client.CloseStream(inode))
+	require.NoError(t, client.CloseStream(inode))
+	require.NoError(t, client.EvictStream(inode))
+}
+
+func TestOpenStreamReadToWriteLoadInodeInfoErrorDoesNotLeakStreamerLock(t *testing.T) {
+	client := &ExtentClient{
+		streamers:                 make(map[uint64]*Streamer),
+		multiVerMgr:               &MultiVerMgr{},
+		renewalForbiddenMigration: func(uint64) error { return nil },
+		forbiddenMigration:        func(uint64) error { return nil },
+		loadInodeInfo: func(uint64) (*proto.InodeInfo, error) {
+			return nil, errors.New("load inode failed")
+		},
+	}
+
+	const inode = uint64(7793)
+	client.streamers[inode] = &Streamer{
+		inode:        inode,
+		client:       client,
+		openForWrite: false,
+		extents:      NewExtentCache(inode),
+		dirtylist:    NewDirtyExtentList(),
+	}
+
+	require.Error(t, client.OpenStream(inode, true, false, "/rw"))
+	require.Equal(t, int32(StreamerError), atomic.LoadInt32(&client.streamers[inode].status))
+	requireCompletes(t, func() {
+		_ = client.GetStreamer(inode)
+	})
+}
+
+func TestOpenStreamReadToWriteForbiddenMigrationErrorDoesNotLeakStreamerLock(t *testing.T) {
+	client := &ExtentClient{
+		streamers:                 make(map[uint64]*Streamer),
+		multiVerMgr:               &MultiVerMgr{},
+		renewalForbiddenMigration: func(uint64) error { return nil },
+		forbiddenMigration: func(uint64) error {
+			return errors.New("forbidden migration failed")
+		},
+		loadInodeInfo: noopLoadInodeInfo,
+	}
+
+	const inode = uint64(7794)
+	client.streamers[inode] = &Streamer{
+		inode:        inode,
+		client:       client,
+		openForWrite: false,
+		extents:      NewExtentCache(inode),
+		dirtylist:    NewDirtyExtentList(),
+	}
+
+	require.Error(t, client.OpenStream(inode, true, false, "/rw"))
+	require.Equal(t, int32(StreamerError), atomic.LoadInt32(&client.streamers[inode].status))
+	requireCompletes(t, func() {
+		_ = client.GetStreamer(inode)
+	})
+}
+
+func requireCompletes(t *testing.T, fn func()) {
+	t.Helper()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		fn()
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("operation blocked, streamerLock may be leaked")
+	}
 }

@@ -12,8 +12,10 @@ import (
 	"context"
 	"errors"
 	"os"
+	"reflect"
 	"syscall"
 	"testing"
+	"unsafe"
 
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
 	"github.com/cubefs/cubefs/proto"
@@ -26,6 +28,25 @@ func superForFileTest(t *testing.T) *Super {
 	s := superForDirMutationTest(t)
 	s.ec = &stream.ExtentClient{}
 	return s
+}
+
+func superForFileOpenTest(t *testing.T, getExtents stream.GetExtentsFunc) *Super {
+	t.Helper()
+	s := superForFileTest(t)
+	ec := stream.NewTestExtentClient(getExtents)
+	setUnexportedField(t, ec, "multiVerMgr", &stream.MultiVerMgr{})
+	setUnexportedField(t, ec, "forbiddenMigration", stream.ForbiddenMigrationFunc(func(uint64) error { return nil }))
+	setUnexportedField(t, ec, "renewalForbiddenMigration", stream.RenewalForbiddenMigrationFunc(func(uint64) error { return nil }))
+	setUnexportedField(t, ec, "loadInodeInfo", stream.LoadInodeInfoFunc(func(uint64) (*proto.InodeInfo, error) { return nil, nil }))
+	s.ec = ec
+	return s
+}
+
+func setUnexportedField(t *testing.T, target any, name string, value any) {
+	t.Helper()
+	field := reflect.ValueOf(target).Elem().FieldByName(name)
+	require.True(t, field.IsValid(), "field %s must exist", name)
+	reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem().Set(reflect.ValueOf(value))
 }
 
 func symlinkInodeInfoForTest(ino uint64, target string) *proto.InodeInfo {
@@ -227,6 +248,59 @@ func TestFile_Attr_coldVolume_usesInodeSize(t *testing.T) {
 	attr := &fuse.Attr{}
 	require.NoError(t, f.Attr(context.Background(), attr))
 	require.Equal(t, uint64(2048), attr.Size)
+}
+
+func TestFile_OpenMetaCacheAccelerationReadUsesInodeExtentsCache(t *testing.T) {
+	const ino uint64 = 91004
+	var getExtentsCalls int
+	s := superForFileOpenTest(t, func(uint64, bool, bool, bool) (uint64, uint64, []proto.ExtentKey, error) {
+		getExtentsCalls++
+		return 0, 0, nil, nil
+	})
+	info := fileInodeInfoForMutationTest(ino)
+	info.Extents.Generation = 7
+	info.Extents.Size = 128
+	s.ic.Put(info)
+
+	f := newTestFile(s, info, s.rootIno, "read.txt")
+	_, err := f.Open(context.Background(), &fuse.OpenRequest{
+		Header: fuse.Header{Pid: 91004},
+		Flags:  syscall.O_RDONLY,
+	}, &fuse.OpenResponse{})
+	require.NoError(t, err)
+	require.Equal(t, 0, getExtentsCalls)
+
+	require.NoError(t, s.ec.CloseStream(ino))
+	require.NoError(t, s.ec.EvictStream(ino))
+}
+
+func TestFile_OpenMetaCacheAccelerationWriteRefreshesExtentsWithOpenForWrite(t *testing.T) {
+	const ino uint64 = 91005
+	var (
+		getExtentsCalls int
+		gotOpenForWrite bool
+	)
+	s := superForFileOpenTest(t, func(inode uint64, isCache, openForWrite, isMigration bool) (uint64, uint64, []proto.ExtentKey, error) {
+		require.Equal(t, ino, inode)
+		getExtentsCalls++
+		gotOpenForWrite = openForWrite
+		return 9, 256, nil, nil
+	})
+	info := fileInodeInfoForMutationTest(ino)
+	info.Extents.Generation = 3
+	s.ic.Put(info)
+
+	f := newTestFile(s, info, s.rootIno, "write.txt")
+	_, err := f.Open(context.Background(), &fuse.OpenRequest{
+		Header: fuse.Header{Pid: 91005},
+		Flags:  syscall.O_WRONLY,
+	}, &fuse.OpenResponse{})
+	require.NoError(t, err)
+	require.Equal(t, 1, getExtentsCalls)
+	require.True(t, gotOpenForWrite)
+
+	require.NoError(t, s.ec.CloseStream(ino))
+	require.NoError(t, s.ec.EvictStream(ino))
 }
 
 func TestFile_Readlink_returnsTarget(t *testing.T) {

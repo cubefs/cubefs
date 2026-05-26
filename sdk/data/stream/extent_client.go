@@ -549,19 +549,33 @@ func (client *ExtentClient) OpenStream(inode uint64, openForWrite, isCache bool,
 			}
 
 			s.openForWrite = openForWrite
-			err := s.client.forbiddenMigration(s.inode)
+			err := client.forbiddenMigration(inode)
 			if err != nil {
-				log.LogWarnf("ino(%v) forbiddenMigration failed err %v", s.inode, err.Error())
+				log.LogWarnf("ino(%v) forbiddenMigration failed err %v", inode, err.Error())
 				s.setError()
+				client.streamerLock.Unlock()
 				return err
 			}
 
+			current := s
+			client.streamerLock.Unlock()
 			// load inode info to update extent cache
-			_, err = s.client.loadInodeInfo(s.inode)
+			_, err = client.loadInodeInfo(inode)
 			if err != nil {
-				log.LogErrorf("action[OpenStream] inode(%v) loadInodeInfo failed err %v", s.inode, err.Error())
-				s.setError()
+				log.LogErrorf("action[OpenStream] inode(%v) loadInodeInfo failed err %v", inode, err.Error())
+				client.streamerLock.Lock()
+				if latest, ok := client.streamers[inode]; ok && latest == current {
+					latest.setError()
+				}
+				client.streamerLock.Unlock()
 				return err
+			}
+
+			client.streamerLock.Lock()
+			s, ok = client.streamers[inode]
+			if !ok || s != current {
+				client.streamerLock.Unlock()
+				return fmt.Errorf("streamer for ino(%v) changed during open", inode)
 			}
 		}
 
