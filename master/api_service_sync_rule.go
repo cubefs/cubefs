@@ -98,7 +98,7 @@ func (m *Server) createSyncRule(w http.ResponseWriter, r *http.Request) {
 	if mgrErr := m.cluster.syncRuleMgr.Register(rule); mgrErr != nil {
 		log.LogWarnf("createSyncRule: manager Register %q failed: %v", rule.ID(), mgrErr)
 	}
-	sendOkReply(w, r, newSuccessHTTPReply(rule))
+	sendOkReply(w, r, newSuccessHTTPReply(redactedSyncRule(rule)))
 }
 
 // updateSyncRule handles POST /syncRule/update. Body must reference an
@@ -145,7 +145,7 @@ func (m *Server) updateSyncRule(w http.ResponseWriter, r *http.Request) {
 	if mgrErr := m.cluster.syncRuleMgr.Register(&updated); mgrErr != nil {
 		log.LogWarnf("updateSyncRule: manager Register %q failed: %v", updated.ID(), mgrErr)
 	}
-	sendOkReply(w, r, newSuccessHTTPReply(&updated))
+	sendOkReply(w, r, newSuccessHTTPReply(redactedSyncRule(&updated)))
 }
 
 // deleteSyncRule handles POST /syncRule/delete?id=<ruleID>.
@@ -210,7 +210,7 @@ func (m *Server) transitionSyncRule(w http.ResponseWriter, r *http.Request, next
 	}
 	if existing.State == next {
 		// Idempotent: same state → no-op success.
-		sendOkReply(w, r, newSuccessHTTPReply(existing))
+		sendOkReply(w, r, newSuccessHTTPReply(redactedSyncRule(existing)))
 		return
 	}
 	updated := *existing
@@ -225,7 +225,7 @@ func (m *Server) transitionSyncRule(w http.ResponseWriter, r *http.Request, next
 	if mgrErr := m.cluster.syncRuleMgr.Register(&updated); mgrErr != nil {
 		log.LogWarnf("transitionSyncRule rule=%q next=%q manager Register failed: %v", id, next, mgrErr)
 	}
-	sendOkReply(w, r, newSuccessHTTPReply(&updated))
+	sendOkReply(w, r, newSuccessHTTPReply(redactedSyncRule(&updated)))
 }
 
 // listSyncRules handles GET /syncRule/list[?state=]. Empty state filter
@@ -247,7 +247,7 @@ func (m *Server) listSyncRules(w http.ResponseWriter, r *http.Request) {
 		}
 		rules = filtered
 	}
-	sendOkReply(w, r, newSuccessHTTPReply(rules))
+	sendOkReply(w, r, newSuccessHTTPReply(redactedSyncRules(rules)))
 }
 
 // getSyncRule handles GET /syncRule/get?id=. Returns the cached rule
@@ -269,7 +269,7 @@ func (m *Server) getSyncRule(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 		return
 	}
-	sendOkReply(w, r, newSuccessHTTPReply(rule))
+	sendOkReply(w, r, newSuccessHTTPReply(redactedSyncRule(rule)))
 }
 
 // triggerSyncRule handles POST /syncRule/trigger?id=. Synchronously
@@ -364,6 +364,12 @@ func validateSyncRuleShape(rule *proto.SyncRule) error {
 	}
 	if rule.Config.ShardingStrategy == "prefix" && len(rule.Config.ShardPrefixes) == 0 {
 		return errors.New("shardingStrategy=prefix requires non-empty shardPrefixes")
+	}
+	if rule.Config.ShardCount < 0 {
+		return errors.New("invalid shardCount: must be >= 0")
+	}
+	if rule.Config.Parallelism < 0 {
+		return errors.New("invalid parallelism: must be >= 0")
 	}
 	return nil
 }

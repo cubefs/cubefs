@@ -47,6 +47,7 @@ type mockObject struct {
 	body     []byte
 	etag     string
 	modified time.Time
+	metadata map[string]string // user-metadata; keys are lowercase, prefix stripped
 }
 
 type mockUpload struct {
@@ -54,6 +55,34 @@ type mockUpload struct {
 	uploadID  string
 	parts     map[int][]byte
 	initiated time.Time
+	metadata  map[string]string // captured at CreateMultipartUpload
+}
+
+// captureUserMetadata extracts x-amz-meta-* headers from the request into a
+// lowercase-key map, mirroring how the aws-sdk-go-v2 client surfaces them on
+// the receiving side.
+func captureUserMetadata(h http.Header) map[string]string {
+	out := map[string]string{}
+	for k, v := range h {
+		lk := strings.ToLower(k)
+		if !strings.HasPrefix(lk, "x-amz-meta-") || len(v) == 0 {
+			continue
+		}
+		out[strings.TrimPrefix(lk, "x-amz-meta-")] = v[0]
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// writeUserMetadata writes back user-metadata to a response, mirroring how
+// real S3 responds to GetObject/HeadObject. Header.Set canonicalises the
+// header name.
+func writeUserMetadata(w http.ResponseWriter, md map[string]string) {
+	for k, v := range md {
+		w.Header().Set("X-Amz-Meta-"+k, v)
+	}
 }
 
 type mockS3 struct {
@@ -198,6 +227,7 @@ func (m *mockS3) handleGet(w http.ResponseWriter, r *http.Request, key string) {
 		if start > end {
 			start = end
 		}
+		writeUserMetadata(w, obj.metadata)
 		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end-1, len(body)))
 		w.Header().Set("Content-Length", strconv.FormatInt(end-start, 10))
 		w.Header().Set("ETag", `"`+obj.etag+`"`)
@@ -206,6 +236,7 @@ func (m *mockS3) handleGet(w http.ResponseWriter, r *http.Request, key string) {
 		_, _ = w.Write(body[start:end])
 		return
 	}
+	writeUserMetadata(w, obj.metadata)
 	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
 	w.Header().Set("ETag", `"`+obj.etag+`"`)
 	w.Header().Set("Last-Modified", obj.modified.UTC().Format(http.TimeFormat))
@@ -221,6 +252,7 @@ func (m *mockS3) handleHead(w http.ResponseWriter, _ *http.Request, key string) 
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
+	writeUserMetadata(w, obj.metadata)
 	w.Header().Set("Content-Length", strconv.Itoa(len(obj.body)))
 	w.Header().Set("ETag", `"`+obj.etag+`"`)
 	w.Header().Set("Last-Modified", obj.modified.UTC().Format(http.TimeFormat))
@@ -235,8 +267,9 @@ func (m *mockS3) handlePut(w http.ResponseWriter, r *http.Request, key string) {
 	}
 	sum := md5.Sum(body)
 	etag := hex.EncodeToString(sum[:])
+	md := captureUserMetadata(r.Header)
 	m.mu.Lock()
-	m.objects[key] = &mockObject{body: body, etag: etag, modified: time.Now()}
+	m.objects[key] = &mockObject{body: body, etag: etag, modified: time.Now(), metadata: md}
 	m.mu.Unlock()
 	w.Header().Set("ETag", `"`+etag+`"`)
 	w.WriteHeader(http.StatusOK)
@@ -271,7 +304,20 @@ func (m *mockS3) handleCopyObject(w http.ResponseWriter, r *http.Request, key st
 	}
 	bodyCopy := make([]byte, len(srcObj.body))
 	copy(bodyCopy, srcObj.body)
-	m.objects[key] = &mockObject{body: bodyCopy, etag: srcObj.etag, modified: time.Now()}
+	// MetadataDirective controls whether to inherit the source object's
+	// metadata (COPY, default) or to replace it from the request headers
+	// (REPLACE — used by our post-multipart sha256 + mtime stamping path).
+	directive := strings.ToUpper(r.Header.Get("X-Amz-Metadata-Directive"))
+	var md map[string]string
+	if directive == "REPLACE" {
+		md = captureUserMetadata(r.Header)
+	} else if len(srcObj.metadata) > 0 {
+		md = make(map[string]string, len(srcObj.metadata))
+		for k, v := range srcObj.metadata {
+			md[k] = v
+		}
+	}
+	m.objects[key] = &mockObject{body: bodyCopy, etag: srcObj.etag, modified: time.Now(), metadata: md}
 	m.mu.Unlock()
 	type copyResult struct {
 		XMLName      xml.Name `xml:"CopyObjectResult"`
@@ -343,10 +389,11 @@ func (m *mockS3) handleListObjectsV2(w http.ResponseWriter, r *http.Request) {
 	_ = xml.NewEncoder(w).Encode(out)
 }
 
-func (m *mockS3) handleCreateMultipartUpload(w http.ResponseWriter, _ *http.Request, key string) {
+func (m *mockS3) handleCreateMultipartUpload(w http.ResponseWriter, r *http.Request, key string) {
 	uid := randomID()
+	md := captureUserMetadata(r.Header)
 	m.mu.Lock()
-	m.uploads[uid] = &mockUpload{key: key, uploadID: uid, parts: map[int][]byte{}, initiated: time.Now()}
+	m.uploads[uid] = &mockUpload{key: key, uploadID: uid, parts: map[int][]byte{}, initiated: time.Now(), metadata: md}
 	m.mu.Unlock()
 	type resp struct {
 		XMLName  xml.Name `xml:"InitiateMultipartUploadResult"`
@@ -360,6 +407,12 @@ func (m *mockS3) handleCreateMultipartUpload(w http.ResponseWriter, _ *http.Requ
 
 func (m *mockS3) handleUploadPart(w http.ResponseWriter, r *http.Request, _ string, uid string) {
 	pn, _ := strconv.Atoi(r.URL.Query().Get("partNumber"))
+	// UploadPartCopy is signaled by the X-Amz-Copy-Source header; body is
+	// empty in that case and the source bytes come from another object.
+	if cs := r.Header.Get("X-Amz-Copy-Source"); cs != "" {
+		m.handleUploadPartCopy(w, r, uid, pn, cs)
+		return
+	}
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "read part: "+err.Error(), http.StatusBadRequest)
@@ -377,6 +430,68 @@ func (m *mockS3) handleUploadPart(w http.ResponseWriter, r *http.Request, _ stri
 	sum := md5.Sum(body)
 	w.Header().Set("ETag", `"`+hex.EncodeToString(sum[:])+`"`)
 	w.WriteHeader(http.StatusOK)
+}
+
+// handleUploadPartCopy implements the server-side multipart-copy branch:
+// the client supplies X-Amz-Copy-Source (bucket/key, percent-encoded) and
+// optional X-Amz-Copy-Source-Range ("bytes=off-end"). We slice the source
+// object and stash the chunk in the upload's parts map exactly like a
+// normal UploadPart, but the response envelope is CopyPartResult.
+func (m *mockS3) handleUploadPartCopy(w http.ResponseWriter, r *http.Request, uid string, pn int, copySource string) {
+	src, err := url.PathUnescape(strings.TrimPrefix(copySource, "/"))
+	if err != nil {
+		http.Error(w, "bad copy-source", http.StatusBadRequest)
+		return
+	}
+	parts := strings.SplitN(src, "/", 2)
+	if len(parts) != 2 {
+		http.Error(w, "bad copy-source", http.StatusBadRequest)
+		return
+	}
+	srcKey := parts[1]
+	m.mu.Lock()
+	srcObj, ok := m.objects[srcKey]
+	if !ok {
+		m.mu.Unlock()
+		writeS3Error(w, "NoSuchKey", "Source key not found", http.StatusNotFound)
+		return
+	}
+	srcBody := srcObj.body
+	m.mu.Unlock()
+
+	var off, end int64 = 0, int64(len(srcBody)) - 1
+	if rng := r.Header.Get("X-Amz-Copy-Source-Range"); rng != "" {
+		var a, b int64
+		if _, perr := fmt.Sscanf(rng, "bytes=%d-%d", &a, &b); perr == nil {
+			off, end = a, b
+		}
+	}
+	if off < 0 || end >= int64(len(srcBody)) || off > end {
+		http.Error(w, "bad copy-source range", http.StatusBadRequest)
+		return
+	}
+	chunk := make([]byte, end-off+1)
+	copy(chunk, srcBody[off:end+1])
+
+	m.mu.Lock()
+	up, ok := m.uploads[uid]
+	if !ok {
+		m.mu.Unlock()
+		writeS3Error(w, "NoSuchUpload", "no such upload", http.StatusNotFound)
+		return
+	}
+	up.parts[pn] = chunk
+	m.mu.Unlock()
+
+	sum := md5.Sum(chunk)
+	etag := `"` + hex.EncodeToString(sum[:]) + `"`
+	w.Header().Set("Content-Type", "application/xml")
+	type copyPartResult struct {
+		XMLName      xml.Name `xml:"CopyPartResult"`
+		ETag         string   `xml:"ETag"`
+		LastModified string   `xml:"LastModified"`
+	}
+	_ = xml.NewEncoder(w).Encode(copyPartResult{ETag: etag, LastModified: time.Now().UTC().Format(time.RFC3339)})
 }
 
 func (m *mockS3) handleCompleteMultipart(w http.ResponseWriter, _ *http.Request, key string, uid string) {
@@ -399,7 +514,7 @@ func (m *mockS3) handleCompleteMultipart(w http.ResponseWriter, _ *http.Request,
 	}
 	sum := md5.Sum(all)
 	etag := fmt.Sprintf("%s-%d", hex.EncodeToString(sum[:]), len(nums))
-	m.objects[key] = &mockObject{body: all, etag: etag, modified: time.Now()}
+	m.objects[key] = &mockObject{body: all, etag: etag, modified: time.Now(), metadata: up.metadata}
 	delete(m.uploads, uid)
 	m.mu.Unlock()
 	type resp struct {
@@ -596,11 +711,11 @@ func TestPutGetRoundTrip_Small(t *testing.T) {
 	for i := range body {
 		body[i] = byte(i)
 	}
-	etag, err := b.Put(ctx, key, strings.NewReader(string(body)), int64(len(body)), backend.PutOptions{})
+	res, err := b.Put(ctx, key, strings.NewReader(string(body)), int64(len(body)), backend.PutOptions{})
 	if err != nil {
 		t.Fatalf("Put: %v", err)
 	}
-	if etag == "" {
+	if res.ETag == "" {
 		t.Error("expected non-empty etag")
 	}
 
@@ -633,16 +748,16 @@ func TestPutGetRoundTrip_Multipart(t *testing.T) {
 	for i := range body {
 		body[i] = byte(i % 251)
 	}
-	etag, err := b.Put(ctx, key, strings.NewReader(string(body)), int64(size), backend.PutOptions{})
+	res, err := b.Put(ctx, key, strings.NewReader(string(body)), int64(size), backend.PutOptions{})
 	if err != nil {
 		t.Fatalf("Put multipart: %v", err)
 	}
-	if etag == "" {
+	if res.ETag == "" {
 		t.Error("expected non-empty etag")
 	}
 	// Multipart etag has "-N" suffix
-	if !strings.Contains(etag, "-") {
-		t.Errorf("expected multipart etag with -N suffix, got %q", etag)
+	if !strings.Contains(res.ETag, "-") {
+		t.Errorf("expected multipart etag with -N suffix, got %q", res.ETag)
 	}
 
 	rc, err := b.Get(ctx, key, 0, 0)
@@ -927,5 +1042,351 @@ func TestAbortStaleMultipartUploads_WithStale(t *testing.T) {
 func TestNoAccidentalRealAWS(t *testing.T) {
 	if os.Getenv("AWS_PROFILE") != "" || os.Getenv("AWS_ACCESS_KEY_ID") != "" {
 		t.Log("note: AWS_PROFILE/AWS_ACCESS_KEY_ID set in env — tests still use mock endpoint, but be cautious")
+	}
+}
+
+// TestPutPreservesMtime_SingleShot verifies that PutOptions.Mtime is persisted
+// as the `syncnode-mtime` user metadata header on the single-shot PUT path,
+// and that Head prefers that header over the backend's Last-Modified time.
+func TestPutPreservesMtime_SingleShot(t *testing.T) {
+	t.Parallel()
+	m := newMockS3("test-bucket")
+	defer m.close()
+	b := newTestBackend(t, m)
+	defer b.Close()
+
+	ctx := context.Background()
+	body := []byte("preserved mtime payload")
+	srcMtime := time.Date(2024, 1, 2, 3, 4, 5, 678901234, time.UTC)
+	_, err := b.Put(ctx, "small-mtime.bin", strings.NewReader(string(body)), int64(len(body)), backend.PutOptions{Mtime: &srcMtime})
+	if err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+
+	// Mock object stores the metadata under the bare key.
+	m.mu.Lock()
+	obj := m.objects["small-mtime.bin"]
+	m.mu.Unlock()
+	if obj == nil || obj.metadata[backend.MtimeMetadataKey] == "" {
+		t.Fatalf("expected mock object to capture %s metadata, got %+v", backend.MtimeMetadataKey, obj)
+	}
+	if got := obj.metadata[backend.MtimeMetadataKey]; got != srcMtime.UTC().Format(time.RFC3339Nano) {
+		t.Errorf("metadata mtime: got %q, want %q", got, srcMtime.UTC().Format(time.RFC3339Nano))
+	}
+
+	// Head should prefer the syncnode-mtime header over LastModified.
+	_, _, headMtime, err := b.Head(ctx, "small-mtime.bin")
+	if err != nil {
+		t.Fatalf("Head: %v", err)
+	}
+	if !headMtime.Equal(srcMtime) {
+		t.Errorf("Head mtime: got %s, want %s", headMtime, srcMtime)
+	}
+}
+
+// TestPutPreservesMtime_Multipart verifies that PutOptions.Mtime survives the
+// multipart code path (CreateMultipartUpload → UploadPart → CompleteMultipart,
+// followed by a CopyObject pass that stamps sha256 alongside the existing
+// metadata).
+func TestPutPreservesMtime_Multipart(t *testing.T) {
+	t.Parallel()
+	m := newMockS3("test-bucket")
+	defer m.close()
+	b := newTestBackend(t, m)
+	defer b.Close()
+
+	ctx := context.Background()
+	// >= MultipartThresholdMiB=8 in newTestBackend to force the multipart path.
+	size := 10 * mib
+	body := make([]byte, size)
+	for i := range body {
+		body[i] = byte(i % 251)
+	}
+	srcMtime := time.Date(2023, 6, 7, 8, 9, 10, 111222333, time.UTC)
+	_, err := b.Put(ctx, "big-mtime.bin", strings.NewReader(string(body)), int64(size), backend.PutOptions{
+		Mtime:           &srcMtime,
+		ComputeChecksum: true,
+	})
+	if err != nil {
+		t.Fatalf("Put multipart: %v", err)
+	}
+
+	m.mu.Lock()
+	obj := m.objects["big-mtime.bin"]
+	m.mu.Unlock()
+	if obj == nil {
+		t.Fatalf("expected mock object after multipart put")
+	}
+	if got := obj.metadata[backend.MtimeMetadataKey]; got != srcMtime.UTC().Format(time.RFC3339Nano) {
+		t.Errorf("multipart metadata mtime: got %q, want %q", got, srcMtime.UTC().Format(time.RFC3339Nano))
+	}
+	// The post-upload CopyObject(REPLACE) should also stamp sha256.
+	if obj.metadata[backend.SHA256MetadataKey] == "" {
+		t.Errorf("expected sha256 metadata after multipart copy stamp, got %+v", obj.metadata)
+	}
+
+	_, _, headMtime, err := b.Head(ctx, "big-mtime.bin")
+	if err != nil {
+		t.Fatalf("Head: %v", err)
+	}
+	if !headMtime.Equal(srcMtime) {
+		t.Errorf("Head mtime after multipart: got %s, want %s", headMtime, srcMtime)
+	}
+}
+
+// TestHeadFallsBackToLastModified verifies Head still works for objects that
+// were written without PutOptions.Mtime (no syncnode-mtime header), falling
+// back to the server's Last-Modified.
+func TestHeadFallsBackToLastModified(t *testing.T) {
+	t.Parallel()
+	m := newMockS3("test-bucket")
+	defer m.close()
+	b := newTestBackend(t, m)
+	defer b.Close()
+
+	ctx := context.Background()
+	body := []byte("no mtime supplied")
+	beforePut := time.Now().Add(-time.Second)
+	_, err := b.Put(ctx, "no-mtime.bin", strings.NewReader(string(body)), int64(len(body)), backend.PutOptions{})
+	if err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+
+	_, _, mtime, err := b.Head(ctx, "no-mtime.bin")
+	if err != nil {
+		t.Fatalf("Head: %v", err)
+	}
+	if mtime.IsZero() {
+		t.Errorf("expected non-zero mtime fallback (Last-Modified), got zero")
+	}
+	if mtime.Before(beforePut) {
+		t.Errorf("mtime %s earlier than put time %s — fallback to LastModified failed", mtime, beforePut)
+	}
+}
+
+// putPosixOpts is a small fixture of representative POSIX metadata exercised
+// by the round-trip tests below. setuid (0o4755) covers the higher mode bits;
+// the xattr map combines a printable value, an empty value, and binary bytes
+// to lock in the base64(JSON{base64}) encoding contract.
+func putPosixOpts(mtime *time.Time) backend.PutOptions {
+	mode := uint32(0o4755)
+	uid := uint32(1000)
+	gid := uint32(2000)
+	return backend.PutOptions{
+		Mtime: mtime,
+		Mode:  &mode,
+		UID:   &uid,
+		GID:   &gid,
+		Xattrs: map[string][]byte{
+			"user.syncnode.k":     []byte("hello"),
+			"user.syncnode.empty": {},
+			"user.syncnode.bin":   {0x00, 0x01, 0xff, 0xfe, 0x80},
+		},
+	}
+}
+
+// assertPosixStat validates that a Stat result matches the expected POSIX
+// metadata produced by putPosixOpts. Pulled out so single-shot and multipart
+// tests share the assertions (drift between paths is exactly what we want to
+// surface).
+func assertPosixStat(t *testing.T, st backend.Stat, want backend.PutOptions) {
+	t.Helper()
+	if st.Mode == nil || *st.Mode != *want.Mode {
+		t.Errorf("Mode: got %v, want %o", st.Mode, *want.Mode)
+	}
+	if st.UID == nil || *st.UID != *want.UID {
+		t.Errorf("UID: got %v, want %d", st.UID, *want.UID)
+	}
+	if st.GID == nil || *st.GID != *want.GID {
+		t.Errorf("GID: got %v, want %d", st.GID, *want.GID)
+	}
+	if len(st.Xattrs) != len(want.Xattrs) {
+		t.Errorf("Xattrs len: got %d, want %d (%+v)", len(st.Xattrs), len(want.Xattrs), st.Xattrs)
+	}
+	for k, v := range want.Xattrs {
+		got, ok := st.Xattrs[k]
+		if !ok {
+			t.Errorf("xattr %q missing in Stat result", k)
+			continue
+		}
+		if string(got) != string(v) {
+			t.Errorf("xattr %q: got %q, want %q", k, got, v)
+		}
+	}
+}
+
+// TestPut_PreservesPOSIX_SingleShot drives mode/uid/gid/xattr through the
+// small-body PutObject path (no multipart, no follow-up CopyObject) and
+// verifies Stat round-trips them all.
+func TestPut_PreservesPOSIX_SingleShot(t *testing.T) {
+	t.Parallel()
+	m := newMockS3("test-bucket")
+	defer m.close()
+	b := newTestBackend(t, m)
+	defer b.Close()
+
+	ctx := context.Background()
+	body := []byte("posix-single")
+	mtime := time.Date(2025, 2, 3, 4, 5, 6, 7, time.UTC)
+	opts := putPosixOpts(&mtime)
+	if _, err := b.Put(ctx, "posix-small.bin", strings.NewReader(string(body)), int64(len(body)), opts); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	st, err := b.Stat(ctx, "posix-small.bin")
+	if err != nil {
+		t.Fatalf("Stat: %v", err)
+	}
+	if st.Size != int64(len(body)) {
+		t.Errorf("Stat Size: got %d, want %d", st.Size, len(body))
+	}
+	if !st.Mtime.Equal(mtime) {
+		t.Errorf("Stat Mtime: got %s, want %s", st.Mtime, mtime)
+	}
+	assertPosixStat(t, st, opts)
+}
+
+// TestPut_PreservesPOSIX_Multipart drives the same metadata through the
+// multipart Upload path (size > MultipartThresholdMiB=8) which writes the
+// metadata up-front via the initial PutObject *and* via the post-upload
+// CopyObject(REPLACE) that stamps sha256. Both stages must keep the POSIX
+// fields intact.
+func TestPut_PreservesPOSIX_Multipart(t *testing.T) {
+	t.Parallel()
+	m := newMockS3("test-bucket")
+	defer m.close()
+	b := newTestBackend(t, m)
+	defer b.Close()
+
+	ctx := context.Background()
+	size := 10 * mib
+	body := make([]byte, size)
+	for i := range body {
+		body[i] = byte(i % 251)
+	}
+	mtime := time.Date(2025, 2, 3, 4, 5, 6, 7, time.UTC)
+	opts := putPosixOpts(&mtime)
+	opts.ComputeChecksum = true
+
+	if _, err := b.Put(ctx, "posix-big.bin", strings.NewReader(string(body)), int64(size), opts); err != nil {
+		t.Fatalf("Put multipart: %v", err)
+	}
+	st, err := b.Stat(ctx, "posix-big.bin")
+	if err != nil {
+		t.Fatalf("Stat: %v", err)
+	}
+	if st.Size != int64(size) {
+		t.Errorf("Stat Size: got %d, want %d", st.Size, size)
+	}
+	if !st.Mtime.Equal(mtime) {
+		t.Errorf("Stat Mtime: got %s, want %s", st.Mtime, mtime)
+	}
+	assertPosixStat(t, st, opts)
+
+	// Sanity: the post-multipart CopyObject(REPLACE) must not have dropped the
+	// POSIX entries (it owns the entire metadata map after REPLACE).
+	m.mu.Lock()
+	obj := m.objects["posix-big.bin"]
+	m.mu.Unlock()
+	if obj == nil {
+		t.Fatalf("mock object missing after multipart put")
+	}
+	if _, ok := obj.metadata[backend.ModeMetadataKey]; !ok {
+		t.Errorf("mode dropped by CopyObject(REPLACE) sha256-stamp: %+v", obj.metadata)
+	}
+	if _, ok := obj.metadata[backend.XattrsMetadataKey]; !ok {
+		t.Errorf("xattrs dropped by CopyObject(REPLACE) sha256-stamp: %+v", obj.metadata)
+	}
+}
+
+// TestStat_RcloneNakedFallback inserts an object directly into the mock with
+// the rclone naked metadata keys (no syncnode- prefix) so Stat is forced
+// through the fallback branch. Mode is decimal-formatted as rclone does it
+// historically — Stat must accept either octal or decimal.
+func TestStat_RcloneNakedFallback(t *testing.T) {
+	t.Parallel()
+	m := newMockS3("test-bucket")
+	defer m.close()
+	b := newTestBackend(t, m)
+	defer b.Close()
+
+	m.mu.Lock()
+	m.objects["rclone.bin"] = &mockObject{
+		body:     []byte("rclone-naked"),
+		etag:     "deadbeefdeadbeefdeadbeefdeadbeef",
+		modified: time.Now(),
+		metadata: map[string]string{
+			backend.RcloneModeKey: "0640",
+			backend.RcloneUIDKey:  "33",
+			backend.RcloneGIDKey:  "34",
+		},
+	}
+	m.mu.Unlock()
+
+	st, err := b.Stat(context.Background(), "rclone.bin")
+	if err != nil {
+		t.Fatalf("Stat: %v", err)
+	}
+	if st.Mode == nil || *st.Mode != 0o640 {
+		t.Errorf("Mode (rclone fallback): got %v, want %o", st.Mode, 0o640)
+	}
+	if st.UID == nil || *st.UID != 33 {
+		t.Errorf("UID (rclone fallback): got %v, want 33", st.UID)
+	}
+	if st.GID == nil || *st.GID != 34 {
+		t.Errorf("GID (rclone fallback): got %v, want 34", st.GID)
+	}
+}
+
+// TestStat_NotFound asserts the Stater contract: missing key returns
+// backend.ErrKeyNotFound (NOT a wrapped/raw SDK error) so the executor can
+// route through the standard not-found handling.
+func TestStat_NotFound(t *testing.T) {
+	t.Parallel()
+	m := newMockS3("test-bucket")
+	defer m.close()
+	b := newTestBackend(t, m)
+	defer b.Close()
+
+	_, err := b.Stat(context.Background(), "nope")
+	if !errors.Is(err, backend.ErrKeyNotFound) {
+		t.Fatalf("Stat: got %v, want ErrKeyNotFound", err)
+	}
+}
+
+// TestPut_MetadataTooLarge constructs an xattr payload large enough to push
+// the encoded user-metadata bytes past the 2 KiB S3 cap. The Put must reject
+// with ErrMetadataTooLarge so the executor can route through the rule's
+// OnMetadataUnsupported policy (warn/skip/error) instead of letting the
+// server reject the upload with an opaque 400.
+func TestPut_MetadataTooLarge(t *testing.T) {
+	t.Parallel()
+	m := newMockS3("test-bucket")
+	defer m.close()
+	b := newTestBackend(t, m)
+	defer b.Close()
+
+	// 3 KiB of binary bytes — base64 grows to ~4 KiB, then JSON wraps it, then
+	// base64 again ≈ 5.5 KiB. Well over the 2 KiB cap.
+	big := make([]byte, 3*1024)
+	for i := range big {
+		big[i] = byte(i % 256)
+	}
+	opts := backend.PutOptions{
+		Xattrs: map[string][]byte{
+			"user.syncnode.bloat": big,
+		},
+	}
+	body := []byte("metadata too large")
+	_, err := b.Put(context.Background(), "bloat.bin", strings.NewReader(string(body)), int64(len(body)), opts)
+	if !errors.Is(err, backend.ErrMetadataTooLarge) {
+		t.Fatalf("Put: got %v, want ErrMetadataTooLarge", err)
+	}
+	// Object must not have been written when the cap is exceeded — failing
+	// fast is the whole point.
+	m.mu.Lock()
+	_, exists := m.objects["bloat.bin"]
+	m.mu.Unlock()
+	if exists {
+		t.Errorf("bloat.bin was written despite ErrMetadataTooLarge")
 	}
 }

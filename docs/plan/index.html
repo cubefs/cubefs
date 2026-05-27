@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CubeFS Sync &amp; Bench · 文档总览</title>
+    <meta name="description" content="CubeFS Sync & Bench 文档站：架构、部署、同步、测试、MCP、代码图谱六个入口，面向使用者，不再混入设计 / 修复内容。">
+    <link rel="stylesheet" href="assets/docs.css">
+    <script defer src="assets/docs.js"></script>
+  </head>
+  <body data-section="plan">
+    <div class="page-shell">
+      <header class="site-header">
+        <div class="site-header__inner">
+          <a class="brand" href="index.html" data-nav="plan">
+            <span class="brand-mark">CF</span>
+            <div class="brand-meta">
+              <p class="brand-title">CubeFS Sync &amp; Bench</p>
+              <p class="brand-subtitle">使用者文档站</p>
+            </div>
+          </a>
+          <nav class="site-nav" aria-label="主导航">
+            <a class="nav-link" data-nav="architecture" href="architecture.html">架构</a>
+            <a class="nav-link" data-nav="deploy" href="deploy.html">部署</a>
+            <a class="nav-link" data-nav="sync" href="sync.html">同步</a>
+            <a class="nav-link" data-nav="test" href="test.html">测试</a>
+            <a class="nav-link" data-nav="mcp" href="mcp.html">MCP</a>
+            <a class="nav-cta" href="understand-anything/index.html">代码图谱 →</a>
+          </nav>
+          <button class="nav-toggle" type="button" aria-label="切换导航" aria-expanded="false">
+            <span></span><span></span><span></span>
+          </button>
+        </div>
+      </header>
+
+      <main>
+        <section class="hero">
+          <div class="hero__inner">
+            <p class="hero__eyebrow"><span class="hero__eyebrow-dot"></span>CubeFS · Sync &amp; Bench</p>
+            <h1 class="hero__title">面向使用者的 <em>CubeFS Sync &amp; Bench</em> 文档</h1>
+            <p class="hero__subtitle">
+              从「部署、用同步、跑压测」三个真实使用场景出发，把 CubeFS Sync 子系统与 Bench 平台的关键概念、命令、配置示例和排障思路集中在 6 个页面里。
+              不再混入设计稿与阶段性修复，开发者复盘内容请直接看
+              <a href="understand-anything/index.html">代码图谱</a>
+              和 cubefs 源码。
+            </p>
+
+            <div class="hero-stats reveal">
+              <article>
+                <span>页面数</span>
+                <strong data-count-to="6">0</strong>
+              </article>
+              <article>
+                <span>核心组件</span>
+                <strong data-count-to="4">0</strong>
+              </article>
+              <article>
+                <span>MCP 工具</span>
+                <strong data-count-to="34">0</strong>
+              </article>
+              <article>
+                <span>测试层级</span>
+                <strong data-count-to="6">0</strong>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="section">
+          <header class="group-section__head">
+            <div>
+              <p class="eyebrow">Get started</p>
+              <h2 class="group-section__title">从这里开始</h2>
+              <p class="group-section__desc">六个入口按使用顺序排列：先理解 → 再部署 → 用起来 → 验证 → 自动化。</p>
+            </div>
+          </header>
+
+          <div class="doc-grid">
+            <a class="doc-card reveal" href="architecture.html">
+              <div class="doc-card__head">
+                <span class="status-pill status-pill--live">01 · 架构</span>
+                <span class="doc-card__meta">architecture.html</span>
+              </div>
+              <h3 class="doc-card__title">架构与流程</h3>
+              <p class="doc-card__desc">master / syncnode / dashboard / bench 四个角色的关系，sync 与 bench 任务的生命周期时序，以及数据完整性流。</p>
+              <div class="doc-card__footer">
+                <span>整体视角 · 4 张 mermaid</span>
+                <span class="doc-card__arrow"></span>
+              </div>
+            </a>
+
+            <a class="doc-card reveal" data-delay="1" href="deploy.html">
+              <div class="doc-card__head">
+                <span class="status-pill status-pill--live">02 · 部署</span>
+                <span class="doc-card__meta">deploy.html</span>
+              </div>
+              <h3 class="doc-card__title">部署与升级</h3>
+              <p class="doc-card__desc">前置条件、syncnode / dashboard 部署、bench-mount RWM PVC 准备，以及 OnDelete 升级 SOP（踩坑保险）。</p>
+              <div class="doc-card__footer">
+                <span>IaC 入口 · OnDelete</span>
+                <span class="doc-card__arrow"></span>
+              </div>
+            </a>
+
+            <a class="doc-card reveal" data-delay="2" href="sync.html">
+              <div class="doc-card__head">
+                <span class="status-pill status-pill--api">03 · 同步</span>
+                <span class="doc-card__meta">sync.html · 重点</span>
+              </div>
+              <h3 class="doc-card__title">同步：规则、任务、排障</h3>
+              <p class="doc-card__desc">SyncRule copy / move 语义、分片与并发度、生命周期、典型 yaml 配置、6 种 backend 组合与 8 条常见排障。</p>
+              <div class="doc-card__footer">
+                <span>使用者首读</span>
+                <span class="doc-card__arrow"></span>
+              </div>
+            </a>
+
+            <a class="doc-card reveal" data-delay="3" href="test.html">
+              <div class="doc-card__head">
+                <span class="status-pill status-pill--api">04 · 测试</span>
+                <span class="doc-card__meta">test.html · 重点</span>
+              </div>
+              <h3 class="doc-card__title">测试：bench 平台</h3>
+              <p class="doc-card__desc">6 个测试层级、BenchRule / BenchTask、跨节点 HDR 合并、实时趋势观测，以及 bench-mount 多节点共享的关键限制。</p>
+              <div class="doc-card__footer">
+                <span>压测必读</span>
+                <span class="doc-card__arrow"></span>
+              </div>
+            </a>
+
+            <a class="doc-card reveal" data-delay="4" href="mcp.html">
+              <div class="doc-card__head">
+                <span class="status-pill status-pill--draft">05 · MCP</span>
+                <span class="doc-card__meta">mcp.html</span>
+              </div>
+              <h3 class="doc-card__title">cubefs-mcp 部署与用法</h3>
+              <p class="doc-card__desc">把 master / syncnode admin API 包装成 MCP 工具，让 Claude Code / Cursor / Cline 直接调集群。34-tool 速览 + 注册示例。</p>
+              <div class="doc-card__footer">
+                <span>LLM 集成</span>
+                <span class="doc-card__arrow"></span>
+              </div>
+            </a>
+
+            <a class="doc-card reveal" data-delay="5" href="understand-anything/index.html">
+              <div class="doc-card__head">
+                <span class="status-pill status-pill--live">06 · 图谱</span>
+                <span class="doc-card__meta">understand-anything/</span>
+              </div>
+              <h3 class="doc-card__title">CubeFS 代码知识图谱</h3>
+              <p class="doc-card__desc">由 understand-anything 直接生成的模块级聚合图谱，适合用来快速看 CubeFS 主干模块、分层和热点依赖。开发者视角的补充入口。</p>
+              <div class="doc-card__footer">
+                <span>开发者补充</span>
+                <span class="doc-card__arrow"></span>
+              </div>
+            </a>
+          </div>
+        </section>
+      </main>
+
+      <footer class="site-footer">
+        <div class="site-footer__inner">
+          <p>CubeFS Sync &amp; Bench · 使用者文档站 · 浏览器直接 <code>open</code> 即可</p>
+          <p>仓库链路：<a href="https://github.com/cubefs/cubefs">cubefs</a> · <a href="https://github.com/fangtaozc/cubefs-deploy">cubefs-deploy</a></p>
+        </div>
+      </footer>
+    </div>
+  </body>
+</html>

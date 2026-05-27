@@ -131,10 +131,11 @@ docker:
 # 注意：Dockerfile COPY build/bin/，docker build 前请先 make build
 #       (或对应单组件如 make server)。
 
-registry    ?= hub.shiyak-office.com/storage
-image       ?= cubefs
-platform    ?= linux/amd64
-pjd_version ?= 20090130
+registry            ?= hub.shiyak-office.com/storage
+image               ?= cubefs
+platform            ?= linux/amd64
+pjd_version         ?= 20090130
+bench_tools_version ?=
 
 # 主镜像名：显式 IMAGE_NAME 优先；否则 registry/image:version
 ifeq ($(origin IMAGE_NAME), undefined)
@@ -143,7 +144,8 @@ else
 IMAGE_FULL = $(IMAGE_NAME)
 endif
 
-PJD_IMAGE_FULL = $(registry)/pjd-fstest:$(pjd_version)
+PJD_IMAGE_FULL         = $(registry)/pjd-fstest:$(pjd_version)
+BENCH_TOOLS_IMAGE_FULL = $(registry)/cubefs-bench-tools:$(bench_tools_version)
 
 phony += image
 image:
@@ -179,5 +181,27 @@ endif
 phony += pjd-image-push
 pjd-image-push:
 	@$(MAKE) pjd-image push=1
+
+# ── cubefs-bench-tools sidecar (IOR + mdtest, S2.2) ──────────────────────────
+# Dockerfile 是 multi-stage：stage1 编译 IOR/mdtest，stage2 用仓库根的
+# go.mod / depends / cmd/bench-tools-runner 编译 runner，stage3 拼装运行时。
+# 构建上下文必须是 cubefs 仓库根（context=.），不能用 docker/cubefs-bench-tools/。
+phony += bench-tools-image
+bench-tools-image:
+ifeq ($(strip $(bench_tools_version)),)
+	$(error bench_tools_version is required. Usage: make bench-tools-image bench_tools_version=vX.Y.Z.rcN [push=1])
+endif
+	@echo "==> building $(BENCH_TOOLS_IMAGE_FULL) (platform=$(platform))"
+	docker build --platform $(platform) -t $(BENCH_TOOLS_IMAGE_FULL) -f docker/cubefs-bench-tools/Dockerfile .
+	@echo "==> built $(BENCH_TOOLS_IMAGE_FULL)"
+ifeq ($(push),1)
+	@echo "==> pushing $(BENCH_TOOLS_IMAGE_FULL)"
+	docker push $(BENCH_TOOLS_IMAGE_FULL)
+	@echo "==> pushed $(BENCH_TOOLS_IMAGE_FULL)"
+endif
+
+phony += bench-tools-image-push
+bench-tools-image-push:
+	@$(MAKE) bench-tools-image push=1
 
 .PHONY: $(phony)

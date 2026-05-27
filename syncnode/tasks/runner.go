@@ -428,6 +428,17 @@ func (r *Runner) triggerRule(ctx context.Context, rule *rules.Rule, newID string
 		}
 	}
 
+	// Mirror rule-level OnSymlink down into both endpoint configs so the
+	// BackendBuilder (and the local backend it constructs) can read the
+	// policy without changing the Build(ep) interface. Rule-level validation
+	// remains authoritative; endpoint-level field is purely a transport.
+	// Only the local backend consumes it; s3/cfs builders ignore (with a
+	// warn log).
+	if rule.Config.OnSymlink != "" {
+		rule.Config.Src.OnSymlink = rule.Config.OnSymlink
+		rule.Config.Dst.OnSymlink = rule.Config.OnSymlink
+	}
+
 	src, err := r.builder.Build(ctx, &rule.Config.Src)
 	if err != nil {
 		log.LogWarnf("tasks: rule=%q task=%q build src backend: %v", rule.Config.ID, newID, err)
@@ -837,8 +848,12 @@ func (r *Runner) TriggerBench(ctx context.Context, rule *spec.BenchRule, taskID 
 		ShardIndex: shardIdx,
 	}
 
-	// For S3/SDK bench, build a backend from the pre-resolved endpoint config.
-	if rule.StorageType == spec.BenchStorageS3 || rule.StorageType == spec.BenchStorageSDK {
+	// For storage types that require an external backend (S3/SDK), build a
+	// backend from the pre-resolved endpoint config. This is a defence in
+	// depth — master also rejects trigger requests when BackendEndpoint is
+	// missing — but kept here so direct executor callers (tests, internal
+	// retries) cannot accidentally dispatch a half-formed rule.
+	if rule.StorageType.RequiresBackendEndpoint() {
 		if rule.BackendEndpoint == nil {
 			return nil, fmt.Errorf("TriggerBench: rule %q requires BackendEndpoint (BackendID=%q) but it is nil", rule.ID, rule.BackendID)
 		}
@@ -941,6 +956,40 @@ func buildTask(rule *rules.Rule, src, dst backend.Backend, taskID string) *execu
 		SampleRate:         cfg.SampleRate,
 		BandwidthLimitMBps: cfg.BandwidthLimitMBps,
 		Parallelism:        cfg.Parallelism,
+		// Data-integrity P0/P1/P2 knobs. All four are opt-in; default zero
+		// values preserve legacy behaviour. validateTask in the executor
+		// enforces the AfterCopy=verify_then_delete_src ⇒ ChecksumMode=strong
+		// invariant before Run() proceeds.
+		ChecksumMode:    cfg.ChecksumMode,
+		OnSourceMutated: cfg.OnSourceMutated,
+		MaxRetries:      cfg.MaxRetries,
+		ResumeEnabled:   cfg.ResumeEnabled,
+		// OnExisting (rclone overwrite-policy parity, 子项 3): forwarded
+		// untouched; validateTask in the executor normalises the empty
+		// string + rejects unknown values + enforces type=move互斥.
+		OnExisting: cfg.OnExisting,
+		// OnSymlink (rclone local-symlink parity, 子项 1): forwarded so
+		// validateTask can apply the whitelist as a second defence; the
+		// actual file-walk behaviour lives in syncnode/backend/local and
+		// reads the value off the EndpointConfig (mirrored above).
+		OnSymlink: cfg.OnSymlink,
+		// DryRun / Confirm (rclone-gap 子项 2): forwarded so the executor
+		// sees them on validateTask + syncOneFile. Confirm only matters
+		// for destructive tasks (type=move OR AfterCopy=verify_then_delete_src)
+		// and validateTask rejects Confirm=true + DryRun=false on those.
+		DryRun:  cfg.DryRun,
+		Confirm: cfg.Confirm,
+		// POSIX metadata preservation (P2-1): forwarded untouched so
+		// syncOneFile asks the source backend (via backend.Stater) for the
+		// requested attributes and threads them through PutOptions. Each
+		// backend declares native capability via backend.Caps; when the dst
+		// can't honour the request the executor routes the failure through
+		// OnMetadataUnsupported. Mtime is preserved unconditionally when
+		// the source exposes it — predates these knobs.
+		PreserveMode:          cfg.PreserveMode,
+		PreserveOwner:         cfg.PreserveOwner,
+		PreserveXattr:         cfg.PreserveXattr,
+		OnMetadataUnsupported: cfg.OnMetadataUnsupported,
 	}
 }
 

@@ -31,13 +31,14 @@ require (
 	github.com/golang/mock v1.6.0
 	github.com/golang/protobuf v1.5.2
 	github.com/google/btree v1.0.1
-	github.com/google/uuid v1.3.0
+	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.0
 	github.com/hashicorp/consul/api v1.15.2
 	github.com/hashicorp/golang-lru v0.5.4
 	github.com/jacobsa/daemonize v0.0.0-20160101105449-e460293e890f
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/klauspost/reedsolomon v1.11.7
+	github.com/mark3labs/mcp-go v0.48.0
 	github.com/opentracing/opentracing-go v1.2.0
 	github.com/peterbourgon/diskv/v3 v3.0.1
 	github.com/prometheus/client_golang v1.13.0
@@ -45,7 +46,7 @@ require (
 	github.com/rs/xid v1.5.0
 	github.com/samsarahq/thunder v0.0.0-20211005041752-96f4331b7baa
 	github.com/spf13/cobra v1.2.1
-	github.com/stretchr/testify v1.8.2
+	github.com/stretchr/testify v1.9.0
 	github.com/tecbot/gorocksdb v0.0.0-20191217155057-f0fad39f321c
 	go.etcd.io/bbolt v1.3.12
 	go.etcd.io/etcd/raft/v3 v3.5.8
@@ -61,6 +62,7 @@ require (
 )
 
 require (
+	github.com/HdrHistogram/hdrhistogram-go v1.1.2 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.10 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.23 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.23 // indirect
@@ -75,11 +77,13 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.21 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.42.1 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
-	github.com/google/go-cmp v0.7.0 // indirect
+	github.com/google/jsonschema-go v0.4.2 // indirect
 	github.com/onsi/ginkgo v1.16.5 // indirect
 	github.com/onsi/gomega v1.40.0 // indirect
+	github.com/spf13/cast v1.7.1 // indirect
 	github.com/tklauser/go-sysconf v0.3.11 // indirect
 	github.com/tklauser/numcpus v0.6.0 // indirect
+	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	github.com/yusufpapurcu/wmi v1.2.3 // indirect
 )
 

@@ -435,6 +435,16 @@ func (h *TaskHandler) handleRunTask(ctx context.Context, p *proto.Packet) *proto
 		}
 		benchRule := req.BenchRule
 		taskID := req.TaskID
+		// 缺陷3: 资源准入门 — 估算这条 rule 在本节点的内存峰值是否会撞
+		// cgroup 上限；超过 budget 直接拒绝接活并合成一条 failed terminal
+		// 回推给 master（让 ledger 不卡 running），由 dashboard 上的人工
+		// 重试到其他节点。优于让任务跑起来再 OOMKilled 把 pod 拖死。
+		if ok, reason := admitBenchTask(benchRule); !ok {
+			log.LogWarnf("syncnode: admission rejected rule=%q task=%q: %s",
+				benchRule.ID, taskID, reason)
+			h.pushFailedTerminal(taskID, "rejected: "+reason)
+			return errorReply(p, fmt.Errorf("admission rejected: %s", reason))
+		}
 		ok2, trigErr := h.admitOrRetry(taskID, func() error {
 			_, e := br.TriggerBench(context.Background(), benchRule, taskID, shardIdx, false)
 			return e

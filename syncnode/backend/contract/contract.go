@@ -97,11 +97,11 @@ func randBytes(t *testing.T, n int) []byte {
 func putBytes(t *testing.T, b backend.Backend, key string, data []byte) string {
 	t.Helper()
 	ctx := context.Background()
-	etag, err := b.Put(ctx, key, bytes.NewReader(data), int64(len(data)), backend.PutOptions{})
+	res, err := b.Put(ctx, key, bytes.NewReader(data), int64(len(data)), backend.PutOptions{})
 	if err != nil {
 		t.Fatalf("Put(%q, %d bytes): %v", key, len(data), err)
 	}
-	return etag
+	return res.ETag
 }
 
 func getBytes(t *testing.T, b backend.Backend, key string) []byte {

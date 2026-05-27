@@ -1211,6 +1211,16 @@ type SyncNodeHeartbeatResponse struct {
 	// An empty slice means no tasks are currently running on this node.
 	TaskReports []SyncTaskProgressReport `json:"taskReports,omitempty"`
 
+	// RunningTaskIDs is the authoritative list of task IDs the syncnode is
+	// currently executing locally. Master cross-checks it against the
+	// SyncTaskLedger / BenchTaskLedger Running records owned by this addr
+	// to detect ledger drift (record says Running on us, executor disagrees)
+	// — those records are marked failed with "owner heartbeat did not report
+	// task" so the dashboard stops showing them as running forever. Source:
+	// executor.RunningSnapshots() keys. Distinct from TaskReports which is
+	// the progress feed: RunningTaskIDs is the reconcile feed.
+	RunningTaskIDs []string `json:"runningTaskIds,omitempty"`
+
 	// MountPoints lists the syncnode container's POSIX mount points
 	// (the cfg.Posix.AllowedRoots set, intersected with
 	// /proc/self/mountinfo so each entry carries its real fs type).

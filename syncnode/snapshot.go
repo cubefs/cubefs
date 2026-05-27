@@ -143,11 +143,15 @@ func (s *SyncNode) Snapshot() proto.SyncNodeHeartbeatResponse {
 	}
 
 	// Include per-task in-flight progress so master can update the ledger
-	// each heartbeat without waiting for task terminal.
+	// each heartbeat without waiting for task terminal. RunningTaskIDs is
+	// derived from the same snapshot — it is the authoritative list master
+	// uses to reconcile ledger drift (records claiming Owner=us but absent
+	// here are marked failed by checkOrphanShards' heartbeat-side path).
 	if s.executor != nil {
 		snaps := s.executor.RunningSnapshots()
 		if len(snaps) > 0 {
 			reports := make([]proto.SyncTaskProgressReport, 0, len(snaps))
+			ids := make([]string, 0, len(snaps))
 			for id, p := range snaps {
 				reports = append(reports, proto.SyncTaskProgressReport{
 					TaskID: id,
@@ -164,8 +168,10 @@ func (s *SyncNode) Snapshot() proto.SyncNodeHeartbeatResponse {
 						SkippedSamples:       p.SkippedSamples,
 					},
 				})
+				ids = append(ids, id)
 			}
 			resp.TaskReports = reports
+			resp.RunningTaskIDs = ids
 		}
 	}
 

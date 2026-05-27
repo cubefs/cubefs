@@ -35,9 +35,11 @@ package master
 //   POST /benchTask/retry    ?id=
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -45,6 +47,142 @@ import (
 	"github.com/cubefs/cubefs/syncnode/spec"
 	"github.com/cubefs/cubefs/util/exporter"
 )
+
+// benchRuleView is the GET response shape for /benchRule/list and
+// /benchRule/get. It embeds *spec.BenchRule (preserving every existing
+// field in the JSON output) and lifts RawJSON — which BenchRule itself
+// hides via `json:"-"` — into a top-level "rawJSON" property so dashboard
+// / debug callers can byte-compare against the original POST body.
+//
+// RawJSON is omitempty: rules that pre-date RC8 #119 (loaded from rocksdb
+// in the legacy bare-BenchRule format) have an empty RawJSON and the
+// field is dropped from the response.
+//
+// LastRunAt / LastRunStatus mirror SyncRule's envelope and are derived at
+// view-construction time from benchTaskLedger; bench rules don't persist
+// their own last-run summary (no pause state machine either, see the plan
+// doc docs/plan/mcp/healthcheck-findings-fixes.md §P2). Both are omitempty
+// so rules that have never run keep the response shape clean.
+type benchRuleView struct {
+	*spec.BenchRule
+	RawJSON       string `json:"rawJSON,omitempty"`
+	LastRunAt     int64  `json:"lastRunAt,omitempty"`
+	LastRunStatus string `json:"lastRunStatus,omitempty"`
+}
+
+// latestBenchRun looks up the most recent terminal bench task for ruleID
+// in the supplied ledger and returns (updatedAt_ms, status). Shard
+// records (ParentTaskID != "") are skipped so we only consider the
+// authoritative parent / single-task entry. Returns (0, "") when no
+// terminal task exists for the rule.
+func latestBenchRun(ledger *BenchTaskLedger, ruleID string) (int64, string) {
+	if ledger == nil || ruleID == "" {
+		return 0, ""
+	}
+	var bestAt int64
+	var bestStatus BenchTaskStatus
+	for _, r := range ledger.List(ruleID, "") {
+		if r == nil || r.ParentTaskID != "" {
+			continue
+		}
+		if !r.Status.IsTerminal() {
+			continue
+		}
+		if r.UpdatedAt > bestAt {
+			bestAt = r.UpdatedAt
+			bestStatus = r.Status
+		}
+	}
+	return bestAt, string(bestStatus)
+}
+
+// newBenchRuleView wraps a *spec.BenchRule for outbound JSON serialisation.
+// Callers MUST pass a value that won't be mutated afterwards (the store's
+// Get / List already return copies). ledger is used to derive
+// LastRunAt / LastRunStatus; pass nil to skip the lookup (e.g. in tests
+// that don't care about the run summary).
+func newBenchRuleView(r *spec.BenchRule, ledger *BenchTaskLedger) *benchRuleView {
+	if r == nil {
+		return nil
+	}
+	lastAt, lastStatus := latestBenchRun(ledger, r.ID)
+	return &benchRuleView{
+		BenchRule:     r,
+		RawJSON:       r.RawJSON,
+		LastRunAt:     lastAt,
+		LastRunStatus: lastStatus,
+	}
+}
+
+// newBenchRuleViews wraps a slice of *spec.BenchRule for list responses.
+func newBenchRuleViews(rs []*spec.BenchRule, ledger *BenchTaskLedger) []*benchRuleView {
+	out := make([]*benchRuleView, 0, len(rs))
+	for _, r := range rs {
+		out = append(out, newBenchRuleView(r, ledger))
+	}
+	return out
+}
+
+// validateBenchRuleForPersist enforces structural requirements that must
+// hold at create / update time, independent of any per-trigger state.
+// Currently:
+//   - non-empty ID;
+//   - when StorageType requires an external backend (S3/SDK), BackendID must
+//     be non-empty so the dashboard can later resolve the EndpointConfig.
+//
+// Returns a 400-suitable error or nil. Centralising the check keeps the
+// create and update handlers byte-for-byte aligned and lets us unit test
+// the policy without spinning up a *Server.
+func validateBenchRuleForPersist(rule *spec.BenchRule) error {
+	if rule == nil {
+		return errors.New("bench rule is nil")
+	}
+	if rule.ID == "" {
+		return errors.New("bench rule id is required")
+	}
+	if rule.StorageType.RequiresBackendEndpoint() && rule.BackendID == "" {
+		return fmt.Errorf("bench rule %q: storageType=%q requires backendID", rule.ID, rule.StorageType)
+	}
+	return nil
+}
+
+// validateBenchRuleForTrigger enforces dispatch-time requirements: when
+// the storage type needs an external backend, the caller must have
+// injected a BackendEndpoint (resolved from MySQL credentials by the
+// dashboard). Returning an error here prevents the silent "creates N
+// BenchTaskRecord then all fail at syncnode" failure mode.
+func validateBenchRuleForTrigger(rule *spec.BenchRule) error {
+	if rule == nil {
+		return errors.New("bench rule is nil")
+	}
+	if rule.StorageType.RequiresBackendEndpoint() && rule.BackendEndpoint == nil {
+		return fmt.Errorf("bench rule %q: storageType=%q requires backendEndpoint in trigger body (backendID=%q)",
+			rule.ID, rule.StorageType, rule.BackendID)
+	}
+	return nil
+}
+
+// decodeBenchRuleStrict reads the request body and decodes a BenchRule
+// with DisallowUnknownFields enabled. Returns the decoded rule and the
+// raw body bytes (for RawJSON persistence) or an error suitable for an
+// HTTP 400 reply. Unknown / typo'd fields surface as
+// `json: unknown field "<name>"` so the caller (dashboard / CLI) can
+// diagnose schema drift immediately instead of silently dropping data.
+//
+// Mutates: drains r.Body.
+func decodeBenchRuleStrict(body io.Reader) (*spec.BenchRule, []byte, error) {
+	raw, err := io.ReadAll(body)
+	if err != nil {
+		return nil, nil, fmt.Errorf("read body: %w", err)
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	var rule spec.BenchRule
+	if err := dec.Decode(&rule); err != nil {
+		return nil, raw, fmt.Errorf("decode body: %w", err)
+	}
+	return &rule, raw, nil
+}
 
 // ---- Bench rule handlers ----
 
@@ -64,10 +202,10 @@ func (m *Server) listBenchRules(w http.ResponseWriter, r *http.Request) {
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: gerr.Error()})
 			return
 		}
-		sendOkReply(w, r, newSuccessHTTPReply(rule))
+		sendOkReply(w, r, newSuccessHTTPReply(newBenchRuleView(rule, m.cluster.benchTaskLedger)))
 		return
 	}
-	sendOkReply(w, r, newSuccessHTTPReply(m.cluster.benchRuleStore.List()))
+	sendOkReply(w, r, newSuccessHTTPReply(newBenchRuleViews(m.cluster.benchRuleStore.List(), m.cluster.benchTaskLedger)))
 }
 
 // createBenchRule handles POST /benchRule/create.
@@ -82,22 +220,26 @@ func (m *Server) createBenchRule(w http.ResponseWriter, r *http.Request) {
 	var err error
 	defer func() { doStatAndMetric(proto.BenchRuleCreate, metric, err, nil) }()
 
-	var rule spec.BenchRule
-	if err = json.NewDecoder(r.Body).Decode(&rule); err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "decode body: " + err.Error()})
+	// RC8 #119: 严格解码 + 持久化原始 body。DisallowUnknownFields 让 schema
+	// 漂移立刻 400 暴露，不再静默丢字段。
+	rule, raw, derr := decodeBenchRuleStrict(r.Body)
+	if derr != nil {
+		err = derr
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: derr.Error()})
 		return
 	}
-	if rule.ID == "" {
-		err = errors.New("bench rule id is required")
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+	if verr := validateBenchRuleForPersist(rule); verr != nil {
+		err = verr
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: verr.Error()})
 		return
 	}
-	if err = m.cluster.benchRuleStore.Create(&rule); err != nil {
+	rule.RawJSON = string(raw)
+	if err = m.cluster.benchRuleStore.Create(rule); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: benchRuleErrCode(err), Msg: err.Error()})
 		return
 	}
 	created, _ := m.cluster.benchRuleStore.Get(rule.ID)
-	sendOkReply(w, r, newSuccessHTTPReply(created))
+	sendOkReply(w, r, newSuccessHTTPReply(newBenchRuleView(created, m.cluster.benchTaskLedger)))
 }
 
 // getBenchRule handles GET /benchRule/get?id=.
@@ -118,7 +260,7 @@ func (m *Server) getBenchRule(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: gerr.Error()})
 		return
 	}
-	sendOkReply(w, r, newSuccessHTTPReply(rule))
+	sendOkReply(w, r, newSuccessHTTPReply(newBenchRuleView(rule, m.cluster.benchTaskLedger)))
 }
 
 // updateBenchRule handles POST /benchRule/update.
@@ -129,22 +271,26 @@ func (m *Server) updateBenchRule(w http.ResponseWriter, r *http.Request) {
 	var err error
 	defer func() { doStatAndMetric(proto.BenchRuleUpdate, metric, err, nil) }()
 
-	var rule spec.BenchRule
-	if err = json.NewDecoder(r.Body).Decode(&rule); err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "decode body: " + err.Error()})
+	// RC8 #119: 与 create 同样的严格解码 + RawJSON 持久化。Update 等同于全量
+	// 覆盖，新的 RawJSON 会替换 store 内既有的副本。
+	rule, raw, derr := decodeBenchRuleStrict(r.Body)
+	if derr != nil {
+		err = derr
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: derr.Error()})
 		return
 	}
-	if rule.ID == "" {
-		err = errors.New("bench rule id is required")
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+	if verr := validateBenchRuleForPersist(rule); verr != nil {
+		err = verr
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: verr.Error()})
 		return
 	}
-	if err = m.cluster.benchRuleStore.Update(&rule); err != nil {
+	rule.RawJSON = string(raw)
+	if err = m.cluster.benchRuleStore.Update(rule); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: benchRuleErrCode(err), Msg: err.Error()})
 		return
 	}
 	updated, _ := m.cluster.benchRuleStore.Get(rule.ID)
-	sendOkReply(w, r, newSuccessHTTPReply(updated))
+	sendOkReply(w, r, newSuccessHTTPReply(newBenchRuleView(updated, m.cluster.benchTaskLedger)))
 }
 
 // deleteBenchRule handles POST /benchRule/delete?id=.
@@ -185,7 +331,8 @@ func benchRuleErrCode(err error) int32 {
 // but the taskID is still returned so the caller can observe the status.
 //
 // Optional JSON body:
-//   { "backendEndpoint": { <spec.EndpointConfig> } }
+//
+//	{ "backendEndpoint": { <spec.EndpointConfig> } }
 //
 // When present, backendEndpoint is injected into the rule's BackendEndpoint
 // field before dispatch. This is required for S3/SDK storage types where the
@@ -223,10 +370,19 @@ func (m *Server) triggerBenchRule(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Reject trigger early when storageType needs a backend but caller
+	// didn't inject one. Previously this silently dispatched to syncnode
+	// and produced N identical "BackendEndpoint nil" failures per shard.
+	if verr := validateBenchRuleForTrigger(rule); verr != nil {
+		err = verr
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: verr.Error()})
+		return
+	}
+
 	parallelism := rule.Parallelism
 	if parallelism <= 1 {
 		// Single-node path.
-		taskID := fmt.Sprintf("bench-%s-%d", id, time.Now().UnixNano())
+		taskID := fmt.Sprintf("%s-%d", id, time.Now().UnixNano())
 		rec := &BenchTaskRecord{
 			TaskID:    taskID,
 			RuleID:    id,
@@ -234,7 +390,8 @@ func (m *Server) triggerBenchRule(w http.ResponseWriter, r *http.Request) {
 			CreatedAt: time.Now().UnixMilli(),
 		}
 		m.cluster.benchTaskLedger.Add(rec)
-		if derr := m.cluster.dispatchBenchTask(taskID, rule); derr != nil {
+		owner, derr := m.cluster.dispatchBenchTask(taskID, rule)
+		if derr != nil {
 			m.cluster.benchTaskLedger.Fail(taskID, derr.Error())
 			err = derr
 			sendOkReply(w, r, newSuccessHTTPReply(map[string]interface{}{
@@ -244,12 +401,13 @@ func (m *Server) triggerBenchRule(w http.ResponseWriter, r *http.Request) {
 			}))
 			return
 		}
+		m.cluster.benchTaskLedger.SetOwner(taskID, owner)
 		sendOkReply(w, r, newSuccessHTTPReply(map[string]string{"taskID": taskID, "status": string(BenchTaskStatusRunning)}))
 		return
 	}
 
 	// Multi-shard fan-out path.
-	parentID := fmt.Sprintf("bench-%s-%d", id, time.Now().UnixNano())
+	parentID := fmt.Sprintf("%s-%d", id, time.Now().UnixNano())
 	parent := &BenchTaskRecord{
 		TaskID:     parentID,
 		RuleID:     id,
@@ -257,7 +415,7 @@ func (m *Server) triggerBenchRule(w http.ResponseWriter, r *http.Request) {
 		ShardTotal: parallelism,
 		CreatedAt:  time.Now().UnixMilli(),
 	}
-	shardIDs, derr := m.cluster.dispatchBenchShards(parentID, rule, parallelism)
+	shardIDs, shardOwners, derr := m.cluster.dispatchBenchShards(parentID, rule, parallelism)
 	if derr != nil {
 		// Could not dispatch any shards — mark parent failed immediately.
 		parent.Status = BenchTaskStatusFailed
@@ -271,7 +429,7 @@ func (m *Server) triggerBenchRule(w http.ResponseWriter, r *http.Request) {
 		}))
 		return
 	}
-	m.cluster.benchTaskLedger.AddShards(parent, shardIDs)
+	m.cluster.benchTaskLedger.AddShards(parent, shardIDs, shardOwners)
 	sendOkReply(w, r, newSuccessHTTPReply(map[string]interface{}{
 		"taskID":       parentID,
 		"shardTaskIDs": shardIDs,
@@ -368,7 +526,7 @@ func (m *Server) retryBenchTask(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 		return
 	}
-	newTaskID := fmt.Sprintf("bench-%d", time.Now().UnixNano())
+	newTaskID := fmt.Sprintf("%s-%d", prev.RuleID, time.Now().UnixNano())
 	rec := &BenchTaskRecord{
 		TaskID:    newTaskID,
 		RuleID:    prev.RuleID,

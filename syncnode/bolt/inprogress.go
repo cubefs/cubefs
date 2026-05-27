@@ -25,24 +25,25 @@ import (
 	bbolt "go.etcd.io/bbolt"
 )
 
-// Breakpoint is the resume-from-N info for one in-flight task.
-//
-// P0 stores breakpoints but the executor doesn't yet read them (resume
-// lands in P1). The shape is intentionally narrow so it's stable for
-// future use; bytesDone / uploadId are the two atoms a chunk-resume or
-// multipart-resume path needs.
+// Breakpoint is the resume-from-N info for one in-flight file. The shape
+// is intentionally narrow; bytesDone / uploadId are the two atoms a
+// chunk-resume or multipart-resume path needs.
 type Breakpoint struct {
 	TaskID    string    `json:"taskId"`
-	Key       string    `json:"key"`         // object key being transferred
+	Key       string    `json:"key"` // object key being transferred
 	BytesDone int64     `json:"bytesDone"`
 	UploadID  string    `json:"uploadId,omitempty"` // s3 multipart resume token
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
-// InProgressStore is the on-disk lane for chunk-offset / multipart
-// breakpoints. The interface lives in this package because no other
-// subsystem owns the concept — the executor (P1) will consume it via
-// this contract.
+// InProgressStore persists per-file breakpoints (size + offset + s3 multipart
+// UploadID) so that an interrupted task can resume on next fire without
+// re-streaming bytes already acked.
+//
+// Wired to the executor when Task.ResumeEnabled=true. The executor uses a
+// composite key `<taskID>:<entryKey>` (built by executor.breakpointKey) so a
+// single bbolt bucket can host multiple files of the same task and multiple
+// concurrent tasks without colliding.
 type InProgressStore interface {
 	Put(ctx context.Context, bp *Breakpoint) error
 	Get(ctx context.Context, taskID string) (*Breakpoint, error)

@@ -48,6 +48,9 @@ const (
 	ErrCodeUnknownDownloadStrat = 1011
 	ErrCodeUnknownOnMismatch    = 1012
 	ErrCodeInvalidDuration      = 1013
+	ErrCodeUnknownOnExisting    = 1014
+	ErrCodeUnknownOnSymlink     = 1015
+	ErrCodeDryRunConfirmConflict = 1016
 )
 
 func newConfigErr(code int, field, msg string) *ConfigError {

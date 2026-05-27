@@ -255,9 +255,29 @@ func (c *Cluster) syncUpdateBenchRule(r *spec.BenchRule) error {
 	return c.syncPutBenchRuleInfo(opSyncUpdateBenchRule, r)
 }
 
+// storedBenchRule is the on-disk envelope written to rocksdb via raft. It
+// piggy-backs the original request body (RawJSON) next to the structured
+// rule so the master can echo it back byte-for-byte on GET — RC8 #119.
+//
+// BenchRule.RawJSON uses `json:"-"` so it is invisible to standard JSON
+// marshaling (which keeps dispatch payloads / POST bodies clean). The
+// store therefore needs its own envelope to keep the bytes alongside the
+// structured fields. loadBenchRules tolerates legacy records that were
+// persisted as a bare BenchRule (no envelope) by falling back to the old
+// format on a typed-empty marshal — see loadBenchRules below.
+type storedBenchRule struct {
+	Rule    *spec.BenchRule `json:"rule"`
+	RawJSON string          `json:"rawJSON,omitempty"`
+}
+
 // syncPutBenchRuleInfo is the shared raft submit helper. Mirrors
 // syncPutSyncRuleInfo. Errors are wrapped into a stable string so
 // handlers can map them to HTTP 503 (raft unavailable).
+//
+// Persisted bytes are a storedBenchRule envelope (RC8 #119) so the
+// original POST body — when supplied by the admin handler — survives the
+// rocksdb round-trip and can be echoed back on GET. The envelope shape
+// itself is internal to the master; syncnodes never see it.
 func (c *Cluster) syncPutBenchRuleInfo(opType uint32, r *spec.BenchRule) error {
 	if r == nil || r.ID == "" {
 		return errors.New("syncPutBenchRuleInfo: nil rule or empty ID")
@@ -266,7 +286,7 @@ func (c *Cluster) syncPutBenchRuleInfo(opType uint32, r *spec.BenchRule) error {
 	metadata.Op = opType
 	metadata.K = benchRulePrefix + r.ID
 	var err error
-	metadata.V, err = json.Marshal(r)
+	metadata.V, err = json.Marshal(storedBenchRule{Rule: r, RawJSON: r.RawJSON})
 	if err != nil {
 		return fmt.Errorf("syncPutBenchRuleInfo marshal id=%s: %w", r.ID, err)
 	}
@@ -292,13 +312,24 @@ func (c *Cluster) loadBenchRules() (err error) {
 	log.LogInfof("action[loadBenchRules], result count %v", len(result))
 	loaded := 0
 	for k, value := range result {
-		rule := &spec.BenchRule{}
-		if err = json.Unmarshal(value, rule); err != nil {
-			// Don't fail the whole load on a single bad record — surface
-			// the bad key and skip. Matches loadSyncRules behaviour.
-			log.LogErrorf("action[loadBenchRules],key:%s unmarshal err:%v", k, err)
-			err = nil
-			continue
+		// RC8 #119: 新格式为 storedBenchRule 信封（含 RawJSON），旧格式为
+		// 裸 BenchRule。先按信封解；信封里 Rule 字段非空说明是新格式，
+		// 否则 fallback 到旧格式继续解。两次解码都失败才跳过该记录。
+		envelope := storedBenchRule{}
+		var rule *spec.BenchRule
+		if uerr := json.Unmarshal(value, &envelope); uerr == nil && envelope.Rule != nil {
+			rule = envelope.Rule
+			rule.RawJSON = envelope.RawJSON
+		} else {
+			legacy := &spec.BenchRule{}
+			if err = json.Unmarshal(value, legacy); err != nil {
+				// Don't fail the whole load on a single bad record —
+				// surface the bad key and skip. Matches loadSyncRules.
+				log.LogErrorf("action[loadBenchRules],key:%s unmarshal err:%v", k, err)
+				err = nil
+				continue
+			}
+			rule = legacy
 		}
 		if rule.ID == "" {
 			log.LogWarnf("action[loadBenchRules],key:%s rule has empty ID, skipping", k)

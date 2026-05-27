@@ -48,13 +48,17 @@ func (b *emptyBackend) Get(ctx context.Context, k string, off, sz int64) (io.Rea
 func (b *emptyBackend) Head(ctx context.Context, k string) (int64, string, time.Time, error) {
 	return 0, "", time.Time{}, backend.ErrKeyNotFound
 }
-func (b *emptyBackend) Put(ctx context.Context, k string, body io.Reader, sz int64, opts backend.PutOptions) (string, error) {
-	return "", nil
+func (b *emptyBackend) Put(ctx context.Context, k string, body io.Reader, sz int64, opts backend.PutOptions) (backend.PutResult, error) {
+	return backend.PutResult{}, nil
 }
-func (b *emptyBackend) Delete(ctx context.Context, k string) error     { return nil }
-func (b *emptyBackend) Rename(ctx context.Context, o, nk string) error { return nil }
-func (b *emptyBackend) Capabilities() backend.Caps                     { return backend.Caps{} }
-func (b *emptyBackend) Close() error                                   { b.closed.Store(true); return nil }
+func (b *emptyBackend) GetChecksum(ctx context.Context, k string) (string, string, error) {
+	return "", "", backend.ErrKeyNotFound
+}
+func (b *emptyBackend) Delete(ctx context.Context, k string) error      { return nil }
+func (b *emptyBackend) Rename(ctx context.Context, o, nk string) error  { return nil }
+func (b *emptyBackend) Capabilities() backend.Caps                      { return backend.Caps{} }
+func (b *emptyBackend) SameInstance(other backend.Backend) bool         { return false }
+func (b *emptyBackend) Close() error                                    { b.closed.Store(true); return nil }
 
 // blockingBackend.List blocks until ctx is cancelled. Used to exercise
 // Runner.Cancel: the task only terminates when executor cancels its

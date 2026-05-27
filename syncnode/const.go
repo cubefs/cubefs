@@ -93,11 +93,31 @@ const (
 
 // Allowed enum values for rule fields.
 var (
-	validRuleTypes        = map[string]bool{"sync": true, "load": true, "check": true}
+	validRuleTypes        = map[string]bool{"sync": true, "load": true, "check": true, "move": true, "mirror": true}
 	validBackendKinds     = map[string]bool{"cfs": true, "s3": true, "local": true}
 	validAfterCopy        = map[string]bool{"": true, "keep": true, "verify_then_delete_src": true}
 	validDownloadStrategy = map[string]bool{"": true, "temp_rename": true, "direct": true}
 	validOnMismatch       = map[string]bool{"": true, "alert": true, "auto_fix": true, "ignore": true}
+	// validOnExisting enumerates the per-file overwrite strategies a rule
+	// may declare. "" is the back-compat alias for "verify_then_skip"
+	// (the legacy hard-coded behaviour). The four named values mirror
+	// rclone's overwrite-policy switches; see proto.SyncRuleConfig.OnExisting.
+	validOnExisting = map[string]bool{
+		"":                 true,
+		"verify_then_skip": true,
+		"always_skip":      true,
+		"newer_only":       true,
+		"overwrite":        true,
+	}
+	// validOnSymlink enumerates the local-backend symlink policies a rule
+	// may declare. "" is the back-compat alias for "skip" (the legacy
+	// hard-coded behaviour). See proto.SyncRuleConfig.OnSymlink.
+	validOnSymlink = map[string]bool{
+		"":       true,
+		"skip":   true,
+		"follow": true,
+		"error":  true,
+	}
 )
 
 // regexpListen matches the listen-port string ("digits only").

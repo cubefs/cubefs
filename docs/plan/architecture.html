@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>架构与流程 · CubeFS Sync &amp; Bench</title>
+    <meta name="description" content="CubeFS Sync 与 Bench 子系统的整体架构、四个角色的职责边界，以及 sync / bench 两类任务的生命周期时序与数据完整性流程。">
+    <link rel="stylesheet" href="assets/docs.css">
+    <script defer src="assets/docs.js"></script>
+  </head>
+  <body data-section="architecture">
+    <div class="page-shell">
+      <header class="site-header">
+        <div class="site-header__inner">
+          <a class="brand" href="index.html">
+            <span class="brand-mark">CF</span>
+            <div class="brand-meta">
+              <p class="brand-title">CubeFS Sync &amp; Bench</p>
+              <p class="brand-subtitle">使用者文档站</p>
+            </div>
+          </a>
+          <nav class="site-nav" aria-label="主导航">
+            <a class="nav-link is-active" data-nav="architecture" href="architecture.html">架构</a>
+            <a class="nav-link" data-nav="deploy" href="deploy.html">部署</a>
+            <a class="nav-link" data-nav="sync" href="sync.html">同步</a>
+            <a class="nav-link" data-nav="test" href="test.html">测试</a>
+            <a class="nav-link" data-nav="mcp" href="mcp.html">MCP</a>
+            <a class="nav-cta" href="understand-anything/index.html">代码图谱 →</a>
+          </nav>
+          <button class="nav-toggle" type="button" aria-label="切换导航" aria-expanded="false">
+            <span></span><span></span><span></span>
+          </button>
+        </div>
+      </header>
+
+      <main>
+        <nav class="breadcrumb" aria-label="面包屑">
+          <a href="index.html">总览</a>
+          <span class="breadcrumb__sep">/</span>
+          <span>架构与流程</span>
+        </nav>
+
+        <section class="page-intro reveal" aria-labelledby="page-intro-title">
+          <p class="page-intro__eyebrow">01 · Architecture</p>
+          <h1 id="page-intro-title" class="page-intro__title">架构与流程</h1>
+          <p class="page-intro__lead">
+            读完本页可以回答：CubeFS Sync &amp; Bench 由哪几个角色构成，他们之间怎么协作，一次同步或一次压测从下发到完成中间经过了哪些环节，数据完整性怎么保证。
+          </p>
+          <ul class="meta-grid">
+            <li><span>覆盖角色</span><strong>master · syncnode · dashboard · bench</strong></li>
+            <li><span>流程图</span><strong>整体架构 / sync 时序 / bench 时序 / 数据流</strong></li>
+            <li><span>面向读者</span><strong>初次接入 / 排障 / 集成开发者</strong></li>
+          </ul>
+        </section>
+
+        <div class="doc-layout">
+          <article class="prose prose-markdown reveal">
+            <h2 id="roles">四个角色</h2>
+            <p>
+              CubeFS Sync &amp; Bench 体系挂在 CubeFS 主集群之上，复用 master 控制面和 metanode / datanode 数据面，额外引入两类组件——
+              <strong>syncnode</strong>（执行）和 <strong>dashboard</strong>（控制台），以及一个跑在 syncnode pod 里的 <strong>bench sidecar</strong>。
+            </p>
+            <ul>
+              <li><strong>master</strong>：CubeFS 控制面主节点，扩展承担 sync / bench 规则与任务的持久化、调度入口、syncnode 心跳。三主 raft。</li>
+              <li><strong>syncnode</strong>：独立 DaemonSet（<code>cfs-server -c sync.json</code>，role=sync），承担 sync / load / check / bench / move 五类任务的实际执行。本地用 BoltDB 存 InProgressStore 以支持断点续传。</li>
+              <li><strong>dashboard</strong>：Vue + Go 后端的运维 UI，覆盖卷管理、节点管理、Sync / Bench 规则与任务、测试分析（Prometheus 代理），以及 POSIX 合规独立菜单。后端有自己的 MySQL（独立于 master raft）。</li>
+              <li><strong>bench sidecar</strong>：syncnode pod 内的辅助容器 <code>cubefs-bench-tools</code>，封装 fio / IOR / mdtest / OpenMPI / tini，对外暴露 HTTP runner <code>127.0.0.1:18000</code>。主容器只负责调度，重 IO 一律走 sidecar。</li>
+            </ul>
+            <p>
+              四者之间没有循环依赖：dashboard 依赖 master REST；master 依赖 syncnode 心跳；syncnode 依赖 master 派发；bench sidecar 是 syncnode 进程的本地子系统。这意味着 master 重启不会丢任务（已落 raft），syncnode 重启不会丢进度（已落 BoltDB），dashboard 重启完全不影响数据面。
+            </p>
+
+            <h2 id="overview">整体架构</h2>
+            <div class="mermaid-wrap reveal">
+              <div class="mermaid" id="diagram-overview">
+flowchart LR
+    user["用户 / 运维"]
+    subgraph control["控制面"]
+        dash["dashboard<br/>UI + Go API<br/>MySQL"]
+        mcp["cubefs-mcp<br/>(可选)<br/>LLM 入口"]
+    end
+    subgraph master_layer["master raft 三主"]
+        master["master leader<br/>SyncRule / BenchRule<br/>Task store / Dispatch"]
+    end
+    subgraph data_plane["数据面（K8s DaemonSet）"]
+        sn1["syncnode #1<br/>cfs-server role=sync<br/>BoltDB InProgressStore"]
+        sn2["syncnode #2"]
+        sn3["syncnode #N"]
+        bench["bench sidecar<br/>fio / IOR / mdtest"]
+    end
+    subgraph cube["CubeFS 数据面"]
+        meta["metanode (raft)"]
+        data["datanode (HDD/SSD)"]
+    end
+    subgraph backend["外部 backend"]
+        s3["S3 兼容<br/>BOS / TOS / MinIO"]
+        gpfs["GPFS / NFS / Local"]
+    end
+
+    user --> dash
+    user --> mcp
+    dash --> master
+    mcp --> master
+    master <-- 心跳 / 派发 --> sn1
+    master <-- 心跳 / 派发 --> sn2
+    master <-- 心跳 / 派发 --> sn3
+    sn1 -. bench rule .-> bench
+    sn1 <--> cube
+    sn2 <--> cube
+    sn3 <--> cube
+    sn1 <--> backend
+    sn2 <--> backend
+    sn3 <--> backend
+    cube --- meta
+    cube --- data
+              </div>
+              <span class="mermaid-caption">图 1：四角色 + CubeFS 数据面 + 外部 backend 的部署拓扑。</span>
+            </div>
+
+            <h2 id="sync-lifecycle">Sync 任务生命周期</h2>
+            <p>
+              用户在 dashboard / MCP 提交一条 SyncRule 之后，系统按下面的时序把它变成若干个 syncnode 上的并发任务，并最终把进度回流到 master。
+            </p>
+            <div class="mermaid-wrap reveal">
+              <div class="mermaid" id="diagram-sync">
+sequenceDiagram
+    autonumber
+    actor U as 用户
+    participant D as dashboard
+    participant M as master leader
+    participant S1 as syncnode #1
+    participant S2 as syncnode #2
+    participant B as 源 / 目标 backend
+
+    U->>D: 创建 SyncRule (yaml)
+    D->>M: POST /syncRule/create
+    M-->>D: ruleID
+    U->>D: trigger ruleID
+    D->>M: POST /syncRule/trigger?id=
+    M->>M: 按 ShardCount 切片<br/>生成 N 个 shardTaskID
+    M->>S1: dispatch shard #1
+    M->>S2: dispatch shard #2
+    par 并发执行
+        S1->>B: List src / Head 判等
+        S1->>B: Get + sha256 (tee)
+        S1->>B: Put + ComputeChecksum
+        S1->>B: GetChecksum 比对
+        opt type=move
+            S1->>B: Delete src（强校验通过后）
+        end
+        S1-->>M: 进度上报（FilesDone / FilesFailed）
+    and
+        S2->>B: 同上
+        S2-->>M: 进度上报
+    end
+    M->>M: 聚合状态 → succeeded / failed
+    U->>D: 查询任务详情 / NDJSON export
+    D->>M: GET /syncTask/get
+    M-->>D: 终态
+              </div>
+              <span class="mermaid-caption">图 2：SyncRule trigger → shard fan-out → syncnode 执行 → master 聚合的完整路径。</span>
+            </div>
+
+            <h2 id="bench-lifecycle">Bench 任务生命周期</h2>
+            <p>
+              Bench 任务复用了与 sync 相同的派发与心跳通道，但执行端不是『搬文件』，而是把 fio / IOR / mdtest 跑起来并把结果以 HDR histogram 形式回流。
+              <strong>跨 shard 的结果用 HDR histogram 合并</strong>，避免简单加和带来的失真；多个 shard 在 ramp-up 阶段通过 Consul KV barrier 同步开跑。
+            </p>
+            <div class="mermaid-wrap reveal">
+              <div class="mermaid" id="diagram-bench">
+sequenceDiagram
+    autonumber
+    actor U as 用户
+    participant D as dashboard
+    participant M as master leader
+    participant S as syncnode (N 个)
+    participant BS as bench sidecar (fio/IOR)
+    participant C as Consul KV
+    participant P as Prometheus
+
+    U->>D: 创建 BenchRule (yaml)
+    D->>M: POST /benchRule/create
+    U->>D: trigger
+    D->>M: POST /benchRule/trigger
+    M->>M: 按 ShardCount 切片
+    M->>S: dispatch N 个 shard
+    S->>BS: HTTP POST /run (stage yaml)
+    S->>C: barrier wait (ramp-up 同步)
+    C-->>S: all-ready 信号
+    Note over BS: warmup → ramp-up → main → cooldown
+    BS-->>S: 流式 stdout + 阶段汇总
+    S->>P: 暴露 /metrics/bench<br/>(p50/p95/p99/throughput/iops)
+    S-->>M: 阶段进度 + HDR 部分结果
+    M->>M: 聚合各 shard HDR<br/>判 SLA pass / fail
+    U->>D: 实时趋势（query_range）
+    D->>P: GET /api/v1/query_range
+    P-->>D: 时序曲线
+              </div>
+              <span class="mermaid-caption">图 3：bench rule fire 后，syncnode + bench sidecar + Consul barrier + Prometheus 协同的全过程。</span>
+            </div>
+
+            <h2 id="data-integrity">数据完整性流</h2>
+            <p>
+              使用者最容易忽略但最影响生产可用的就是数据完整性。Sync 体系把校验放进传输管道里同步计算，而不是落盘后再回读；
+              <strong>type=move 类型的规则强制走 strong 模式</strong>，否则 executor 拒绝执行删源。
+            </p>
+            <div class="mermaid-wrap reveal">
+              <div class="mermaid" id="diagram-integrity">
+flowchart LR
+    src["源对象 (src)"]
+    get["Get(src)"]
+    tee["io.TeeReader<br/>计算 sha256"]
+    put["Put(dst, ComputeChecksum=true)"]
+    dst["目标对象 (dst)"]
+    head["Head(dst)<br/>取 native checksum<br/>(S3 ETag / cfs crc32)"]
+    cmp{"checksum 一致?"}
+    meta["读对象 x-amz-meta-syncnode-sha256<br/>或 .syncnode.sha256 伴随文件"]
+    okk["标记 succeeded<br/>(move 才 Delete src)"]
+    fail["标记 failed<br/>per-file retry 3 次"]
+    chk2{"onSourceMutated<br/>= fail/skip/retry?"}
+
+    src --> get --> tee --> put --> dst
+    dst --> head --> cmp
+    head -. native 不可用 .-> meta --> cmp
+    cmp -- 一致 --> okk
+    cmp -- 不一致 --> fail
+    okk -. 传输中 src 被改 .-> chk2
+              </div>
+              <span class="mermaid-caption">图 4：从读源 → 算 checksum → 写目标 → 比对 → （move）删源的完整链路；任何一环失败都不会污染目标也不会丢源。</span>
+            </div>
+
+            <h2 id="components">关键设计选择速览</h2>
+            <ul>
+              <li><strong>master 持久化 sync / bench rule + task</strong>：避免 syncnode 重启或扩缩容时丢规则。</li>
+              <li><strong>syncnode 本地 BoltDB</strong>：保存断点续传偏移；本地状态独立于 master，无需高频回写 raft。</li>
+              <li><strong>ShardCount 与 Parallelism 解耦</strong>：前者控制规则分发到多少个 syncnode，后者控制单进程内并发；两个旋钮不再混淆（见 <a href="sync.html#schedule">同步 / 调度参数</a>）。</li>
+              <li><strong>bench HDR histogram 合并</strong>：跨 shard 真合并而不是平均，p99 / p999 不会被掩盖。</li>
+              <li><strong>RWM PVC 共享 bench-mount</strong>：让 IOR / mdtest 这种要求多 rank 看同一目录的工具可用；与之配套的就是 syncnode 必须走 OnDelete 升级（见 <a href="deploy.html#ondelete">部署 / OnDelete SOP</a>）。</li>
+              <li><strong>checksum 同步计算</strong>：写盘的同时算 sha256，不做事后回读；落地速度最快、内存占用可控。</li>
+            </ul>
+
+            <h2 id="next">下一步</h2>
+            <ul>
+              <li>动手部署：<a href="deploy.html">02 · 部署</a></li>
+              <li>使用同步：<a href="sync.html">03 · 同步</a></li>
+              <li>跑压测：<a href="test.html">04 · 测试</a></li>
+              <li>LLM 接入：<a href="mcp.html">05 · cubefs-mcp</a></li>
+            </ul>
+          </article>
+
+          <aside class="toc-panel" aria-label="本页目录">
+            <p class="toc-panel__title">本页目录</p>
+            <div class="toc">
+              <ul>
+                <li><a href="#roles">四个角色</a></li>
+                <li><a href="#overview">整体架构</a></li>
+                <li><a href="#sync-lifecycle">Sync 任务生命周期</a></li>
+                <li><a href="#bench-lifecycle">Bench 任务生命周期</a></li>
+                <li><a href="#data-integrity">数据完整性流</a></li>
+                <li><a href="#components">关键设计选择速览</a></li>
+                <li><a href="#next">下一步</a></li>
+              </ul>
+            </div>
+          </aside>
+        </div>
+
+        <nav class="pager-row" aria-label="相邻文档">
+          <a class="pager-link pager-link--prev" href="index.html">
+            <span>上一篇</span>
+            <strong>总览</strong>
+          </a>
+          <a class="pager-link pager-link--next" href="deploy.html">
+            <span>下一篇</span>
+            <strong>02 · 部署</strong>
+          </a>
+        </nav>
+      </main>
+
+      <footer class="site-footer">
+        <div class="site-footer__inner">
+          <p>CubeFS Sync &amp; Bench · <a href="index.html">返回总览</a> · <a href="understand-anything/index.html">代码图谱</a></p>
+        </div>
+      </footer>
+    </div>
+
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({
+        startOnLoad: true,
+        theme: "neutral",
+        securityLevel: "loose",
+        flowchart: { curve: "basis", htmlLabels: true, useMaxWidth: true },
+        sequence: { showSequenceNumbers: false, mirrorActors: false, useMaxWidth: true }
+      });
+    </script>
+  </body>
+</html>

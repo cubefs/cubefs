@@ -41,7 +41,30 @@ const (
 	TaskTypeLoad  TaskType = "load"  // src → dst with temp_rename, strict verify
 	TaskTypeCheck TaskType = "check" // both-sided integrity check, no data move
 	TaskTypeBench TaskType = "bench" // distributed benchmark (S3 or POSIX/fio)
+	// TaskTypeMove is rclone-move semantics: copy src → dst with strong
+	// (sha256) verification, then delete src. Equivalent to TaskTypeSync
+	// + AfterCopy=verify_then_delete_src + ChecksumMode=strong, but as a
+	// first-class type so the UI can hide the supporting knobs and
+	// validateTask can lock the invariants centrally.
+	TaskTypeMove TaskType = "move"
+	// TaskTypeMirror is rclone-sync semantics: copy src → dst (using the
+	// regular runSync pipeline) AND afterwards delete any dst keys that no
+	// longer exist under src, so dst becomes a byte-for-byte mirror of
+	// src. Unlike TaskTypeMove the destructive side is dst (extras get
+	// pruned), not src — src is never deleted. validateTask therefore
+	// requires AfterCopy=verify_then_skip (or empty, which is normalised
+	// to that): mirror's copy phase must be non-destructive on src.
+	// taskIsDestructive returns true for mirror so the Confirm/DryRun
+	// gate (wave 2) covers mirror tasks too.
+	TaskTypeMirror TaskType = "mirror"
 )
+
+// AfterCopyVerifyThenSkip is the explicit name for the legacy "skip src
+// deletion after a successful copy" semantics. It is the only value
+// validateTask accepts when t.Type == TaskTypeMirror: the destructive bit
+// of a mirror task lives in deleteDstExtras (dst-only pruning), NOT in
+// post-copy src deletion. Empty string ("") is the back-compat alias.
+const AfterCopyVerifyThenSkip AfterCopy = "verify_then_skip"
 
 // Status is the terminal state of a Task. Pending / Running are tracked by
 // the scheduler (Phase F), not in this struct.
@@ -149,6 +172,101 @@ type Task struct {
 	// benchBackend is the pre-built backend for S3/SDK bench tasks.
 	// Built by the Runner before the Task is submitted to the executor.
 	benchBackend backend.Backend
+
+	// ChecksumMode controls post-copy verification strictness (P0).
+	//   "" / "size_etag" → legacy size + (etag when both have one)
+	//   "strong"         → compute sha256 on src during transfer; verify
+	//                      against dst checksum (native or metadata sha256).
+	//                      REQUIRED for AfterCopy=verify_then_delete_src.
+	ChecksumMode string
+
+	// OnSourceMutated controls behaviour when src key changes (size/mtime/
+	// etag) between the pre-transfer Head and post-transfer Head (P1).
+	//   ""       → disabled (no Pre/Post-Head, legacy behaviour)
+	//   "fail"   → error the file; FilesFailed++; src is never deleted
+	//   "skip"   → log + FilesSkipped++; dst is rolled back; src is never
+	//              deleted
+	//   "retry"  → re-fetch and re-upload up to MaxRetries; failed after
+	//              exhaustion
+	OnSourceMutated string
+
+	// MaxRetries is the per-file retry cap (P2). 0 means 1 attempt total
+	// (legacy behaviour). Backoff is exponential with a 30s cap.
+	MaxRetries int
+
+	// ResumeEnabled toggles the breakpoint-resume code path (P2). Default
+	// off for safety; operators opt in. When true, executor consults
+	// bolt.InProgressStore at file start (resume from BytesDone /
+	// UploadID) and clears the breakpoint on successful Put.
+	ResumeEnabled bool
+
+	// OnExisting selects how syncOneFile decides whether to overwrite an
+	// existing dst object. See proto.SyncRuleConfig.OnExisting for the
+	// allowed values. Empty string is the back-compat alias for
+	// "verify_then_skip" (legacy size + checksum/ETag rule).
+	//
+	// validateTask enforces the per-type invariants:
+	//   - type=move forbids anything other than "" / "verify_then_skip"
+	//     (the other strategies would either leave src undeleted or
+	//     risk overwriting a newer dst).
+	//   - After validation, the empty string is normalised to
+	//     "verify_then_skip" so the syncOneFile dispatch is a closed switch.
+	OnExisting string
+
+	// OnSymlink mirrors proto.SyncRuleConfig.OnSymlink and is consumed only
+	// by local backends (see syncnode/backend/local). The executor carries
+	// it on the Task so validateTask can enforce the whitelist before any
+	// backend work happens; the runner copies the rule-level field into
+	// both Src and Dst endpoint configs before invoking the BackendBuilder.
+	// Empty string is the back-compat alias for "skip" (legacy hard-coded
+	// behaviour).
+	OnSymlink string
+
+	// DryRun mirrors proto.SyncRuleConfig.DryRun. When true the executor
+	// walks src/dst as usual but never mutates either side — every per-file
+	// branch that would have called Put / Delete / ServerSideCopy is replaced
+	// by a counter increment + structured log line (see DryRunStats).
+	//
+	// Combined with destructive task types (type=move and the upcoming
+	// type=mirror) this gives operators a safe preview before arming the
+	// real deletion pass. validateTask refuses Confirm=true && DryRun=false
+	// on destructive tasks so a single boolean flip cannot turn a演练 into a
+	// real mutation.
+	DryRun bool
+
+	// Confirm mirrors proto.SyncRuleConfig.Confirm. Acts as the operator's
+	// explicit double-take when arming destructive tasks (type=move / mirror).
+	// validateTask rejects Confirm=true + DryRun=false on destructive tasks
+	// with errors text "dry-run confirmation required: set DryRun=true to
+	// preview first". Confirm has no effect on non-destructive task types.
+	Confirm bool
+
+	// PreserveMode / PreserveOwner / PreserveXattr mirror the same-named
+	// fields on proto.SyncRuleConfig — when set, syncOneFile asks the source
+	// backend (via the optional backend.Stater interface) for those POSIX
+	// attributes and threads them through PutOptions so the destination
+	// backend can persist them natively (cfs/local) or in user-metadata
+	// (s3 object-store). Backends that cannot honour the request raise
+	// backend.ErrBackendUnsupported / backend.ErrMetadataTooLarge, which
+	// the executor routes through OnMetadataUnsupported.
+	//
+	// Mtime is always preserved when the source backend exposes it
+	// (legacy behaviour pre-dates this struct), so it has no dedicated
+	// toggle here.
+	PreserveMode  bool
+	PreserveOwner bool
+	PreserveXattr bool
+
+	// OnMetadataUnsupported mirrors proto.SyncRuleConfig.OnMetadataUnsupported.
+	// Selects per-file behaviour when the destination backend cannot persist
+	// the metadata requested by Preserve{Mode,Owner,Xattr}:
+	//   "" / "warn" → log + counter, finish the transfer without that field
+	//   "skip"      → FilesSkipped++ for this file, dst unchanged
+	//   "error"     → propagate the backend error and fail the file
+	//
+	// validateTask normalises "" → "warn" so syncOneFile dispatches on a
+	// closed enum. Has no effect unless at least one Preserve* is true.
+	OnMetadataUnsupported string
 }
 
 // Result reports the terminal outcome of a Task run.
@@ -276,6 +394,12 @@ type Executor struct {
 	trackers map[string]*bandwidthTracker  // task_id → rolling-window bandwidth tracker
 	resultCh chan Result
 
+	// inprogress is the optional breakpoint store consulted by syncOneFile
+	// when Task.ResumeEnabled is true. nil disables the resume path
+	// entirely (preserves legacy behaviour and keeps unit tests honest
+	// about what's wired).
+	inprogress InProgressStore
+
 	// closed is set by Close(); Run() refuses to start once true. Combined
 	// with the nil-map guard below this closes the race where a queued
 	// Runner goroutine could call Run() against a torn-down executor and
@@ -299,6 +423,17 @@ type options struct {
 	// 4 (per-backend). When nil, transfers run unthrottled — preserving
 	// the historical executor behaviour for tests that don't care.
 	rateLimits *ratelimit.Registry
+
+	// inprogress is the optional breakpoint store. Plumbed through here so
+	// the construction site can use the existing Option pattern; copied
+	// onto the Executor in New().
+	inprogress InProgressStore
+
+	// S3.2: soakStore is the optional Soak checkpoint store consumed by
+	// WrapSoakIfEnabled. nil disables the Soak code path entirely — rules
+	// requesting Soak with no store wired surface a clear error rather
+	// than silently degrade to single-shot.
+	soakStore SoakStore
 }
 
 // Option configures a new Executor.
@@ -345,6 +480,16 @@ func WithProgressInterval(d time.Duration) Option {
 	}
 }
 
+// WithInProgressStore wires the breakpoint store consumed by syncOneFile
+// when Task.ResumeEnabled is true. Pass nil (or omit) to leave resume
+// disabled; legacy callers and tests that don't need P2 should not set
+// this. The store is shared by reference — the caller owns its lifetime.
+func WithInProgressStore(s InProgressStore) Option {
+	return func(o *options) {
+		o.inprogress = s
+	}
+}
+
 // New returns a fresh Executor. Caller must Close() when done.
 func New(opts ...Option) *Executor {
 	o := options{
@@ -356,12 +501,13 @@ func New(opts ...Option) *Executor {
 		opt(&o)
 	}
 	return &Executor{
-		opts:     o,
-		running:  make(map[string]context.CancelFunc),
-		progMap:  make(map[string]*Progress),
-		startMap: make(map[string]time.Time),
-		trackers: make(map[string]*bandwidthTracker),
-		resultCh: make(chan Result, 256),
+		opts:       o,
+		running:    make(map[string]context.CancelFunc),
+		progMap:    make(map[string]*Progress),
+		startMap:   make(map[string]time.Time),
+		trackers:   make(map[string]*bandwidthTracker),
+		resultCh:   make(chan Result, 256),
+		inprogress: o.inprogress,
 	}
 }
 
@@ -467,8 +613,15 @@ func (e *Executor) Run(ctx context.Context, t *Task, r Reporter) Result {
 
 	var benchResult *spec.BenchShardResult
 	switch t.Type {
-	case TaskTypeSync:
+	case TaskTypeSync, TaskTypeMove:
+		// Move 是 sync 的特化：validateTask 已锁定 AfterCopy/ChecksumMode，
+		// 走完 runSync 即完成 verify_then_delete_src 语义。
 		runErr = e.runSync(taskCtx, t, r, &progress)
+	case TaskTypeMirror:
+		// Mirror = sync 复制阶段 + dst-only 删除阶段。runMirror 是薄壳，
+		// 内部串行调用 runSync 和 deleteDstExtras，让 runSync 保持纯净
+		// (不感知 mirror 语义)。
+		runErr = e.runMirror(taskCtx, t, r, &progress)
 	case TaskTypeLoad:
 		runErr = e.runLoad(taskCtx, t, r, &progress)
 	case TaskTypeCheck:
@@ -503,6 +656,15 @@ func (e *Executor) Run(ctx context.Context, t *Task, r Reporter) Result {
 	}
 	finalProg := snapshotProgress(&progress, startedAt, tracker)
 	r.OnProgress(finalProg)
+	// Defer Prom 系列清理到 task 终态后 60s（≈4× 默认 scrape interval=15s），
+	// 给抓取链路足够时间捕获最后一帧 Gauge；按 task_id 一次批量删除整 task
+	// 的所有 fio_interval 系列，避免长跑 syncnode 上的标签基数累积。
+	if t.Type == TaskTypeBench {
+		go func(id string) {
+			time.Sleep(60 * time.Second)
+			CleanupTaskFIOSeries(id)
+		}(t.ID)
+	}
 	return Result{
 		TaskID:      t.ID,
 		Status:      status,
@@ -578,6 +740,65 @@ func (e *Executor) transfersPerTask(t *Task) int {
 	return e.opts.transfersPerTask
 }
 
+// OnExisting strategy values consumed by syncOneFile. Mirrored from
+// proto.SyncRuleConfig.OnExisting / syncnode.validOnExisting; executor lives
+// below those packages so we redeclare them here to avoid an import cycle.
+const (
+	OnExistingVerifyThenSkip = "verify_then_skip"
+	OnExistingAlwaysSkip     = "always_skip"
+	OnExistingNewerOnly      = "newer_only"
+	OnExistingOverwrite      = "overwrite"
+)
+
+// validOnExisting is the executor-side whitelist used by validateTask. Kept in
+// sync with syncnode.validOnExisting (double-defence: config-load and
+// task-dispatch both reject unknown values).
+var validOnExisting = map[string]bool{
+	"":                       true,
+	OnExistingVerifyThenSkip: true,
+	OnExistingAlwaysSkip:     true,
+	OnExistingNewerOnly:      true,
+	OnExistingOverwrite:      true,
+}
+
+// OnSymlink strategy values consumed by the local backend. Mirrored from
+// proto.SyncRuleConfig.OnSymlink / syncnode.validOnSymlink; executor lives
+// below those packages so we redeclare them here to avoid an import cycle.
+const (
+	OnSymlinkSkip   = "skip"
+	OnSymlinkFollow = "follow"
+	OnSymlinkError  = "error"
+)
+
+// validOnSymlink is the executor-side whitelist used by validateTask. Kept in
+// sync with syncnode.validOnSymlink (double-defence: config-load and
+// task-dispatch both reject unknown values).
+var validOnSymlink = map[string]bool{
+	"":              true,
+	OnSymlinkSkip:   true,
+	OnSymlinkFollow: true,
+	OnSymlinkError:  true,
+}
+
+// OnMetadataUnsupported strategy values consumed by syncOneFile when the
+// destination backend cannot honour a Preserve{Mode,Owner,Xattr} request.
+// Mirrored from proto.SyncRuleConfig.OnMetadataUnsupported.
+const (
+	OnMetadataUnsupportedWarn  = "warn"
+	OnMetadataUnsupportedSkip  = "skip"
+	OnMetadataUnsupportedError = "error"
+)
+
+// validOnMetadataUnsupported is the executor-side whitelist used by
+// validateTask. Empty string is the back-compat alias for "warn" and is
+// normalised in validateTask so syncOneFile dispatches on a closed enum.
+var validOnMetadataUnsupported = map[string]bool{
+	"":                         true,
+	OnMetadataUnsupportedWarn:  true,
+	OnMetadataUnsupportedSkip:  true,
+	OnMetadataUnsupportedError: true,
+}
+
 // validateTask catches obvious misconfigurations before doing real work.
 func validateTask(t *Task) error {
 	if t == nil {
@@ -591,11 +812,108 @@ func validateTask(t *Task) error {
 		return errors.New("task.Src and task.Dst must be non-nil")
 	}
 	switch t.Type {
-	case TaskTypeSync, TaskTypeLoad, TaskTypeCheck, TaskTypeBench:
+	case TaskTypeSync, TaskTypeLoad, TaskTypeCheck, TaskTypeBench, TaskTypeMove, TaskTypeMirror:
 	default:
 		return fmt.Errorf("invalid task.Type: %q", t.Type)
 	}
+	if !validOnExisting[t.OnExisting] {
+		return fmt.Errorf("invalid task.OnExisting: %q", t.OnExisting)
+	}
+	if !validOnSymlink[t.OnSymlink] {
+		return fmt.Errorf("invalid task.OnSymlink: %q", t.OnSymlink)
+	}
+	if !validOnMetadataUnsupported[t.OnMetadataUnsupported] {
+		return fmt.Errorf("invalid task.OnMetadataUnsupported: %q", t.OnMetadataUnsupported)
+	}
+	// TaskTypeMove 的语义就是"sync + verify_then_delete_src + strong"。
+	// 用户若另设这两个字段，要么留空（默认）、要么显式与 move 锁定值一致；
+	// 任何冲突值都拒绝，避免歧义。校验通过后强制锁定到锁定值，让下游 Run
+	// 一路按 verify_then_delete_src + strong 走。
+	if t.Type == TaskTypeMove {
+		if t.AfterCopy != "" && t.AfterCopy != AfterCopyVerifyThenDeleteSrc {
+			return fmt.Errorf("type=move forbids afterCopy=%q (only %q or empty allowed)", t.AfterCopy, AfterCopyVerifyThenDeleteSrc)
+		}
+		if t.ChecksumMode != "" && t.ChecksumMode != "strong" {
+			return fmt.Errorf("type=move requires checksumMode=strong, got %q", t.ChecksumMode)
+		}
+		// type=move locks dst-deletion semantics; only verify_then_skip
+		// preserves correctness. always_skip would leave src undeleted on
+		// a no-op pass; newer_only / overwrite either skip too aggressively
+		// or upload pointlessly only to delete src — both are user traps.
+		if t.OnExisting != "" && t.OnExisting != OnExistingVerifyThenSkip {
+			return fmt.Errorf("type=move forbids onExisting=%q (only verify_then_skip allowed)", t.OnExisting)
+		}
+		t.AfterCopy = AfterCopyVerifyThenDeleteSrc
+		t.ChecksumMode = "strong"
+		t.OnExisting = OnExistingVerifyThenSkip
+	}
+	// 子项 6 (type=mirror): mirror 的破坏性在 dst（删 dst 多余条目），不在 src。
+	// 复制阶段必须保持 sync-like，不允许 AfterCopy=verify_then_delete_src——否则
+	// "删 src + 删 dst extras" 同时发生，等价于把数据全删了。空字符串 / keep /
+	// verify_then_skip 都视为合法（语义都是"不动 src"）；其它值显式拒绝。
+	// 校验通过后强制锁定到 verify_then_skip，让 syncOneFile 的 AfterCopy 分支
+	// 走"无 src 删除"路径。
+	if t.Type == TaskTypeMirror {
+		switch t.AfterCopy {
+		case "", AfterCopyKeep, AfterCopyVerifyThenSkip:
+			// allowed
+		default:
+			return fmt.Errorf("type=mirror requires afterCopy=verify_then_skip or empty (got %q)", t.AfterCopy)
+		}
+		t.AfterCopy = AfterCopyVerifyThenSkip
+	}
+	// Normalise the empty-string back-compat alias up front so syncOneFile
+	// can dispatch on a closed enum (parity with AfterCopy / ChecksumMode
+	// post-validation invariants).
+	if t.OnExisting == "" {
+		t.OnExisting = OnExistingVerifyThenSkip
+	}
+	if t.OnMetadataUnsupported == "" {
+		t.OnMetadataUnsupported = OnMetadataUnsupportedWarn
+	}
+	// P0 防呆: 把"老用户没读 release note 就升级"导致的静默回退堵住——必须显式选
+	// strong 才能开 verify_then_delete_src，否则核心搬运语义会退化到只 size 比对。
+	if t.AfterCopy == AfterCopyVerifyThenDeleteSrc && t.ChecksumMode != "strong" {
+		return fmt.Errorf("verify_then_delete_src requires checksumMode=strong, got %q", t.ChecksumMode)
+	}
+	// 子项 2 (dry-run) — Confirm 是为破坏性任务（type=move、未来的 type=mirror、
+	// AfterCopy=verify_then_delete_src）准备的双重确认位。如果调用方一边设
+	// Confirm=true 一边把 DryRun 关掉，意味着"我已经看过演练结果，直接来吧"——
+	// 但 type=move 的 validateTask 已经把 AfterCopy 锁定到 verify_then_delete_src,
+	// 因此判定逻辑只看是不是 destructive，不区分入口。我们要求:
+	// Confirm=true && DryRun=false && destructive → 报错; 强制操作者至少跑一次演练。
+	// Confirm=true && DryRun=true 是合法的——演练时携带 Confirm 是为后续真跑铺
+	// 路（同一份 rule config 可以连演两次，第二次置 DryRun=false 即可放行）。
+	if t.Confirm && !t.DryRun && taskIsDestructive(t) {
+		return errors.New("dry-run confirmation required: set DryRun=true to preview first")
+	}
 	return nil
+}
+
+// taskIsDestructive reports whether a task would mutate either the source
+// side (move: delete src after verify) or the destination side (mirror:
+// delete dst keys that are no longer present in src), and therefore is
+// the kind of operation a sane operator should preview before arming.
+//
+// type=move locks AfterCopy=verify_then_delete_src in validateTask but we
+// check the type as well so an early call site (before the rewrite) gets
+// the same answer. type=mirror is destructive on dst (deleteDstExtras
+// prunes dst-only keys) — the Confirm/DryRun gate must catch it before
+// runMirror starts deleting.
+func taskIsDestructive(t *Task) bool {
+	if t == nil {
+		return false
+	}
+	if t.Type == TaskTypeMove {
+		return true
+	}
+	if t.Type == TaskTypeMirror {
+		return true
+	}
+	if t.AfterCopy == AfterCopyVerifyThenDeleteSrc {
+		return true
+	}
+	return false
 }
 
 // snapshotProgress reads the atomic progress fields and computes throughput.
@@ -637,16 +955,25 @@ func (e *Executor) runBench(ctx context.Context, t *Task) (*spec.BenchShardResul
 	rule := t.BenchRule
 	pushIntervalSec := 5 // default; could be wired from config in future
 
+	// shardTotal is plumbed to every bench path so S1.6's cross-shard
+	// barrier knows how many peers to wait for. Falls back to 1 when
+	// the dispatch payload didn't carry a value (single-node task).
+	shardTotal := t.ShardTotal
+	if shardTotal <= 0 {
+		shardTotal = 1
+	}
 	switch rule.StorageType {
 	case spec.BenchStoragePosix:
-		return runBenchPosix(ctx, rule, t.ID, t.ShardIndex, pushIntervalSec)
+		return runBenchPosix(ctx, rule, t.ID, t.ShardIndex, shardTotal, pushIntervalSec)
 	case spec.BenchStorageS3, spec.BenchStorageSDK:
 		if t.benchBackend == nil {
 			return nil, fmt.Errorf("bench task for storage type %q has nil backend", rule.StorageType)
 		}
-		return runBenchS3(ctx, rule, t.ID, t.ShardIndex, t.benchBackend, pushIntervalSec)
+		return runBenchS3(ctx, rule, t.ID, t.ShardIndex, shardTotal, t.benchBackend, pushIntervalSec)
 	case spec.BenchStorageMdtest:
-		return runBenchMdtest(ctx, rule, t.ID, t.ShardIndex, pushIntervalSec)
+		return runBenchMdtest(ctx, rule, t.ID, t.ShardIndex, shardTotal, pushIntervalSec)
+	case spec.BenchStorageIOR:
+		return runBenchIOR(ctx, rule, t.ID, t.ShardIndex, shardTotal, pushIntervalSec)
 	default:
 		return nil, fmt.Errorf("unknown bench storage type: %q", rule.StorageType)
 	}
@@ -697,4 +1024,73 @@ func (e *Executor) buildTransferLimiter(t *Task) ratelimit.Limiter {
 		return nil
 	}
 	return ratelimit.NewComposite(layers...)
+}
+
+// ---------------------------------------------------------------------------
+// S3.2 Soak — append-only helpers. New functions / types MUST go below this
+// anchor; do not insert above (avoids merge conflicts with S3.3 / S3.4 which
+// also append at file tail). See docs/plan or 任务卡片 S3.2.
+// ---------------------------------------------------------------------------
+
+// soakStoreForExecutor exposes the executor's (optional) SoakStore. The
+// SoakStore is wired by the syncnode server at startup via WithSoakStore.
+// Returns nil when soak is not configured — callers must treat that as
+// "soak disabled" rather than panicking.
+func (e *Executor) soakStoreForExecutor() SoakStore {
+	if e == nil {
+		return nil
+	}
+	return e.opts.soakStore
+}
+
+// WrapSoakIfEnabled is the executor-facing entry point that decides whether
+// to wrap a bench stage callback with Soak long-running semantics. Per the
+// S3.2 contract:
+//
+//   - rule.Soak.DurationSec == 0 → returns stage unchanged (legacy behaviour
+//     is 100% preserved, no Soak machinery touched).
+//   - rule.Soak.DurationSec  > 0 → wraps stage with RunSoakLoop, threading
+//     task / stage / shard identifiers and the SoakStore through opts.
+//
+// The wrapper deliberately ignores the inbound restartCount argument; once
+// Soak is engaged, the Soak runner manages its own restart counter and
+// passes the live value into the stage via SoakResumeFromContext.
+//
+// When Soak is requested but no SoakStore is wired (server startup gap or
+// misconfigured tests), the wrapper returns a callback that errors loudly
+// on first invocation rather than silently falling back to single-shot.
+// This matches the "fail loudly when soak requested but cannot be honored"
+// principle of the surrounding bench platform.
+func (e *Executor) WrapSoakIfEnabled(
+	rule *spec.BenchRule,
+	taskID, stage string,
+	shardID int,
+	cb func(ctx context.Context, restartCount int) error,
+) func(ctx context.Context, restartCount int) error {
+	if rule == nil || !rule.Soak.Enabled() {
+		return cb
+	}
+	store := e.soakStoreForExecutor()
+	if store == nil {
+		return func(ctx context.Context, _ int) error {
+			return errors.New("soak: rule.Soak.DurationSec > 0 but executor has no SoakStore configured")
+		}
+	}
+	opts := SoakLoopOptions{
+		Control: rule.Soak,
+		Store:   store,
+		TaskID:  taskID,
+		Stage:   stage,
+		ShardID: shardID,
+	}
+	return wrapSoakIfEnabled(opts, cb)
+}
+
+// WithSoakStore wires the Soak checkpoint store consumed by WrapSoakIfEnabled.
+// Pass nil (or omit) to leave Soak disabled; rules with Soak.DurationSec > 0
+// will then surface the "no SoakStore configured" error described above.
+func WithSoakStore(s SoakStore) Option {
+	return func(o *options) {
+		o.soakStore = s
+	}
 }

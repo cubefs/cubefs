@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>部署与升级 · CubeFS Sync &amp; Bench</title>
+    <meta name="description" content="CubeFS Sync 与 Bench 子系统的部署前置条件、syncnode / dashboard 部署方式、bench-mount RWM PVC 准备，以及 OnDelete 升级 SOP（最容易踩坑的部分）。">
+    <link rel="stylesheet" href="assets/docs.css">
+    <script defer src="assets/docs.js"></script>
+  </head>
+  <body data-section="deploy">
+    <div class="page-shell">
+      <header class="site-header">
+        <div class="site-header__inner">
+          <a class="brand" href="index.html">
+            <span class="brand-mark">CF</span>
+            <div class="brand-meta">
+              <p class="brand-title">CubeFS Sync &amp; Bench</p>
+              <p class="brand-subtitle">使用者文档站</p>
+            </div>
+          </a>
+          <nav class="site-nav" aria-label="主导航">
+            <a class="nav-link" data-nav="architecture" href="architecture.html">架构</a>
+            <a class="nav-link is-active" data-nav="deploy" href="deploy.html">部署</a>
+            <a class="nav-link" data-nav="sync" href="sync.html">同步</a>
+            <a class="nav-link" data-nav="test" href="test.html">测试</a>
+            <a class="nav-link" data-nav="mcp" href="mcp.html">MCP</a>
+            <a class="nav-cta" href="understand-anything/index.html">代码图谱 →</a>
+          </nav>
+          <button class="nav-toggle" type="button" aria-label="切换导航" aria-expanded="false">
+            <span></span><span></span><span></span>
+          </button>
+        </div>
+      </header>
+
+      <main>
+        <nav class="breadcrumb" aria-label="面包屑">
+          <a href="index.html">总览</a>
+          <span class="breadcrumb__sep">/</span>
+          <span>部署与升级</span>
+        </nav>
+
+        <section class="page-intro reveal" aria-labelledby="page-intro-title">
+          <p class="page-intro__eyebrow">02 · Deploy</p>
+          <h1 id="page-intro-title" class="page-intro__title">部署与升级</h1>
+          <p class="page-intro__lead">
+            读完本页可以回答：syncnode 和 dashboard 怎么部署到一个已经在跑 CubeFS 的 K8s 集群里，bench-mount RWM PVC 为什么必须先建好，
+            以及升级镜像时为什么必须走 OnDelete 串行手 delete——后者是反复踩坑的核心知识，新接手必读。
+          </p>
+          <ul class="meta-grid">
+            <li><span>部署方式</span><strong>cubefs-deploy（Terragrunt + OpenTofu）</strong></li>
+            <li><span>关键变量</span><strong>image · max_concurrent_tasks · bench_mount_pvc_name</strong></li>
+            <li><span>升级策略</span><strong>StatefulSet OnDelete（手动串行）</strong></li>
+            <li><span>面向读者</span><strong>SRE / 部署工程师</strong></li>
+          </ul>
+        </section>
+
+        <div class="doc-layout">
+          <article class="prose prose-markdown reveal">
+            <h2 id="prereq">前置条件</h2>
+            <ul>
+              <li>
+                <strong>CubeFS 主集群可用</strong>：master（3 主 raft）/ metanode / datanode 已经跑起来，
+                <code>curl http://&lt;master&gt;:17010/admin/getCluster</code> 能正常返回 cluster 拓扑。
+              </li>
+              <li>
+                <strong>Consul 可达</strong>：syncnode、bench sidecar 都通过 Consul 上报心跳，
+                <code>consul_addr</code> 必须和 master 用同一个，否则 master 看不到 syncnode。
+              </li>
+              <li>
+                <strong>K8s &ge; 1.24</strong>：syncnode 是 DaemonSet/StatefulSet，
+                bench sidecar 是同 pod 的第二容器，依赖标准 PodSpec 没有特殊 CRD。
+              </li>
+              <li>
+                <strong>bench-mount 的 RWM PVC 已预备</strong>（生产 / test-hb 等需要跨节点共享 cfs 卷的场景必要——下面单独一节）。
+                如果只是 test-k3d 这种单节点验证场景，可以 <code>bench_mount_pvc_name = ""</code> 跳过。
+              </li>
+              <li>
+                <strong>Terragrunt &ge; 0.55 + OpenTofu &ge; 1.6 + kubectl</strong>：cubefs-deploy 用 Terragrunt 编排，
+                kubectl 用来后续手动 delete pod 串行升级。
+              </li>
+            </ul>
+
+            <h2 id="topology">部署依赖链</h2>
+            <div class="mermaid-wrap reveal">
+              <div class="mermaid" id="diagram-deploy">
+flowchart LR
+    k8s["K8s 集群<br/>&ge;1.24"]
+    cubefs["CubeFS 主集群<br/>master + metanode + datanode"]
+    consul["Consul<br/>统一注册中心"]
+    pvc["bench-mount RWM PVC<br/>cubefs-syncnode-bench"]
+    syncnode["syncnode DaemonSet<br/>+ bench sidecar"]
+    dashboard["dashboard<br/>UI + Go API + MySQL"]
+    mcp["cubefs-mcp（可选）<br/>LLM 入口"]
+
+    k8s --> cubefs
+    k8s --> consul
+    cubefs --> consul
+    consul --> syncnode
+    pvc --> syncnode
+    syncnode --> dashboard
+    syncnode -.-> mcp
+    cubefs --> dashboard
+
+    classDef base fill:#f5f3ef,stroke:#cdc7bd,color:#221f1c;
+    classDef new fill:#e8f0ff,stroke:#94aee0,color:#1d2c5a;
+    class k8s,cubefs,consul,pvc base;
+    class syncnode,dashboard,mcp new;
+              </div>
+              <span class="mermaid-caption">图 1 · 部署依赖链（base = 前置 / new = 本子系统组件）</span>
+            </div>
+
+            <h2 id="syncnode">部署 syncnode</h2>
+            <p>
+              syncnode 以 cubefs 二进制 <code>cfs-server -c sync.json</code>（<code>role=sync</code>）启动，部署完全走 cubefs-deploy 仓库。
+              详细 IaC 入口见
+              <a href="https://github.com/fangtaozc/cubefs-deploy/blob/main/docs/index.html" target="_blank" rel="noopener">cubefs-deploy 文档站</a>
+              的 <strong>core / syncnode</strong> 章节。
+            </p>
+
+            <p>对接触修改 IaC 的运维来说，需要关心的关键变量集中在
+            <code>_envcommon/syncnode.hcl</code> 和 <code>envs/&lt;env&gt;/syncnode/terragrunt.hcl</code>：</p>
+
+            <table>
+              <thead>
+                <tr><th>变量</th><th>含义</th><th>典型值</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>image</code></td>
+                  <td>syncnode 镜像 tag，必须与 master 镜像保持兼容（rc 字母+数字升级保持对齐）</td>
+                  <td><code>hub.../cubefs:v3.5.3.1.rc27</code></td>
+                </tr>
+                <tr>
+                  <td><code>master_addrs</code></td>
+                  <td>master raft 三主地址，由 <code>nodes.hcl</code> 提供，不要手填</td>
+                  <td>自动注入</td>
+                </tr>
+                <tr>
+                  <td><code>consul_addr</code></td>
+                  <td>同 master 共用，由 <code>env.hcl</code> 提供</td>
+                  <td>自动注入</td>
+                </tr>
+                <tr>
+                  <td><code>max_concurrent_tasks</code></td>
+                  <td>单 syncnode 最多并行执行的任务数</td>
+                  <td>生产 <code>8</code> · 测试 <code>1</code>（强制串行验证）</td>
+                </tr>
+                <tr>
+                  <td><code>transfers_per_task</code></td>
+                  <td>单任务内的对象级并发（每个 shard 内）</td>
+                  <td><code>4</code></td>
+                </tr>
+                <tr>
+                  <td><code>bandwidth_limit_mbps</code></td>
+                  <td>带宽上限（每 pod，0 = 不限）</td>
+                  <td><code>0</code></td>
+                </tr>
+                <tr>
+                  <td><code>bench_mount_pvc_name</code></td>
+                  <td>POSIX 压测用的 RWM PVC 名（&quot; &quot; 即关闭）</td>
+                  <td><code>cubefs-syncnode-bench</code> / <code>&quot;&quot;</code></td>
+                </tr>
+                <tr>
+                  <td><code>bench_mount_storage_class</code></td>
+                  <td>对应 PVC 的 SC（默认 <code>cfs-sc</code>）</td>
+                  <td><code>cfs-sc</code></td>
+                </tr>
+                <tr>
+                  <td><code>gpfs_mounts</code></td>
+                  <td>hostPath 形式挂入 syncnode pod 的 GPFS / PFS 路径列表</td>
+                  <td><code>[{ name, host_path }]</code></td>
+                </tr>
+                <tr>
+                  <td><code>resources</code></td>
+                  <td>requests / limits。生产建议 4 CPU / 12 GiB，配合 fio libaio 高并发不会 OOM</td>
+                  <td><code>{ cpu, memory }</code></td>
+                </tr>
+              </tbody>
+            </table>
+
+            <p>
+              首次部署最常用的命令（以 <code>test-hb</code> 为例）：
+            </p>
+<pre><code class="language-bash"># 1. 预览 diff（不会改集群）
+make ENV=test-hb plan-syncnode
+
+# 2. apply（不会自动滚 pod，见 OnDelete 升级 SOP）
+make ENV=test-hb apply-syncnode
+
+# 3. 看 daemonset 是否 9/9 Ready
+kubectl -n storage-cfs get ds cubefs-syncnode</code></pre>
+
+            <h2 id="dashboard">部署 dashboard</h2>
+            <p>
+              dashboard 是 Vue + Go 的运维 UI，自带 MySQL（独立于 master raft），通过 master REST 拿集群拓扑，
+              通过 Prometheus 代理拿测试时序，通过 syncnode REST 拿 sync / bench 任务详情。
+            </p>
+            <ul>
+              <li>IaC 入口：cubefs-deploy <code>envs/&lt;env&gt;/dashboard/</code>，模块 <code>modules/cubefs-dashboard</code>。</li>
+              <li>关键变量：
+                <ul>
+                  <li><code>image</code>：dashboard 镜像 tag，独立版本号（如 <code>v1.5.0.rc27</code>），与 cubefs 镜像无强绑定。</li>
+                  <li><code>master_addrs</code>：master REST 入口（同 syncnode 共用 <code>nodes.hcl</code>）。</li>
+                  <li><code>mysql_*</code>：dashboard 自己的元数据库连接串。</li>
+                  <li><code>prometheus_url</code>：测试模块从这里查 fio / IOR 实时趋势。</li>
+                </ul>
+              </li>
+              <li>
+                Dashboard 升级没有 RWM 限制，可以用普通 RollingUpdate 直接 <code>make ENV=&lt;env&gt; apply-dashboard</code>。
+                镜像更新后 pod 会自动滚，无需手动 delete。
+              </li>
+            </ul>
+
+            <h2 id="bench-mount">bench-mount RWM PVC 准备</h2>
+            <p>
+              POSIX 一致性测试（pjd-fstest）、并行元数据测试（IOR / mdtest）需要多个 syncnode pod 同时看到同一份 cfs 卷。
+              我们的做法是预先在 K8s 里创建一个 <strong>RWM（ReadWriteMany）PVC</strong>，再让每个 syncnode pod 都把它挂到固定路径
+              <code>/cfs/posix-bench</code>，bench sidecar 跑 fio / pjd-fstest 时直接读写这个路径。
+            </p>
+
+            <p>典型 PVC 定义（cubefs-csi 提供动态供给）：</p>
+<pre><code class="language-yaml">apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cubefs-syncnode-bench
+  namespace: storage-cfs
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: cfs-sc
+  resources:
+    requests:
+      storage: 20Gi</code></pre>
+
+            <p>
+              在 <code>envs/&lt;env&gt;/syncnode/terragrunt.hcl</code> 里把这个 PVC 名字告诉模块，模块会自动把
+              <code>/cfs/posix-bench</code> 追加到 <code>allowedRoots</code>（bench sidecar 只允许在 allowedRoots 下读写）：
+            </p>
+<pre><code class="language-hcl">inputs = {
+  bench_mount_pvc_name      = "cubefs-syncnode-bench"
+  bench_mount_storage_class = "cfs-sc"
+  bench_mount_size          = "20Gi"
+}</code></pre>
+
+            <p>
+              <strong>为什么这件事会强制 OnDelete</strong>：cubefs-csi 在多节点同时 <code>NodeStage</code> / <code>NodeUnstage</code>
+              同一个 RWM volume 时会出现 stale globalmount 撞车。如果 syncnode 走默认 RollingUpdate，
+              新 pod 一齐拉起 → 一齐 NodeStage 同一个 PVC → 9 个 pod 卡在 <code>mount --bind exit status 32</code> 全部 ContainerCreating。
+              因此 daemonset/statefulset 模板里恒为 <code>strategy.type = OnDelete</code>，
+              <code>wait_for_rollout = false</code>，由人手逐个 delete 串行触发 CSI mount，把并发收敛掉。
+            </p>
+
+            <p class="callout callout--note">
+              <strong>test-k3d 例外</strong>：单节点环境无须共享 PVC，<code>bench_mount_pvc_name = ""</code> 跳过 RWM 挂载即可。
+              此时 daemonset 仍然是 OnDelete 策略，但因为单 pod 即时切换，看不出区别。
+            </p>
+
+            <h2 id="ondelete-sop">OnDelete 升级 SOP（必读）</h2>
+            <p>
+              <strong>触发条件</strong>：只要改了 syncnode 的 <code>image</code> / <code>volumes</code> / 任何 spec 字段，就要走这个流程。
+              <code>resources</code> 调整、<code>gpfs_mounts</code> 增减、<code>bench_mount_*</code> 切换都算。
+            </p>
+
+            <h3 id="ondelete-steps">三步操作</h3>
+<pre><code class="language-bash"># 1) 改 IaC 并 apply（如升 _envcommon/images.hcl 里的 cubefs tag）
+make ENV=&lt;env&gt; apply-syncnode
+# apply 完 daemonset spec 已更新，但 N 个 pod 还跑老 spec（OnDelete 不自动滚）
+
+# 2) 看 daemonset 模板符合预期（image / volumes 都对）
+kubectl -n storage-cfs get ds cubefs-syncnode -o yaml | less
+
+# 3) 逐个 delete pod，每个等 Ready 再 delete 下一个
+for pod in $(kubectl -n storage-cfs get pods -l app=cubefs-syncnode -o name); do
+  kubectl -n storage-cfs delete $pod
+  node=$(kubectl -n storage-cfs get $pod -o jsonpath='{.spec.nodeName}' 2>/dev/null)
+  until kubectl -n storage-cfs get pods -l app=cubefs-syncnode \
+        --field-selector=spec.nodeName=$node --no-headers \
+        | awk '{print $2}' | grep -q '^1/1$'; do sleep 5; done
+done</code></pre>
+
+            <h3 id="ondelete-never">绝对不要做</h3>
+            <ul>
+              <li>
+                <strong>不要 <code>kubectl delete pods -l app=cubefs-syncnode --force</code></strong>。
+                一次性全删 → 新 pod 同时 NodeStage RWM PVC → CSI 撞车 → 9 个全卡 ContainerCreating，
+                只能去掉 bench-mount volume 引用、force delete 全部 pod 再走 OnDelete 串行加回——1 小时起步的恢复成本。
+              </li>
+              <li>
+                <strong>不要把 strategy 改回 <code>RollingUpdate</code></strong>，除非 cubefs-csi 已确认修复 RWM 并发 stage 问题。
+              </li>
+              <li>
+                <strong>不要跳过手动 delete 步骤</strong>就声称升级完成。<code>apply-syncnode</code> 之后 pod 还在跑老镜像 / 老 spec，
+                需要逐个 delete 才会拉起新版本。
+              </li>
+              <li>
+                <strong>不要在 delete 循环里并行 <code>delete &amp;</code></strong>。OnDelete 的全部意义就是串行收敛 CSI 并发。
+              </li>
+            </ul>
+
+            <h2 id="troubleshooting">常见故障排查</h2>
+
+            <h3 id="t1">现象 1：新 pod 卡 <code>ContainerCreating</code>，event 里有 <code>MountVolume.SetUp failed</code></h3>
+            <p>
+              检查是不是没按 OnDelete SOP 串行 delete。
+              <code>kubectl -n storage-cfs describe pod &lt;pod&gt; | grep -A5 Events</code>，
+              典型错误是 <code>mount --bind ... exit status 32</code>。
+              恢复路径：先 <code>kubectl patch ds cubefs-syncnode --type=json -p='[...]'</code> 临时去掉 bench-mount volume 引用，
+              <code>kubectl -n storage-cfs delete pod ... --force --grace-period=0</code> 把卡住的 pod 全部清掉，
+              然后改回 IaC + apply-syncnode + 串行 delete。
+            </p>
+
+            <h3 id="t2">现象 2：master 看不到 syncnode</h3>
+            <p>
+              <code>curl http://&lt;master&gt;:17010/admin/getCluster | jq '.SyncNodes'</code> 为空。检查：
+            </p>
+            <ul>
+              <li>syncnode pod log（<code>kubectl -n storage-cfs logs &lt;pod&gt; -c cubefs-syncnode</code>）有没有 <code>consul register</code> 失败。</li>
+              <li><code>env.hcl</code> 里 <code>consul_addr</code> 是否与 master 同一个集群。</li>
+              <li>K8s 网络是否允许 syncnode → master:17010 / syncnode → consul:8500。</li>
+            </ul>
+
+            <h3 id="t3">现象 3：syncnode pod OOMKilled</h3>
+            <p>
+              生产实测 4 GiB 默认 limits 在 fio libaio 高 iodepth × numjobs 场景会被 OOMKill。
+              在 <code>envs/&lt;env&gt;/syncnode/terragrunt.hcl</code> 增加
+              <code>resources = { requests = { cpu = &quot;2&quot;, memory = &quot;6Gi&quot; }, limits = { cpu = &quot;4&quot;, memory = &quot;12Gi&quot; } }</code>，
+              再走 OnDelete SOP 替换。
+            </p>
+
+            <h3 id="t4">现象 4：bench 任务一直 pending / pending-shard</h3>
+            <p>
+              先看 <code>kubectl -n storage-cfs get pods -l app=cubefs-syncnode</code> 是否都 Ready；
+              再看 <code>max_concurrent_tasks</code> 是不是被压测场景调成 1（test-k3d 故意 1，正在排队是正常的）；
+              最后看 dashboard 「测试管理 / 任务」状态，里面有 master 派发失败的具体 reason。
+            </p>
+
+            <h3 id="t5">现象 5：升级后 <code>bench-mount</code> 不见了</h3>
+            <p>
+              典型场景：<code>bench_mount_pvc_name</code> 从有值改为空，apply 后 daemonset 模板已去掉 volume，
+              但已运行的 pod 还挂着旧 mount。按 OnDelete SOP 逐个 delete 即可。反之亦然，
+              从空启用到指定 PVC 也必须走串行 delete 让 CSI 一次只 stage 一个节点。
+            </p>
+
+            <h2 id="next">下一步</h2>
+            <ul>
+              <li>开始用：<a href="sync.html">03 · 同步</a>（SyncRule / 调度 / 排障）</li>
+              <li>跑压测：<a href="test.html">04 · 测试</a>（bench 平台 / 6 层级 / live trend）</li>
+              <li>LLM 接入：<a href="mcp.html">05 · cubefs-mcp</a></li>
+            </ul>
+          </article>
+
+          <aside class="toc-panel" aria-label="本页目录">
+            <p class="toc-panel__title">本页目录</p>
+            <div class="toc">
+              <ul>
+                <li><a href="#prereq">前置条件</a></li>
+                <li><a href="#topology">部署依赖链</a></li>
+                <li><a href="#syncnode">部署 syncnode</a></li>
+                <li><a href="#dashboard">部署 dashboard</a></li>
+                <li><a href="#bench-mount">bench-mount RWM PVC 准备</a></li>
+                <li>
+                  <a href="#ondelete-sop">OnDelete 升级 SOP</a>
+                  <ul>
+                    <li><a href="#ondelete-steps">三步操作</a></li>
+                    <li><a href="#ondelete-never">绝对不要做</a></li>
+                  </ul>
+                </li>
+                <li>
+                  <a href="#troubleshooting">常见故障排查</a>
+                  <ul>
+                    <li><a href="#t1">卡 ContainerCreating</a></li>
+                    <li><a href="#t2">master 看不到 syncnode</a></li>
+                    <li><a href="#t3">OOMKilled</a></li>
+                    <li><a href="#t4">bench pending</a></li>
+                    <li><a href="#t5">bench-mount 不见了</a></li>
+                  </ul>
+                </li>
+                <li><a href="#next">下一步</a></li>
+              </ul>
+            </div>
+          </aside>
+        </div>
+
+        <nav class="pager-row" aria-label="相邻文档">
+          <a class="pager-link pager-link--prev" href="architecture.html">
+            <span>上一篇</span>
+            <strong>01 · 架构</strong>
+          </a>
+          <a class="pager-link pager-link--next" href="sync.html">
+            <span>下一篇</span>
+            <strong>03 · 同步</strong>
+          </a>
+        </nav>
+      </main>
+
+      <footer class="site-footer">
+        <div class="site-footer__inner">
+          <p>CubeFS Sync &amp; Bench · <a href="index.html">返回总览</a> · <a href="understand-anything/index.html">代码图谱</a></p>
+        </div>
+      </footer>
+    </div>
+
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({
+        startOnLoad: true,
+        theme: "neutral",
+        securityLevel: "loose",
+        flowchart: { curve: "basis", htmlLabels: true, useMaxWidth: true },
+        sequence: { showSequenceNumbers: false, mirrorActors: false, useMaxWidth: true }
+      });
+    </script>
+  </body>
+</html>

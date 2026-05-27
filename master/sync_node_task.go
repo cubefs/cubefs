@@ -147,8 +147,25 @@ func (c *Cluster) handleSyncNodeTaskResponse(nodeAddr string, task *proto.AdminT
 			}
 			// For fan-out bench tasks, aggregate the shard into the parent.
 			// No-op when the task ID is not a known bench shard record.
-			if parentID, allDone := c.benchTaskLedger.CompleteShardAndAggregate(rep.TaskID); allDone {
+			parentID, allDone := c.benchTaskLedger.CompleteShardAndAggregate(rep.TaskID)
+			if allDone {
 				log.LogInfof("sn bench shard aggregate: parent %s fully done", parentID)
+			}
+			// SLA evaluation: run once the task reaches a terminal state.
+			// Two cases:
+			//   1. Single-shard task (parentID == "") — evaluate against
+			//      this shard's BenchResult.Stages.
+			//   2. Fan-out parent — only when allDone, aggregate every
+			//      shard's stages worst-case before evaluating.
+			// Tasks that never produced a BenchResult (executor crash,
+			// cancel) have no metrics to score, so we still record a
+			// failing SLAResult when the rule has SLA configured so the
+			// dashboard surfaces "SLA could not be evaluated" rather than
+			// hiding the field entirely.
+			if parentID == "" {
+				c.evaluateBenchSLAForSingle(rep.TaskID)
+			} else if allDone {
+				c.evaluateBenchSLAForParent(parentID)
 			}
 		}
 		// Fan-out: when the terminal report carries a shard sub-task ID
@@ -249,30 +266,137 @@ func (c *Cluster) handleSyncNodeHeartbeatResp(nodeAddr string, resp *proto.SyncN
 	}
 
 	// Update in-flight task progress from heartbeat reports so the ledger
-	// shows live progress without waiting for task terminal.
-	if len(resp.TaskReports) > 0 && c.syncTaskLedger != nil {
+	// shows live progress without waiting for task terminal. Heartbeat
+	// reports are unioned across both ledgers — a single taskID belongs
+	// either to a SyncTask (rule-<ts>) or a Bench shard (rule-<ts>/<idx>)
+	// by construction, so calling both is collision-free. Calling both is
+	// also the simplest fix for the orphan_scan defect: BenchTaskLedger
+	// records were never UpdatedAt-refreshed on heartbeats and were
+	// guaranteed to cross the 90s silence threshold; see
+	// BenchTaskLedger.Heartbeat for the full rationale.
+	if len(resp.TaskReports) > 0 {
 		for _, report := range resp.TaskReports {
 			if report.TaskID == "" {
 				continue
 			}
-			c.syncTaskLedger.UpdateProgress(report.TaskID, SyncTaskProgress{
-				FilesTotal:           report.Progress.FilesTotal,
-				FilesDone:            report.Progress.FilesDone,
-				FilesSkipped:         report.Progress.FilesSkipped,
-				FilesFailed:          report.Progress.FilesFailed,
-				BytesTotal:           report.Progress.BytesTotal,
-				BytesDone:            report.Progress.BytesDone,
-				BytesSkipped:         report.Progress.BytesSkipped,
-				ThroughputMBps:       report.Progress.ThroughputMBps,
-				CurrentBandwidthMBps: report.Progress.CurrentBandwidthMBps,
-				SkippedSamples:       report.Progress.SkippedSamples,
-			})
+			if c.syncTaskLedger != nil {
+				c.syncTaskLedger.UpdateProgress(report.TaskID, SyncTaskProgress{
+					FilesTotal:           report.Progress.FilesTotal,
+					FilesDone:            report.Progress.FilesDone,
+					FilesSkipped:         report.Progress.FilesSkipped,
+					FilesFailed:          report.Progress.FilesFailed,
+					BytesTotal:           report.Progress.BytesTotal,
+					BytesDone:            report.Progress.BytesDone,
+					BytesSkipped:         report.Progress.BytesSkipped,
+					ThroughputMBps:       report.Progress.ThroughputMBps,
+					CurrentBandwidthMBps: report.Progress.CurrentBandwidthMBps,
+					SkippedSamples:       report.Progress.SkippedSamples,
+				})
+			}
+			if c.benchTaskLedger != nil {
+				c.benchTaskLedger.Heartbeat(report.TaskID)
+			}
 		}
 	}
+
+	// Heartbeat ledger reconcile (defect 2): cross-check ledger Running
+	// records owned by this addr against the authoritative list the
+	// syncnode just reported. Records that claim Owner=addr but are
+	// absent from RunningTaskIDs are ledger drift — the syncnode crashed-
+	// restarted, the task vanished, or master+syncnode disagree for some
+	// other reason — and must be marked failed so the dashboard stops
+	// showing them as running. orphan_scan also catches this case via the
+	// 90s silence threshold; heartbeat reconcile narrows the detection
+	// window to ~heartbeatReconcileGrace.
+	c.reconcileLedgerFromHeartbeat(addr, resp.RunningTaskIDs)
 
 	log.LogInfof("action[handleSyncNodeHeartbeatResp], syncNode[%v], running[%v], queued[%v], rules[%v], bolt[%v]",
 		nodeAddr, resp.RunningTasks, resp.QueuedTasks, resp.ScheduledRules, resp.BoltDBHealthy)
 	return
+}
+
+// heartbeatReconcileGrace is the minimum age (StartedAt → now) of a
+// Running record before reconcileLedgerFromHeartbeat will fail it for
+// being absent from the syncnode's reported RunningTaskIDs. The grace
+// window absorbs the dispatch → queue → executor-pickup race: a task
+// that was just dispatched has Owner=addr in the ledger but may not yet
+// have surfaced in executor.RunningSnapshots() on the syncnode side.
+// 30s is comfortably larger than any reasonable queue wait + executor
+// startup latency, and far shorter than orphanShardSilenceThreshold (90s)
+// — so reconcile catches drift faster than the orphan scan when the
+// owner is still actively heartbeating.
+const heartbeatReconcileGrace = 30 * time.Second
+
+// reconcileLedgerFromHeartbeat enforces the invariant "every Running
+// ledger record with Owner=addr must appear in addr's most-recent
+// RunningTaskIDs heartbeat". Violations are marked failed. Empty input
+// (syncnode reports no running tasks) means the syncnode is idle —
+// every Running record on addr is reconcilable. Grace window applies
+// per-record via StartedAt.
+//
+// Lock ordering: holds no SyncNode lock across ledger Fail calls; the
+// only RW state touched is the per-ledger mutex (matches orphan_scan.go).
+func (c *Cluster) reconcileLedgerFromHeartbeat(addr string, reportedIDs []string) {
+	if c == nil || addr == "" {
+		return
+	}
+	reported := make(map[string]struct{}, len(reportedIDs))
+	for _, id := range reportedIDs {
+		if id == "" {
+			continue
+		}
+		reported[id] = struct{}{}
+	}
+	now := time.Now()
+
+	// SyncTask side: scan Running records owned by addr.
+	if c.syncTaskLedger != nil {
+		for _, rec := range c.syncTaskLedger.ListByOwner(addr, SyncTaskStatusRunning) {
+			if rec == nil {
+				continue
+			}
+			if _, present := reported[rec.TaskID]; present {
+				continue
+			}
+			if !rec.StartedAt.IsZero() && now.Sub(rec.StartedAt) < heartbeatReconcileGrace {
+				continue
+			}
+			reason := fmt.Sprintf("owner %q heartbeat did not report task as running (StartedAt=%s)",
+				addr, rec.StartedAt.Format(time.RFC3339))
+			if c.syncTaskLedger.Fail(rec.TaskID, reason) {
+				log.LogWarnf("reconcileLedgerFromHeartbeat: sync task %q on owner %q marked failed: %s",
+					rec.TaskID, addr, reason)
+			}
+		}
+	}
+
+	// BenchTask side: BenchTaskLedger has no ListByOwner; iterate the
+	// Running set and filter on Owner manually. Skip parent fan-out
+	// records (Owner == "") — they roll up via shard aggregation only.
+	if c.benchTaskLedger != nil {
+		for _, rec := range c.benchTaskLedger.List("", string(BenchTaskStatusRunning)) {
+			if rec == nil || rec.Owner != addr {
+				continue
+			}
+			if _, present := reported[rec.TaskID]; present {
+				continue
+			}
+			startedAt := time.UnixMilli(rec.CreatedAt)
+			if !startedAt.IsZero() && now.Sub(startedAt) < heartbeatReconcileGrace {
+				continue
+			}
+			reason := fmt.Sprintf("owner %q heartbeat did not report task as running (CreatedAt=%s)",
+				addr, startedAt.Format(time.RFC3339))
+			if !c.benchTaskLedger.Fail(rec.TaskID, reason) {
+				continue
+			}
+			log.LogWarnf("reconcileLedgerFromHeartbeat: bench task %q on owner %q marked failed: %s",
+				rec.TaskID, addr, reason)
+			if rec.ParentTaskID != "" {
+				c.benchTaskLedger.CompleteShardAndAggregate(rec.TaskID)
+			}
+		}
+	}
 }
 
 // cancelOrphanedTasksOnReconnect detects tasks that the dispatcher's

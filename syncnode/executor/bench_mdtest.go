@@ -17,6 +17,7 @@ package executor
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -39,7 +40,7 @@ import (
 // mdtest emits per-operation rate lines (Directory creation / stat / removal,
 // File creation / stat / read / removal, Tree creation / removal) that we
 // parse and project into BenchStageResult{OpsPerSec, TotalOps, DurationSec}.
-func runBenchMdtest(ctx context.Context, rule *spec.BenchRule, taskID string, shardIdx int, pushIntervalSec int) (*spec.BenchShardResult, error) {
+func runBenchMdtest(ctx context.Context, rule *spec.BenchRule, taskID string, shardIdx, shardTotal int, pushIntervalSec int) (*spec.BenchShardResult, error) {
 	result := &spec.BenchShardResult{
 		ShardIdx:  shardIdx,
 		Status:    "running",
@@ -50,7 +51,7 @@ func runBenchMdtest(ctx context.Context, rule *spec.BenchRule, taskID string, sh
 		result.Status = "failed"
 		result.Error = "mdtest: rule.mountPath is empty"
 		result.DoneAt = time.Now().UnixMilli()
-		return result, fmt.Errorf(result.Error)
+		return result, errors.New(result.Error)
 	}
 
 	workDir := filepath.Join(rule.MountPath, fmt.Sprintf("bench-%s-shard-%d", strings.ReplaceAll(taskID, "/", "_"), shardIdx))
@@ -66,7 +67,7 @@ func runBenchMdtest(ctx context.Context, rule *spec.BenchRule, taskID string, sh
 		defaults = *rule.MdtestDefaults
 	}
 
-	for _, stage := range rule.MdtestStages {
+	for stageIdx, stage := range rule.MdtestStages {
 		if ctx.Err() != nil {
 			result.Status = "failed"
 			result.Error = "context cancelled"
@@ -76,13 +77,36 @@ func runBenchMdtest(ctx context.Context, rule *spec.BenchRule, taskID string, sh
 			result.Stages = append(result.Stages, spec.BenchStageResult{Name: stage.Name})
 			continue
 		}
+		// rc8 #120: rule 级 CacheDrop 在每个 stage 进入前触发。MdtestStage 上没有
+		// Warmup 字段（mdtest 自身的 iterations 已经覆盖了 warmup 语义），所以
+		// mdtest 路径只接 cache_drop。MaybeDropCaches 按 spec 决定是否实际 drop。
+		dropWhere := "between"
+		if stageIdx == 0 {
+			dropWhere = "before_first"
+		}
+		MaybeDropCaches(ctx, taskID, rule.CacheDrop, dropWhere)
+		// S1.6: cross-shard barrier before mpirun starts; logged + skipped
+		// on timeout, hard-failed only when ctx is cancelled.
+		shardID := strconv.Itoa(shardIdx)
+		if err := waitForPeers(ctx, taskID, stage.Name, shardID, shardTotal, stage.Control); err != nil {
+			result.Status = "failed"
+			result.Error = fmt.Sprintf("stage %q barrier: %v", stage.Name, err)
+			result.DoneAt = time.Now().UnixMilli()
+			return result, err
+		}
+		SetStageState(taskID, shardIdx, stage.Name, StageStateRunning)
 		stageResults, err := runMdtestStage(ctx, defaults, stage, workDir, taskID, shardIdx)
 		if err != nil {
+			SetStageState(taskID, shardIdx, stage.Name, StageStateFailed)
+			IncErr(taskID, shardIdx, stage.Name, "mdtest", ClassifyError(err))
+			// S3.4: 错误归因 metric。
+			observeErrorAttr(taskID, shardLabel(shardIdx), stage.Name, "mdtest", ClassifyErr(err))
 			result.Status = "failed"
 			result.Error = fmt.Sprintf("stage %q: %v", stage.Name, err)
 			result.DoneAt = time.Now().UnixMilli()
 			return result, err
 		}
+		SetStageState(taskID, shardIdx, stage.Name, StageStateDone)
 		result.Stages = append(result.Stages, stageResults...)
 	}
 
@@ -106,6 +130,15 @@ func runMdtestStage(ctx context.Context, defaults spec.MdtestConfig, stage spec.
 	mpiBin := orStr(defaults.MpiBin, "mpirun")
 	mdtestBin := orStr(defaults.MdtestBin, "mdtest")
 	numTasks := orInt(stage.NumTasks, defaults.NumTasks, 1)
+
+	// mdtest 的 -n（total items）与 -I（items per directory）互斥，mdtest 内部
+	// valid_tests 校验失败会输出 "only specify the number of items or the number
+	// of items per directory: No such file or directory"。spec 同时暴露这两个字段
+	// 是为了承载两种工作模式（按总量 vs 按目录拓扑），但运行时必须二选一。
+	if stage.NumItems > 0 && stage.ItemsPerDir > 0 {
+		return nil, fmt.Errorf("mdtest stage %q: NumItems(%d) 和 ItemsPerDir(%d) 互斥，请二选一（前者控制总量，后者配合 Depth/Branching 控制目录拓扑）",
+			stage.Name, stage.NumItems, stage.ItemsPerDir)
+	}
 
 	args := []string{
 		"-n", strconv.Itoa(numTasks),
@@ -291,3 +324,10 @@ func orInt(over, def, fallback int) int {
 	}
 	return fallback
 }
+
+// ---------------------------------------------------------------------------
+// S3.4 error attribution — append-only hooks. observeErrorAttr 调用点已在
+// mdtest stage 执行失败分支内联，向新的 cubefs_bench_error_attr_total 指标
+// 写入错误归因。旧的 IncErr 调用保持不变。
+// ---------------------------------------------------------------------------
+

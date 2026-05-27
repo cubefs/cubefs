@@ -39,10 +39,13 @@ import (
 
 // fakeFile is one inode/file in the fake meta+extent storage.
 type fakeFile struct {
-	ino   uint64
-	mode  uint32
-	data  []byte
-	mtime time.Time
+	ino    uint64
+	mode   uint32
+	uid    uint32
+	gid    uint32
+	data   []byte
+	mtime  time.Time
+	xattrs map[string][]byte
 }
 
 // fakeDir is one directory in the fake filesystem.
@@ -141,7 +144,7 @@ func (fs *fakeFS) Lookup_ll(parentID uint64, name string) (uint64, uint32, error
 // (Go's high-bit dir flag, which proto.IsDir checks against).
 var modeDir = uint32(0o755) | uint32(os.ModeDir)
 
-func (fs *fakeFS) Create_ll(parentID uint64, name string, mode, _, _ uint32, _ []byte, _ string, ignoreExist bool) (*proto.InodeInfo, error) {
+func (fs *fakeFS) Create_ll(parentID uint64, name string, mode, uid, gid uint32, _ []byte, _ string, ignoreExist bool) (*proto.InodeInfo, error) {
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
 	dir, ok := fs.dirs[parentID]
@@ -151,7 +154,7 @@ func (fs *fakeFS) Create_ll(parentID uint64, name string, mode, _, _ uint32, _ [
 	if existing, ok := dir.children[name]; ok {
 		if ignoreExist {
 			if f, ok := fs.files[existing]; ok {
-				return &proto.InodeInfo{Inode: existing, Mode: f.mode, Size: uint64(len(f.data)), ModifyTime: f.mtime}, nil
+				return &proto.InodeInfo{Inode: existing, Mode: f.mode, Uid: f.uid, Gid: f.gid, Size: uint64(len(f.data)), ModifyTime: f.mtime}, nil
 			}
 			return &proto.InodeInfo{Inode: existing, Mode: modeDir}, nil
 		}
@@ -164,9 +167,9 @@ func (fs *fakeFS) Create_ll(parentID uint64, name string, mode, _, _ uint32, _ [
 		return &proto.InodeInfo{Inode: ino, Mode: modeDir}, nil
 	}
 	now := time.Now()
-	fs.files[ino] = &fakeFile{ino: ino, mode: mode, mtime: now}
+	fs.files[ino] = &fakeFile{ino: ino, mode: mode, uid: uid, gid: gid, mtime: now}
 	dir.children[name] = ino
-	return &proto.InodeInfo{Inode: ino, Mode: mode, ModifyTime: now}, nil
+	return &proto.InodeInfo{Inode: ino, Mode: mode, Uid: uid, Gid: gid, ModifyTime: now}, nil
 }
 
 // isDirMode mirrors proto.IsDir over the raw uint32 mode bits.
@@ -180,7 +183,7 @@ func (fs *fakeFS) InodeGet_ll(ino uint64) (*proto.InodeInfo, error) {
 		return &proto.InodeInfo{Inode: ino, Mode: modeDir}, nil
 	}
 	if f, ok := fs.files[ino]; ok {
-		return &proto.InodeInfo{Inode: ino, Mode: f.mode, Size: uint64(len(f.data)), ModifyTime: f.mtime}, nil
+		return &proto.InodeInfo{Inode: ino, Mode: f.mode, Uid: f.uid, Gid: f.gid, Size: uint64(len(f.data)), ModifyTime: f.mtime}, nil
 	}
 	return nil, syscall.ENOENT
 }
@@ -255,16 +258,76 @@ func (fs *fakeFS) BatchInodeGet(inos []uint64) []*proto.InodeInfo {
 			_ = d
 			out = append(out, &proto.InodeInfo{Inode: ino, Mode: modeDir})
 		} else if f, ok := fs.files[ino]; ok {
-			out = append(out, &proto.InodeInfo{Inode: ino, Mode: f.mode, Size: uint64(len(f.data)), ModifyTime: f.mtime})
+			out = append(out, &proto.InodeInfo{Inode: ino, Mode: f.mode, Uid: f.uid, Gid: f.gid, Size: uint64(len(f.data)), ModifyTime: f.mtime})
 		}
 	}
 	return out
 }
 
-// Setattr matches metaClient — currently the backend doesn't call it, but
-// the interface declares it so the fake must implement it.
-func (fs *fakeFS) Setattr(_ uint64, _, _, _, _ uint32, _, _ int64) error {
+// Setattr matches metaClient. Honors the per-bit AttrXxx flags so a single
+// batched call (the production Put path) updates mode/uid/gid/mtime
+// atomically on the addressed inode. Real metanode stores ModifyTime as
+// unix-seconds — we do the same for fidelity.
+func (fs *fakeFS) Setattr(ino uint64, valid, mode, uid, gid uint32, atime, mtime int64) error {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+	f, ok := fs.files[ino]
+	if !ok {
+		return syscall.ENOENT
+	}
+	if valid&proto.AttrMode != 0 {
+		f.mode = mode
+	}
+	if valid&proto.AttrUid != 0 {
+		f.uid = uid
+	}
+	if valid&proto.AttrGid != 0 {
+		f.gid = gid
+	}
+	if valid&proto.AttrModifyTime != 0 {
+		f.mtime = time.Unix(mtime, 0)
+	}
+	_ = atime // atime not exercised by syncnode tests
 	return nil
+}
+
+// XAttrSet_ll writes one xattr on the inode. Empty name is rejected the way
+// real metanode rejects it (in production cfs.Put skips empty names defensively).
+func (fs *fakeFS) XAttrSet_ll(ino uint64, name, value []byte) error {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+	f, ok := fs.files[ino]
+	if !ok {
+		return syscall.ENOENT
+	}
+	if len(name) == 0 {
+		return syscall.EINVAL
+	}
+	if f.xattrs == nil {
+		f.xattrs = make(map[string][]byte)
+	}
+	cpy := make([]byte, len(value))
+	copy(cpy, value)
+	f.xattrs[string(name)] = cpy
+	return nil
+}
+
+// XAttrGetAll_ll returns every xattr defined on the inode. proto.XAttrInfo
+// stores values as strings, so binary bytes are round-tripped through
+// string() — the production Stat() converts them back to []byte (which is
+// a pure cast that preserves all bytes, including non-UTF-8).
+func (fs *fakeFS) XAttrGetAll_ll(ino uint64) (*proto.XAttrInfo, error) {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+	f, ok := fs.files[ino]
+	if !ok {
+		return nil, syscall.ENOENT
+	}
+	out := &proto.XAttrInfo{Inode: ino, XAttrs: map[string]string{}}
+	for k, v := range f.xattrs {
+		out.XAttrs[k] = string(v)
+	}
+	return out, nil
 }
 
 func (fs *fakeFS) Close() error { return nil }
@@ -363,9 +426,7 @@ func (fs *fakeFS) Truncate(_ *meta.MetaWrapper, _, ino uint64, size int, _ strin
 	return nil
 }
 
-// Compile-time check: fakeFS must satisfy both interfaces. Note: Setattr's
-// real signature matches the interface; the SetattrFixed helper above
-// exists only to document that the right shape is on Setattr.
+// Compile-time check: fakeFS must satisfy both interfaces.
 var (
 	_ metaClient = (*fakeFS)(nil)
 	_ extentAPI  = (*fakeFS)(nil)
@@ -773,3 +834,233 @@ func TestClose_Idempotent(t *testing.T) {
 // doesn't exercise that code path (it uses newWithDeps) but the import
 // MUST stay so cross-compilation linkage is right.
 var _ = stream.ExtentConfig{}
+
+// TestPutPreservesMtime verifies that PutOptions.Mtime causes the backend to
+// call Setattr(AttrModifyTime) and that a subsequent Head returns the same
+// mtime (truncated to whole seconds because the metanode wire format stores
+// ModifyTime as int64 unix-seconds).
+func TestPutPreservesMtime(t *testing.T) {
+	b, _ := newTestBackend(t)
+	ctx := context.Background()
+
+	// Use a whole-second timestamp so the second-precision wire truncation
+	// is exact rather than approximate.
+	want := time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC)
+	payload := []byte("cfs mtime preservation payload")
+	if _, err := b.Put(ctx, "/dir/mtime.bin", bytes.NewReader(payload), int64(len(payload)), backend.PutOptions{Mtime: &want}); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+
+	_, _, got, err := b.Head(ctx, "/dir/mtime.bin")
+	if err != nil {
+		t.Fatalf("Head: %v", err)
+	}
+	if !got.Equal(want) {
+		t.Errorf("Head mtime = %s, want %s", got, want)
+	}
+}
+
+// TestPutMtimeSubSecondTruncation documents that CFS stores ModifyTime as
+// whole unix-seconds on the wire, so sub-second precision from
+// PutOptions.Mtime is lost (this is a real CFS constraint, not a fakeFS
+// quirk — see metanode/partition_op_inode.go).
+func TestPutMtimeSubSecondTruncation(t *testing.T) {
+	b, _ := newTestBackend(t)
+	ctx := context.Background()
+
+	want := time.Date(2024, 1, 2, 3, 4, 5, 987654321, time.UTC)
+	payload := []byte("subsecond truncation payload")
+	if _, err := b.Put(ctx, "/dir/sub.bin", bytes.NewReader(payload), int64(len(payload)), backend.PutOptions{Mtime: &want}); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+
+	_, _, got, err := b.Head(ctx, "/dir/sub.bin")
+	if err != nil {
+		t.Fatalf("Head: %v", err)
+	}
+	wantTruncated := time.Unix(want.Unix(), 0)
+	if !got.Equal(wantTruncated) {
+		t.Errorf("Head mtime = %s, want %s (truncated to seconds)", got, wantTruncated)
+	}
+	if got.Equal(want) {
+		t.Errorf("CFS unexpectedly preserved sub-second precision (got = want = %s) — backend contract change?", got)
+	}
+}
+
+// statBackend asserts cfs.Backend implements backend.Stater and returns the
+// narrowed interface for use in the metadata-round-trip tests.
+func statBackend(t *testing.T, b *Backend) backend.Stater {
+	t.Helper()
+	s, ok := backend.Backend(b).(backend.Stater)
+	if !ok {
+		t.Fatalf("cfs.Backend must implement backend.Stater")
+	}
+	return s
+}
+
+// TestPutPreservesMode round-trips a few representative permission modes
+// (including setuid) through Put → Stat to verify proto.AttrMode is honored.
+func TestPutPreservesMode(t *testing.T) {
+	b, _ := newTestBackend(t)
+	ctx := context.Background()
+	stater := statBackend(t, b)
+
+	cases := []uint32{0o600, 0o640, 0o644, 0o755, 0o4755}
+	for _, mode := range cases {
+		key := "/mode/" + modeToOctal(mode)
+		body := []byte("mode-test " + key)
+		modeIn := mode
+		if _, err := b.Put(ctx, key, bytes.NewReader(body), int64(len(body)), backend.PutOptions{Mode: &modeIn}); err != nil {
+			t.Fatalf("Put(%s, mode=%o): %v", key, mode, err)
+		}
+		st, err := stater.Stat(ctx, key)
+		if err != nil {
+			t.Fatalf("Stat(%s): %v", key, err)
+		}
+		if st.Mode == nil {
+			t.Fatalf("Stat(%s): Mode is nil", key)
+		}
+		if got := *st.Mode & 0o7777; got != mode {
+			t.Errorf("Stat(%s): mode = %o, want %o", key, got, mode)
+		}
+	}
+}
+
+// TestPutPreservesOwner verifies uid/gid round-trip through Setattr+Stat.
+// CFS stores both as uint32 on the inode, so we exercise non-zero values
+// that survive an explicit PutOptions{UID, GID}.
+func TestPutPreservesOwner(t *testing.T) {
+	b, _ := newTestBackend(t)
+	ctx := context.Background()
+	stater := statBackend(t, b)
+
+	uid := uint32(1000)
+	gid := uint32(2000)
+	body := []byte("owner-test")
+	if _, err := b.Put(ctx, "/owner/file", bytes.NewReader(body), int64(len(body)), backend.PutOptions{UID: &uid, GID: &gid}); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	st, err := stater.Stat(ctx, "/owner/file")
+	if err != nil {
+		t.Fatalf("Stat: %v", err)
+	}
+	if st.UID == nil || *st.UID != uid {
+		t.Errorf("UID = %v, want %d", st.UID, uid)
+	}
+	if st.GID == nil || *st.GID != gid {
+		t.Errorf("GID = %v, want %d", st.GID, gid)
+	}
+}
+
+// TestPutPreservesXattr writes a few xattrs (including one with binary
+// non-UTF-8 bytes and one with an empty value) and verifies they all
+// round-trip through XAttrSet_ll + XAttrGetAll_ll.
+func TestPutPreservesXattr(t *testing.T) {
+	b, _ := newTestBackend(t)
+	ctx := context.Background()
+	stater := statBackend(t, b)
+
+	xattrs := map[string][]byte{
+		"user.syncnode.text":   []byte("hello"),
+		"user.syncnode.binary": {0x00, 0x01, 0xff, 0xfe, 0x80},
+		"user.syncnode.empty":  {},
+	}
+	body := []byte("xattr-test")
+	if _, err := b.Put(ctx, "/xattr/file", bytes.NewReader(body), int64(len(body)), backend.PutOptions{Xattrs: xattrs}); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	st, err := stater.Stat(ctx, "/xattr/file")
+	if err != nil {
+		t.Fatalf("Stat: %v", err)
+	}
+	for name, want := range xattrs {
+		got, ok := st.Xattrs[name]
+		if !ok {
+			t.Errorf("xattr %q missing from Stat", name)
+			continue
+		}
+		if !bytes.Equal(got, want) {
+			t.Errorf("xattr %q = %v, want %v", name, got, want)
+		}
+	}
+}
+
+// TestPutPreservesAll combines mode + owner + xattr + mtime in a single
+// Put to catch ordering bugs — e.g. an out-of-order Setattr that chmod's
+// after chown and silently drops a setuid bit, or a flush-before-Setattr
+// race that writes mtime after metanode has already touched the inode.
+func TestPutPreservesAll(t *testing.T) {
+	b, _ := newTestBackend(t)
+	ctx := context.Background()
+	stater := statBackend(t, b)
+
+	mode := uint32(0o4755) // setuid + rwxr-xr-x
+	uid := uint32(1234)
+	gid := uint32(5678)
+	mt := time.Date(2024, 6, 1, 12, 0, 0, 0, time.UTC)
+	xattrs := map[string][]byte{
+		"user.syncnode.kind": []byte("combined"),
+		"user.syncnode.bin":  {0xde, 0xad, 0xbe, 0xef},
+	}
+	body := []byte("combined-test")
+	if _, err := b.Put(ctx, "/all/file", bytes.NewReader(body), int64(len(body)), backend.PutOptions{
+		Mode:   &mode,
+		UID:    &uid,
+		GID:    &gid,
+		Mtime:  &mt,
+		Xattrs: xattrs,
+	}); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	st, err := stater.Stat(ctx, "/all/file")
+	if err != nil {
+		t.Fatalf("Stat: %v", err)
+	}
+	if st.Mode == nil || (*st.Mode&0o7777) != mode {
+		t.Errorf("mode mismatch: got %v want %o", st.Mode, mode)
+	}
+	if st.UID == nil || *st.UID != uid {
+		t.Errorf("uid mismatch: got %v want %d", st.UID, uid)
+	}
+	if st.GID == nil || *st.GID != gid {
+		t.Errorf("gid mismatch: got %v want %d", st.GID, gid)
+	}
+	if !st.Mtime.Equal(mt) {
+		t.Errorf("mtime mismatch: got %s want %s", st.Mtime, mt)
+	}
+	for name, want := range xattrs {
+		got, ok := st.Xattrs[name]
+		if !ok || !bytes.Equal(got, want) {
+			t.Errorf("xattr %q ok=%v got=%v want=%v", name, ok, got, want)
+		}
+	}
+}
+
+// TestStat_NotFound verifies the Stat path translates ENOENT to
+// backend.ErrKeyNotFound so the executor's "src disappeared" branch can fire.
+func TestStat_NotFound(t *testing.T) {
+	b, _ := newTestBackend(t)
+	stater := statBackend(t, b)
+	if _, err := stater.Stat(context.Background(), "/missing/file"); !errors.Is(err, backend.ErrKeyNotFound) {
+		t.Errorf("expected ErrKeyNotFound, got %v", err)
+	}
+}
+
+// modeToOctal renders a permission mode for use in a CFS key. Lifted from
+// the local-backend test helper so we can build deterministic key names
+// without depending on fmt.Sprintf's order.
+func modeToOctal(m uint32) string {
+	const digits = "01234567"
+	var buf [6]byte
+	i := len(buf) - 1
+	for m > 0 && i >= 0 {
+		buf[i] = digits[m&7]
+		m >>= 3
+		i--
+	}
+	out := string(bytes.TrimLeft(buf[:], "\x00"))
+	if out == "" {
+		out = "0"
+	}
+	return out
+}

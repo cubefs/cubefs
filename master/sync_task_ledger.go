@@ -92,17 +92,23 @@ type SyncTaskProgress struct {
 // fan-out tasks set ShardTotal > 0 + leave Owner empty; their child
 // records carry ShardIndex + an Owner addr.
 type SyncTaskRecord struct {
-	TaskID     string           `json:"taskID"`
-	RuleID     string           `json:"ruleID"`
-	Type       string           `json:"type"`
-	Status     SyncTaskStatus   `json:"status"`
-	Owner      string           `json:"owner,omitempty"` // empty for parent fan-out tasks
-	ShardIdx   int              `json:"shardIdx,omitempty"`
-	ShardTotal int              `json:"shardTotal,omitempty"`
-	StartedAt  time.Time        `json:"startedAt"`
-	DoneAt     time.Time        `json:"doneAt,omitempty"`
-	Error      string           `json:"error,omitempty"`
-	Progress   SyncTaskProgress `json:"progress"`
+	TaskID     string         `json:"taskID"`
+	RuleID     string         `json:"ruleID"`
+	Type       string         `json:"type"`
+	Status     SyncTaskStatus `json:"status"`
+	Owner      string         `json:"owner,omitempty"` // empty for parent fan-out tasks
+	ShardIdx   int            `json:"shardIdx,omitempty"`
+	ShardTotal int            `json:"shardTotal,omitempty"`
+	StartedAt  time.Time      `json:"startedAt"`
+	// UpdatedAt is the wall-clock time of the most recent state update
+	// (Put / Move / UpdateProgress). Used by the orphan scan to detect
+	// "shard has been silent for > N × heartbeat interval → owner is
+	// likely dead, mark failed". A zero value means "never updated since
+	// insertion" and is treated as StartedAt by the scanner.
+	UpdatedAt time.Time        `json:"updatedAt,omitempty"`
+	DoneAt    time.Time        `json:"doneAt,omitempty"`
+	Error     string           `json:"error,omitempty"`
+	Progress  SyncTaskProgress `json:"progress"`
 }
 
 // SyncTaskLedger is the in-memory record store with LRU bounded
@@ -146,6 +152,7 @@ func (l *SyncTaskLedger) Put(rec *SyncTaskRecord) {
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	rec.UpdatedAt = time.Now()
 	if elem, ok := l.records[rec.TaskID]; ok {
 		// Update path. Maintain reverse-index if owner changed (e.g. a
 		// SyncFailover redispatch flipped ownership).
@@ -221,6 +228,7 @@ func (l *SyncTaskLedger) Move(taskID, newAddr string) {
 	}
 	l.unindexOwnerLocked(rec.Owner, taskID)
 	rec.Owner = newAddr
+	rec.UpdatedAt = time.Now()
 	l.indexOwnerLocked(newAddr, taskID)
 	l.lru.MoveToFront(elem)
 }
@@ -252,6 +260,36 @@ func (l *SyncTaskLedger) List(status SyncTaskStatus, ruleID, owner string) []*Sy
 	return out
 }
 
+// Fail transitions a non-terminal record to failed with the given error
+// message. Returns true when the status was actually flipped, false when
+// the record is absent or already terminal. Used by the orphan scan to
+// finalize tasks whose owner addr has died or whose UpdatedAt has crossed
+// the silence threshold. UpdatedAt + DoneAt are refreshed.
+func (l *SyncTaskLedger) Fail(taskID, errMsg string) bool {
+	if l == nil || taskID == "" {
+		return false
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	elem, ok := l.records[taskID]
+	if !ok {
+		return false
+	}
+	rec := elem.Value.(*SyncTaskRecord)
+	if rec.Status.IsTerminal() {
+		return false
+	}
+	updated := *rec
+	updated.Status = SyncTaskStatusFailed
+	updated.Error = errMsg
+	now := time.Now()
+	updated.UpdatedAt = now
+	updated.DoneAt = now
+	elem.Value = &updated
+	l.lru.MoveToFront(elem)
+	return true
+}
+
 // UpdateProgress updates the progress snapshot of a non-terminal record.
 // This is called on every heartbeat so the task ledger shows in-flight
 // progress. No-op when the record is absent or already terminal (we
@@ -273,6 +311,7 @@ func (l *SyncTaskLedger) UpdateProgress(taskID string, progress SyncTaskProgress
 	}
 	updated := *rec
 	updated.Progress = progress
+	updated.UpdatedAt = time.Now()
 	elem.Value = &updated
 }
 

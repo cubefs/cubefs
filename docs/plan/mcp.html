@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>cubefs-mcp · CubeFS Sync &amp; Bench</title>
+    <meta name="description" content="cubefs-mcp 是 CubeFS master / syncnode admin API 的 MCP 封装，让 Claude Code / Cursor / Cline 等 LLM 工具直接调用 CubeFS 集群。本页介绍工具清单、部署、注册到客户端、连通性测试与排障。">
+    <link rel="stylesheet" href="assets/docs.css">
+    <script defer src="assets/docs.js"></script>
+  </head>
+  <body data-section="mcp">
+    <div class="page-shell">
+      <header class="site-header">
+        <div class="site-header__inner">
+          <a class="brand" href="index.html">
+            <span class="brand-mark">CF</span>
+            <div class="brand-meta">
+              <p class="brand-title">CubeFS Sync &amp; Bench</p>
+              <p class="brand-subtitle">使用者文档站</p>
+            </div>
+          </a>
+          <nav class="site-nav" aria-label="主导航">
+            <a class="nav-link" data-nav="architecture" href="architecture.html">架构</a>
+            <a class="nav-link" data-nav="deploy" href="deploy.html">部署</a>
+            <a class="nav-link" data-nav="sync" href="sync.html">同步</a>
+            <a class="nav-link" data-nav="test" href="test.html">测试</a>
+            <a class="nav-link is-active" data-nav="mcp" href="mcp.html">MCP</a>
+            <a class="nav-cta" href="understand-anything/index.html">代码图谱 →</a>
+          </nav>
+          <button class="nav-toggle" type="button" aria-label="切换导航" aria-expanded="false">
+            <span></span><span></span><span></span>
+          </button>
+        </div>
+      </header>
+
+      <main>
+        <nav class="breadcrumb" aria-label="面包屑">
+          <a href="index.html">总览</a>
+          <span class="breadcrumb__sep">/</span>
+          <span>cubefs-mcp</span>
+        </nav>
+
+        <section class="page-intro reveal" aria-labelledby="page-intro-title">
+          <p class="page-intro__eyebrow">05 · MCP</p>
+          <h1 id="page-intro-title" class="page-intro__title">cubefs-mcp（LLM 入口）</h1>
+          <p class="page-intro__lead">
+            cubefs-mcp 是一个 stdio MCP 服务器，把 master 和 syncnode 的 admin REST API 封装成 34 个工具，
+            让 Claude Code / Cursor / Cline 等 LLM 客户端可以直接用自然语言操作 CubeFS 集群——
+            列同步规则、触发 bench 任务、cordon syncnode 都不用再切 kubectl / 拷 curl。
+            读完本页可以回答：它有哪些工具、怎么 build、怎么注册到客户端、怎么验证连通性。
+          </p>
+          <ul class="meta-grid">
+            <li><span>形态</span><strong>单二进制 · stdio MCP server</strong></li>
+            <li><span>工具数</span><strong>34（6 大类）</strong></li>
+            <li><span>对接</span><strong>master REST + syncnode admin</strong></li>
+            <li><span>面向读者</span><strong>SRE / 平台开发 / 用 LLM 运维的人</strong></li>
+          </ul>
+        </section>
+
+        <div class="doc-layout">
+          <article class="prose prose-markdown reveal">
+            <h2 id="what">是什么、为什么</h2>
+            <p>
+              cubefs-mcp 实现了 <a href="https://modelcontextprotocol.io/" target="_blank" rel="noopener">Model Context Protocol</a>（MCP）
+              的 stdio 传输：客户端（Claude Code / Claude Desktop / Cursor / Cline ...）把它作为子进程拉起，
+              通过 stdin/stdout 交换 JSON-RPC 消息，每个 MCP「工具」对应一次 master 或 syncnode 的 REST 调用。
+            </p>
+            <p>它解决一个很具体的问题——</p>
+            <ul>
+              <li>不想为了「列下 sync_rule」打开 kubectl + 找 master pod + port-forward + curl + 解 JSON</li>
+              <li>不想把 admin API 直接暴露给 LLM（需要鉴权 / 端口转发 / 命名空间隔离）</li>
+              <li>希望 LLM 看到的「能做什么」是有 schema、有描述、有 MUTATES/DESTRUCTIVE 标记的，而不是一堆 raw curl 模板</li>
+            </ul>
+            <p>
+              cubefs-mcp 把这三件事打包：进程本身在你自己的笔记本上跑（或同 K8s 集群的运维跳板上跑），
+              通过 <code>kubectl port-forward</code> 拨入 master，然后向 LLM 暴露一组结构化工具。
+            </p>
+
+            <h2 id="topology">拓扑</h2>
+            <div class="mermaid-wrap reveal">
+              <div class="mermaid" id="diagram-mcp">
+sequenceDiagram
+    autonumber
+    participant U as 你 / LLM 客户端<br/>(Claude Code / Cursor)
+    participant M as cubefs-mcp<br/>(stdio 子进程)
+    participant PF as kubectl port-forward
+    participant API as cubefs master<br/>:17010
+    participant SN as syncnode<br/>(经 master 间接调度)
+
+    U->>M: tools/list（初始化握手）
+    M-->>U: 34 个工具 + schema
+    U->>M: tools/call bench_rule_list
+    M->>PF: HTTP GET /benchRule/list
+    PF->>API: 转发到目标 pod
+    API-->>PF: JSON 响应
+    PF-->>M: JSON
+    M-->>U: 结构化结果
+
+    Note over U,SN: 涉及 syncnode 的调用（trigger / drain / tasks）<br/>由 master 路由分发，cubefs-mcp 不直连 syncnode
+              </div>
+              <span class="mermaid-caption">图 1 · LLM 通过 cubefs-mcp 调 master 的标准链路（port-forward 由 wrapper 脚本自动管理）</span>
+            </div>
+
+            <h2 id="tools">工具速览（34 个，6 大类）</h2>
+            <p>
+              所有工具的描述、参数 schema、MUTATES / DESTRUCTIVE 标记都直接写在 Go 源码的 <code>mcp.WithDescription</code> 中，
+              LLM 客户端通过 <code>tools/list</code> 拉到；下表只列「能干嘛」、对应 REST 路径，便于你查目录。
+              代码在 <code>cmd/cubefs-mcp/internal/tools/</code>，每个工具一个 <code>*.go</code> 文件，命名即工具名。
+            </p>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>分类</th><th>工具</th><th>类型</th><th>对应 master REST</th><th>说明</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td rowspan="4"><strong>cluster（4）</strong></td><td><code>ping</code></td><td>R</td><td><code>GET /admin/getCluster</code></td><td>echo + 探活，5s 超时；第一道连通性检查</td></tr>
+                  <tr><td><code>cluster_health</code></td><td>R</td><td><code>GET /admin/getCluster</code></td><td>返回完整 cluster 快照（master leader / 各 node 角色 / volume 摘要）</td></tr>
+                  <tr><td><code>cluster_stat</code></td><td>R</td><td><code>GET /cluster/stat</code></td><td>容量、dp / mp / volume 数量、zone 汇总</td></tr>
+                  <tr><td><code>version</code></td><td>R</td><td>—</td><td>返回 cubefs-mcp 自身的 version / commit / build_time</td></tr>
+
+                  <tr><td rowspan="8"><strong>sync_rule（8）</strong></td><td><code>sync_rule_list</code></td><td>R</td><td><code>GET /syncRule/list</code></td><td>可按 <code>state</code>（active / paused / degraded）过滤</td></tr>
+                  <tr><td><code>sync_rule_get</code></td><td>R</td><td><code>GET /syncRule/get</code></td><td>按 id 取完整 <code>spec.SyncRule</code></td></tr>
+                  <tr><td><code>sync_rule_create</code></td><td>M</td><td><code>POST /syncRule/create</code></td><td>body 为完整 SyncRule JSON，master 走 spec 校验</td></tr>
+                  <tr><td><code>sync_rule_update</code></td><td>M</td><td><code>POST /syncRule/update</code></td><td>必须带 id；与 create 同 schema</td></tr>
+                  <tr><td><code>sync_rule_delete</code></td><td>D</td><td><code>POST /syncRule/delete?id=</code></td><td>仅删 rule，已派发的 task 继续</td></tr>
+                  <tr><td><code>sync_rule_pause</code></td><td>M</td><td><code>POST /syncRule/pause?id=</code></td><td>cron / on-event 触发暂停；已运行 task 不动</td></tr>
+                  <tr><td><code>sync_rule_resume</code></td><td>M</td><td><code>POST /syncRule/resume?id=</code></td><td>恢复触发</td></tr>
+                  <tr><td><code>sync_rule_trigger</code></td><td>M</td><td><code>POST /syncRule/trigger?id=</code></td><td>立刻派发一次 task；paused rule 会被 master 拒绝</td></tr>
+
+                  <tr><td rowspan="6"><strong>sync_task（6）</strong></td><td><code>sync_task_list</code></td><td>R</td><td><code>GET /syncTask/list</code></td><td>支持 status / ruleID / owner 过滤</td></tr>
+                  <tr><td><code>sync_task_get</code></td><td>R</td><td><code>GET /syncTask/get</code></td><td>单 task 详情（src/dst/progress）</td></tr>
+                  <tr><td><code>sync_task_export</code></td><td>R</td><td><code>GET /syncTask/export</code></td><td>NDJSON 导出，<code>since</code>（RFC3339）按更新时间过滤</td></tr>
+                  <tr><td><code>sync_task_cancel</code></td><td>M</td><td><code>POST /syncTask/cancel</code></td><td>取决于 task 状态，master 可能拒绝</td></tr>
+                  <tr><td><code>sync_task_retry</code></td><td>M</td><td><code>POST /syncTask/retry?id=</code></td><td>仅终态（failed / cancelled）允许重试</td></tr>
+                  <tr><td><code>sync_task_delete</code></td><td>D</td><td><code>POST /syncTask/delete?id=</code></td><td>永久删 task 记录；运行中的 task 需先 cancel</td></tr>
+
+                  <tr><td rowspan="6"><strong>bench_rule（6）</strong></td><td><code>bench_rule_list</code></td><td>R</td><td><code>GET /benchRule/list</code></td><td>可按 id 过滤</td></tr>
+                  <tr><td><code>bench_rule_get</code></td><td>R</td><td><code>GET /benchRule/get</code></td><td>按 id 取完整 <code>spec.BenchRule</code></td></tr>
+                  <tr><td><code>bench_rule_create</code></td><td>M</td><td><code>POST /benchRule/create</code></td><td>body 为完整 BenchRule JSON，master 拒绝未知字段</td></tr>
+                  <tr><td><code>bench_rule_update</code></td><td>M</td><td><code>POST /benchRule/update</code></td><td>必须带 id</td></tr>
+                  <tr><td><code>bench_rule_delete</code></td><td>D</td><td><code>POST /benchRule/delete?id=</code></td><td>仅删 rule</td></tr>
+                  <tr><td><code>bench_rule_trigger</code></td><td>M</td><td><code>POST /benchRule/trigger</code></td><td>派发一次 bench_task（含 N 个 shard）</td></tr>
+
+                  <tr><td rowspan="5"><strong>bench_task（5）</strong></td><td><code>bench_task_list</code></td><td>R</td><td><code>GET /benchTask/list</code></td><td>支持 ruleID / status 过滤</td></tr>
+                  <tr><td><code>bench_task_get</code></td><td>R</td><td><code>GET /benchTask/get</code></td><td>含 status / progress / 各节点 stage 结果 / SLA 判定 / HDR buckets</td></tr>
+                  <tr><td><code>bench_task_cancel</code></td><td>M</td><td><code>POST /benchTask/cancel</code></td><td>取决于状态</td></tr>
+                  <tr><td><code>bench_task_retry</code></td><td>M</td><td><code>POST /benchTask/retry?id=</code></td><td>终态可重试</td></tr>
+                  <tr><td><code>bench_task_delete</code></td><td>D</td><td><code>POST /benchTask/delete?id=</code></td><td>需先 cancel 运行中 task</td></tr>
+
+                  <tr><td rowspan="5"><strong>sync_node（5）</strong></td><td><code>sync_node_list</code></td><td>R</td><td><code>GET /syncNode/list</code></td><td>当前 master 视角下健康的 syncnode 清单</td></tr>
+                  <tr><td><code>sync_node_tasks</code></td><td>R</td><td><code>GET /syncNode/tasks</code></td><td>看某 syncnode 上挂着的任务（含 status 过滤）</td></tr>
+                  <tr><td><code>sync_node_drain</code></td><td>M</td><td><code>POST /syncNode/drain?addr=</code></td><td>停派新 task，现有 task 跑完；与 restore 配对</td></tr>
+                  <tr><td><code>sync_node_restore</code></td><td>M</td><td><code>POST /syncNode/restore?addr=</code></td><td>解除 drain</td></tr>
+                  <tr><td><code>sync_node_decommission</code></td><td>D</td><td><code>POST /syncNode/decommission?addr=&amp;force=</code></td><td>从派发环里摘除；<code>force=true</code> 跳过运行中检查并孤立现有 task</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p>
+              类型列：<strong>R</strong> = read-only，<strong>M</strong> = MUTATES（改 master 状态），<strong>D</strong> = DESTRUCTIVE（不可逆）。
+              MCP 客户端会把这些标记展示给用户，destructive 工具默认需要二次确认；如果你给 LLM 写 prompt，建议显式说「使用 D 类工具前先 list/get 确认」。
+            </p>
+
+            <h2 id="build">部署：build 二进制 + 装 wrapper</h2>
+            <p>
+              cubefs-mcp 是 cubefs 仓库里的一个子命令，没有独立发布物——自己 build 即可。需要 Go 1.21+。
+            </p>
+            <pre><code class="language-bash"># 1. 编译（在 cubefs 根目录）
+go build -o ~/.local/libexec/cubefs-mcp \
+  -ldflags &quot;-X main.version=v0.1.0 \
+            -X main.commit=$(git rev-parse --short HEAD) \
+            -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)&quot; \
+  ./cmd/cubefs-mcp
+
+# 2. 装 wrapper（自动 port-forward 到 master pod）
+install -m 0755 cmd/cubefs-mcp/scripts/cubefs-mcp-portforward.sh \
+  ~/.local/bin/cubefs-mcp
+
+# 3. 验证 wrapper 找得到二进制
+which cubefs-mcp        # → ~/.local/bin/cubefs-mcp
+ls -l ~/.local/libexec/cubefs-mcp
+</code></pre>
+            <p>
+              <code>cubefs-mcp-portforward.sh</code> 做的事：在指定 K8s 集群里挑一个 <code>cubefs-master-*</code> pod，
+              起一个 <code>kubectl port-forward</code>，把 <code>:17010</code> 接到本地，再 <code>exec</code> 真正的 Go 二进制。
+              wrapper 退出时 port-forward 会被 trap 一并杀掉，不会留僵尸。
+            </p>
+
+            <h3 id="env">环境变量</h3>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>变量</th><th>必填</th><th>含义</th></tr></thead>
+                <tbody>
+                  <tr><td><code>KUBECONFIG</code></td><td>是（wrapper 模式）</td><td>目标集群的 kubeconfig；切换集群只换这个值</td></tr>
+                  <tr><td><code>NS</code></td><td>否</td><td>cubefs 命名空间，默认 <code>storage-cfs</code></td></tr>
+                  <tr><td><code>PORT</code></td><td>否</td><td>master 监听端口，默认 <code>17010</code></td></tr>
+                  <tr><td><code>MCP_BIN</code></td><td>否</td><td>cubefs-mcp Go 二进制路径，默认 <code>~/.local/libexec/cubefs-mcp</code></td></tr>
+                  <tr><td><code>CUBEFS_MASTER_ADDR</code></td><td>是（裸二进制模式）</td><td>完整 URL，例 <code>http://master.cfs.svc:17010</code>；wrapper 会自动设</td></tr>
+                  <tr><td><code>CUBEFS_AUTH_TOKEN</code></td><td>否</td><td>master 启用了 token 鉴权时填；会作为 Bearer 加到每次请求</td></tr>
+                  <tr><td><code>LOG</code></td><td>否</td><td>wrapper 内部 port-forward 的日志路径，默认 <code>/tmp/cubefs-mcp-pf.log</code></td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p>
+              不想用 wrapper（例如 master 本就直接可达），跳过 step 2，让客户端配置直接 <code>command: ~/.local/libexec/cubefs-mcp</code> +
+              <code>env.CUBEFS_MASTER_ADDR=http://...</code> 即可——裸二进制不依赖 kubectl。
+            </p>
+
+            <h2 id="register">注册到 LLM 客户端</h2>
+
+            <h3 id="register-claude-code">Claude Code（CLI）</h3>
+            <p>编辑 <code>~/.config/claude/mcp.json</code>（或项目根 <code>.mcp.json</code>），加一条：</p>
+            <pre><code class="language-json">{
+  &quot;mcpServers&quot;: {
+    &quot;cubefs-test-k3d&quot;: {
+      &quot;command&quot;: &quot;/Users/you/.local/bin/cubefs-mcp&quot;,
+      &quot;env&quot;: {
+        &quot;KUBECONFIG&quot;: &quot;/Users/you/.kube/test-k3d&quot;,
+        &quot;NS&quot;: &quot;storage-cfs&quot;,
+        &quot;PORT&quot;: &quot;17010&quot;
+      }
+    },
+    &quot;cubefs-test-hb&quot;: {
+      &quot;command&quot;: &quot;/Users/you/.local/bin/cubefs-mcp&quot;,
+      &quot;env&quot;: {
+        &quot;KUBECONFIG&quot;: &quot;/Users/you/.kube/test-hb&quot;,
+        &quot;NS&quot;: &quot;storage-cfs&quot;
+      }
+    }
+  }
+}
+</code></pre>
+            <p>
+              <strong>多环境</strong>就靠 server 名字区分（<code>cubefs-test-k3d</code> / <code>cubefs-test-hb</code> / <code>cubefs-prod</code> ...）——
+              每个环境一个 <code>KUBECONFIG</code>，Claude Code 会把每个 server 的 34 个工具都注册一遍，
+              工具名前缀就是 server 名。叫 LLM「在 cubefs-test-k3d 触发 bench rule X」就会路由到对应集群。
+            </p>
+
+            <h3 id="register-cursor">Cursor / Cline</h3>
+            <p>
+              schema 完全一致——Cursor 编辑 <code>~/.cursor/mcp.json</code>，Cline 在 VS Code 设置里搜 <code>cline.mcpServers</code>。
+              三家客户端共用 MCP 标准，区别只在配置文件位置。
+            </p>
+
+            <h3 id="register-desktop">Claude Desktop</h3>
+            <p>编辑 <code>~/Library/Application Support/Claude/claude_desktop_config.json</code>（macOS），结构同上；改完重启 app。</p>
+
+            <h2 id="verify">连通性测试（两步）</h2>
+            <p>注册完，让 LLM 跑这两个工具就能确认链路通：</p>
+            <ol>
+              <li>
+                <strong><code>ping</code></strong>——5s 超时探活，返回 OK 说明 cubefs-mcp 起来了、wrapper 的 port-forward 通了、master 可达。
+                如果 LLM 报「tool not found」一般是配置没生效，重启客户端。
+              </li>
+              <li>
+                <strong><code>cluster_health</code></strong>——拉完整集群快照。能正常返回 master leader / 各 node 角色，说明 master REST 正确响应、auth token（如配）有效。
+              </li>
+            </ol>
+            <p>建议在 prompt 里固化一句「先跑 ping 再做别的」，避免 LLM 凭空猜想集群状态。</p>
+
+            <h2 id="troubleshooting">常见故障排查</h2>
+
+            <h3 id="t1">现象 1：LLM 看不到 cubefs-mcp 工具</h3>
+            <p>
+              先看客户端的 MCP 日志（Claude Code: <code>~/.config/claude/logs/mcp-*.log</code>）。最常见两种：
+              wrapper 找不到 Go 二进制（<code>MCP_BIN</code> 路径错），或者 wrapper 抱怨 <code>KUBECONFIG is required</code>——
+              在 server 配置的 <code>env</code> 块里加上即可。改完务必<strong>重启客户端</strong>，MCP server 列表只在启动时加载一次。
+            </p>
+
+            <h3 id="t2">现象 2：ping 报 <code>no cubefs-master pod found</code></h3>
+            <p>
+              wrapper 用 <code>kubectl -n $NS get pod -o name | grep '^pod/cubefs-master-'</code> 找 pod。
+              三种情况会失败：<code>NS</code> 不对（生产可能不叫 <code>storage-cfs</code>）、master pod 还没起、kubeconfig 没权限 list pod。
+              先 <code>KUBECONFIG=... kubectl -n storage-cfs get pod</code> 在终端复现一遍。
+            </p>
+
+            <h3 id="t3">现象 3：cluster_health 报 401 / 403</h3>
+            <p>
+              master 开了 token 校验，但 server 配置里没塞 <code>CUBEFS_AUTH_TOKEN</code>。
+              token 找运维要（一般在 master 的 <code>cluster.json</code> / <code>auth_node</code> secret 里），
+              在 server 配置的 <code>env</code> 加 <code>CUBEFS_AUTH_TOKEN: &quot;...&quot;</code>，重启客户端。
+            </p>
+
+            <h3 id="t4">现象 4：bench_rule_create 报 <code>unknown field</code></h3>
+            <p>
+              master 用 strict json decoder 拒绝未知字段——大概率是 BenchRule schema 演进了，LLM 拍脑袋写的字段名对不上。
+              先用 <code>bench_rule_list</code> / <code>bench_rule_get</code> 看一个现存 rule 的字段，
+              对照 <code>syncnode/spec/bench_rule.go</code> 调整。同样的逻辑适用于 sync_rule_create。
+            </p>
+
+            <h3 id="t5">现象 5：调用某工具一直 timeout</h3>
+            <p>
+              cubefs-mcp 内部 master HTTP client 默认是 30s 超时。两种可能：
+              （a）port-forward 半死——看 <code>/tmp/cubefs-mcp-pf.log</code> 是不是写满了 <code>error upgrading connection</code>；
+              （b）master 慢——直接 <code>curl http://127.0.0.1:17010/admin/getCluster</code> 复现，
+              如果 curl 也慢，问题在 master 本身（leader 选举 / etcd 卡）。重启客户端会重新拉 port-forward，是最快的 workaround。
+            </p>
+
+            <h3 id="t6">现象 6：切换集群后还连旧的</h3>
+            <p>
+              wrapper 是子进程，只在启动时读一次 <code>KUBECONFIG</code>。改 server 配置后必须重启客户端；
+              更稳妥的做法是为每个环境配一个独立的 server 名（见 <a href="#register-claude-code">注册</a> 一节），切环境只换 server 不重启。
+            </p>
+
+            <h2 id="boundary">边界与不做什么</h2>
+            <ul>
+              <li>
+                <strong>只暴露 master / syncnode 的 admin API</strong>，不包 metanode / datanode 的盘级运维（这些走 cubefs-cli）。
+                理由：admin 操作是「白名单 + 有审计入口」的，盘级操作风险大也分散，不适合 LLM 直接执行。
+              </li>
+              <li>
+                <strong>所有 D 类（destructive）工具的最终权限在 LLM 客户端</strong>——cubefs-mcp 不做二次确认，
+                客户端（Claude Code / Desktop）会按 MCP 标记弹确认框。生产环境的 server 配置建议另起一个 read-only token，
+                或者在 MCP 客户端层面禁用 D 类工具。
+              </li>
+              <li>
+                <strong>不替代 dashboard</strong>——dashboard 仍是看 task 历史 / live trend 图表 / pod 状态的主入口；
+                cubefs-mcp 更适合「一句话查一组指标 / 一句话触发一个动作 / 批量诊断」这类场景。
+              </li>
+              <li>
+                <strong>port-forward wrapper 是开发期/运维期方案</strong>。生产长期使用可以把 cubefs-mcp 跑在跳板机上，
+                让 <code>CUBEFS_MASTER_ADDR</code> 直接指向集群内 master service，绕开 wrapper。
+              </li>
+            </ul>
+
+            <h2 id="next">下一步</h2>
+            <ul>
+              <li>回到入口：<a href="index.html">总览</a></li>
+              <li>架构对照：<a href="architecture.html">01 · 架构</a>（master / syncnode / dashboard / bench 关系）</li>
+              <li>实际用工具时查命令：<a href="sync.html#ops">03 · 同步 / 常用操作</a>、<a href="test.html#ops">04 · 测试 / 常用操作</a>（每行都有对应的 cubefs-mcp 工具名）</li>
+            </ul>
+          </article>
+
+          <aside class="toc-panel" aria-label="本页目录">
+            <p class="toc-panel__title">本页目录</p>
+            <div class="toc">
+              <ul>
+                <li><a href="#what">是什么、为什么</a></li>
+                <li><a href="#topology">拓扑</a></li>
+                <li><a href="#tools">工具速览（34 个）</a></li>
+                <li>
+                  <a href="#build">部署：build + wrapper</a>
+                  <ul>
+                    <li><a href="#env">环境变量</a></li>
+                  </ul>
+                </li>
+                <li>
+                  <a href="#register">注册到 LLM 客户端</a>
+                  <ul>
+                    <li><a href="#register-claude-code">Claude Code</a></li>
+                    <li><a href="#register-cursor">Cursor / Cline</a></li>
+                    <li><a href="#register-desktop">Claude Desktop</a></li>
+                  </ul>
+                </li>
+                <li><a href="#verify">连通性测试</a></li>
+                <li>
+                  <a href="#troubleshooting">常见故障排查</a>
+                  <ul>
+                    <li><a href="#t1">工具不可见</a></li>
+                    <li><a href="#t2">找不到 master pod</a></li>
+                    <li><a href="#t3">401 / 403</a></li>
+                    <li><a href="#t4">unknown field</a></li>
+                    <li><a href="#t5">timeout</a></li>
+                    <li><a href="#t6">切集群没生效</a></li>
+                  </ul>
+                </li>
+                <li><a href="#boundary">边界与不做什么</a></li>
+                <li><a href="#next">下一步</a></li>
+              </ul>
+            </div>
+          </aside>
+        </div>
+
+        <nav class="pager-row" aria-label="相邻文档">
+          <a class="pager-link pager-link--prev" href="test.html">
+            <span>上一篇</span>
+            <strong>04 · 测试</strong>
+          </a>
+          <a class="pager-link pager-link--next" href="understand-anything/index.html">
+            <span>下一篇</span>
+            <strong>代码图谱 →</strong>
+          </a>
+        </nav>
+      </main>
+
+      <footer class="site-footer">
+        <div class="site-footer__inner">
+          <p>CubeFS Sync &amp; Bench · <a href="index.html">返回总览</a> · <a href="understand-anything/index.html">代码图谱</a></p>
+        </div>
+      </footer>
+    </div>
+
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({
+        startOnLoad: true,
+        theme: "neutral",
+        securityLevel: "loose",
+        flowchart: { curve: "basis", htmlLabels: true, useMaxWidth: true },
+        sequence: { showSequenceNumbers: false, mirrorActors: false, useMaxWidth: true }
+      });
+    </script>
+  </body>
+</html>

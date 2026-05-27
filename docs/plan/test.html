@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>测试：bench 平台 · CubeFS Sync &amp; Bench</title>
+    <meta name="description" content="syncnode 内嵌的 bench 平台：6 类测试层级（fio / s3 / sdk / mdtest / IOR / pjd-fstest）、BenchRule / BenchTask 模型、yaml 示例、bench-mount 多节点共享限制、实时 /metrics/bench 趋势观测、常见排障。">
+    <link rel="stylesheet" href="assets/docs.css">
+    <script defer src="assets/docs.js"></script>
+  </head>
+  <body data-section="test">
+    <div class="page-shell">
+      <header class="site-header">
+        <div class="site-header__inner">
+          <a class="brand" href="index.html">
+            <span class="brand-mark">CF</span>
+            <div class="brand-meta">
+              <p class="brand-title">CubeFS Sync &amp; Bench</p>
+              <p class="brand-subtitle">使用者文档站</p>
+            </div>
+          </a>
+          <nav class="site-nav" aria-label="主导航">
+            <a class="nav-link" data-nav="architecture" href="architecture.html">架构</a>
+            <a class="nav-link" data-nav="deploy" href="deploy.html">部署</a>
+            <a class="nav-link" data-nav="sync" href="sync.html">同步</a>
+            <a class="nav-link is-active" data-nav="test" href="test.html">测试</a>
+            <a class="nav-link" data-nav="mcp" href="mcp.html">MCP</a>
+            <a class="nav-cta" href="understand-anything/index.html">代码图谱 →</a>
+          </nav>
+          <button class="nav-toggle" type="button" aria-label="切换导航" aria-expanded="false">
+            <span></span><span></span><span></span>
+          </button>
+        </div>
+      </header>
+
+      <main>
+        <nav class="breadcrumb" aria-label="面包屑">
+          <a href="index.html">总览</a>
+          <span class="breadcrumb__sep">/</span>
+          <span>测试：bench 平台</span>
+        </nav>
+
+        <section class="page-intro reveal" aria-labelledby="page-intro-title">
+          <p class="page-intro__eyebrow">04 · Test</p>
+          <h1 id="page-intro-title" class="page-intro__title">测试：bench 平台</h1>
+          <p class="page-intro__lead">
+            bench 是 syncnode 自带的分布式压测子系统：master 持久化 BenchRule、按 Parallelism 派发分片到多 syncnode、
+            实时上报 <code>/metrics/bench</code> 给 dashboard，跑完用 HDR Histogram 做跨节点无损合并。
+            支持 6 类 backend——fio（POSIX 块 IO）、s3、sdk、mdtest、IOR、pjd-fstest——同一套 rule / task 接口。
+          </p>
+          <ul class="meta-grid">
+            <li><span>核心对象</span><strong>BenchRule（模板） + BenchTask（一次执行）</strong></li>
+            <li><span>调度方式</span><strong>master 派发，N 个 syncnode 并行跑 N 个 shard</strong></li>
+            <li><span>结果合并</span><strong>HDR Histogram 跨节点无损合并（p99 / p999 不失真）</strong></li>
+            <li><span>面向读者</span><strong>性能 / 兼容性 / 容量规划工程师</strong></li>
+          </ul>
+        </section>
+
+        <div class="doc-layout">
+          <article class="prose prose-markdown reveal">
+            <h2 id="why">bench 是什么</h2>
+            <p>
+              为什么 syncnode 里要带一个 bench 平台？因为同一批节点本来就挂了所有 backend：cfs 卷（POSIX）、s3 endpoint、本地盘。
+              把测试逻辑塞进 syncnode 而不是单独起 fio/IOR Pod，可以直接复用 sync 任务的派发、心跳、状态机、HDR 上报与 dashboard
+              一致的「rule / task / 进度 / 结果」UI。一份 yaml 既描述同步规则也描述压测规则，没有第二套调度。
+            </p>
+            <p>
+              它不替代生产前的 SLA 验收（火山自有性能实验室、客户侧 ai-training 压测），而是给 SRE / 开发提供
+              <strong>「随时拉一个 cluster，跑一组对比，看 p99 / 带宽 / 错误率」</strong>的最小闭环：
+              测过的镜像才进生产，回归测试天天跑，故障复盘按 BenchRule 复演。
+            </p>
+
+            <h2 id="layers">6 类测试层级</h2>
+            <p>
+              所有层级共用一套 <code>BenchRule / BenchTask</code>，差别只在 <code>storageType</code> 与对应的 stage 配置块。
+              下表的"触发方式"列出最常用的入口；其余等价。
+            </p>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>storageType</th>
+                    <th>典型负载</th>
+                    <th>用来回答</th>
+                    <th>触发方式</th>
+                    <th>结果维度</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><code>posix</code></td>
+                    <td>fio（顺序读写 / 随机读写 / RWMix / Mixed 多 size 类）</td>
+                    <td>cfs 卷在 4k/64k/1M 各种块大小下的 IOPS / 带宽 / p99 延迟</td>
+                    <td>dashboard「测试管理 → 新建 BenchRule → POSIX fio」</td>
+                    <td>per-stage 吞吐 + IOPS + 延迟分位 + 错误数；Mixed 还按 size class 拆分</td>
+                  </tr>
+                  <tr>
+                    <td><code>s3</code></td>
+                    <td>put / put_multipart / get / get_range / head / list / delete</td>
+                    <td>objectnode 的对象操作延迟 / 长尾 / 并发能力</td>
+                    <td>dashboard 同上选「S3」；或 master <code>POST /benchRule/create</code></td>
+                    <td>op-level HDR Histogram；S1.6 支持 ramp/steady/rampDown + targetIops/targetBwMiBs 限速</td>
+                  </tr>
+                  <tr>
+                    <td><code>sdk</code></td>
+                    <td>调 cubefs Go SDK 的 PutObject / GetObject</td>
+                    <td>绕过 objectnode 直连 SDK 链路的本身性能（用来对照 s3 path）</td>
+                    <td>dashboard / mcp / REST 任意</td>
+                    <td>与 s3 相同；通过对比即可定位 objectnode 是否是瓶颈</td>
+                  </tr>
+                  <tr>
+                    <td><code>mdtest</code></td>
+                    <td>mpirun -n N mdtest（元数据创建 / 查找 / 删除）</td>
+                    <td>metanode 在大目录 / 深目录树下的元数据吞吐</td>
+                    <td>BenchRule 配 <code>mdtestStages</code>；sidecar 启动 mpirun</td>
+                    <td>creates/sec、stats/sec、removes/sec，按 stage 聚合</td>
+                  </tr>
+                  <tr>
+                    <td><code>ior</code></td>
+                    <td>cubefs-bench-tools sidecar 跑 IOR / mdtest（HPC 标准压测）</td>
+                    <td>跨 syncnode 同步 IO 行为下，cfs 在 IOR 标准用例上的横向数据</td>
+                    <td>BenchRule 配 <code>iorStages</code>，sidecar HTTP 在 <code>127.0.0.1:18000</code></td>
+                    <td><code>-O summaryFormat=JSON</code> 透传，sidecar 解析后回写 stage 结果</td>
+                  </tr>
+                  <tr>
+                    <td>pjd-fstest</td>
+                    <td>POSIX 一致性测试（pjdfstest 全套 8000+ case）</td>
+                    <td>cfs 是否对外表现得"像 POSIX"——permission / open / rename / xattr 等覆盖</td>
+                    <td>cubefs-deploy 的 <code>envs/&lt;env&gt;/test/smoke</code> Job + pjd-fstest 镜像</td>
+                    <td>pass / fail 用例数，按子目录分类</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <h2 id="model">BenchRule + BenchTask 模型</h2>
+            <p>
+              <strong>BenchRule</strong>（持久化在 master 的 rocksdb 里）= 一份压测模板，含 storageType、stages 列表、
+              Parallelism（shard 数）、可选 SLA、可选 Soak 长跑、可选 CacheDrop / Warmup。
+              <strong>BenchTask</strong>（master <code>BenchTaskLedger</code> 里默认 1000 条 LRU）= 一次实际执行，
+              指向某个 ruleID，被分成 <code>Parallelism</code> 个 shard 派发到 syncnode；每个 shard 跑完上报
+              <code>BenchShardResult</code>，master 汇总成 <code>BenchTaskRecord.AggregatedStages</code>。
+            </p>
+            <p>
+              「rule 是模板、task 是一次执行」意味着：改 rule 不影响历史 task；同一 rule 可以 trigger 多次得到多个 task
+              做对比；rule 被删之后已有 task 仍然可查（直到被 LRU 淘汰）。
+            </p>
+
+            <h2 id="lifecycle">任务生命周期</h2>
+            <div class="mermaid-wrap reveal">
+              <div class="mermaid" id="diagram-bench">
+flowchart LR
+    trigger([trigger]) --> running[running<br/>创建 BenchTaskRecord]
+    running -- "shard 0" --> shardA[shard A<br/>syncnode-1]
+    running -- "shard 1" --> shardB[shard B<br/>syncnode-2]
+    running -- "shard N" --> shardC[shard N<br/>syncnode-N]
+    shardA -- "ShardResult 上报" --> aggregating[aggregating]
+    shardB --> aggregating
+    shardC --> aggregating
+    aggregating -- "全部 done<br/>+ HDR 合并<br/>+ SLA 通过" --> succeeded([succeeded])
+    aggregating -- "任一 failed<br/>或 SLA 不通过" --> failed([failed])
+    running -- "cancel（仅 running 可取消）" --> cancelled([cancelled])
+    failed -- "retry（终态可重试）" --> running
+    cancelled -- "retry" --> running
+    classDef terminal fill:#f5f3ef,stroke:#cdc7bd,color:#221f1c;
+    classDef live fill:#e8f0ff,stroke:#94aee0,color:#1d2c5a;
+    class running,shardA,shardB,shardC,aggregating live
+    class succeeded,failed,cancelled terminal
+              </div>
+              <p class="mermaid-caption">
+                状态字符串来自 <code>master/bench_task_ledger.go</code>：<code>running / succeeded / failed / cancelled</code>。
+                <code>BenchTaskStatus.IsTerminal()</code> 判定 succeeded/failed/cancelled 为终态，只允许从终态 retry。
+              </p>
+            </div>
+
+            <h2 id="examples">3 个典型 BenchRule</h2>
+
+            <h3 id="ex1">示例 1：fio 随机读写（POSIX）</h3>
+            <p>
+              4 个并发 shard，每个跑 fio randrw 60 秒，4k 块；FIODefaults 复用到所有 stage，stage 只覆盖差异字段。
+              SLA 要求 p99 &le; 5ms、错误率 &le; 0.1%。
+            </p>
+            <pre><code>name: cfs-randrw-4k
+storageType: posix
+parallelism: 4
+mountPath: /cfs/posix-bench
+fioDefaults:
+  ioengine: libaio
+  iodepth: 32
+  numjobs: 4
+  bs: 4k
+  size: 4G
+  runtime: 60
+  direct: 1
+fioStages:
+  - name: randwrite
+    rw: randwrite
+  - name: randread
+    rw: randread
+    reuseFiles: true
+  - name: randrw-7030
+    rw: randrw
+    rwmixread: 70
+    reuseFiles: true
+sla:
+  - p99MsMax: 5
+    errorRateMax: 0.001
+output:
+  percentiles: [50, 95, 99, 99.9]</code></pre>
+
+            <h3 id="ex2">示例 2：IOR 大文件吞吐（HPC）</h3>
+            <p>
+              2 个 shard，每个 shard 在自己的 syncnode 上 fork mpirun 跑 IOR write + read；sidecar 把 IOR 的
+              JSON summary 回写。<code>mountPath</code> 即 IOR 的工作目录，<code>iorStages[*].targets</code> 留空时
+              落到 mountPath 下。
+            </p>
+            <pre><code>name: cfs-ior-1m-streaming
+storageType: ior
+parallelism: 2
+mountPath: /cfs/posix-bench
+sidecarEndpoint: http://127.0.0.1:18000
+iorDefaults:
+  useMpi: true
+  mpiBin: mpirun
+  numTasks: 8
+  timeoutSec: 600
+iorStages:
+  - name: ior-write
+    tool: ior
+    args: ["-w", "-t", "1m", "-b", "16g", "-F", "-i", "1", "-k"]
+  - name: ior-read
+    tool: ior
+    args: ["-r", "-t", "1m", "-b", "16g", "-F", "-i", "1"]
+sla:
+  - bwMiBsMin: 800
+    appliesTo: "ior-*"</code></pre>
+
+            <h3 id="ex3">示例 3：S3 mixed put + range-get（多 size 类）</h3>
+            <p>
+              单 shard 跑混合负载：90% small put（64KiB） + 10% large put（16MiB），再跑一段 get_range；
+              <code>sizeClass</code> 把延迟拆成 small / large 两条曲线写进 dashboard。S1.6 的 ramp/steady 让前 10s 缓增到
+              目标 1000 op/s，避免冷启 burst 把 p99 拉花。
+            </p>
+            <pre><code>name: s3-mixed-90-10
+storageType: s3
+parallelism: 1
+backendID: bench-objectnode-01
+keyPrefix: bench/mixed-90-10/
+stages:
+  - name: mixed-put
+    numjobs: 16
+    runtime: 120
+    objectSize:
+      fixed: 65536
+    ops:
+      - type: put
+        weight: 9
+        size_class: small
+      - type: put
+        weight: 1
+        size_class: large
+        part_size_mib: 16
+    control:
+      rampUpSec: 10
+      steadySec: 100
+      rampDownSec: 10
+      targetIops: 1000
+  - name: range-get
+    numjobs: 8
+    runtime: 60
+    objectSize:
+      fixed: 16777216
+    ops:
+      - type: get_range
+        weight: 1
+        range_offset_bytes: 0
+        range_size_bytes: 65536
+sla:
+  - p99MsMax: 50
+    appliesTo: mixed-put
+output:
+  percentiles: [50, 95, 99, 99.9]</code></pre>
+
+            <h2 id="trend">结果观测：实时 + 终态</h2>
+            <p>
+              bench 暴露两条独立的观测口子：
+            </p>
+            <ul>
+              <li>
+                <strong>实时趋势 <code>/metrics/bench</code></strong>：syncnode 在 <code>:17030</code> 暴露
+                Prometheus 端点（独立 <code>BenchRegistry</code>，不和 syncnode 自身指标混在 <code>/metrics</code>）。
+                fio 路径每秒产出 <code>fio_interval_throughput_mibs / fio_interval_iops / fio_interval_latency_us_*</code>，
+                s3 / sdk 路径产出 op-level histogram。dashboard 直接抓这个端点画实时趋势图。
+              </li>
+              <li>
+                <strong>终态结果 <code>GET /benchTask/get?id=&lt;taskID&gt;</code></strong>：master 返回
+                <code>BenchTaskRecord</code>，含每个 shard 的 <code>BenchShardResult.Stages</code>（per-stage 吞吐 / IOPS / p50-p99.9）
+                和父任务的 <code>AggregatedStages</code>（跨节点 HDR 合并后的 p99 / p999，<em>不失真</em>）。
+              </li>
+            </ul>
+            <p>
+              HDR 合并是关键：传统做法把多节点的 p99 取均值会丢长尾，bench 做法是每个 shard 上报 gzip+base64 的
+              HDR snapshot（<code>BenchStageResult.HDRBuckets</code>），master 用 <code>syncnode/hist.MergeSnapshots</code>
+              合并再计算分位，得到的就是「这个 cluster 的 p99」而不是「平均节点的 p99」。
+            </p>
+
+            <h2 id="bench-mount">bench-mount 多节点共享</h2>
+            <p>
+              POSIX / IOR / mdtest 都需要每个 syncnode 看到同一个 cfs 卷的同一目录（否则 IOR 跨节点协调不了文件）。
+              cubefs-deploy 通过 <code>bench_mount_pvc_name</code> + <code>bench_mount_storage_class = cfs-sc</code>
+              建一个 <strong>RWM</strong>（ReadWriteMany）PVC，挂到每个 syncnode 的
+              <code>/cfs/posix-bench</code>。
+            </p>
+            <p>关键限制（必看）：</p>
+            <ul>
+              <li>
+                <strong>必须 RWM</strong>：不能用 RWO，否则只有一个节点能挂上，IOR 跨节点直接失败。
+              </li>
+              <li>
+                <strong>升级必须走 OnDelete</strong>：cubefs-csi 在多节点同时 NodeStage 同一个 RWM volume 时会卡
+                <code>mount --bind exit 32</code>，所以 syncnode 用 <code>OnDelete</code> 策略，升级要串行手 delete。
+                <a href="deploy.html#ondelete-sop">详见部署页 OnDelete SOP</a>。
+              </li>
+              <li>
+                <strong>不要在 bench-mount 里塞业务数据</strong>：它是「压测专用工作目录」，rule 配的 fio cleanupAfterDone
+                与 ior <code>-k</code>（keep）都按这个假设设计。
+              </li>
+              <li>
+                <strong>test-k3d 例外</strong>：单节点测试时 <code>bench_mount_pvc_name = ""</code>，fio 只能跑
+                <code>parallelism = 1</code>（默认 max_concurrent_tasks=1，maxQueueSize=2 故意压小用来验证取消队列）。
+              </li>
+            </ul>
+
+            <h2 id="ops">常用操作</h2>
+            <p>三种入口任选——dashboard 适合人，mcp 适合 LLM 代跑，REST 适合脚本。</p>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>动作</th><th>dashboard</th><th>cubefs-mcp 工具</th><th>master REST</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td>列 rule</td><td>「测试管理 → 规则」</td><td><code>bench_rule_list</code></td><td><code>GET /benchRule/list</code></td></tr>
+                  <tr><td>创建 rule</td><td>「新建 BenchRule」</td><td><code>bench_rule_create</code></td><td><code>POST /benchRule/create</code></td></tr>
+                  <tr><td>触发一次执行</td><td>规则详情「触发」</td><td><code>bench_rule_trigger</code></td><td><code>POST /benchRule/trigger?id=&lt;ruleID&gt;</code></td></tr>
+                  <tr><td>看任务列表</td><td>「测试管理 → 任务」</td><td><code>bench_task_list</code></td><td><code>GET /benchTask/list?ruleID=&lt;&gt;&amp;status=&lt;&gt;</code></td></tr>
+                  <tr><td>看任务详情 / shard 拆分</td><td>任务详情页</td><td><code>bench_task_get</code></td><td><code>GET /benchTask/get?id=&lt;taskID&gt;</code></td></tr>
+                  <tr><td>取消正在跑的任务</td><td>任务详情「取消」</td><td><code>bench_task_cancel</code></td><td><code>POST /benchTask/cancel?id=&lt;taskID&gt;</code></td></tr>
+                  <tr><td>从终态重试</td><td>任务详情「重试」</td><td><code>bench_task_retry</code></td><td><code>POST /benchTask/retry?id=&lt;taskID&gt;</code></td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <h2 id="troubleshooting">常见故障排查</h2>
+
+            <h3 id="bt1">现象 1：BenchRule create 报 <code>backendEndpoint required</code></h3>
+            <p>
+              <code>storageType = s3 / sdk</code> 强制需要 <code>backendID</code>（rule 持久化时校验）+
+              <code>backendEndpoint</code>（dispatch 时由 dashboard / master 从 backendID 解析后填入）。
+              POSIX / mdtest / IOR 只读 <code>mountPath</code>，不需要 backend。
+              对应代码 <code>spec.BenchStorageType.RequiresBackendEndpoint()</code>，rule 与 trigger 两端都校验。
+            </p>
+
+            <h3 id="bt2">现象 2：fio 跑出来 p99 比预期高 10x</h3>
+            <p>
+              90% 是冷启 burst：worker 一开 16 并发同时压上去，cfs 客户端读 inode/extents 元数据全没缓存。
+              用 <code>control.rampUpSec / steadySec / rampDownSec</code> 缓增到目标，或挂 <code>warmup</code> 跑一段
+              不计入结果的预热（subsetRatio 0.1 = 只覆盖前 10% 的文件集）。
+              另一半场景是机器 page cache 没清干净——多 stage 串跑时打开 <code>cacheDrop.enabled: true</code> + <code>betweenStages: true</code>。
+            </p>
+
+            <h3 id="bt3">现象 3：IOR sidecar HTTP 500 / 拒绝连接</h3>
+            <p>
+              sidecar 容器没起来、或者 sidecar 镜像缺少 <code>/usr/local/bin/ior</code>。
+              <code>kubectl -n storage-cfs logs &lt;pod&gt; -c bench-tools</code> 看 sidecar 日志；
+              手动 <code>kubectl exec ... -c bench-tools -- which ior mpirun</code> 验证二进制。
+              <code>sidecarEndpoint</code> 默认空字符串走 <code>http://127.0.0.1:18000</code>，
+              测试环境覆盖时一定要写带 scheme 的完整 URL。
+            </p>
+
+            <h3 id="bt4">现象 4：bench task 一直 running 不动 / 一个 shard 卡死</h3>
+            <p>
+              先看 <code>GET /benchTask/get?id=&lt;taskID&gt;</code> 的 <code>shards</code>：
+              如果某个 shard 的 <code>nodeAddr</code> 的 syncnode pod 已经不在了（节点维护、被驱逐），
+              master 的 orphan 扫描会在心跳 miss 后把 shard 标 failed。
+              <strong>不要直接 kill pod 想"加速"</strong>：bench 任务没有断点续跑（除非配 <code>soak.resumeFromCheckpoint</code>），
+              kill 后只能 retry 整个任务。正确做法：<code>POST /benchTask/cancel?id=...</code> 让任务进 cancelled 终态，
+              再 retry。
+            </p>
+
+            <h3 id="bt5">现象 5：SLA 一直 fail 且 <code>reasons</code> 写 <code>stage not matched</code></h3>
+            <p>
+              <code>BenchSLA.appliesTo</code> 用 <code>path.Match</code> 的 glob 语法，
+              <code>"randwrite-*"</code> 不会匹配 <code>"randwrite_4k"</code>（下划线不是 <code>-</code>）。
+              SLA 设计上"匹配 0 个 stage = 用户大概率拼错了"，所以会直接 fail，而不是静默通过。
+              修：把 <code>appliesTo</code> 改成准确的 stage 名或正确的 glob。
+            </p>
+
+            <h3 id="bt6">现象 6：HDR p99 比每个 shard 的 p99 都大很多</h3>
+            <p>
+              这是正常的：每个 shard 的 p99 是该 shard 自己 1/N 流量下的 p99；
+              HDR 合并后看的是 <strong>整个 cluster 全量请求</strong>的 p99，long tail 自然更长。
+              如果反过来 HDR p99 比单 shard 还小，说明 <code>HDRBuckets</code> 上报缺失（fio / mdtest 路径不上报 HDR，
+              fallback 到加权平均），这时 dashboard 的 p99 是估算值而非真实分位——同步 / 兼容性测试场景接受，
+              SLA 严格场景应改用 <code>storageType: s3</code> 或 <code>sdk</code> 走 HDR 路径。
+            </p>
+
+            <h2 id="next">下一步</h2>
+            <ul>
+              <li>把测试接到 LLM：<a href="mcp.html">05 · cubefs-mcp 部署 + 用法</a>（<code>bench_rule_*</code> / <code>bench_task_*</code> 工具直接 LLM 触发）</li>
+              <li>回头看同步：<a href="sync.html">03 · 同步</a>（同样的 rule / task / 派发模型）</li>
+              <li>底层架构：<a href="architecture.html">01 · 架构</a>（master / syncnode / dashboard 三角色关系）</li>
+            </ul>
+          </article>
+
+          <aside class="toc-panel" aria-label="本页目录">
+            <p class="toc-panel__title">本页目录</p>
+            <div class="toc">
+              <ul>
+                <li><a href="#why">bench 是什么</a></li>
+                <li><a href="#layers">6 类测试层级</a></li>
+                <li><a href="#model">BenchRule + BenchTask 模型</a></li>
+                <li><a href="#lifecycle">任务生命周期</a></li>
+                <li>
+                  <a href="#examples">3 个典型 BenchRule</a>
+                  <ul>
+                    <li><a href="#ex1">fio 随机读写</a></li>
+                    <li><a href="#ex2">IOR 大文件吞吐</a></li>
+                    <li><a href="#ex3">S3 mixed put + range-get</a></li>
+                  </ul>
+                </li>
+                <li><a href="#trend">结果观测：实时 + 终态</a></li>
+                <li><a href="#bench-mount">bench-mount 多节点共享</a></li>
+                <li><a href="#ops">常用操作</a></li>
+                <li>
+                  <a href="#troubleshooting">常见故障排查</a>
+                  <ul>
+                    <li><a href="#bt1">backendEndpoint required</a></li>
+                    <li><a href="#bt2">p99 比预期高 10x</a></li>
+                    <li><a href="#bt3">IOR sidecar HTTP 500</a></li>
+                    <li><a href="#bt4">task 一直 running</a></li>
+                    <li><a href="#bt5">SLA stage not matched</a></li>
+                    <li><a href="#bt6">HDR p99 异常</a></li>
+                  </ul>
+                </li>
+                <li><a href="#next">下一步</a></li>
+              </ul>
+            </div>
+          </aside>
+        </div>
+
+        <nav class="pager-row" aria-label="相邻文档">
+          <a class="pager-link pager-link--prev" href="sync.html">
+            <span>上一篇</span>
+            <strong>03 · 同步</strong>
+          </a>
+          <a class="pager-link pager-link--next" href="mcp.html">
+            <span>下一篇</span>
+            <strong>05 · cubefs-mcp</strong>
+          </a>
+        </nav>
+      </main>
+
+      <footer class="site-footer">
+        <div class="site-footer__inner">
+          <p>CubeFS Sync &amp; Bench · <a href="index.html">返回总览</a> · <a href="understand-anything/index.html">代码图谱</a></p>
+        </div>
+      </footer>
+    </div>
+
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({
+        startOnLoad: true,
+        theme: "neutral",
+        securityLevel: "loose",
+        flowchart: { curve: "basis", htmlLabels: true, useMaxWidth: true },
+        sequence: { showSequenceNumbers: false, mirrorActors: false, useMaxWidth: true }
+      });
+    </script>
+  </body>
+</html>

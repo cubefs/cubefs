@@ -123,6 +123,13 @@ type metaClient interface {
 	ReadDir_ll(parentID uint64) ([]proto.Dentry, error)
 	BatchInodeGet(inodes []uint64) []*proto.InodeInfo
 	Setattr(inode uint64, valid, mode, uid, gid uint32, atime, mtime int64) error
+	// XAttrSet_ll writes a single xattr; metanode persists the (name,value)
+	// pair under the inode. value may be empty but name must be non-empty.
+	XAttrSet_ll(inode uint64, name, value []byte) error
+	// XAttrGetAll_ll returns every xattr defined on the inode. We prefer
+	// this over the list+get-per-name combination because it is a single
+	// RPC; metanode reads them out of one inode lookup.
+	XAttrGetAll_ll(inode uint64) (*proto.XAttrInfo, error)
 	Close() error
 }
 
@@ -247,7 +254,78 @@ func (b *Backend) Capabilities() backend.Caps {
 		AtomicRename:      true,
 		ListMaxKeys:       0,
 		StrongConsistency: true,
+		// CubeFS has no server-side digest. We persist sha256 in a
+		// companion file (`<key>.syncnode.sha256`) on Put, which makes
+		// GetChecksum O(64-byte read) on the hot path — but it's still
+		// not "native" in the executor's sense (the volume itself isn't
+		// telling us anything). Reported false so executor knows it
+		// should still gate on src-side compute.
+		NativeChecksum: false,
+		// CubeFS exposes meta.Setattr which can update ModifyTime with the
+		// proto.AttrModifyTime valid-flag — Put honors PutOptions.Mtime via
+		// that call after the data stream is flushed.
+		NativeMtimeWrite: true,
+		// TODO: 待 metanode inode-clone API 落地后改为 true。当前 CubeFS 的
+		// 写路径必须流式过 ExtentClient.Write，没有原生的 same-volume copy
+		// 接口，所以同实例的 Get→Put 仍然走通用路径。
+		ServerSideCopy: false,
+		// metanode keeps the POSIX mode/uid/gid on the inode and exposes
+		// them via Setattr; full mode word (incl. setuid/setgid/sticky)
+		// is preserved on the wire because proto.AttrMode uses uint32.
+		NativeModeWrite:  true,
+		NativeOwnerWrite: true,
+		// metanode supports per-inode xattr storage via XAttrSet_ll; the
+		// executor handles namespace filtering before handing them down.
+		NativeXattrWrite: true,
 	}
+}
+
+// SameInstance reports whether other targets the same CubeFS volume on
+// the same master cluster. Comparison normalises master order so a config
+// with [m1,m2] matches [m2,m1] — masters form a quorum and order is not
+// semantically meaningful.
+func (b *Backend) SameInstance(other backend.Backend) bool {
+	o, ok := other.(*Backend)
+	if !ok || o == nil || b.cfg == nil || o.cfg == nil {
+		return false
+	}
+	if b.cfg.Volume != o.cfg.Volume {
+		return false
+	}
+	if len(b.cfg.Masters) != len(o.cfg.Masters) {
+		return false
+	}
+	// Compare master sets order-independently via sorted copies.
+	a := append([]string(nil), b.cfg.Masters...)
+	c := append([]string(nil), o.cfg.Masters...)
+	sortStrings(a)
+	sortStrings(c)
+	for i := range a {
+		if a[i] != c[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// sortStrings is a small in-place sort helper used by SameInstance to keep
+// the cfs.go imports minimal — we don't want to pull "sort" just for this.
+func sortStrings(s []string) {
+	// Insertion sort is fine: master lists are tiny (≤ 5 entries in practice).
+	for i := 1; i < len(s); i++ {
+		for j := i; j > 0 && s[j-1] > s[j]; j-- {
+			s[j-1], s[j] = s[j], s[j-1]
+		}
+	}
+}
+
+// ServerSideCopy is declared so cfs.Backend satisfies the
+// ServerSideCopier interface, but returns ErrBackendUnsupported until a
+// metanode-side inode-clone API is available. The executor short-circuits
+// on Caps.ServerSideCopy long before reaching here, so callers should
+// only see this error if they bypass the capability check.
+func (b *Backend) ServerSideCopy(_ context.Context, _, _ string, _ backend.PutOptions) (backend.PutResult, error) {
+	return backend.PutResult{}, backend.ErrBackendUnsupported
 }
 
 // Close releases the ExtentClient. The MetaWrapper does not have a public
@@ -311,6 +389,44 @@ func (b *Backend) Head(_ context.Context, key string) (int64, string, time.Time,
 		return 0, "", time.Time{}, translateErr("inode get "+full, err)
 	}
 	return int64(info.Size), "", info.ModifyTime, nil
+}
+
+// Stat implements backend.Stater. It returns the full POSIX-style metadata
+// for key — size/mtime/mode/uid/gid from the inode plus any xattrs the
+// metanode stores. Xattr retrieval is best-effort: a hard failure on
+// XAttrGetAll_ll is downgraded to "no xattrs" so a partially-degraded
+// metanode does not break Stat for callers that only need mode/owner.
+func (b *Backend) Stat(_ context.Context, key string) (backend.Stat, error) {
+	full := normalizeKey(key)
+	ino, err := b.mw.LookupPath(full)
+	if err != nil {
+		return backend.Stat{}, translateErr("lookup "+full, err)
+	}
+	info, err := b.mw.InodeGet_ll(ino)
+	if err != nil {
+		return backend.Stat{}, translateErr("inode get "+full, err)
+	}
+	mode := info.Mode
+	uid := info.Uid
+	gid := info.Gid
+	st := backend.Stat{
+		Size:  int64(info.Size),
+		Mtime: info.ModifyTime,
+		Mode:  &mode,
+		UID:   &uid,
+		GID:   &gid,
+	}
+	// Best-effort xattr read: empty/error → nil map. Callers (executor)
+	// already tolerate a nil Xattrs map and will degrade per the rule's
+	// OnMetadataUnsupported policy.
+	if xinfo, xerr := b.mw.XAttrGetAll_ll(ino); xerr == nil && xinfo != nil && len(xinfo.XAttrs) > 0 {
+		out := make(map[string][]byte, len(xinfo.XAttrs))
+		for name, value := range xinfo.XAttrs {
+			out[name] = []byte(value)
+		}
+		st.Xattrs = out
+	}
+	return st, nil
 }
 
 // Delete removes the file at key. ENOENT is silently treated as success
@@ -462,14 +578,18 @@ type writeChunk struct {
 // goroutine is used to avoid synchronization overhead.
 //
 // The size parameter is advisory: actual bytes written come from io.EOF on
-// body. opts is currently unused by cfs (no storage class concept).
-func (b *Backend) Put(ctx context.Context, key string, body io.Reader, size int64, _ backend.PutOptions) (string, error) {
+// body. opts.StorageClass / Multipart are unused by cfs (no storage class
+// concept here). When opts.ComputeChecksum is true we tee the body through
+// a sha256 hasher and, on a successful write, persist the digest in a
+// companion file `<key>.syncnode.sha256` so subsequent GetChecksum calls
+// avoid a full re-read.
+func (b *Backend) Put(ctx context.Context, key string, body io.Reader, size int64, opts backend.PutOptions) (backend.PutResult, error) {
 	full := normalizeKey(key)
 	dir, name := splitPath(full)
 
 	dirIno, err := b.mkdirAll(dir)
 	if err != nil {
-		return "", fmt.Errorf("cfs put mkdir %s: %w", dir, err)
+		return backend.PutResult{}, fmt.Errorf("cfs put mkdir %s: %w", dir, err)
 	}
 
 	var ino uint64
@@ -479,48 +599,276 @@ func (b *Backend) Put(ctx context.Context, key string, body io.Reader, size int6
 	} else if errors.Is(cerr, syscall.EEXIST) {
 		existIno, _, lerr := b.mw.Lookup_ll(dirIno, name)
 		if lerr != nil {
-			return "", fmt.Errorf("cfs put lookup existing %s: %w", full, lerr)
+			return backend.PutResult{}, fmt.Errorf("cfs put lookup existing %s: %w", full, lerr)
 		}
 		ino = existIno
 	} else {
-		return "", fmt.Errorf("cfs put create %s: %w", full, cerr)
+		return backend.PutResult{}, fmt.Errorf("cfs put create %s: %w", full, cerr)
 	}
 
 	if err := b.ec.OpenStream(ino, true, false, full); err != nil {
-		return "", fmt.Errorf("cfs put open stream %s: %w", full, err)
+		return backend.PutResult{}, fmt.Errorf("cfs put open stream %s: %w", full, err)
 	}
 	// Truncate to zero first so a previously larger file does not leak
 	// stale tail bytes.
 	if err := b.truncate(dirIno, ino, full); err != nil {
 		_ = b.ec.CloseStream(ino)
-		return "", fmt.Errorf("cfs put truncate %s: %w", full, err)
+		return backend.PutResult{}, fmt.Errorf("cfs put truncate %s: %w", full, err)
 	}
 
 	parallel := b.cfg.resolvedWriteParallel()
 	chunkSize := b.cfg.resolvedWriteChunkSize()
 
+	// Wrap body so reads are counted; optionally also tee'd through a
+	// sha256 sink. This keeps both sequential and parallel write paths
+	// agnostic to checksum computation — they just consume an io.Reader.
+	src := &countingReader{r: body}
+	var sumFn func() string
+	if opts.ComputeChecksum {
+		h, fn := backend.NewSHA256Sink()
+		src.r = io.TeeReader(body, h)
+		sumFn = fn
+	}
+
 	// Choice of write path: small bodies bypass the goroutine pool to
 	// avoid the per-file orchestration cost when it doesn't pay off.
 	if size > 0 && size <= parallelWriteMinBytes || parallel <= 1 {
-		if err := b.writeSequential(ctx, ino, full, body, chunkSize); err != nil {
+		if err := b.writeSequential(ctx, ino, full, src, chunkSize); err != nil {
 			_ = b.ec.CloseStream(ino)
-			return "", err
+			return backend.PutResult{}, err
 		}
 	} else {
-		if err := b.writeParallel(ctx, ino, full, body, chunkSize, parallel); err != nil {
+		if err := b.writeParallel(ctx, ino, full, src, chunkSize, parallel); err != nil {
 			_ = b.ec.CloseStream(ino)
-			return "", err
+			return backend.PutResult{}, err
 		}
 	}
 
 	if err := b.ec.Flush(ino); err != nil {
 		_ = b.ec.CloseStream(ino)
-		return "", fmt.Errorf("cfs put flush %s: %w", full, err)
+		return backend.PutResult{}, fmt.Errorf("cfs put flush %s: %w", full, err)
 	}
 	if err := b.ec.CloseStream(ino); err != nil {
-		return "", fmt.Errorf("cfs put close stream %s: %w", full, err)
+		return backend.PutResult{}, fmt.Errorf("cfs put close stream %s: %w", full, err)
 	}
-	return "", nil
+
+	// Preserve POSIX metadata when requested. Called after CloseStream so
+	// the data path is finalized first; mode/owner/mtime are batched into a
+	// single Setattr call so metanode applies them atomically and a partial
+	// failure cannot leave us with mtime set but owner not (which would
+	// break idempotency on the next sync run).
+	//
+	// CubeFS stores mtime as Unix-seconds on the wire (metanode reconstructs
+	// via time.Unix(mt, 0)) so sub-second precision is truncated. Callers
+	// that need ns-precision comparison must tolerate this on cfs backends.
+	if opts.Mode != nil || opts.UID != nil || opts.GID != nil || opts.Mtime != nil {
+		var (
+			valid uint32
+			mode  uint32
+			uid   uint32
+			gid   uint32
+			mtime int64
+		)
+		if opts.Mode != nil {
+			valid |= proto.AttrMode
+			// Setattr persists the mode word as supplied — the executor is
+			// responsible for masking out file-type bits (S_IFREG etc.) if
+			// they leaked from a Stat result. Pass the permission/setuid/
+			// setgid/sticky bits intact.
+			mode = *opts.Mode
+		}
+		if opts.UID != nil {
+			valid |= proto.AttrUid
+			uid = *opts.UID
+		}
+		if opts.GID != nil {
+			valid |= proto.AttrGid
+			gid = *opts.GID
+		}
+		if opts.Mtime != nil {
+			valid |= proto.AttrModifyTime
+			mtime = opts.Mtime.Unix()
+		}
+		if err := b.mw.Setattr(ino, valid, mode, uid, gid, 0, mtime); err != nil {
+			return backend.PutResult{}, fmt.Errorf("cfs put setattr %s: %w", full, err)
+		}
+	}
+
+	// xattrs: per-name RPC (metanode has no batch-write that round-trips
+	// raw bytes; BatchSetXAttr_ll takes map[string]string which would force
+	// a UTF-8 round-trip and silently corrupt binary values).
+	for name, value := range opts.Xattrs {
+		if name == "" {
+			continue
+		}
+		if err := b.mw.XAttrSet_ll(ino, []byte(name), value); err != nil {
+			return backend.PutResult{}, fmt.Errorf("cfs put xattr %s name=%s: %w", full, name, err)
+		}
+	}
+
+	res := backend.PutResult{BytesPut: src.n}
+	if sumFn != nil {
+		hexSum := sumFn()
+		res.Checksum = hexSum
+		res.Algorithm = backend.ChecksumAlgorithmSHA256
+		// Write the companion file. Best-effort: if this fails the data
+		// upload still succeeded and the checksum lives in res.Checksum;
+		// the next GetChecksum will simply re-stream and re-write.
+		if cerr := b.writeCompanion(ctx, full, hexSum); cerr != nil {
+			log.LogWarnf("cfs put: write companion sha256 for %s: %v", full, cerr)
+		}
+	}
+	return res, nil
+}
+
+// countingReader wraps an io.Reader and counts bytes read. Used by Put to
+// report PutResult.BytesPut without making writeSequential / writeParallel
+// return byte counts (which would touch their hot paths).
+type countingReader struct {
+	r io.Reader
+	n int64
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	c.n += int64(n)
+	return n, err
+}
+
+// companionPath returns the path for the sha256 companion file given a
+// normalized full path.
+func companionPath(full string) string {
+	return full + backend.SHA256CompanionSuffix
+}
+
+// writeCompanion stores hexSum in the companion file next to full. The
+// companion is a tiny 64-byte object so we use the sequential write path
+// regardless of write-parallel config.
+func (b *Backend) writeCompanion(ctx context.Context, full, hexSum string) error {
+	companion := companionPath(full)
+	dir, name := splitPath(companion)
+	dirIno, err := b.mkdirAll(dir)
+	if err != nil {
+		return fmt.Errorf("mkdir %s: %w", dir, err)
+	}
+	var ino uint64
+	info, cerr := b.mw.Create_ll(dirIno, name, 0o644, 0, 0, nil, companion, true)
+	if cerr == nil {
+		ino = info.Inode
+	} else if errors.Is(cerr, syscall.EEXIST) {
+		existIno, _, lerr := b.mw.Lookup_ll(dirIno, name)
+		if lerr != nil {
+			return fmt.Errorf("lookup existing %s: %w", companion, lerr)
+		}
+		ino = existIno
+	} else {
+		return fmt.Errorf("create %s: %w", companion, cerr)
+	}
+	if err := b.ec.OpenStream(ino, true, false, companion); err != nil {
+		return fmt.Errorf("open stream %s: %w", companion, err)
+	}
+	if err := b.truncate(dirIno, ino, companion); err != nil {
+		_ = b.ec.CloseStream(ino)
+		return fmt.Errorf("truncate %s: %w", companion, err)
+	}
+	data := []byte(hexSum)
+	if _, werr := b.ec.Write(ino, 0, data, 0, nil, b.storageClass, false, false); werr != nil {
+		_ = b.ec.CloseStream(ino)
+		return fmt.Errorf("write %s: %w", companion, werr)
+	}
+	if err := b.ec.Flush(ino); err != nil {
+		_ = b.ec.CloseStream(ino)
+		return fmt.Errorf("flush %s: %w", companion, err)
+	}
+	if err := b.ec.CloseStream(ino); err != nil {
+		return fmt.Errorf("close stream %s: %w", companion, err)
+	}
+	_ = ctx // ctx parameter retained for symmetry / future cancellation
+	return nil
+}
+
+// GetChecksum returns the sha256 of key. Resolution order:
+//
+//  1. If a companion file `<key>.syncnode.sha256` exists and contains a
+//     well-formed 64-char hex digest, return it (cheap path — one tiny read).
+//  2. Otherwise stream the main file through sha256, then write the digest
+//     back into the companion file (best-effort, log+continue on failure
+//     so the next call still hits the cheap path) and return the digest.
+//  3. If the main file does not exist, return backend.ErrKeyNotFound.
+//
+// Algorithm is always backend.ChecksumAlgorithmSHA256 — cfs never returns md5.
+func (b *Backend) GetChecksum(ctx context.Context, key string) (string, string, error) {
+	full := normalizeKey(key)
+	// Cheap path: try the companion file first.
+	if hexSum, ok := b.readCompanion(ctx, full); ok {
+		return hexSum, backend.ChecksumAlgorithmSHA256, nil
+	}
+	// Fall back to streaming sha256 of the main file.
+	rc, err := b.Get(ctx, key, 0, 0)
+	if err != nil {
+		// Get already maps ENOENT to ErrKeyNotFound via translateErr.
+		return "", "", err
+	}
+	defer rc.Close()
+	hexSum, _, serr := backend.SHA256Stream(rc)
+	if serr != nil {
+		return "", "", fmt.Errorf("cfs sha256 stream %s: %w", full, serr)
+	}
+	// Best-effort writeback; never fails GetChecksum.
+	if werr := b.writeCompanion(ctx, full, hexSum); werr != nil {
+		log.LogWarnf("cfs writeCompanion %s: %v", full, werr)
+	}
+	return hexSum, backend.ChecksumAlgorithmSHA256, nil
+}
+
+// readCompanion attempts to read and validate the companion sha256 file for
+// full. Returns (hexSum, true) on success. On any error or malformed content
+// it returns ("", false) — callers fall back to streaming the main file.
+func (b *Backend) readCompanion(ctx context.Context, full string) (string, bool) {
+	_ = ctx
+	companion := companionPath(full)
+	ino, err := b.mw.LookupPath(companion)
+	if err != nil {
+		return "", false
+	}
+	info, err := b.mw.InodeGet_ll(ino)
+	if err != nil || !proto.IsRegular(info.Mode) {
+		return "", false
+	}
+	// sha256 hex is exactly 64 bytes; reject anything outside a tight window
+	// to avoid reading absurd payloads if the companion got corrupted.
+	if info.Size == 0 || info.Size > 128 {
+		return "", false
+	}
+	if err := b.ec.OpenStream(ino, false, false, companion); err != nil {
+		return "", false
+	}
+	defer func() { _ = b.ec.CloseStream(ino) }()
+	buf := make([]byte, info.Size)
+	n, rerr := b.ec.Read(ino, buf, 0, len(buf), b.storageClass, false)
+	if rerr != nil && rerr != io.EOF {
+		return "", false
+	}
+	if n != int(info.Size) {
+		return "", false
+	}
+	hexSum := strings.TrimSpace(string(buf[:n]))
+	if len(hexSum) != 64 || !isHex(hexSum) {
+		return "", false
+	}
+	return hexSum, true
+}
+
+// isHex reports whether s consists entirely of lowercase or uppercase hex
+// digits. Cheaper than encoding/hex.DecodeString for the validate-only path.
+func isHex(s string) bool {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
 }
 
 // truncate is the test-friendly wrapper over ec.Truncate; in real builds it
@@ -715,6 +1063,12 @@ func (b *Backend) walkDir(ctx context.Context, ch chan<- backend.Entry, ino uint
 			emit(ctx, ch, backend.Entry{Err: ctx.Err()})
 			return
 		default:
+		}
+		// Hide sha256 companion files from List. They are an internal
+		// implementation detail of GetChecksum and should never appear
+		// to executor / replicator code.
+		if strings.HasSuffix(d.Name, backend.SHA256CompanionSuffix) {
+			continue
 		}
 		childPath := base
 		if strings.HasSuffix(childPath, "/") {
