@@ -647,7 +647,8 @@ func TestOpUpdateExtentKeyAfterMigrationLeaseMatchIgnoresGenerationDrift(t *test
 
 	after, getErr := mp.inodeTree.Get(&Inode{Inode: resp.Info.Inode})
 	require.NoError(t, getErr)
-	require.Equal(t, beforeGen+100, after.Generation)
+	require.Equal(t, beforeGen+101, after.Generation,
+		"successful migration must bump generation so clients refresh stale extent cache")
 }
 
 func TestInodeOpAuditDeferOnErrors(t *testing.T) {

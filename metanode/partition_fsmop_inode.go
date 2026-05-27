@@ -1339,6 +1339,7 @@ func (mp *metaPartition) fsmUpdateExtentKeyAfterMigration(inoParam *Inode) (resp
 	i.StorageClass = inoParam.HybridCloudExtentsMigration.storageClass
 	i.PoolId = inoParam.HybridCloudExtentsMigration.poolId
 	i.HybridCloudExtents.sortedEks = inoParam.HybridCloudExtentsMigration.sortedEks
+	i.Generation++
 
 	// delete migration ek in future
 	i.Flag |= DeleteMigrationExtentKeyFlag

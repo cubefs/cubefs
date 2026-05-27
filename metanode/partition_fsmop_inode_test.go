@@ -461,6 +461,33 @@ func TestFsmUpdateExtentKeyAfterMigrationRejectsLeaseExpireMismatch(t *testing.T
 	require.EqualValues(t, proto.OpLeaseOccupiedByOthers, resp.Status)
 }
 
+func TestFsmUpdateExtentKeyAfterMigrationBumpsGeneration(t *testing.T) {
+	mp := newMpForFsmInodeTest(t, proto.StoreModeMem)
+	const ino = 8802
+	prepareInodeForFsmInodeTest(t, mp, ino)
+
+	before, err := mp.inodeTree.Get(&Inode{Inode: ino})
+	require.NoError(t, err)
+	require.NotNil(t, before)
+	genBefore := before.Generation
+
+	param := NewInode(ino, FileModeType)
+	param.UpdateHybridCloudParams(before)
+	param.HybridCloudExtentsMigration.storageClass = proto.StorageClass_Replica_HDD
+	param.HybridCloudExtentsMigration.poolId = proto.DefaultHDDPoolId
+	param.HybridCloudExtentsMigration.sortedEks = NewSortedExtents()
+	param.HybridCloudExtentsMigration.expiredTime = time.Now().Add(time.Hour).Unix()
+
+	resp := mp.fsmUpdateExtentKeyAfterMigration(param)
+	require.EqualValues(t, proto.OpOk, resp.Status)
+
+	after, err := mp.inodeTree.Get(&Inode{Inode: ino})
+	require.NoError(t, err)
+	require.NotNil(t, after)
+	require.EqualValues(t, genBefore+1, after.Generation,
+		"successful migration must bump generation so clients refresh stale extent cache")
+}
+
 func applyUpdateInodeMetaForTest(t *testing.T, mp *metaPartition, req *UpdateInodeMetaRequest, index uint64) (resp interface{}, err error) {
 	t.Helper()
 	data, err := json.Marshal(req)

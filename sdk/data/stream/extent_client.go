@@ -556,27 +556,6 @@ func (client *ExtentClient) OpenStream(inode uint64, openForWrite, isCache bool,
 				client.streamerLock.Unlock()
 				return err
 			}
-
-			current := s
-			client.streamerLock.Unlock()
-			// load inode info to update extent cache
-			_, err = client.loadInodeInfo(inode)
-			if err != nil {
-				log.LogErrorf("action[OpenStream] inode(%v) loadInodeInfo failed err %v", inode, err.Error())
-				client.streamerLock.Lock()
-				if latest, ok := client.streamers[inode]; ok && latest == current {
-					latest.setError()
-				}
-				client.streamerLock.Unlock()
-				return err
-			}
-
-			client.streamerLock.Lock()
-			s, ok = client.streamers[inode]
-			if !ok || s != current {
-				client.streamerLock.Unlock()
-				return fmt.Errorf("streamer for ino(%v) changed during open", inode)
-			}
 		}
 
 		log.LogDebugf("action[OpenStream] reuse  streamer for ino(%v)%p, openForWrite %v", inode, s, openForWrite)
@@ -585,6 +564,7 @@ func (client *ExtentClient) OpenStream(inode uint64, openForWrite, isCache bool,
 			s.aheadReadWindow.rightOffset = 0
 		}
 	}
+
 	return s.IssueOpenRequest()
 }
 
