@@ -9,11 +9,18 @@
 package stream
 
 import (
+	"bytes"
 	"errors"
+	"net"
+	"reflect"
 	"sync/atomic"
 	"testing"
+	"time"
+	"unsafe"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/data/wrapper"
+	"github.com/cubefs/cubefs/util"
 	"github.com/stretchr/testify/require"
 )
 
@@ -102,4 +109,118 @@ func TestRenewalForbiddenMigrationTickErrorSetsStreamerError(t *testing.T) {
 	err := applyRenewalForbiddenMigrationTick(s)
 	require.Error(t, err)
 	require.Equal(t, int32(StreamerError), atomic.LoadInt32(&s.status))
+}
+
+func TestDoOverwriteIntraGroupNetErrRetriesOtherHost(t *testing.T) {
+	if proto.Buffers == nil {
+		proto.InitBufferPool(32768)
+	}
+
+	var firstHostHits int32
+	firstHostAddr, closeFirst := startOverwriteReplyServer(t, proto.OpIntraGroupNetErr, &firstHostHits, 2)
+	defer closeFirst()
+
+	var secondHostHits int32
+	secondHostAddr, closeSecond := startOverwriteReplyServer(t, proto.OpOk, &secondHostHits, 1)
+	defer closeSecond()
+
+	const (
+		inode       = uint64(22305304)
+		partitionID = uint64(38951)
+	)
+
+	dp := &wrapper.DataPartition{
+		DataPartitionResponse: proto.DataPartitionResponse{
+			PartitionID: partitionID,
+			LeaderAddr:  firstHostAddr,
+			Hosts:       []string{firstHostAddr, secondHostAddr},
+			Status:      proto.ReadWrite,
+		},
+		Metrics: wrapper.NewDataPartitionMetrics(),
+	}
+
+	w := &wrapper.Wrapper{
+		HostsStatus: map[string]bool{
+			firstHostAddr:  true,
+			secondHostAddr: true,
+		},
+	}
+	setUnexportedField(t, w, "partitions", map[uint64]*wrapper.DataPartition{partitionID: dp})
+	setUnexportedField(t, w, "volType", int(proto.VolumeTypeHot))
+	dp.ClientWrapper = w
+
+	s := &Streamer{
+		inode:     inode,
+		client:    &ExtentClient{dataWrapper: w, streamRetryTimeout: 3 * time.Second},
+		extents:   NewExtentCache(inode),
+		dirtylist: NewDirtyExtentList(),
+	}
+	ek := &proto.ExtentKey{
+		FileOffset:   0,
+		PartitionId:  partitionID,
+		ExtentId:     59,
+		ExtentOffset: 25337856,
+		Size:         uint32(util.BlockSize),
+	}
+	s.extents.Append(ek, true)
+
+	req := &ExtentRequest{
+		FileOffset: 82973,
+		Size:       1024,
+		Data:       bytes.Repeat([]byte("a"), 1024),
+		ExtentKey:  ek,
+	}
+
+	total, err := s.doOverwrite(req, false, 0)
+	require.NoError(t, err)
+	require.Equal(t, req.Size, total)
+	require.GreaterOrEqual(t, atomic.LoadInt32(&firstHostHits), int32(1))
+	require.Equal(t, int32(1), atomic.LoadInt32(&secondHostHits))
+}
+
+func startOverwriteReplyServer(t *testing.T, resultCode uint8, hitCounter *int32, maxRequests int) (string, func()) {
+	t.Helper()
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < maxRequests; i++ {
+			conn, acceptErr := ln.Accept()
+			if acceptErr != nil {
+				return
+			}
+
+			req := &Packet{}
+			readErr := req.ReadFromConnWithVer(conn, proto.ReadDeadlineTime)
+			if readErr == nil {
+				atomic.AddInt32(hitCounter, 1)
+				reply := NewReply(req.ReqID, req.PartitionID, req.ExtentID)
+				reply.ExtentOffset = req.ExtentOffset
+				reply.CRC = req.CRC
+				reply.ResultCode = resultCode
+				_ = reply.WriteToConn(conn)
+			}
+			_ = conn.Close()
+		}
+	}()
+
+	closeFn := func() {
+		_ = ln.Close()
+		<-done
+	}
+	return ln.Addr().String(), closeFn
+}
+
+func setUnexportedField(t *testing.T, target interface{}, fieldName string, value interface{}) {
+	t.Helper()
+
+	rv := reflect.ValueOf(target).Elem()
+	fv := rv.FieldByName(fieldName)
+	require.True(t, fv.IsValid(), "field %s should exist", fieldName)
+
+	ptr := unsafe.Pointer(fv.UnsafeAddr())
+	reflect.NewAt(fv.Type(), ptr).Elem().Set(reflect.ValueOf(value))
 }

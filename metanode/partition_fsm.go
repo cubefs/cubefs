@@ -739,7 +739,7 @@ func (mp *metaPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 		}
 	}()
 
-	log.LogWarnf("action[ApplyMemberChange] mp[%v] confChange[%v]", mp.config.PartitionId, confChange)
+	log.LogWarnf("action[ApplyMemberChange] mp[%v] confChange[%v] index[%v]", mp.config.PartitionId, confChange, index)
 	// change memory status
 	var (
 		updated bool

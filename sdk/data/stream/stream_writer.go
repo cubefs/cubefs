@@ -745,13 +745,19 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool, poolId uint8) (t
 				// Upon receiving TryOtherAddrError, other hosts will be retried.
 				return TryOtherAddrError, false
 			}
-			log.LogDebugf("action[doOverwrite] streamer verseq (%v) datanode rsp seq (%v) code(%v)", s.verSeq, replyPacket.VerSeq, replyPacket.ResultCode)
+			log.LogDebugf("action[doOverwrite] streamer verseq (%v) datanode rsp seq (%v) code(%v), ino (%v), reqId (%v)",
+				s.verSeq, replyPacket.VerSeq, replyPacket.ResultCode, s.inode, reqPacket.ReqID)
 			if replyPacket.ResultCode == proto.OpAgain {
 				return nil, true
 			}
 
 			if replyPacket.ResultCode == proto.OpLimitedIoErr {
 				return LimitedIoError, true
+			}
+
+			if replyPacket.ResultCode == proto.OpIntraGroupNetErr {
+				log.LogWarnf("action[doOverwrite] ino(%v) intra group net err, reqId (%v)", s.inode, reqPacket.ReqID)
+				e = TryOtherAddrError
 			}
 
 			if replyPacket.ResultCode == proto.OpTryOtherAddr {
