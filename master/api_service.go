@@ -3707,6 +3707,12 @@ func (m *Server) checkStorageClassForCreateVolReq(req *createVolReq) (err error)
 		}
 	}
 
+	if proto.IsStorageClassBlobStore(req.volStorageClass) && !m.cluster.HasResourceOfStorageBlobStore() {
+		err = fmt.Errorf("blobstore pool is not available")
+		log.LogErrorf("action[checkStorageClassForCreateVol] create vol(%v) err: %v", req.name, err.Error())
+		return err
+	}
+
 	if m.HasBothReplicaAndBlobstore(req.volStorageClass, req.allowedStorageClass) {
 		err = fmt.Errorf("vol not support both replica and blobstore")
 		log.LogErrorf("action[checkStorageClassForCreateVol] create vol(%v) err: %v", req.name, err.Error())

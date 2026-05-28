@@ -1416,3 +1416,52 @@ func TestCheckDecommissionDiskResetsSuccessfulDiskWithRemainingPartitions(t *tes
 	_, exists := dataNode.DecommissionSuccessDisks.Load(diskPath)
 	require.False(t, exists)
 }
+
+func newBlobstoreTestCluster(bStoreAddr, servicePath string, ecPoolStatus uint8) *Cluster {
+	srv := &Server{
+		bStoreAddr:  bStoreAddr,
+		servicePath: servicePath,
+	}
+	c := &Cluster{
+		Name: "blobstore-test-cluster",
+		storagePools: map[uint8]*StoragePool{
+			proto.DefaultECPoolId: {
+				Id:           proto.DefaultECPoolId,
+				Name:         proto.DefaultECPoolName,
+				StorageClass: uint8(proto.StorageClass_BlobStore),
+				Status:       ecPoolStatus,
+				ECAddr:       bStoreAddr,
+			},
+		},
+	}
+	c.server = srv
+	return c
+}
+
+func TestHasResourceOfStorageBlobStore(t *testing.T) {
+	t.Parallel()
+
+	t.Run("configured", func(t *testing.T) {
+		t.Parallel()
+		c := newBlobstoreTestCluster("127.0.0.1:8500", "access", proto.PoolStatusAvailable)
+		require.True(t, c.HasResourceOfStorageBlobStore())
+	})
+
+	t.Run("missing_bstore_addr", func(t *testing.T) {
+		t.Parallel()
+		c := newBlobstoreTestCluster("", "access", proto.PoolStatusAvailable)
+		require.False(t, c.HasResourceOfStorageBlobStore())
+	})
+
+	t.Run("missing_service_path", func(t *testing.T) {
+		t.Parallel()
+		c := newBlobstoreTestCluster("127.0.0.1:8500", "", proto.PoolStatusAvailable)
+		require.False(t, c.HasResourceOfStorageBlobStore())
+	})
+
+	t.Run("missing_both", func(t *testing.T) {
+		t.Parallel()
+		c := newBlobstoreTestCluster("", "", proto.PoolStatusAvailable)
+		require.False(t, c.HasResourceOfStorageBlobStore())
+	})
+}

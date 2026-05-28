@@ -2256,3 +2256,133 @@ func TestResetMetaPartitionDecommissionStatus(t *testing.T) {
 	reply := processNoCheck(invalidReqURL, t)
 	require.NotEqualValues(t, proto.ErrCodeSuccess, reply.Code, "should fail with invalid partition ID")
 }
+
+func newCreateVolStorageClassTestServer(bStoreAddr, servicePath string, ecPoolStatus uint8) *Server {
+	srv := &Server{
+		bStoreAddr:  bStoreAddr,
+		servicePath: servicePath,
+	}
+	ecPool := &StoragePool{
+		Id:           proto.DefaultECPoolId,
+		Name:         proto.DefaultECPoolName,
+		StorageClass: uint8(proto.StorageClass_BlobStore),
+		Status:       ecPoolStatus,
+		ECAddr:       bStoreAddr,
+	}
+	srv.cluster = &Cluster{
+		Name: "test-cluster",
+		cfg:  newClusterConfig(),
+		storagePools: map[uint8]*StoragePool{
+			proto.DefaultECPoolId: ecPool,
+		},
+	}
+	srv.cluster.server = srv
+	return srv
+}
+
+func TestCheckStorageClassForCreateVolReq_blobstore(t *testing.T) {
+	t.Parallel()
+
+	t.Run("blobstore_vol_ok_when_resource_configured", func(t *testing.T) {
+		t.Parallel()
+		srv := newCreateVolStorageClassTestServer("127.0.0.1:8500", "access", proto.PoolStatusAvailable)
+		req := &createVolReq{
+			name:            "vol-blob-ok",
+			volStorageClass: proto.StorageClass_BlobStore,
+			defaultPoolId:   proto.DefaultECPoolId,
+		}
+		require.NoError(t, srv.checkStorageClassForCreateVolReq(req))
+	})
+
+	t.Run("blobstore_vol_ok_when_ec_pool_disabled_but_resource_configured", func(t *testing.T) {
+		t.Parallel()
+		srv := newCreateVolStorageClassTestServer("127.0.0.1:8500", "access", proto.PoolStatusDisabled)
+		req := &createVolReq{
+			name:            "vol-blob-disabled-pool",
+			volStorageClass: proto.StorageClass_BlobStore,
+			defaultPoolId:   proto.DefaultECPoolId,
+		}
+		require.NoError(t, srv.checkStorageClassForCreateVolReq(req))
+	})
+
+	t.Run("blobstore_vol_ok_when_ec_pool_missing_but_resource_configured", func(t *testing.T) {
+		t.Parallel()
+		srv := newCreateVolStorageClassTestServer("127.0.0.1:8500", "access", proto.PoolStatusAvailable)
+		delete(srv.cluster.storagePools, proto.DefaultECPoolId)
+		req := &createVolReq{
+			name:            "vol-blob-no-pool",
+			volStorageClass: proto.StorageClass_BlobStore,
+			defaultPoolId:   proto.DefaultECPoolId,
+		}
+		require.NoError(t, srv.checkStorageClassForCreateVolReq(req))
+	})
+
+	t.Run("blobstore_vol_rejects_missing_bstore_addr", func(t *testing.T) {
+		t.Parallel()
+		srv := newCreateVolStorageClassTestServer("", "access", proto.PoolStatusAvailable)
+		req := &createVolReq{
+			name:            "vol-blob-no-addr",
+			volStorageClass: proto.StorageClass_BlobStore,
+			defaultPoolId:   proto.DefaultECPoolId,
+		}
+		err := srv.checkStorageClassForCreateVolReq(req)
+		require.Error(t, err)
+		require.EqualError(t, err, "blobstore pool is not available")
+	})
+
+	t.Run("blobstore_vol_rejects_missing_service_path", func(t *testing.T) {
+		t.Parallel()
+		srv := newCreateVolStorageClassTestServer("127.0.0.1:8500", "", proto.PoolStatusAvailable)
+		req := &createVolReq{
+			name:            "vol-blob-no-path",
+			volStorageClass: proto.StorageClass_BlobStore,
+			defaultPoolId:   proto.DefaultECPoolId,
+		}
+		err := srv.checkStorageClassForCreateVolReq(req)
+		require.Error(t, err)
+		require.EqualError(t, err, "blobstore pool is not available")
+	})
+
+	t.Run("replica_vol_skips_blobstore_resource_check", func(t *testing.T) {
+		t.Parallel()
+		srv := newCreateVolStorageClassTestServer("", "", proto.PoolStatusDisabled)
+		req := &createVolReq{
+			name:            "vol-replica-only",
+			volStorageClass: proto.StorageClass_Replica_SSD,
+			defaultPoolId:   proto.DefaultECPoolId,
+		}
+		require.NoError(t, srv.checkStorageClassForCreateVolReq(req))
+	})
+
+	t.Run("replica_and_blobstore_not_supported", func(t *testing.T) {
+		t.Parallel()
+		srv := newCreateVolStorageClassTestServer("127.0.0.1:8500", "access", proto.PoolStatusAvailable)
+		req := &createVolReq{
+			name:                "vol-hybrid",
+			volStorageClass:     proto.StorageClass_Replica_SSD,
+			allowedStorageClass: []uint32{proto.StorageClass_Replica_HDD, proto.StorageClass_BlobStore},
+			defaultPoolId:       proto.DefaultECPoolId,
+		}
+		err := srv.checkStorageClassForCreateVolReq(req)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "not support both replica and blobstore")
+	})
+}
+
+func TestHasBothReplicaAndBlobstore(t *testing.T) {
+	t.Parallel()
+	srv := newCreateVolStorageClassTestServer("127.0.0.1:8500", "access", proto.PoolStatusAvailable)
+
+	require.True(t, srv.HasBothReplicaAndBlobstore(
+		proto.StorageClass_Replica_SSD,
+		[]uint32{proto.StorageClass_BlobStore},
+	))
+	require.False(t, srv.HasBothReplicaAndBlobstore(
+		proto.StorageClass_BlobStore,
+		nil,
+	))
+	require.False(t, srv.HasBothReplicaAndBlobstore(
+		proto.StorageClass_Replica_SSD,
+		[]uint32{proto.StorageClass_Replica_HDD},
+	))
+}
