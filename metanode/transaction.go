@@ -500,6 +500,56 @@ func (tm *TransactionManager) processTx() {
 		wg.Done()
 	}
 
+	rollbackFunc := func(skipSetStat bool, tx *proto.TransactionInfo) {
+		defer put()
+		status, err := tm.rollbackTx(tx.TxID, skipSetStat)
+
+		if err != nil || status != proto.OpOk {
+			log.LogWarnf("processExpiredTransactions: transaction (%v) expired, rolling back failed, status(%v), err(%v)",
+				tx, status, err)
+			return
+		}
+
+		if log.EnableDebug() {
+			log.LogDebugf("processExpiredTransactions: transaction (%v) expired, rolling back done", tx)
+		}
+	}
+
+	commitFunc := func(tx *proto.TransactionInfo) {
+		defer put()
+		status, err := tm.commitTx(tx.TxID, true)
+		if err != nil || status != proto.OpOk {
+			log.LogWarnf("processExpiredTransactions: transaction (%v) expired, commit failed, status(%v), err(%v)",
+				tx, status, err)
+			return
+		}
+
+		if log.EnableDebug() {
+			log.LogDebugf("processExpiredTransactions: transaction (%v) expired, commit done", tx)
+		}
+	}
+
+	delFunc := func(tx *proto.TransactionInfo) {
+		defer put()
+		status, err := tm.delTxFromRM(tx.TxID)
+		if err != nil || status != proto.OpOk {
+			log.LogWarnf("processExpiredTransactions: delTxFromRM (%v) expired, commit failed, status(%v), err(%v)",
+				tx, status, err)
+			return
+		}
+		if log.EnableDebug() {
+			log.LogDebugf("processExpiredTransactions: transaction (%v) delTxFromRM, commit done", tx)
+		}
+	}
+
+	clearOrphan := func(tx *proto.TransactionInfo) {
+		defer put()
+		tm.clearOrphanTx(tx)
+		if log.EnableDebug() {
+			log.LogDebugf("processExpiredTransactions: transaction (%v) clearOrphanTx", tx)
+		}
+	}
+
 	idx := 0
 	f := func(i interface{}) bool {
 		idx++
@@ -512,63 +562,13 @@ func (tm *TransactionManager) processTx() {
 		}
 
 		tx := i.(*proto.TransactionInfo)
-		rollbackFunc := func(skipSetStat bool) {
-			defer put()
-			status, err := tm.rollbackTx(tx.TxID, skipSetStat)
-
-			if err != nil || status != proto.OpOk {
-				log.LogWarnf("processExpiredTransactions: transaction (%v) expired, rolling back failed, status(%v), err(%v)",
-					tx, status, err)
-				return
-			}
-
-			if log.EnableDebug() {
-				log.LogDebugf("processExpiredTransactions: transaction (%v) expired, rolling back done", tx)
-			}
-		}
-
-		commitFunc := func() {
-			defer put()
-			status, err := tm.commitTx(tx.TxID, true)
-			if err != nil || status != proto.OpOk {
-				log.LogWarnf("processExpiredTransactions: transaction (%v) expired, commit failed, status(%v), err(%v)",
-					tx, status, err)
-				return
-			}
-
-			if log.EnableDebug() {
-				log.LogDebugf("processExpiredTransactions: transaction (%v) expired, commit done", tx)
-			}
-		}
-
-		delFunc := func() {
-			defer put()
-			status, err := tm.delTxFromRM(tx.TxID)
-			if err != nil || status != proto.OpOk {
-				log.LogWarnf("processExpiredTransactions: delTxFromRM (%v) expired, commit failed, status(%v), err(%v)",
-					tx, status, err)
-				return
-			}
-			if log.EnableDebug() {
-				log.LogDebugf("processExpiredTransactions: transaction (%v) delTxFromRM, commit done", tx)
-			}
-		}
-
-		clearOrphan := func() {
-			defer put()
-			tm.clearOrphanTx(tx)
-			if log.EnableDebug() {
-				log.LogDebugf("processExpiredTransactions: transaction (%v) clearOrphanTx", tx)
-			}
-		}
-
 		if tx.TmID != int64(mpId) {
 			if tx.CanDelete() {
 				if log.EnableDebug() {
 					log.LogDebugf("processExpiredTransactions: transaction (%v) can be deleted", tx)
 				}
 				get()
-				go delFunc()
+				go delFunc(tx)
 				return true
 			}
 
@@ -577,7 +577,7 @@ func (tm *TransactionManager) processTx() {
 					log.LogDebugf("processExpiredTransactions: orphan transaction (%v) can be clear", tx)
 				}
 				get()
-				go clearOrphan()
+				go clearOrphan(tx)
 				return true
 			}
 
@@ -592,7 +592,7 @@ func (tm *TransactionManager) processTx() {
 				log.LogDebugf("processExpiredTransactions: transaction (%v) continue to commit...", tx)
 			}
 			get()
-			go commitFunc()
+			go commitFunc(tx)
 			return true
 		}
 
@@ -601,7 +601,7 @@ func (tm *TransactionManager) processTx() {
 				log.LogDebugf("processExpiredTransactions: transaction (%v) continue to roll back...", tx)
 			}
 			get()
-			go rollbackFunc(true)
+			go rollbackFunc(true, tx)
 			return true
 		}
 
@@ -614,7 +614,7 @@ func (tm *TransactionManager) processTx() {
 				log.LogDebugf("processExpiredTransactions: transaction (%v) expired, rolling back...", tx)
 			}
 			get()
-			go rollbackFunc(false)
+			go rollbackFunc(false, tx)
 			return true
 		}
 
@@ -630,7 +630,7 @@ func (tm *TransactionManager) processTx() {
 				log.LogDebugf("processExpiredTransactions: transaction (%v) can be deleted", tx)
 			}
 			get()
-			go delFunc()
+			go delFunc(tx)
 			return true
 		}
 
@@ -638,8 +638,17 @@ func (tm *TransactionManager) processTx() {
 		return true
 	}
 
+	mp := tm.txProcessor.mp
+	if mp.inodeTree.GetStoreMode() == proto.StoreModeMem {
+		tm.txTree.(*TransactionBTree).GetTree().Ascend(func(i BtreeItem) bool {
+			return f(i.(*proto.TransactionInfo))
+		})
+		wg.Wait()
+		return
+	}
+
 	// NOTE: must use snapshot
-	snap, err := tm.txProcessor.mp.GetSnapShot()
+	snap, err := mp.GetSnapShot()
 	if err != nil {
 		log.LogErrorf("[processTx] failed to get mp(%v) snapshot", tm.txProcessor.mp.GetBaseConfig().PartitionId)
 		return

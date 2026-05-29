@@ -1151,6 +1151,168 @@ func TestGetTxHandler_Rocksdb(t *testing.T) {
 	testGetTxHandler(t)
 }
 
+// collectTxIDsViaProcessTxMemPath mirrors processTx mem-mode traversal (GetTree + Range).
+func collectTxIDsViaProcessTxMemPath(t *testing.T, tm *TransactionManager) []string {
+	t.Helper()
+	txBT, ok := tm.txTree.(*TransactionBTree)
+	require.True(t, ok)
+	cloned := &TransactionBTree{txBT.GetTree()}
+	var ids []string
+	err := cloned.Range(nil, nil, func(tx *proto.TransactionInfo) bool {
+		ids = append(ids, tx.TxID)
+		return true
+	})
+	require.NoError(t, err)
+	return ids
+}
+
+func registerTxForProcessTest(t *testing.T, tm *TransactionManager, tx *proto.TransactionInfo) {
+	t.Helper()
+	handle, err := tm.txTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	err = tm.registerTransaction(handle, tx)
+	require.NoError(t, err)
+	err = tm.txTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
+}
+
+func deleteTxForProcessTest(t *testing.T, tm *TransactionManager, txID string) {
+	t.Helper()
+	handle, err := tm.txTree.CreateBatchWriteHandle()
+	require.NoError(t, err)
+	_, err = tm.txTree.Delete(handle, txID)
+	require.NoError(t, err)
+	err = tm.txTree.CommitAndReleaseBatchWriteHandle(handle, false)
+	require.NoError(t, err)
+}
+
+func collectTxIDsViaSnapshotForProcessTest(t *testing.T, mp *metaPartition) []string {
+	t.Helper()
+	var ids []string
+	snap, err := mp.GetSnapShot()
+	require.NoError(t, err)
+	defer snap.Close()
+	err = snap.Range(TransactionType, func(item interface{}) bool {
+		ids = append(ids, item.(*proto.TransactionInfo).TxID)
+		return true
+	})
+	require.NoError(t, err)
+	return ids
+}
+
+func TestProcessTxMemRangeMatchesSnapshot(t *testing.T) {
+	initMps(t, proto.StoreModeMem)
+	tm := mp1.txProcessor.txManager
+
+	tx1 := proto.NewTransactionInfo(60, proto.TxTypeCreate)
+	tx1.TxID = tm.nextTxID()
+	tx1.State = proto.TxStatePreCommit
+	tx1.TmID = int64(mp1.config.PartitionId)
+	tx1.CreateTime = time.Now().Unix()
+	require.NoError(t, mp1.initTxInfo(tx1))
+	registerTxForProcessTest(t, tm, tx1)
+
+	tx2 := proto.NewTransactionInfo(60, proto.TxTypeCreate)
+	tx2.TxID = tm.nextTxID()
+	tx2.State = proto.TxStateCommit
+	tx2.TmID = int64(mp1.config.PartitionId)
+	tx2.CreateTime = time.Now().Unix()
+	require.NoError(t, mp1.initTxInfo(tx2))
+	registerTxForProcessTest(t, tm, tx2)
+
+	memIDs := collectTxIDsViaProcessTxMemPath(t, tm)
+	snapIDs := collectTxIDsViaSnapshotForProcessTest(t, mp1)
+	assert.ElementsMatch(t, []string{tx1.TxID, tx2.TxID}, memIDs)
+	assert.Equal(t, memIDs, snapIDs)
+}
+
+func TestProcessTxMemCloneKeepsTxDuringScanAfterLiveDelete(t *testing.T) {
+	initMps(t, proto.StoreModeMem)
+	tm := mp1.txProcessor.txManager
+
+	tx := proto.NewTransactionInfo(60, proto.TxTypeCreate)
+	tx.TxID = tm.nextTxID()
+	tx.State = proto.TxStatePreCommit
+	tx.TmID = int64(mp1.config.PartitionId)
+	tx.CreateTime = time.Now().Unix()
+	require.NoError(t, mp1.initTxInfo(tx))
+	registerTxForProcessTest(t, tm, tx)
+
+	var seen bool
+	txBT := tm.txTree.(*TransactionBTree)
+	cloned := &TransactionBTree{txBT.GetTree()}
+	err := cloned.Range(nil, nil, func(item *proto.TransactionInfo) bool {
+		if item.TxID != tx.TxID {
+			return true
+		}
+		seen = true
+		live, err := tm.getTransaction(tx.TxID)
+		require.NoError(t, err)
+		require.NotNil(t, live)
+
+		deleteTxForProcessTest(t, tm, tx.TxID)
+		live, err = tm.getTransaction(tx.TxID)
+		require.NoError(t, err)
+		require.Nil(t, live)
+		assert.Equal(t, tx.TxID, item.TxID)
+		return true
+	})
+	require.NoError(t, err)
+	assert.True(t, seen)
+}
+
+func TestProcessTxOnlyNonExpiredPreCommitCompletes(t *testing.T) {
+	initMps(t, proto.StoreModeMem)
+	test = true
+	tm := mp1.txProcessor.txManager
+
+	tx := proto.NewTransactionInfo(60, proto.TxTypeCreate)
+	tx.TxID = tm.nextTxID()
+	tx.State = proto.TxStatePreCommit
+	tx.TmID = int64(mp1.config.PartitionId)
+	tx.CreateTime = time.Now().Unix()
+	require.NoError(t, mp1.initTxInfo(tx))
+	registerTxForProcessTest(t, tm, tx)
+
+	done := make(chan struct{})
+	go func() {
+		tm.processTx()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("processTx did not finish for non-expired precommit tx")
+	}
+}
+
+func TestProcessTxForeignCommitDoesNotBlock(t *testing.T) {
+	initMps(t, proto.StoreModeMem)
+	test = true
+	tm := mp1.txProcessor.txManager
+
+	tx := proto.NewTransactionInfo(60, proto.TxTypeCreate)
+	tx.TxID = "10002_foreign"
+	tx.State = proto.TxStateCommit
+	tx.TmID = int64(mp2.config.PartitionId)
+	tx.CreateTime = time.Now().Unix()
+	require.NoError(t, mp1.initTxInfo(tx))
+	registerTxForProcessTest(t, tm, tx)
+
+	done := make(chan struct{})
+	go func() {
+		tm.processTx()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("processTx blocked on foreign commit tx")
+	}
+}
+
 func TestCleanTransactionTestDir(t *testing.T) {
 	os.RemoveAll(RocksdbTransTestDir)
 	os.RemoveAll(TransactionTestLog)
