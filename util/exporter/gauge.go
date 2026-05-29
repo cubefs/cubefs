@@ -45,9 +45,10 @@ func collectGauge() {
 }
 
 type Gauge struct {
-	name   string
-	labels map[string]string
-	val    float64
+	name      string
+	labels    map[string]string
+	metricKey string
+	val       float64
 }
 
 func getGaugeFromPool() *Gauge {
@@ -55,6 +56,10 @@ func getGaugeFromPool() *Gauge {
 }
 
 func putGaugeToPool(g *Gauge) {
+	g.name = ""
+	g.labels = nil
+	g.metricKey = ""
+	g.val = 0
 	GaugePool.Put(g)
 }
 
@@ -64,8 +69,12 @@ func NewGauge(name string) (g *Gauge) {
 	return
 }
 
-func (c *Gauge) Key() (key string) {
-	return stringMD5(c.Name())
+func (c *Gauge) ensureMetricKey() string {
+	if c.metricKey != "" {
+		return c.metricKey
+	}
+	c.metricKey = labelsMetricKey(c.name, c.labels)
+	return c.metricKey
 }
 
 func (g *Gauge) Name() string {
@@ -77,12 +86,16 @@ func (g *Gauge) String() string {
 }
 
 func (c *Gauge) Metric() prometheus.Gauge {
+	key := c.ensureMetricKey()
+	if v, ok := GaugeGroup.Load(key); ok {
+		return v.(prometheus.Gauge)
+	}
+
 	metric := prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Name:        c.name,
 			ConstLabels: c.labels,
 		})
-	key := c.Key()
 	actualMetric, load := GaugeGroup.LoadOrStore(key, metric)
 	if load {
 		return actualMetric.(prometheus.Gauge)
@@ -123,6 +136,7 @@ func publishGauge(name string, val float64, labels map[string]string) {
 	newGauge := getGaugeFromPool()
 	newGauge.name = name
 	newGauge.labels = labels
+	newGauge.metricKey = labelsMetricKey(name, labels)
 	newGauge.val = val
 
 	select {

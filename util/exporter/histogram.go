@@ -14,7 +14,10 @@ var (
 
 	HistogramGroup sync.Map
 	HistogramCh    chan *Histogram
-	once           = sync.Once{}
+	HistogramPool  = sync.Pool{New: func() interface{} {
+		return new(Histogram)
+	}}
+	once = sync.Once{}
 )
 
 func collectHistogram() {
@@ -23,7 +26,20 @@ func collectHistogram() {
 		m := <-HistogramCh
 		metric := m.Metric()
 		metric.Observe(m.val / 1000)
+		putHistogramToPool(m)
 	}
+}
+
+func getHistogramFromPool() *Histogram {
+	return HistogramPool.Get().(*Histogram)
+}
+
+func putHistogramToPool(h *Histogram) {
+	h.name = ""
+	h.labels = nil
+	h.metricKey = ""
+	h.val = 0
+	HistogramPool.Put(h)
 }
 
 func SetBuckets(bks []float64) {
@@ -32,13 +48,18 @@ func SetBuckets(bks []float64) {
 }
 
 type Histogram struct {
-	name   string
-	labels map[string]string
-	val    float64
+	name      string
+	labels    map[string]string
+	metricKey string
+	val       float64
 }
 
-func (c *Histogram) Key() (key string) {
-	return stringMD5(c.Name())
+func (c *Histogram) ensureMetricKey() string {
+	if c.metricKey != "" {
+		return c.metricKey
+	}
+	c.metricKey = labelsMetricKey(c.name, c.labels)
+	return c.metricKey
 }
 
 func (g *Histogram) Name() string {
@@ -56,14 +77,17 @@ func (c *Histogram) Metric() prometheus.Histogram {
 		})
 	}
 
+	key := c.ensureMetricKey()
+	if v, ok := HistogramGroup.Load(key); ok {
+		return v.(prometheus.Histogram)
+	}
+
 	metric := prometheus.NewHistogram(
 		prometheus.HistogramOpts{
 			Name:        c.name,
 			ConstLabels: c.labels,
 			Buckets:     buckets,
 		})
-
-	key := c.Key()
 	actualMetric, load := HistogramGroup.LoadOrStore(key, metric)
 	if load {
 		return actualMetric.(prometheus.Histogram)
@@ -84,9 +108,20 @@ func (c *Histogram) Metric() prometheus.Histogram {
 	return actualMetric.(prometheus.Histogram)
 }
 
-func (h *Histogram) publish() {
+func publishHistogram(name string, val float64, labels map[string]string) {
+	h := getHistogramFromPool()
+	h.name = name
+	h.labels = labels
+	h.metricKey = labelsMetricKey(name, labels)
+	h.val = val
+
 	select {
 	case HistogramCh <- h:
 	default:
+		putHistogramToPool(h)
 	}
+}
+
+func (h *Histogram) publish() {
+	publishHistogram(h.name, h.val, h.labels)
 }

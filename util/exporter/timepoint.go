@@ -50,6 +50,7 @@ func (tp *TimePoint) SetWithLabels(labels map[string]string) {
 		return
 	}
 	tp.labels = labels
+	tp.metricKey = labelsMetricKey(tp.name, labels)
 	tp.Set()
 }
 
