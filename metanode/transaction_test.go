@@ -21,6 +21,8 @@ import (
 	"testing"
 	"time"
 
+	raftstoremock "github.com/cubefs/cubefs/metanode/mocktest/raftstore"
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -96,6 +98,14 @@ func initMps(t *testing.T, storeMode proto.StoreMode) {
 	mp1 = newMetaPartition(10001, &metadataManager{}, storeMode)
 	mp2 = newMetaPartition(10002, &metadataManager{}, storeMode)
 	mp3 = newMetaPartition(10003, &metadataManager{}, storeMode)
+}
+
+// initMpsForProcessTx is like initMps but attaches a local raft mock on mp1 so async
+// rollback/commit/delete paths in processTx can call submit without panicking.
+func initMpsForProcessTx(t *testing.T, storeMode proto.StoreMode) {
+	t.Helper()
+	initMps(t, storeMode)
+	attachMockRaftApply(t, mp1)
 }
 
 func (i *Inode) Equal(inode *Inode) bool {
@@ -1287,6 +1297,64 @@ func TestProcessTxOnlyNonExpiredPreCommitCompletes(t *testing.T) {
 	}
 }
 
+func TestProcessTxExpiredPreCommitCompletes(t *testing.T) {
+	initMpsForProcessTx(t, proto.StoreModeMem)
+	test = true
+	tm := mp1.txProcessor.txManager
+
+	tx := proto.NewTransactionInfo(1, proto.TxTypeCreate)
+	tx.TxID = tm.nextTxID()
+	tx.State = proto.TxStatePreCommit
+	tx.TmID = int64(mp1.config.PartitionId)
+	tx.CreateTime = time.Now().Unix() - 120
+	require.NoError(t, mp1.initTxInfo(tx))
+	registerTxForProcessTest(t, tm, tx)
+
+	done := make(chan struct{})
+	go func() {
+		tm.processTx()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("processTx did not finish for expired precommit tx")
+	}
+}
+
+func TestProcessTxCommitStateInvokesCommit(t *testing.T) {
+	initMpsForProcessTx(t, proto.StoreModeMem)
+	test = true
+	tm := mp1.txProcessor.txManager
+
+	tx := proto.NewTransactionInfo(60, proto.TxTypeCreate)
+	tx.TxID = tm.nextTxID()
+	tx.State = proto.TxStateCommit
+	tx.TmID = int64(mp1.config.PartitionId)
+	tx.CreateTime = time.Now().Unix()
+	require.NoError(t, mp1.initTxInfo(tx))
+	registerTxForProcessTest(t, tm, tx)
+
+	tm.processTx()
+}
+
+func TestProcessTxRollbackStateInvokesRollback(t *testing.T) {
+	initMpsForProcessTx(t, proto.StoreModeMem)
+	test = true
+	tm := mp1.txProcessor.txManager
+
+	tx := proto.NewTransactionInfo(60, proto.TxTypeCreate)
+	tx.TxID = tm.nextTxID()
+	tx.State = proto.TxStateRollback
+	tx.TmID = int64(mp1.config.PartitionId)
+	tx.CreateTime = time.Now().Unix()
+	require.NoError(t, mp1.initTxInfo(tx))
+	registerTxForProcessTest(t, tm, tx)
+
+	tm.processTx()
+}
+
 func TestProcessTxForeignCommitDoesNotBlock(t *testing.T) {
 	initMps(t, proto.StoreModeMem)
 	test = true
@@ -1310,6 +1378,119 @@ func TestProcessTxForeignCommitDoesNotBlock(t *testing.T) {
 	case <-done:
 	case <-time.After(3 * time.Second):
 		t.Fatal("processTx blocked on foreign commit tx")
+	}
+}
+
+// attachMockRaftApply wires a raft mock that applies FSM ops locally (for delTxFromRM / submit paths).
+func attachMockRaftApply(t *testing.T, mp *metaPartition) {
+	t.Helper()
+	ctrl := gomock.NewController(t)
+	if mp.config.NodeId == 0 {
+		mp.config.NodeId = 1
+	}
+	if len(mp.config.Peers) == 0 {
+		mp.config.Peers = []proto.Peer{{ID: mp.config.NodeId, Addr: "127.0.0.1:1"}}
+	}
+	raft := raftstoremock.NewMockPartition(ctrl)
+	var idx uint64
+	raft.EXPECT().Submit(gomock.Any()).DoAndReturn(func(cmd []byte) (interface{}, error) {
+		idx++
+		return mp.Apply(cmd, idx)
+	}).AnyTimes()
+	raft.EXPECT().IsRaftLeader().Return(true).AnyTimes()
+	raft.EXPECT().LeaderTerm().Return(mp.config.NodeId, uint64(1)).AnyTimes()
+	mp.raftPartition = raft
+	t.Cleanup(ctrl.Finish)
+}
+
+func TestProcessTxDeletableLocalTxRemoved(t *testing.T) {
+	initMpsForProcessTx(t, proto.StoreModeMem)
+	test = true
+	tm := mp1.txProcessor.txManager
+
+	tx := proto.NewTransactionInfo(60, proto.TxTypeCreate)
+	tx.TmID = int64(mp1.config.PartitionId)
+	require.NoError(t, mp1.initTxInfo(tx))
+	tx.State = proto.TxStateCommitDone
+	tx.RMFinish = true
+	tx.DoneTime = time.Now().Unix() - int64(proto.DefaultTxDeleteTime+10)
+	registerTxForProcessTest(t, tm, tx)
+
+	tm.processTx()
+
+	got, err := tm.getTransaction(tx.TxID)
+	require.NoError(t, err)
+	require.Nil(t, got)
+}
+
+func TestProcessTxDeletableForeignTxRemoved(t *testing.T) {
+	initMpsForProcessTx(t, proto.StoreModeMem)
+	test = true
+	tm := mp1.txProcessor.txManager
+
+	tx := proto.NewTransactionInfo(60, proto.TxTypeCreate)
+	tx.TmID = int64(mp2.config.PartitionId)
+	require.NoError(t, mp1.initTxInfo(tx))
+	tx.State = proto.TxStateRollbackDone
+	tx.RMFinish = true
+	tx.DoneTime = time.Now().Unix() - int64(proto.DefaultTxDeleteTime+10)
+	registerTxForProcessTest(t, tm, tx)
+
+	tm.processTx()
+
+	got, err := tm.getTransaction(tx.TxID)
+	require.NoError(t, err)
+	require.Nil(t, got)
+}
+
+func TestProcessTxMemTraverseStopsWhenNotLeaderAtCheckpoint(t *testing.T) {
+	initMps(t, proto.StoreModeMem)
+	test = true
+	tm := mp1.txProcessor.txManager
+
+	for i := 0; i < 104; i++ {
+		tx := proto.NewTransactionInfo(60, proto.TxTypeCreate)
+		tx.TmID = int64(mp2.config.PartitionId)
+		require.NoError(t, mp1.initTxInfo(tx))
+		registerTxForProcessTest(t, tm, tx)
+	}
+
+	tail := proto.NewTransactionInfo(60, proto.TxTypeCreate)
+	tail.TmID = int64(mp2.config.PartitionId)
+	require.NoError(t, mp1.initTxInfo(tail))
+	registerTxForProcessTest(t, tm, tail)
+	tailID := tail.TxID
+
+	tm.processTx()
+
+	got, err := tm.getTransaction(tailID)
+	require.NoError(t, err)
+	require.NotNil(t, got, "traverse should stop before tail tx when IsLeader fails at idx 100")
+}
+
+func TestProcessTxForeignOngoingPreCommitDoesNotBlock(t *testing.T) {
+	initMps(t, proto.StoreModeMem)
+	test = true
+	tm := mp1.txProcessor.txManager
+
+	tx := proto.NewTransactionInfo(60, proto.TxTypeCreate)
+	tx.TxID = "10002_foreign_ongoing"
+	tx.State = proto.TxStatePreCommit
+	tx.TmID = int64(mp2.config.PartitionId)
+	tx.CreateTime = time.Now().Unix()
+	require.NoError(t, mp1.initTxInfo(tx))
+	registerTxForProcessTest(t, tm, tx)
+
+	done := make(chan struct{})
+	go func() {
+		tm.processTx()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("processTx blocked on foreign ongoing precommit tx")
 	}
 }
 

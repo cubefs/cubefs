@@ -315,7 +315,7 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opMetaExtentsAdd(conn, p, remoteAddr)
 	case proto.OpMetaExtentAddWithCheck:
 		err = m.opMetaExtentAddWithCheck(conn, p, remoteAddr)
-	case proto.OpMetaExtentsList:
+	case proto.OpMetaExtentsList, proto.OpMetaAsyncExtentsList:
 		err = m.opMetaExtentsList(conn, p, remoteAddr)
 	case proto.OpMetaObjExtentsList:
 		err = m.opMetaObjExtentsList(conn, p, remoteAddr)

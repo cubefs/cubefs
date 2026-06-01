@@ -14,7 +14,11 @@
 
 package exporter
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
 
 func TestLabelsMetricKeyStableAcrossMapIteration(t *testing.T) {
 	a := map[string]string{"cluster": "c1", "volname": "v1"}
@@ -53,6 +57,76 @@ func TestLabelsMetricKeyReusesAcrossDifferentMapsWithSameContent(t *testing.T) {
 	}
 }
 
+func TestFNV64Uses64BitOffset(t *testing.T) {
+	require.Equal(t, uint64(14695981039346656037), uint64(fnvOffset64))
+}
+
+func TestLabelsMetricKeyHashCollisionDoesNotCrosstalk(t *testing.T) {
+	oldMap := metricKeyByHash
+	oldFn := hashNameAndLabelsFn
+	t.Cleanup(func() {
+		metricKeyMu.Lock()
+		metricKeyByHash = oldMap
+		metricKeyMu.Unlock()
+		hashNameAndLabelsFn = oldFn
+	})
+
+	const forcedHash uint64 = 0xcafebabe12345678
+	hashNameAndLabelsFn = func(string, []string, map[string]string) uint64 {
+		return forcedHash
+	}
+
+	metricKeyMu.Lock()
+	metricKeyByHash = make(map[uint64][]metricKeyEntry)
+	metricKeyMu.Unlock()
+
+	keyA := labelsMetricKey("metric", map[string]string{"a": "1"})
+	keyB := labelsMetricKey("metric", map[string]string{"b": "2"})
+	require.NotEqual(t, keyA, keyB, "different labels must not share cached key on hash collision")
+
+	keyBAgain := labelsMetricKey("metric", map[string]string{"b": "2"})
+	require.Equal(t, keyB, keyBAgain)
+
+	keyOtherName := labelsMetricKey("other_metric", map[string]string{"a": "1"})
+	require.NotEqual(t, keyA, keyOtherName, "different metric names must not share cached key on hash collision")
+}
+
+func TestLabelsMetricKeySeededCollisionEntryMisses(t *testing.T) {
+	labels := map[string]string{"x": "wanted"}
+	keys, pool := sortedLabelKeys(labels)
+	defer releaseLabelKeys(pool)
+	labelsFP := buildLabelsFingerprint(keys, labels)
+	h := hashNameAndLabels("m", keys, labels)
+
+	metricKeyMu.Lock()
+	oldBucket := metricKeyByHash[h]
+	metricKeyByHash[h] = []metricKeyEntry{{
+		name:     "m",
+		labelsFP: "decoy=1\x00",
+		key:      "m\x00decoy=1\x00",
+	}}
+	metricKeyMu.Unlock()
+	t.Cleanup(func() {
+		metricKeyMu.Lock()
+		metricKeyByHash[h] = oldBucket
+		metricKeyMu.Unlock()
+	})
+
+	got := labelsMetricKey("m", labels)
+	require.Equal(t, joinNameLabelsFP("m", labelsFP), got)
+	require.NotEqual(t, "m\x00decoy=1\x00", got)
+}
+
+func TestFingerprintMatches(t *testing.T) {
+	labels := map[string]string{"b": "2", "a": "1"}
+	keys, pool := sortedLabelKeys(labels)
+	defer releaseLabelKeys(pool)
+
+	fp := buildLabelsFingerprint(keys, labels)
+	require.True(t, fingerprintMatches(keys, labels, fp))
+	require.False(t, fingerprintMatches(keys, labels, "a=9\x00b=2\x00"))
+}
+
 func TestHashNameAndLabelsStable(t *testing.T) {
 	a := map[string]string{"b": "2", "a": "1"}
 	b := map[string]string{"a": "1", "b": "2"}
@@ -77,7 +151,84 @@ func TestLabelsMetricKeyAllocsOnCacheHit(t *testing.T) {
 	allocs := testing.AllocsPerRun(runs, func() {
 		_ = labelsMetricKey("latency_hist", labels)
 	})
-	t.Logf("allocs per labelsMetricKey (cache hit): %v", float64(allocs)/runs)
+	const maxAllocsPerHit = 0.1
+	avg := float64(allocs) / runs
+	t.Logf("allocs per labelsMetricKey (cache hit): %v", avg)
+	require.LessOrEqual(t, avg, maxAllocsPerHit)
+}
+
+func TestCounterPublishUsesPoolAndMetricCache(t *testing.T) {
+	oldEnabled := enabledPrometheus
+	enabledPrometheus = true
+	t.Cleanup(func() { enabledPrometheus = oldEnabled })
+
+	ch := make(chan *Counter, 1)
+	oldCh := CounterCh
+	CounterCh = ch
+	t.Cleanup(func() { CounterCh = oldCh })
+
+	const counterName = "ut_counter_pool"
+	c := NewCounter(counterName)
+	c.AddWithLabels(3, map[string]string{"vol": "v1"})
+
+	select {
+	case m := <-ch:
+		require.Equal(t, metricsName(counterName), m.name)
+		require.EqualValues(t, 3, m.val)
+		require.NotEmpty(t, m.metricKey)
+		metric1 := m.Metric()
+		metric2 := m.Metric()
+		require.Same(t, metric1, metric2)
+	default:
+		t.Fatal("expected counter publish on channel")
+	}
+}
+
+func TestGaugePublishUsesPool(t *testing.T) {
+	oldEnabled := enabledPrometheus
+	enabledPrometheus = true
+	t.Cleanup(func() { enabledPrometheus = oldEnabled })
+
+	ch := make(chan *Gauge, 1)
+	oldCh := GaugeCh
+	GaugeCh = ch
+	t.Cleanup(func() { GaugeCh = oldCh })
+
+	const gaugeName = "ut_gauge_pool"
+	g := NewGauge(gaugeName)
+	g.SetWithLabels(7, map[string]string{"vol": "v1"})
+
+	select {
+	case m := <-ch:
+		require.Equal(t, metricsName(gaugeName), m.name)
+		require.InDelta(t, 7, m.val, 0)
+		require.NotEmpty(t, m.metricKey)
+	default:
+		t.Fatal("expected gauge publish on channel")
+	}
+}
+
+func TestHistogramPublishUsesPool(t *testing.T) {
+	oldEnabled := enabledPrometheus
+	enabledPrometheus = true
+	t.Cleanup(func() { enabledPrometheus = oldEnabled })
+
+	ch := make(chan *Histogram, 1)
+	oldCh := HistogramCh
+	HistogramCh = ch
+	t.Cleanup(func() { HistogramCh = oldCh })
+
+	const histName = "ut_hist_pool"
+	publishHistogram(metricsName(histName), 1234, map[string]string{"vol": "v1"})
+
+	select {
+	case m := <-ch:
+		require.Equal(t, metricsName(histName), m.name)
+		require.InDelta(t, 1234, m.val, 0)
+		require.NotEmpty(t, m.metricKey)
+	default:
+		t.Fatal("expected histogram publish on channel")
+	}
 }
 
 func BenchmarkLabelsMetricKeyCacheHit(b *testing.B) {

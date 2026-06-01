@@ -23,13 +23,21 @@ import (
 
 const (
 	maxStackLabelKeys = 16
-	fnvOffset64       = 2166136261
+	fnvOffset64       = 14695981039346656037
 	fnvPrime64        = 1099511628211
 )
 
+type metricKeyEntry struct {
+	name     string
+	labelsFP string
+	key      string
+}
+
 var (
 	metricKeyMu     sync.RWMutex
-	metricKeyByHash = make(map[uint64]string)
+	metricKeyByHash = make(map[uint64][]metricKeyEntry)
+
+	hashNameAndLabelsFn = hashNameAndLabels
 
 	labelKeysPool = sync.Pool{New: func() any {
 		s := make([]string, 0, 2*maxStackLabelKeys)
@@ -102,6 +110,35 @@ func buildLabelsFingerprint(keys []string, labels map[string]string) string {
 	return b.String()
 }
 
+// fingerprintMatches compares sorted label keys/values against a stored fingerprint
+// without allocating a new string (used on cache hit).
+func fingerprintMatches(keys []string, labels map[string]string, fp string) bool {
+	off := 0
+	for _, k := range keys {
+		v := labels[k]
+		if off+len(k)+1+len(v)+1 > len(fp) {
+			return false
+		}
+		if fp[off:off+len(k)] != k {
+			return false
+		}
+		off += len(k)
+		if fp[off] != '=' {
+			return false
+		}
+		off++
+		if fp[off:off+len(v)] != v {
+			return false
+		}
+		off += len(v)
+		if fp[off] != 0 {
+			return false
+		}
+		off++
+	}
+	return off == len(fp)
+}
+
 func joinNameLabelsFP(name, labelsFP string) string {
 	var b strings.Builder
 	b.Grow(len(name) + len(labelsFP) + 1)
@@ -109,6 +146,32 @@ func joinNameLabelsFP(name, labelsFP string) string {
 	b.WriteByte(0)
 	b.WriteString(labelsFP)
 	return b.String()
+}
+
+func lookupMetricKeyEntry(h uint64, name string, keys []string, labels map[string]string) (key string, ok bool) {
+	metricKeyMu.RLock()
+	defer metricKeyMu.RUnlock()
+	for _, e := range metricKeyByHash[h] {
+		if e.name != name {
+			continue
+		}
+		if fingerprintMatches(keys, labels, e.labelsFP) {
+			return e.key, true
+		}
+	}
+	return "", false
+}
+
+func storeMetricKeyEntry(h uint64, entry metricKeyEntry) string {
+	metricKeyMu.Lock()
+	defer metricKeyMu.Unlock()
+	for _, e := range metricKeyByHash[h] {
+		if e.name == entry.name && e.labelsFP == entry.labelsFP {
+			return e.key
+		}
+	}
+	metricKeyByHash[h] = append(metricKeyByHash[h], entry)
+	return entry.key
 }
 
 // labelsMetricKey returns a cached stable string key for sync.Map.
@@ -123,26 +186,19 @@ func labelsMetricKey(name string, labels map[string]string) string {
 		defer releaseLabelKeys(poolSlice)
 	}
 
-	h := hashNameAndLabels(name, keys, labels)
+	h := hashNameAndLabelsFn(name, keys, labels)
 
-	metricKeyMu.RLock()
-	key, ok := metricKeyByHash[h]
-	metricKeyMu.RUnlock()
-	if ok {
+	if key, ok := lookupMetricKeyEntry(h, name, keys, labels); ok {
 		return key
 	}
 
 	labelsFP := buildLabelsFingerprint(keys, labels)
-	key = joinNameLabelsFP(name, labelsFP)
-
-	metricKeyMu.Lock()
-	if existing, ok := metricKeyByHash[h]; ok {
-		metricKeyMu.Unlock()
-		return existing
-	}
-	metricKeyByHash[h] = key
-	metricKeyMu.Unlock()
-	return key
+	key := joinNameLabelsFP(name, labelsFP)
+	return storeMetricKeyEntry(h, metricKeyEntry{
+		name:     name,
+		labelsFP: labelsFP,
+		key:      key,
+	})
 }
 
 func stringMapToString(m map[string]string) string {

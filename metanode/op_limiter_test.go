@@ -60,3 +60,24 @@ func TestGOpInfo_JSONMarshable(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, string(data), fmt.Sprintf("\"%s\"", "metalookup"))
 }
+
+func TestGOpInfo_AsyncExtentsListRegistered(t *testing.T) {
+	require.Equal(t, proto.OpMetaAsyncExtentsList, proto.GOpInfo["metaasyncextentslist"])
+	require.Equal(t, proto.OpMetaExtentsList, proto.GOpInfo["metaextentslist"])
+	require.NotEqual(t, proto.GOpInfo["metaextentslist"], proto.GOpInfo["metaasyncextentslist"])
+	require.Equal(t, "OpMetaAsyncExtentsList", (&proto.Packet{Opcode: proto.OpMetaAsyncExtentsList}).GetOpMsg())
+}
+
+func TestOpLimiter_AsyncExtentsListDefaultLimiter(t *testing.T) {
+	ol := newOpLimiter()
+
+	err, name, code := ol.IsOpNameValid("metaasyncextentslist")
+	require.NoError(t, err)
+	require.Equal(t, "metaasyncextentslist", name)
+	require.Equal(t, proto.OpMetaAsyncExtentsList, code)
+
+	ol.m.RLock()
+	_, exists := ol.limiterInfos[proto.OpMetaAsyncExtentsList]
+	ol.m.RUnlock()
+	require.True(t, exists, "default async limiter should be registered for metaasyncextentslist")
+}

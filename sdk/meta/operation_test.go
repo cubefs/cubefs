@@ -345,3 +345,110 @@ func mockBlockedLookupThenIgetHandler(t *testing.T, requestReceived chan<- struc
 		return nil
 	}
 }
+
+func TestGetExtentsOpcode(t *testing.T) {
+	tests := []struct {
+		name    string
+		isAsync bool
+		wantOp  uint8
+	}{
+		{name: "sync", isAsync: false, wantOp: proto.OpMetaExtentsList},
+		{name: "async", isAsync: true, wantOp: proto.OpMetaAsyncExtentsList},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ch := make(chan *proto.Packet, 1)
+			addr, cleanup := startMockMetaPacketListener(t, mockExtentsListOKHandler(ch))
+			t.Cleanup(cleanup)
+
+			mw := newConnTestMetaWrapper()
+			t.Cleanup(func() { mw.conns.Close() })
+
+			const inode = uint64(100)
+			mp := &MetaPartition{
+				PartitionID: 77,
+				Start:       1,
+				End:         1 << 20,
+				LeaderAddr:  addr,
+				Members:     []string{addr},
+			}
+
+			resp, err := mw.getExtents(mp, inode, false, false, false, tt.isAsync)
+			require.NoError(t, err)
+			require.NotNil(t, resp)
+			require.Equal(t, uint64(7), resp.Generation)
+			require.Equal(t, uint64(4096), resp.Size)
+
+			select {
+			case got := <-ch:
+				require.Equal(t, tt.wantOp, got.Opcode)
+			case <-time.After(5 * time.Second):
+				t.Fatal("timed out waiting for getExtents request")
+			}
+		})
+	}
+}
+
+func TestGetExtentsRequestFields(t *testing.T) {
+	reqCh := make(chan *proto.GetExtentsRequest, 1)
+
+	addr, cleanup := startMockMetaPacketListener(t, func(conn net.Conn) error {
+		pkt := proto.NewPacket()
+		if err := pkt.ReadFromConnWithVer(conn, proto.ReadDeadlineTime); err != nil {
+			return err
+		}
+
+		var req proto.GetExtentsRequest
+		if err := json.Unmarshal(pkt.Data, &req); err != nil {
+			return err
+		}
+		reqCh <- &req
+
+		resp := proto.NewPacketReqID()
+		resp.ReqID = pkt.ReqID
+		resp.Opcode = pkt.Opcode
+		resp.PartitionID = pkt.PartitionID
+		resp.ResultCode = proto.OpOk
+		body, err := json.Marshal(&proto.GetExtentsResponse{Generation: 1, Size: 128})
+		if err != nil {
+			return err
+		}
+		resp.Data = body
+		resp.Size = uint32(len(body))
+		return resp.WriteToConn(conn)
+	})
+	t.Cleanup(cleanup)
+
+	mw := newConnTestMetaWrapper()
+	mw.volname = "extents-vol"
+	mw.VerReadSeq = 99
+	mw.InnerReq = true
+	t.Cleanup(func() { mw.conns.Close() })
+
+	const inode = uint64(2048)
+	mp := &MetaPartition{
+		PartitionID: 12,
+		Start:       1,
+		End:         1 << 20,
+		LeaderAddr:  addr,
+		Members:     []string{addr},
+	}
+
+	_, err := mw.getExtents(mp, inode, true, true, true, false)
+	require.NoError(t, err)
+
+	select {
+	case req := <-reqCh:
+		require.Equal(t, "extents-vol", req.VolName)
+		require.Equal(t, uint64(12), req.PartitionID)
+		require.Equal(t, inode, req.Inode)
+		require.Equal(t, uint64(99), req.VerSeq)
+		require.True(t, req.IsCache)
+		require.True(t, req.OpenForWrite)
+		require.True(t, req.IsMigration)
+		require.True(t, req.InnerReq)
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for getExtents request")
+	}
+}

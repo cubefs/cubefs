@@ -1395,7 +1395,7 @@ func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode uint64, extent p
 	return status, err
 }
 
-func (mw *MetaWrapper) getExtents(mp *MetaPartition, inode uint64, isCache bool, openForWrite, isMigration bool) (resp *proto.GetExtentsResponse, err error) {
+func (mw *MetaWrapper) getExtents(mp *MetaPartition, inode uint64, isCache bool, openForWrite, isMigration, isAsync bool) (resp *proto.GetExtentsResponse, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("getExtents", err, bgTime, 1)
@@ -1416,7 +1416,11 @@ func (mw *MetaWrapper) getExtents(mp *MetaPartition, inode uint64, isCache bool,
 	}
 
 	packet := proto.NewPacketReqID()
-	packet.Opcode = proto.OpMetaExtentsList
+	if isAsync {
+		packet.Opcode = proto.OpMetaAsyncExtentsList
+	} else {
+		packet.Opcode = proto.OpMetaExtentsList
+	}
 	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {

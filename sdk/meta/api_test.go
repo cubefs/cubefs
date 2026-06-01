@@ -18,6 +18,7 @@ import (
 	"os"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
@@ -124,4 +125,102 @@ func TestRename_ll_TxDstExistsNoOverwriteReturnsEEXIST(t *testing.T) {
 	err := mw.Rename_ll(150, "src", 180, "dst", "/data/src", "/.Trash/Current/bucket/dst", false, false)
 	require.ErrorIs(t, err, syscall.EEXIST)
 	require.Equal(t, int32(2), lookupCalls)
+}
+
+func TestBatchInodeGetExtentsUsesAsyncExtentsOpcode(t *testing.T) {
+	const inode = uint64(100)
+	extentsOpCh := make(chan uint8, 1)
+
+	addr, cleanup := startMockMetaPacketListener(t, mockBatchIgetThenExtentsListHandler(inode, extentsOpCh))
+	t.Cleanup(cleanup)
+
+	mw := newTrashDeleteTestMetaWrapper(t, addr)
+	infos := mw.BatchInodeGetExtents([]uint64{inode}, true)
+	require.Len(t, infos, 1)
+	require.NotNil(t, infos[0].Extents)
+	require.Equal(t, uint64(3), infos[0].Extents.Generation)
+
+	select {
+	case op := <-extentsOpCh:
+		require.Equal(t, proto.OpMetaAsyncExtentsList, op)
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for async extents list request")
+	}
+}
+
+func TestBatchInodeGetExtentsUsesSyncExtentsOpcode(t *testing.T) {
+	const inode = uint64(100)
+	extentsOpCh := make(chan uint8, 1)
+
+	addr, cleanup := startMockMetaPacketListener(t, mockBatchIgetThenExtentsListHandler(inode, extentsOpCh))
+	t.Cleanup(cleanup)
+
+	mw := newTrashDeleteTestMetaWrapper(t, addr)
+	_ = mw.BatchInodeGetExtents([]uint64{inode}, false)
+
+	select {
+	case op := <-extentsOpCh:
+		require.Equal(t, proto.OpMetaExtentsList, op)
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for sync extents list request")
+	}
+}
+
+func TestInodeGetExt_llFetchesInodeAndExtents(t *testing.T) {
+	const inode = uint64(88)
+	extentsOpCh := make(chan uint8, 2)
+
+	addr, cleanup := startMockMetaPacketListener(t, mockInodeGetAndExtentsHandler(inode, extentsOpCh))
+	t.Cleanup(cleanup)
+
+	mw := newTrashDeleteTestMetaWrapper(t, addr)
+	mw.addPartition(&MetaPartition{
+		PartitionID: 1,
+		Start:       1,
+		End:         1 << 20,
+		LeaderAddr:  addr,
+		Members:     []string{addr},
+	})
+
+	info, err := mw.InodeGetExt_ll(inode)
+	require.NoError(t, err)
+	require.NotNil(t, info)
+	require.NotNil(t, info.Extents)
+	require.Equal(t, uint64(11), info.Extents.Generation)
+	require.Equal(t, uint64(8192), info.Extents.Size)
+
+	select {
+	case op := <-extentsOpCh:
+		require.Equal(t, proto.OpMetaExtentsList, op)
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for InodeGetExt_ll extents request")
+	}
+}
+
+func TestGetExtentsPublicAPIUsesSyncOpcode(t *testing.T) {
+	ch := make(chan *proto.Packet, 1)
+	addr, cleanup := startMockMetaPacketListener(t, mockExtentsListOKHandler(ch))
+	t.Cleanup(cleanup)
+
+	mw := newTrashDeleteTestMetaWrapper(t, addr)
+	mw.addPartition(&MetaPartition{
+		PartitionID: 1,
+		Start:       1,
+		End:         1 << 20,
+		LeaderAddr:  addr,
+		Members:     []string{addr},
+	})
+
+	const inode = uint64(50)
+	gen, size, _, err := mw.GetExtents(inode, false, false, false)
+	require.NoError(t, err)
+	require.Equal(t, uint64(7), gen)
+	require.Equal(t, uint64(4096), size)
+
+	select {
+	case got := <-ch:
+		require.Equal(t, proto.OpMetaExtentsList, got.Opcode)
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for GetExtents request")
+	}
 }

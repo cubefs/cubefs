@@ -63,7 +63,7 @@ const (
 	ForceUpdateRWMP             = "ForceUpdateRWMP"
 )
 
-var GetExtetnsPool = taskpool.New(50, 100)
+var GetExtetnsPool = taskpool.New(10, 100)
 
 // SetClientPoolId sets the client specified pool ID for new inodes
 func (mw *MetaWrapper) SetClientPoolId(poolId uint8) {
@@ -462,7 +462,7 @@ func (mw *MetaWrapper) InodeGetExt_ll(inode uint64) (*proto.InodeInfo, error) {
 			return
 		}
 
-		resp, getExtErr = mw.getExtents(mp, inode, false, false, false)
+		resp, getExtErr = mw.getExtents(mp, inode, false, false, false, false)
 		if getExtErr != nil {
 			log.LogErrorf("InodeGetExt_ll: get extents fail: ino(%v) err(%v)", inode, getExtErr)
 			return
@@ -528,7 +528,7 @@ func (mw *MetaWrapper) doInodeGet(inode uint64, isAsync bool) (*proto.InodeInfo,
 	return info, nil
 }
 
-func (mw *MetaWrapper) BatchInodeGetExtents(inodes []uint64) []*proto.InodeInfo {
+func (mw *MetaWrapper) BatchInodeGetExtents(inodes []uint64, async bool) []*proto.InodeInfo {
 	begin := stat.BeginStat()
 	defer stat.EndStat("BatchInodeGetExtents", nil, begin, 1)
 
@@ -553,7 +553,7 @@ func (mw *MetaWrapper) BatchInodeGetExtents(inodes []uint64) []*proto.InodeInfo 
 				return
 			}
 
-			resp, err := mw.getExtents(mp, tmpInfo.Inode, false, false, false)
+			resp, err := mw.getExtents(mp, tmpInfo.Inode, false, false, false, async)
 			if err != nil {
 				log.LogErrorf("BatchInodeGetExtents: get extents fail: ino(%v) err(%v)", tmpInfo.Inode, err)
 				return
@@ -1686,7 +1686,7 @@ func (mw *MetaWrapper) GetExtents(inode uint64, isCache, openForWrite,
 		return 0, 0, nil, syscall.ENOENT
 	}
 
-	resp, err := mw.getExtents(mp, inode, isCache, openForWrite, isMigration)
+	resp, err := mw.getExtents(mp, inode, isCache, openForWrite, isMigration, false)
 	if err != nil {
 		if !strings.Contains(err.Error(), "OpMismatchStorageClass") {
 			if resp != nil {

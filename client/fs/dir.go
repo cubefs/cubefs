@@ -117,7 +117,7 @@ type Dir struct {
 type readDirAllMetaClient interface {
 	ReadDirLimit_ll(parentID uint64, from string, limit uint64, isAsync bool) ([]proto.Dentry, error)
 	BatchInodeGet(inodes []uint64) []*proto.InodeInfo
-	BatchInodeGetExtents(inodes []uint64) []*proto.InodeInfo
+	BatchInodeGetExtents(inodes []uint64, async bool) []*proto.InodeInfo
 }
 
 // dirLookupMetaCacheAccelerationGate is the condition under which Lookup may trigger background ReadDirAll
@@ -732,7 +732,7 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 
 	var infos []*proto.InodeInfo
 	if d.super.metaCacheAcceleration {
-		infos = d.super.mw.BatchInodeGetExtents(inodes)
+		infos = d.super.mw.BatchInodeGetExtents(inodes, true)
 	} else {
 		infos = d.super.mw.BatchInodeGet(inodes)
 	}
@@ -819,7 +819,7 @@ func (d *Dir) readDirAll(mw readDirAllMetaClient) ([]fuse.Dirent, error) {
 
 		log.LogDebugf("ReadDirAll BatchInodeGet ino(%v) batchInodes(%v) from(%v)", d.info.Inode, len(inodes), from)
 		if d.super.metaCacheAcceleration {
-			infos = append(infos, mw.BatchInodeGetExtents(inodes)...)
+			infos = append(infos, mw.BatchInodeGetExtents(inodes, true)...)
 		} else {
 			infos = append(infos, mw.BatchInodeGet(inodes)...)
 		}

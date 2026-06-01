@@ -10,8 +10,12 @@ package fs
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net"
 	"os"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -21,6 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/meta"
 )
 
 func TestDir_getCwd_nodeCacheMiss_immediate(t *testing.T) {
@@ -79,6 +84,175 @@ func TestDir_getCwd_nodeInCacheButNotDir(t *testing.T) {
 		name:      "x",
 	}
 	require.Equal(t, "unknown/", d.getCwd())
+}
+
+func TestDir_ReadDir_metaCacheAccelerationUsesBatchInodeGetExtentsAsync(t *testing.T) {
+	const parentIno = uint64(300)
+	extentsAsync := make([]bool, 0)
+
+	addr, cleanup := startUTMetaPacketListener(t, func(conn net.Conn) error {
+		for {
+			pkt := proto.NewPacket()
+			if err := pkt.ReadFromConnWithVer(conn, proto.ReadDeadlineTime); err != nil {
+				return err
+			}
+			resp := proto.NewPacketReqID()
+			resp.ReqID = pkt.ReqID
+			resp.Opcode = pkt.Opcode
+			resp.PartitionID = pkt.PartitionID
+			resp.ResultCode = proto.OpOk
+
+			var body []byte
+			var err error
+			switch pkt.Opcode {
+			case proto.OpMetaReadDirLimit:
+				body, err = json.Marshal(&proto.ReadDirLimitResponse{
+					Children: []proto.Dentry{
+						{Name: "a", Inode: 301, Type: uint32(syscall.S_IFREG | 0o644)},
+						{Name: "b", Inode: 302, Type: uint32(syscall.S_IFREG | 0o644)},
+					},
+				})
+			case proto.OpMetaBatchInodeGet:
+				body, err = json.Marshal(&proto.BatchInodeGetResponse{
+					Infos: []*proto.InodeInfo{
+						{Inode: 301, Mode: 0o100644},
+						{Inode: 302, Mode: 0o100644},
+					},
+				})
+			case proto.OpMetaExtentsList, proto.OpMetaAsyncExtentsList:
+				extentsAsync = append(extentsAsync, pkt.Opcode == proto.OpMetaAsyncExtentsList)
+				body, err = json.Marshal(&proto.GetExtentsResponse{Generation: 1, Size: 0})
+			default:
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			resp.Data = body
+			resp.Size = uint32(len(body))
+			if err = resp.WriteToConn(conn); err != nil {
+				return err
+			}
+		}
+	})
+	t.Cleanup(cleanup)
+
+	mw := meta.NewTestMetaWrapperWithLeader(t, addr)
+	rm := NewRunningMonitor(30)
+	rm.Start()
+	t.Cleanup(rm.Stop)
+
+	super := &Super{
+		volname:               "ut-vol",
+		mw:                    mw,
+		metaCacheAcceleration: true,
+		ic:                    NewInodeCache(time.Hour, 4096, true),
+		runningMonitor:        rm,
+		disableDcache:         false,
+	}
+	d := &Dir{
+		super: super,
+		info:  &proto.InodeInfo{Inode: parentIno},
+		name:  "dir",
+		dctx:  NewDirContexts(),
+	}
+
+	dirents, err := d.ReadDir(context.Background(), &fuse.ReadRequest{
+		Handle: 1,
+		Offset: 0,
+	}, &fuse.ReadResponse{})
+	if err != nil {
+		require.ErrorIs(t, err, io.EOF)
+	}
+	require.Len(t, dirents, 4) // ".", "..", "a", "b"
+	require.NotEmpty(t, extentsAsync)
+	for i, async := range extentsAsync {
+		require.True(t, async, "ReadDir extents request %d should use OpMetaAsyncExtentsList", i)
+	}
+	require.NotNil(t, super.ic.Get(301))
+	require.NotNil(t, super.ic.Get(302))
+}
+
+func TestDir_ReadDir_withoutMetaCacheAccelerationUsesBatchInodeGet(t *testing.T) {
+	const parentIno = uint64(400)
+	var batchInodeGetCalls int
+	extentsOpcodeSeen := false
+
+	addr, cleanup := startUTMetaPacketListener(t, func(conn net.Conn) error {
+		for {
+			pkt := proto.NewPacket()
+			if err := pkt.ReadFromConnWithVer(conn, proto.ReadDeadlineTime); err != nil {
+				return err
+			}
+			resp := proto.NewPacketReqID()
+			resp.ReqID = pkt.ReqID
+			resp.Opcode = pkt.Opcode
+			resp.PartitionID = pkt.PartitionID
+			resp.ResultCode = proto.OpOk
+
+			var body []byte
+			var err error
+			switch pkt.Opcode {
+			case proto.OpMetaReadDirLimit:
+				body, err = json.Marshal(&proto.ReadDirLimitResponse{
+					Children: []proto.Dentry{
+						{Name: "c", Inode: 401, Type: uint32(syscall.S_IFREG | 0o644)},
+					},
+				})
+			case proto.OpMetaBatchInodeGet:
+				batchInodeGetCalls++
+				body, err = json.Marshal(&proto.BatchInodeGetResponse{
+					Infos: []*proto.InodeInfo{{Inode: 401, Mode: 0o100644}},
+				})
+			case proto.OpMetaExtentsList, proto.OpMetaAsyncExtentsList:
+				extentsOpcodeSeen = true
+				body, err = json.Marshal(&proto.GetExtentsResponse{Generation: 1, Size: 0})
+			default:
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			resp.Data = body
+			resp.Size = uint32(len(body))
+			if err = resp.WriteToConn(conn); err != nil {
+				return err
+			}
+		}
+	})
+	t.Cleanup(cleanup)
+
+	mw := meta.NewTestMetaWrapperWithLeader(t, addr)
+	rm := NewRunningMonitor(30)
+	rm.Start()
+	t.Cleanup(rm.Stop)
+
+	super := &Super{
+		volname:               "ut-vol",
+		mw:                    mw,
+		metaCacheAcceleration: false,
+		ic:                    NewInodeCache(time.Hour, 4096, true),
+		runningMonitor:        rm,
+		disableDcache:         false,
+	}
+	d := &Dir{
+		super: super,
+		info:  &proto.InodeInfo{Inode: parentIno},
+		name:  "dir",
+		dctx:  NewDirContexts(),
+	}
+
+	dirents, err := d.ReadDir(context.Background(), &fuse.ReadRequest{
+		Handle: 1,
+		Offset: 0,
+	}, &fuse.ReadResponse{})
+	if err != nil {
+		require.ErrorIs(t, err, io.EOF)
+	}
+	require.Len(t, dirents, 3) // ".", "..", "c"
+	require.Equal(t, 1, batchInodeGetCalls)
+	require.False(t, extentsOpcodeSeen, "ReadDir without metaCacheAcceleration must not fetch extents")
+	require.NotNil(t, super.ic.Get(401))
 }
 
 func TestDir_readDirAllBatchesInodeGetsPerReadDirLimit(t *testing.T) {
@@ -141,6 +315,7 @@ func TestDir_readDirAllBatchesInodeGetExtentsWhenMetaCacheAcceleration(t *testin
 
 	require.Empty(t, mw.batchInodeCalls)
 	require.Len(t, mw.batchInodeExtentsCalls, 2)
+	require.Equal(t, []bool{true, true}, mw.batchInodeExtentsAsync)
 	require.Len(t, mw.batchInodeExtentsCalls[0], DefaultReaddirLimit)
 	require.Equal(t, uint64(1), mw.batchInodeExtentsCalls[0][0])
 	require.Equal(t, uint64(1024), mw.batchInodeExtentsCalls[0][len(mw.batchInodeExtentsCalls[0])-1])
@@ -339,6 +514,7 @@ type readDirAllMetaClientMock struct {
 	readDirMarkers         []string
 	batchInodeCalls        [][]uint64
 	batchInodeExtentsCalls [][]uint64
+	batchInodeExtentsAsync []bool
 }
 
 func (m *readDirAllMetaClientMock) ReadDirLimit_ll(parentID uint64, from string, limit uint64, isAsync bool) ([]proto.Dentry, error) {
@@ -352,8 +528,9 @@ func (m *readDirAllMetaClientMock) BatchInodeGet(inodes []uint64) []*proto.Inode
 	return inodeInfosFor(inodes)
 }
 
-func (m *readDirAllMetaClientMock) BatchInodeGetExtents(inodes []uint64) []*proto.InodeInfo {
+func (m *readDirAllMetaClientMock) BatchInodeGetExtents(inodes []uint64, async bool) []*proto.InodeInfo {
 	m.batchInodeExtentsCalls = append(m.batchInodeExtentsCalls, append([]uint64(nil), inodes...))
+	m.batchInodeExtentsAsync = append(m.batchInodeExtentsAsync, async)
 	return inodeInfosFor(inodes)
 }
 
@@ -382,4 +559,47 @@ func inodeInfosFor(inodes []uint64) []*proto.InodeInfo {
 		infos = append(infos, &proto.InodeInfo{Inode: ino})
 	}
 	return infos
+}
+
+var utMetaProtoOnce sync.Once
+
+func utMetaInitProto() {
+	utMetaProtoOnce.Do(func() {
+		proto.InitBufferPool(int64(32768))
+	})
+}
+
+func startUTMetaPacketListener(t *testing.T, handler func(conn net.Conn) error) (addr string, cleanup func()) {
+	t.Helper()
+	utMetaInitProto()
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	addr = ln.Addr().String()
+	ready := make(chan struct{})
+	done := make(chan struct{})
+
+	go func() {
+		close(ready)
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				break
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				_ = handler(c)
+			}(conn)
+		}
+		close(done)
+	}()
+
+	<-ready
+
+	cleanup = func() {
+		_ = ln.Close()
+		<-done
+	}
+	return addr, cleanup
 }

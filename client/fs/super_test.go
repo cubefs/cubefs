@@ -12,6 +12,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -22,6 +23,30 @@ func newSuperDirDirtyHarness(metaAccel bool) *Super {
 		dirDirtyCache:         make(map[uint64]bool),
 		dirDirtyCount:         make(map[uint64]int),
 	}
+}
+
+func TestMetaCacheAccelerationInitializesReadDirPool(t *testing.T) {
+	t.Parallel()
+	s := &Super{metaCacheAcceleration: true}
+	s.initReadDirPool()
+	require.NotNil(t, s.readDirPool)
+
+	done := make(chan struct{})
+	s.readDirPool.Run(func() {
+		close(done)
+	})
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("readDirPool task did not run")
+	}
+}
+
+func TestMetaCacheAccelerationOffLeavesReadDirPoolNil(t *testing.T) {
+	t.Parallel()
+	s := &Super{metaCacheAcceleration: false}
+	s.initReadDirPool()
+	require.Nil(t, s.readDirPool)
 }
 
 func TestReadDirAllCacheBegin_metaAccelerationOff(t *testing.T) {

@@ -299,10 +299,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	s.stopWarmMeta = opt.StopWarmMeta
 	s.metaCacheAcceleration = opt.MetaCacheAcceleration
 	s.minimumNlinkReadDir = opt.MinimumNlinkReadDir
-	if s.metaCacheAcceleration {
-		tp := common.New(64, 640)
-		s.readDirPool = &tp
-	}
+	s.initReadDirPool()
 
 	extentConfig := &stream.ExtentConfig{
 		Volume:            opt.Volname,
@@ -399,6 +396,13 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 
 // readDirAllCacheBegin is the entry gate for ReadDirAll async dentry cache (see docs/source/design/client-dircache-concurrency.md).
 // When it returns true, this ReadDirAll run must not write dentry / inode cache at the end.
+func (s *Super) initReadDirPool() {
+	if s.metaCacheAcceleration {
+		tp := common.New(16, 640)
+		s.readDirPool = &tp
+	}
+}
+
 func (s *Super) readDirAllCacheBegin(ino uint64) (skipCache bool) {
 	if !s.metaCacheAcceleration {
 		return false

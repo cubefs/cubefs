@@ -164,6 +164,7 @@ func (ol *OpLimiter) isAsyncOperation(opCode uint8) bool {
 		proto.OpMetaAsyncLinkInode:         true,
 		proto.OpMetaAsyncUpdateDentry:      true,
 		proto.OpMetaAsyncBatchDeleteDentry: true,
+		proto.OpMetaAsyncExtentsList:       true,
 		proto.OpQuotaAsyncCreateDentry:     true,
 	}
 	return asyncOpcodes[opCode]
