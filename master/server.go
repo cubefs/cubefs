@@ -272,6 +272,9 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	m.config.EnableSnapshot = cfg.GetBoolWithDefault(enableSnapshot, false)
 	syslog.Printf("get enableSnapshot cfg %v", m.config.EnableSnapshot)
 
+	m.config.EnableLeaderMetricsReset = cfg.GetBoolWithDefault(enableLeaderMetricsReset, true)
+	syslog.Printf("get enableLeaderMetricsPeriodicReset cfg %v", m.config.EnableLeaderMetricsReset)
+
 	m.config.faultDomain = cfg.GetBoolWithDefault(faultDomain, false)
 	m.config.heartbeatPort = cfg.GetInt64(heartbeatPortKey)
 	m.config.replicaPort = cfg.GetInt64(replicaPortKey)

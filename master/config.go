@@ -55,10 +55,11 @@ const (
 	cfgMaxQuotaNumPerVol                = "maxQuotaNumPerVol"
 	disableAutoCreate                   = "disableAutoCreate"
 
-	enableFollowerCache = "enableFollowerCache"
-	enableSnapshot      = "enableSnapshot"
-	cfgMonitorPushAddr  = "monitorPushAddr"
-	cfgStartLcScanTime  = "startLcScanTime"
+	enableFollowerCache      = "enableFollowerCache"
+	enableSnapshot           = "enableSnapshot"
+	enableLeaderMetricsReset = "enableLeaderMetricsReset"
+	cfgMonitorPushAddr       = "monitorPushAddr"
+	cfgStartLcScanTime       = "startLcScanTime"
 
 	cfgVolForceDeletion           = "volForceDeletion"
 	cfgVolDeletionDentryThreshold = "volDeletionDentryThreshold"
@@ -212,6 +213,7 @@ type clusterConfig struct {
 	DisableAutoCreate           bool
 	EnableFollowerCache         bool
 	EnableSnapshot              bool
+	EnableLeaderMetricsReset    bool // leader periodically resets exporter metrics to drop stale label sets
 	MonitorPushAddr             string
 	StartLcScanTime             int
 	MaxConcurrentLcNodes        uint64
@@ -327,6 +329,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.DpLimitHddFactor = defaultDpLimitHddFactor
 	cfg.MaxMPLearnerNum = defaultMPLearnerNum
 	cfg.FollowerReadLeaseTime = defaultFollowerReadLeaseTime
+	cfg.EnableLeaderMetricsReset = true
 	return
 }
 

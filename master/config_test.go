@@ -22,6 +22,7 @@ func TestNewClusterConfig_defaults(t *testing.T) {
 	require.EqualValues(t, defaultMetaPartitionTimeOutSec, cfg.MetaPartitionTimeOutSec)
 	require.EqualValues(t, defaultMPLearnerNum, cfg.MaxMPLearnerNum)
 	require.EqualValues(t, defaultFollowerReadLeaseTime, cfg.FollowerReadLeaseTime)
+	require.True(t, cfg.EnableLeaderMetricsReset)
 	require.Equal(t, defaultFlashNodeHandleReadTimeout, cfg.flashNodeHandleReadTimeout)
 	require.Equal(t, defaultDpLimitSsdBaseCount, cfg.DpLimitSsdBaseCount)
 	require.Equal(t, defaultDpLimitHddFactor, cfg.DpLimitHddFactor)

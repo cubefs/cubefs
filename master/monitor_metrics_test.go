@@ -12,6 +12,7 @@ package master
 
 import (
 	"testing"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/exporter"
@@ -46,6 +47,58 @@ func TestNewMonitorMetrics_initializesMaps(t *testing.T) {
 	require.NotNil(t, mm.inconsistentMps)
 	require.NotNil(t, mm.replicaCntMap)
 	require.NotNil(t, mm.lcId)
+	require.False(t, mm.lastLeaderResetTime.IsZero())
+}
+
+func TestShouldPeriodicResetLeaderMetrics(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 5, 28, 12, 0, 0, 0, time.UTC)
+	enabled := &clusterConfig{EnableLeaderMetricsReset: true}
+	disabled := &clusterConfig{EnableLeaderMetricsReset: false}
+
+	t.Run("nil_config", func(t *testing.T) {
+		t.Parallel()
+		require.False(t, shouldPeriodicResetLeaderMetrics(nil, now.Add(-leaderMetricsPeriodicResetInterval-time.Minute), now))
+	})
+
+	t.Run("disabled", func(t *testing.T) {
+		t.Parallel()
+		require.False(t, shouldPeriodicResetLeaderMetrics(disabled, now.Add(-leaderMetricsPeriodicResetInterval-time.Minute), now))
+	})
+
+	t.Run("within_interval", func(t *testing.T) {
+		t.Parallel()
+		require.False(t, shouldPeriodicResetLeaderMetrics(enabled, now.Add(-leaderMetricsPeriodicResetInterval+time.Second), now))
+	})
+
+	t.Run("past_interval", func(t *testing.T) {
+		t.Parallel()
+		require.True(t, shouldPeriodicResetLeaderMetrics(enabled, now.Add(-leaderMetricsPeriodicResetInterval-time.Second), now))
+	})
+
+	t.Run("exact_interval_not_due", func(t *testing.T) {
+		t.Parallel()
+		require.False(t, shouldPeriodicResetLeaderMetrics(enabled, now.Add(-leaderMetricsPeriodicResetInterval), now))
+	})
+}
+
+// TestLeaderMetricsPeriodicResetBlock mirrors the leader branch in statMetrics without
+// starting the ticker loop (same condition + reset side effects).
+func TestLeaderMetricsPeriodicResetBlock_resetsWhenDue(t *testing.T) {
+	mm := newMonitorMetricsForLeaderResetTest(t)
+	mm.cluster = &Cluster{cfg: &clusterConfig{EnableLeaderMetricsReset: true}}
+
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	mm.lastLeaderResetTime = now.Add(-leaderMetricsPeriodicResetInterval - time.Minute)
+	mm.volTotalSpace.SetWithLabelValues(10, "stale-vol")
+
+	if shouldPeriodicResetLeaderMetrics(mm.cluster.cfg, mm.lastLeaderResetTime, now) {
+		mm.resetAllLeaderMetrics()
+		mm.lastLeaderResetTime = now
+	}
+
+	require.Equal(t, now, mm.lastLeaderResetTime)
+	require.Equal(t, 0.0, gaugeVecValue(t, mm.volTotalSpace, "stale-vol"))
 }
 
 func TestCheckHostSelection_returnsTrue(t *testing.T) {
@@ -183,6 +236,34 @@ func gaugeVecValue(t *testing.T, gv *exporter.GaugeVec, lvs ...string) float64 {
 	var pb dto.Metric
 	require.NoError(t, m.Write(&pb))
 	return pb.GetGauge().GetValue()
+}
+
+func nodeStatMetaAddrs(t *testing.T, gv *exporter.GaugeVec) map[string]struct{} {
+	t.Helper()
+	ch := make(chan prometheus.Metric, 256)
+	go func() {
+		gv.Collect(ch)
+		close(ch)
+	}()
+
+	addrs := make(map[string]struct{})
+	for m := range ch {
+		var pb dto.Metric
+		require.NoError(t, m.Write(&pb))
+		var nodeType, addr string
+		for _, lp := range pb.Label {
+			switch lp.GetName() {
+			case "type":
+				nodeType = lp.GetValue()
+			case "addr":
+				addr = lp.GetValue()
+			}
+		}
+		if nodeType == MetricRoleMetaNode && addr != "" {
+			addrs[addr] = struct{}{}
+		}
+	}
+	return addrs
 }
 
 func monitorMetricsVolTestCluster(t *testing.T) *Cluster {
@@ -341,6 +422,67 @@ func newMonitorMetricsForLeaderResetTest(t *testing.T) *monitorMetrics {
 	mm.hddRackConflictDPs = exporter.NewGauge("test_reset_hdd_rack_conflict_dp_count")
 
 	return mm
+}
+
+func newMonitorMetricsForNodeStatTest(t *testing.T, c *Cluster) *monitorMetrics {
+	t.Helper()
+	mm := newMonitorMetrics(c)
+	mm.nodeStat = newTestGaugeVec(t, "test_node_stat", []string{"type", "addr", "stat", "zone", "set", "media", "writable", "alloc", "rack", "pool", "tag"})
+	mm.InactiveMetaNodeInfo = newTestGaugeVec(t, "test_inactive_meta", []string{"clusterName", "addr"})
+	mm.metaNodesInactive = exporter.NewGauge("test_meta_inactive")
+	return mm
+}
+
+func TestUpdateMetaNodesStat_withoutReset_keepsRemovedNodeSeries(t *testing.T) {
+	cluster := clusterStatTestCluster(t, "node-stat-stale")
+	addrA := "10.226.96.37:17210"
+	addrB := "10.32.122.3:17210"
+	zone := "stat-test-zone"
+
+	cluster.metaNodes.Store(addrA, clusterStatWritableMetaNode(addrA, zone))
+	cluster.metaNodes.Store(addrB, clusterStatWritableMetaNode(addrB, zone))
+
+	mm := newMonitorMetricsForNodeStatTest(t, cluster)
+	mm.updateMetaNodesStat()
+	require.Contains(t, nodeStatMetaAddrs(t, mm.nodeStat), addrA)
+	require.Contains(t, nodeStatMetaAddrs(t, mm.nodeStat), addrB)
+
+	cluster.metaNodes.Delete(addrA)
+	mm.updateMetaNodesStat()
+	require.Contains(t, nodeStatMetaAddrs(t, mm.nodeStat), addrA, "removed node series remain until vec reset")
+	require.Contains(t, nodeStatMetaAddrs(t, mm.nodeStat), addrB)
+}
+
+func TestUpdateMetaNodesStat_afterReset_dropsRemovedNodeSeries(t *testing.T) {
+	cluster := clusterStatTestCluster(t, "node-stat-reset")
+	addrA := "10.226.96.37:17210"
+	addrB := "10.32.122.3:17210"
+	zone := "stat-test-zone"
+
+	cluster.metaNodes.Store(addrA, clusterStatWritableMetaNode(addrA, zone))
+	cluster.metaNodes.Store(addrB, clusterStatWritableMetaNode(addrB, zone))
+
+	mm := newMonitorMetricsForNodeStatTest(t, cluster)
+	mm.updateMetaNodesStat()
+	require.Contains(t, nodeStatMetaAddrs(t, mm.nodeStat), addrA)
+
+	cluster.metaNodes.Delete(addrA)
+	// resetAllLeaderMetrics clears nodeStat; full helper needs all gauge vecs initialized.
+	mm.nodeStat.Reset()
+	mm.updateMetaNodesStat()
+
+	addrs := nodeStatMetaAddrs(t, mm.nodeStat)
+	require.NotContains(t, addrs, addrA)
+	require.Contains(t, addrs, addrB)
+}
+
+func TestResetAllLeaderMetricsClearsNodeStatSeries(t *testing.T) {
+	mm := newMonitorMetricsForLeaderResetTest(t)
+	mm.nodeStat.SetWithLabelValues(1, MetricRoleMetaNode, "10.0.0.1:17210", "alloc", "z", "1", "default", "true", "true", "r", "reg", "null")
+
+	mm.resetAllLeaderMetrics()
+
+	require.Empty(t, nodeStatMetaAddrs(t, mm.nodeStat))
 }
 
 func TestResetAllLeaderMetricsClearsFollowerUnsafeGaugeVecs(t *testing.T) {

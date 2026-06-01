@@ -1285,9 +1285,6 @@ func (m *metadataManager) opDeleteMetaPartition(conn net.Conn,
 	}
 	p.PacketOkReply()
 	m.respondToClientWithVer(conn, p)
-	go func() {
-		debug.FreeOSMemory()
-	}()
 	log.LogInfof("%s [opDeleteMetaPartition] req: %d - %v, resp: %v",
 		remoteAddr, p.GetReqID(), req, err)
 	return
@@ -2650,9 +2647,6 @@ func (m *metadataManager) opBackupEmptyMetaPartition(conn net.Conn,
 
 	p.PacketOkReply()
 	m.respondToClientWithVer(conn, p)
-	go func() {
-		debug.FreeOSMemory()
-	}()
 	log.LogInfof("%s [opBackupEmptyMetaPartition] req: %d - %v, resp: %v",
 		remoteAddr, p.GetReqID(), req, err)
 	return

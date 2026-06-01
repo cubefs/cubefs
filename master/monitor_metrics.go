@@ -33,6 +33,7 @@ import (
 // metrics
 const (
 	StatPeriod                             = time.Minute * time.Duration(1)
+	leaderMetricsPeriodicResetInterval     = 30 * time.Minute
 	MetricDataNodesUsedGB                  = "dataNodes_used_GB"
 	MetricDataNodesTotalGB                 = "dataNodes_total_GB"
 	MetricDataNodesStat                    = "dataNodes_stats"
@@ -191,17 +192,19 @@ type monitorMetrics struct {
 	hddRackConflictDPs      *exporter.Gauge
 
 	lastCheckPartitionCreateTime time.Time
+	lastLeaderResetTime          time.Time
 }
 
 func newMonitorMetrics(c *Cluster) *monitorMetrics {
 	return &monitorMetrics{
-		cluster:            c,
-		volNames:           make(map[string]struct{}),
-		badDisks:           make(map[string]string),
-		flashNodesBadDisks: make(map[string]string),
-		inconsistentMps:    make(map[string]string),
-		replicaCntMap:      make(map[uint64]struct{}),
-		lcId:               make(map[string]struct{}),
+		cluster:             c,
+		volNames:            make(map[string]struct{}),
+		badDisks:            make(map[string]string),
+		flashNodesBadDisks:  make(map[string]string),
+		inconsistentMps:     make(map[string]string),
+		replicaCntMap:       make(map[uint64]struct{}),
+		lcId:                make(map[string]struct{}),
+		lastLeaderResetTime: time.Now(),
 	}
 }
 
@@ -569,6 +572,15 @@ func (mm *monitorMetrics) start() {
 	go mm.statMetrics()
 }
 
+// shouldPeriodicResetLeaderMetrics reports whether leader should run resetAllLeaderMetrics
+// before the next doStat to drop stale Prometheus label sets.
+func shouldPeriodicResetLeaderMetrics(cfg *clusterConfig, lastReset, now time.Time) bool {
+	if cfg == nil || !cfg.EnableLeaderMetricsReset {
+		return false
+	}
+	return now.Sub(lastReset) > leaderMetricsPeriodicResetInterval
+}
+
 func (mm *monitorMetrics) statMetrics() {
 	ticker := time.NewTicker(StatPeriod)
 	defer func() {
@@ -582,6 +594,11 @@ func (mm *monitorMetrics) statMetrics() {
 	for range ticker.C {
 		partition := mm.cluster.partition
 		if partition != nil && partition.IsRaftLeader() {
+			if shouldPeriodicResetLeaderMetrics(mm.cluster.cfg, mm.lastLeaderResetTime, time.Now()) {
+				mm.resetAllLeaderMetrics()
+				mm.lastLeaderResetTime = time.Now()
+				log.LogWarnf("action[statMetrics] reset all leader metrics")
+			}
 			mm.resetFollowerMetrics()
 			mm.doStat()
 		} else {

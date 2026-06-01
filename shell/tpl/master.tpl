@@ -4,6 +4,7 @@
   "role": "master",
   "ip": "_ip_",
   "bindIp": "true",
+  "enableLeaderMetricsReset":"true",
   "listen": "17010",
   "prof":"17020",
   "peers": "_peers_",
