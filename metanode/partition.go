@@ -49,6 +49,10 @@ import (
 // the remote addr is "127.0.0.1"
 const localAddrForAudit = "127.0.0.1"
 
+const (
+	StoreMsgInterval uint64 = 1000
+)
+
 var (
 	ErrIllegalHeartbeatAddress = errors.New("illegal heartbeat address")
 	ErrIllegalReplicateAddress = errors.New("illegal replicate address")
@@ -580,8 +584,15 @@ func (mp *metaPartition) SetNeedStoreMsgFlag(flag int) {
 	atomic.StoreInt32(&mp.storeMsgFlag, int32(flag))
 }
 
-func (mp *metaPartition) needStoreMsg() bool {
-	return atomic.LoadInt32(&mp.storeMsgFlag) == NeedStoreMsgFlag
+func (mp *metaPartition) needStoreMsg(curIndex uint64) bool {
+	if atomic.LoadInt32(&mp.storeMsgFlag) == NeedStoreMsgFlag {
+		return true
+	}
+
+	if mp.applyID >= curIndex+StoreMsgInterval {
+		return true
+	}
+	return false
 }
 
 // IsLeader returns the raft leader address and if the current meta partition is the leader.

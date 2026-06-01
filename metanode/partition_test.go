@@ -865,3 +865,132 @@ func TestLoadDataFromRocksDb(t *testing.T) {
 		t.Fatalf("UniqId mismatch, expect:0 actual:%v", got)
 	}
 }
+
+func TestStoreMsgInterval(t *testing.T) {
+	require.Equal(t, uint64(1000), StoreMsgInterval)
+}
+
+func TestSetNeedStoreMsgFlag(t *testing.T) {
+	mp := &metaPartition{}
+	mp.SetNeedStoreMsgFlag(NotStoreMsgFlag)
+	require.Equal(t, int32(NotStoreMsgFlag), mp.storeMsgFlag)
+	mp.SetNeedStoreMsgFlag(NeedStoreMsgFlag)
+	require.Equal(t, int32(NeedStoreMsgFlag), mp.storeMsgFlag)
+}
+
+func TestNeedStoreMsg(t *testing.T) {
+	tests := []struct {
+		name     string
+		flag     int
+		applyID  uint64
+		curIndex uint64
+		want     bool
+	}{
+		{
+			name:     "need_store_flag_set",
+			flag:     NeedStoreMsgFlag,
+			applyID:  10,
+			curIndex: 5000,
+			want:     true,
+		},
+		{
+			name:     "flag_clear_apply_below_interval",
+			flag:     NotStoreMsgFlag,
+			applyID:  1999,
+			curIndex: 1000,
+			want:     false,
+		},
+		{
+			name:     "flag_clear_apply_at_interval_boundary",
+			flag:     NotStoreMsgFlag,
+			applyID:  2000,
+			curIndex: 1000,
+			want:     true,
+		},
+		{
+			name:     "flag_clear_apply_above_interval",
+			flag:     NotStoreMsgFlag,
+			applyID:  3500,
+			curIndex: 1000,
+			want:     true,
+		},
+		{
+			name:     "flag_clear_no_advance_since_cur_index",
+			flag:     NotStoreMsgFlag,
+			applyID:  500,
+			curIndex: 500,
+			want:     false,
+		},
+		{
+			name:     "flag_clear_from_zero_cur_index",
+			flag:     NotStoreMsgFlag,
+			applyID:  StoreMsgInterval,
+			curIndex: 0,
+			want:     true,
+		},
+		{
+			name:     "flag_clear_one_below_interval_from_zero",
+			flag:     NotStoreMsgFlag,
+			applyID:  StoreMsgInterval - 1,
+			curIndex: 0,
+			want:     false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mp := &metaPartition{}
+			mp.SetNeedStoreMsgFlag(tt.flag)
+			mp.applyID = tt.applyID
+			require.Equal(t, tt.want, mp.needStoreMsg(tt.curIndex))
+		})
+	}
+}
+
+// TestStartSchedulePersistGate mirrors the timer branch in startSchedule after store.
+func TestStartSchedulePersistGate(t *testing.T) {
+	tests := []struct {
+		name     string
+		flag     int
+		applyID  uint64
+		curIndex uint64
+		want     bool
+	}{
+		{
+			name:     "skip_when_apply_not_ahead",
+			flag:     NeedStoreMsgFlag,
+			applyID:  1000,
+			curIndex: 1000,
+			want:     false,
+		},
+		{
+			name:     "persist_when_flag_set_and_apply_ahead",
+			flag:     NeedStoreMsgFlag,
+			applyID:  1001,
+			curIndex: 1000,
+			want:     true,
+		},
+		{
+			name:     "persist_when_interval_reached_without_flag",
+			flag:     NotStoreMsgFlag,
+			applyID:  2000,
+			curIndex: 1000,
+			want:     true,
+		},
+		{
+			name:     "skip_when_interval_not_reached_without_flag",
+			flag:     NotStoreMsgFlag,
+			applyID:  1500,
+			curIndex: 1000,
+			want:     false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mp := &metaPartition{}
+			mp.SetNeedStoreMsgFlag(tt.flag)
+			mp.applyID = tt.applyID
+			got := mp.applyID > tt.curIndex && mp.needStoreMsg(tt.curIndex)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}

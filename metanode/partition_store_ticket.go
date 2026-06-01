@@ -162,8 +162,9 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 					// do nothing
 				}
 			case <-timer.C:
-				log.LogDebugf("[startSchedule] intervalToPersistData curIndex: %v,apply:%v, needStoreMsg: %v", curIndex, mp.applyID, mp.needStoreMsg())
-				if mp.applyID <= curIndex || !mp.needStoreMsg() {
+				log.LogDebugf("[startSchedule] intervalToPersistData id=%d, curIndex: %v,apply:%v, needStoreMsg: %v",
+					mp.config.PartitionId, curIndex, mp.applyID, mp.needStoreMsg(curIndex))
+				if mp.applyID <= curIndex || !mp.needStoreMsg(curIndex) {
 					timer.Reset(intervalToPersistData)
 					continue
 				}
