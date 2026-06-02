@@ -398,6 +398,13 @@ func buildDisk(snaps []clustermgr.BlobNodeDiskInfo, droppedNodes map[proto.NodeI
 
 	for _, e := range slotMax {
 		s := e.snap
+		// Legacy disks from before node-id tracking: NodeID==0 with Repaired status means
+		// the node was decommissioned before node tracking existed; count as repaired but
+		// exclude from __total__ (no physical slot to track).
+		if s.NodeID == 0 && s.Status == proto.DiskStatusRepaired {
+			addEntry(proto.DiskStatusRepaired.String(), s.Idc, &s.DiskHeartBeatInfo)
+			continue
+		}
 		// Node is Dropped → treat all its disks as dropped regardless of disk status.
 		if _, nodeDropped := droppedNodes[s.NodeID]; nodeDropped || s.Status == proto.DiskStatusDropped {
 			addEntry(proto.DiskStatusDropped.String(), s.Idc, &s.DiskHeartBeatInfo)
