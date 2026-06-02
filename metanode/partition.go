@@ -50,7 +50,9 @@ import (
 const localAddrForAudit = "127.0.0.1"
 
 const (
-	StoreMsgInterval uint64 = 1000
+	StoreMsgInterval       uint64 = 1000
+	maxNotifyInterval             = time.Second * 5
+	leaseNotifyTimingSlack        = 100 * time.Millisecond
 )
 
 var (
@@ -1087,8 +1089,21 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaP
 // startNotifyTimestamp starts a goroutine to periodically send timestamp notifications to followers
 func (mp *metaPartition) startNotifyTimestamp() {
 	log.LogInfof("[startNotifyTimestamp] mp(%v) start timestamp notification", mp.config.PartitionId)
-	interval := time.Duration(FollowerReadLeaseTime()) * 1000 * time.Millisecond / 3
-	timer := time.NewTimer(interval)
+
+	var lastNotifyTime time.Time
+
+	notifyInterval := func() time.Duration {
+		return time.Duration(FollowerReadLeaseTime()) * 1000 * time.Millisecond / 3
+	}
+
+	tickerInterval := func() time.Duration {
+		if notifyInterval() > maxNotifyInterval {
+			return maxNotifyInterval
+		}
+		return notifyInterval()
+	}
+
+	timer := time.NewTimer(tickerInterval())
 	defer timer.Stop()
 
 	for {
@@ -1097,12 +1112,16 @@ func (mp *metaPartition) startNotifyTimestamp() {
 			log.LogInfof("[startNotifyTimestamp] mp(%v) stop timestamp notification", mp.config.PartitionId)
 			return
 		case <-timer.C:
-
-			interval = time.Duration(FollowerReadLeaseTime()) * 1000 * time.Millisecond / 3
-			timer.Reset(interval)
+			timer.Reset(tickerInterval())
 
 			// Only leader sends timestamp notifications
 			if _, ok := mp.IsLeader(); !ok {
+				continue
+			}
+
+			if !lastNotifyTime.IsZero() && time.Since(lastNotifyTime)+leaseNotifyTimingSlack < notifyInterval() {
+				log.LogDebugf("[startNotifyTimestamp] mp(%v) skip timestamp notification, interval: %v, lastNotifyTime: %v",
+					mp.config.PartitionId, notifyInterval(), lastNotifyTime)
 				continue
 			}
 
@@ -1115,12 +1134,12 @@ func (mp *metaPartition) startNotifyTimestamp() {
 			// Submit through raft
 			if _, err := mp.submit(opFSMNotifyTimestamp, buf); err != nil {
 				log.LogWarnf("[startNotifyTimestamp] mp(%v) failed to submit timestamp notification: %v, interval: %v",
-					mp.config.PartitionId, err, interval)
+					mp.config.PartitionId, err, notifyInterval())
 			} else {
 				log.LogDebugf("[startNotifyTimestamp] mp(%v) sent timestamp notification: %v, interval: %v",
-					mp.config.PartitionId, timestamp, interval)
+					mp.config.PartitionId, timestamp, notifyInterval())
+				lastNotifyTime = time.Now()
 			}
-
 		}
 	}
 }

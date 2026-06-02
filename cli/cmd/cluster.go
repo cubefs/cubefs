@@ -858,7 +858,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optMarkDeleteRate, CliFlagMarkDelRate, "", "DataNode batch mark delete limit rate. if 0 for no infinity limit")
 	cmd.Flags().StringVar(&optAutoRepairRate, CliFlagAutoRepairRate, "", "DataNode auto repair rate")
 	cmd.Flags().StringVar(&optDelWorkerSleepMs, CliFlagDelWorkerSleepMs, "", "MetaNode delete worker sleep time with millisecond. if 0 for no sleep")
-	cmd.Flags().StringVar(&optFollowerReadLeaseTime, "followerReadLeaseTime", "", fmt.Sprintf("Follower read lease time in seconds (%d-%d), default is 5", proto.MinFollowerReadLeaseTimeSec, proto.MaxFollowerReadLeaseTimeSec))
+	cmd.Flags().StringVar(&optFollowerReadLeaseTime, "followerReadLeaseTime", "", fmt.Sprintf("Follower read lease time in seconds (%d-%d), default is %d", proto.MinFollowerReadLeaseTimeSec, proto.MaxFollowerReadLeaseTimeSec, proto.DefaultFollowerReadLeaseTimeSec))
 	cmd.Flags().StringVar(&opMaxDpCntLimit, CliFlagMaxDpCntLimit, "", "Maximum number of dp on each datanode, default 3000, 0 represents setting to default")
 	cmd.Flags().StringVar(&opMaxMpCntLimit, CliFlagMaxMpCntLimit, "", "Maximum number of mp on each metanode, default 300, 0 represents setting to default")
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)

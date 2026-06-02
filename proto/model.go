@@ -31,7 +31,9 @@ const (
 	// MinFollowerReadLeaseTimeSec is the minimum allowed follower read lease duration in seconds (master cluster param).
 	MinFollowerReadLeaseTimeSec uint64 = 2
 	// MaxFollowerReadLeaseTimeSec is the maximum allowed follower read lease duration in seconds (master cluster param).
-	MaxFollowerReadLeaseTimeSec uint64 = 60
+	MaxFollowerReadLeaseTimeSec uint64 = 7200
+	// DefaultFollowerReadLeaseTimeSec is the cluster default lease duration in seconds (reduces lease heartbeat Raft traffic when follower read is unused).
+	DefaultFollowerReadLeaseTimeSec uint64 = 3600
 )
 
 // ValidateFollowerReadLeaseTime returns nil if val is in [MinFollowerReadLeaseTimeSec, MaxFollowerReadLeaseTimeSec].

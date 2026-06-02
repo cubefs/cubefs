@@ -260,7 +260,8 @@ func TestServerProxy_NearReadDisabledLeaseStale(t *testing.T) {
 	m := newTestMetadataManager()
 	mp := newTestMetaPartitionForProxy(110, 2, 0, "")
 	mp.raftPartition = &mockRaftPartitionForServeProxy{leaderID: 0, term: 0}
-	mp.leaseApplyTime = timeutil.GetCurrentTimeUnix() - 3600
+	// Must exceed default lease (3600s); equality still allows near-read (check uses > not >=).
+	mp.leaseApplyTime = timeutil.GetCurrentTimeUnix() - int64(proto.DefaultFollowerReadLeaseTimeSec+1)
 
 	client, srv := net.Pipe()
 	defer func() { _ = client.Close() }()

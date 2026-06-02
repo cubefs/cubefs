@@ -101,6 +101,54 @@ func TestLeaderMetricsPeriodicResetBlock_resetsWhenDue(t *testing.T) {
 	require.Equal(t, 0.0, gaugeVecValue(t, mm.volTotalSpace, "stale-vol"))
 }
 
+// TestStatMetrics_leaderBranch_mirror duplicates the leader branch in statMetrics (lines 596-603)
+// without starting the StatPeriod ticker loop.
+func TestStatMetrics_leaderBranch_mirror(t *testing.T) {
+	mm := newMonitorMetricsForLeaderResetTest(t)
+	mm.cluster = &Cluster{
+		cfg:       &clusterConfig{EnableLeaderMetricsReset: true},
+		partition: &mockPartition{isLeader: true},
+	}
+
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	mm.lastLeaderResetTime = now.Add(-leaderMetricsPeriodicResetInterval - time.Minute)
+	mm.volTotalSpace.SetWithLabelValues(10, "stale-vol")
+
+	partition := mm.cluster.partition
+	require.NotNil(t, partition)
+	require.True(t, partition.IsRaftLeader())
+
+	if shouldPeriodicResetLeaderMetrics(mm.cluster.cfg, mm.lastLeaderResetTime, now) {
+		mm.resetAllLeaderMetrics()
+		mm.lastLeaderResetTime = now
+	}
+
+	require.Equal(t, now, mm.lastLeaderResetTime)
+	require.Equal(t, 0.0, gaugeVecValue(t, mm.volTotalSpace, "stale-vol"))
+}
+
+// TestStatMetrics_leaderBranch_mirror_noResetWhenWithinInterval mirrors the branch when reset is not due.
+func TestStatMetrics_leaderBranch_mirror_noResetWhenWithinInterval(t *testing.T) {
+	mm := newMonitorMetricsForLeaderResetTest(t)
+	mm.cluster = &Cluster{
+		cfg:       &clusterConfig{EnableLeaderMetricsReset: true},
+		partition: &mockPartition{isLeader: true},
+	}
+
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	mm.lastLeaderResetTime = now.Add(-5 * time.Minute)
+	before := mm.lastLeaderResetTime
+	mm.volTotalSpace.SetWithLabelValues(10, "stale-vol")
+
+	if shouldPeriodicResetLeaderMetrics(mm.cluster.cfg, mm.lastLeaderResetTime, now) {
+		mm.resetAllLeaderMetrics()
+		mm.lastLeaderResetTime = now
+	}
+
+	require.Equal(t, before, mm.lastLeaderResetTime)
+	require.Equal(t, 10.0, gaugeVecValue(t, mm.volTotalSpace, "stale-vol"))
+}
+
 func TestCheckHostSelection_returnsTrue(t *testing.T) {
 	t.Parallel()
 	mm := newMonitorMetrics(&Cluster{})

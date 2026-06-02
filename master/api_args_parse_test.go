@@ -737,6 +737,32 @@ func TestParseS3QosReq(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestParseAndExtractSetNodeInfoParams_followerReadLeaseTime(t *testing.T) {
+	t.Parallel()
+
+	parse := func(t *testing.T, val string) (map[string]interface{}, error) {
+		t.Helper()
+		v := url.Values{}
+		v.Set(followerReadLeaseTimeKey, val)
+		return parseAndExtractSetNodeInfoParams(apiArgsNewPostForm(t, v))
+	}
+
+	params, err := parse(t, strconv.FormatUint(proto.DefaultFollowerReadLeaseTimeSec, 10))
+	require.NoError(t, err)
+	require.Equal(t, proto.DefaultFollowerReadLeaseTimeSec, params[followerReadLeaseTimeKey])
+
+	params, err = parse(t, strconv.FormatUint(proto.MaxFollowerReadLeaseTimeSec, 10))
+	require.NoError(t, err)
+	require.Equal(t, proto.MaxFollowerReadLeaseTimeSec, params[followerReadLeaseTimeKey])
+
+	_, err = parse(t, strconv.FormatUint(proto.MaxFollowerReadLeaseTimeSec+1, 10))
+	require.Error(t, err)
+	require.True(t, errors.Is(err, proto.ErrFollowerReadLeaseTimeRange))
+
+	_, err = parse(t, "not-a-number")
+	require.Error(t, err)
+}
+
 // TestParseAndExtractSetNodeInfoParams_comprehensive drives most branches in parseAndExtractSetNodeInfoParams (large switch).
 func TestParseAndExtractSetNodeInfoParams_comprehensive(t *testing.T) {
 	v := url.Values{}

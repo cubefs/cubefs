@@ -12,6 +12,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/cubefs/cubefs/proto"
 )
 
 func TestNewClusterConfig_defaults(t *testing.T) {
@@ -22,6 +24,7 @@ func TestNewClusterConfig_defaults(t *testing.T) {
 	require.EqualValues(t, defaultMetaPartitionTimeOutSec, cfg.MetaPartitionTimeOutSec)
 	require.EqualValues(t, defaultMPLearnerNum, cfg.MaxMPLearnerNum)
 	require.EqualValues(t, defaultFollowerReadLeaseTime, cfg.FollowerReadLeaseTime)
+	require.EqualValues(t, proto.DefaultFollowerReadLeaseTimeSec, cfg.FollowerReadLeaseTime)
 	require.True(t, cfg.EnableLeaderMetricsReset)
 	require.Equal(t, defaultFlashNodeHandleReadTimeout, cfg.flashNodeHandleReadTimeout)
 	require.Equal(t, defaultDpLimitSsdBaseCount, cfg.DpLimitSsdBaseCount)
@@ -52,6 +55,39 @@ func TestParsePeerAddr(t *testing.T) {
 		_, _, _, err := parsePeerAddr("1:192.168.1.1:not-a-port")
 		require.Error(t, err)
 	})
+}
+
+func TestUpdateFollowerReadLeaseTime(t *testing.T) {
+	t.Parallel()
+	c := &Cluster{cfg: newClusterConfig()}
+	require.EqualValues(t, proto.DefaultFollowerReadLeaseTimeSec, c.cfg.FollowerReadLeaseTime)
+
+	c.updateFollowerReadLeaseTime(0)
+	require.EqualValues(t, proto.DefaultFollowerReadLeaseTimeSec, c.cfg.FollowerReadLeaseTime)
+
+	c.updateFollowerReadLeaseTime(1800)
+	require.EqualValues(t, 1800, c.cfg.FollowerReadLeaseTime)
+
+	c.updateFollowerReadLeaseTime(proto.MaxFollowerReadLeaseTimeSec + 100)
+	require.EqualValues(t, proto.MaxFollowerReadLeaseTimeSec, c.cfg.FollowerReadLeaseTime)
+
+	c.updateFollowerReadLeaseTime(1)
+	require.EqualValues(t, proto.MinFollowerReadLeaseTimeSec, c.cfg.FollowerReadLeaseTime)
+}
+
+func TestSetMetaNodeFollowerReadLeaseTime_validate(t *testing.T) {
+	t.Parallel()
+	c := &Cluster{cfg: newClusterConfig()}
+	old := c.cfg.FollowerReadLeaseTime
+
+	require.Error(t, c.setMetaNodeFollowerReadLeaseTime(0))
+	require.EqualValues(t, old, c.cfg.FollowerReadLeaseTime)
+
+	require.Error(t, c.setMetaNodeFollowerReadLeaseTime(proto.MaxFollowerReadLeaseTimeSec+1))
+	require.EqualValues(t, old, c.cfg.FollowerReadLeaseTime)
+
+	require.NoError(t, proto.ValidateFollowerReadLeaseTime(proto.DefaultFollowerReadLeaseTimeSec))
+	require.NoError(t, proto.ValidateFollowerReadLeaseTime(proto.MaxFollowerReadLeaseTimeSec))
 }
 
 func TestClusterConfig_parsePeers(t *testing.T) {

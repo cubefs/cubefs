@@ -54,8 +54,15 @@ func TestHTTPReplyRaw(t *testing.T) {
 }
 
 func TestValidateFollowerReadLeaseTime(t *testing.T) {
+	require.Equal(t, uint64(3600), DefaultFollowerReadLeaseTimeSec)
+	require.Equal(t, uint64(7200), MaxFollowerReadLeaseTimeSec)
 	require.NoError(t, ValidateFollowerReadLeaseTime(MinFollowerReadLeaseTimeSec))
+	require.NoError(t, ValidateFollowerReadLeaseTime(DefaultFollowerReadLeaseTimeSec))
 	require.NoError(t, ValidateFollowerReadLeaseTime(MaxFollowerReadLeaseTimeSec))
+	// Values above the former max (60) must remain valid after raising MaxFollowerReadLeaseTimeSec.
+	require.NoError(t, ValidateFollowerReadLeaseTime(61))
+	require.NoError(t, ValidateFollowerReadLeaseTime(3599))
+	require.NoError(t, ValidateFollowerReadLeaseTime(3601))
 	require.Error(t, ValidateFollowerReadLeaseTime(0))
 	require.Error(t, ValidateFollowerReadLeaseTime(1))
 	require.Error(t, ValidateFollowerReadLeaseTime(MaxFollowerReadLeaseTimeSec+1))

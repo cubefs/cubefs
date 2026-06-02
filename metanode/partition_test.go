@@ -21,6 +21,7 @@ import (
 	"path"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -866,6 +867,249 @@ func TestLoadDataFromRocksDb(t *testing.T) {
 	}
 }
 
+// Mirrors startNotifyTimestamp interval/ticker/skip logic (keep in sync with partition.go).
+func testLeaseNotifyInterval() time.Duration {
+	return time.Duration(FollowerReadLeaseTime()) * 1000 * time.Millisecond / 3
+}
+
+func testLeaseNotifyTickerInterval() time.Duration {
+	interval := testLeaseNotifyInterval()
+	if interval > maxNotifyInterval {
+		return maxNotifyInterval
+	}
+	return interval
+}
+
+func testShouldSkipLeaseNotify(lastNotifyTime time.Time) bool {
+	if !lastNotifyTime.IsZero() &&
+		time.Since(lastNotifyTime)+leaseNotifyTimingSlack < testLeaseNotifyInterval() {
+		return true
+	}
+	return false
+}
+
+// testWouldSkipWithoutZeroGuard reproduces the old bug: Since(zero)+slack overflows duration.
+func testWouldSkipWithoutZeroGuard(lastNotifyTime time.Time) bool {
+	return time.Since(lastNotifyTime)+leaseNotifyTimingSlack < testLeaseNotifyInterval()
+}
+
+func TestStartNotifyTimestamp_constants(t *testing.T) {
+	require.Equal(t, 100*time.Millisecond, leaseNotifyTimingSlack)
+	require.Equal(t, 5*time.Second, maxNotifyInterval)
+}
+
+func TestStartNotifyTimestamp_intervalAndTicker(t *testing.T) {
+	t.Cleanup(func() {
+		atomic.StoreUint64(&nodeInfo.followerReadLeaseTime, 0)
+	})
+
+	tests := []struct {
+		name       string
+		leaseSec   uint64
+		wantNotify time.Duration
+		wantTicker time.Duration
+	}{
+		{
+			name:       "default_lease_capped_ticker",
+			leaseSec:   proto.DefaultFollowerReadLeaseTimeSec,
+			wantNotify: time.Duration(proto.DefaultFollowerReadLeaseTimeSec) * 1000 * time.Millisecond / 3,
+			wantTicker: maxNotifyInterval,
+		},
+		{
+			name:       "short_lease5_same_ticker",
+			leaseSec:   5,
+			wantNotify: 5 * time.Second / 3,
+			wantTicker: 5 * time.Second / 3,
+		},
+		{
+			name:       "lease9",
+			leaseSec:   9,
+			wantNotify: 3 * time.Second,
+			wantTicker: 3 * time.Second,
+		},
+		{
+			name:       "lease12",
+			leaseSec:   12,
+			wantNotify: 4 * time.Second,
+			wantTicker: 4 * time.Second,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			updateFollowerReadLeaseTime(tt.leaseSec)
+			require.Equal(t, tt.wantNotify, testLeaseNotifyInterval())
+			require.Equal(t, tt.wantTicker, testLeaseNotifyTickerInterval())
+		})
+	}
+}
+
+func TestStartNotifyTimestamp_shouldSkip(t *testing.T) {
+	t.Cleanup(func() {
+		atomic.StoreUint64(&nodeInfo.followerReadLeaseTime, 0)
+	})
+
+	tests := []struct {
+		name     string
+		leaseSec uint64
+		sinceAgo time.Duration
+		wantSkip bool
+	}{
+		{
+			name:     "lease9_well_past_interval",
+			leaseSec: 9,
+			sinceAgo: 4 * time.Second,
+			wantSkip: false,
+		},
+		{
+			name:     "lease9_clearly_inside",
+			leaseSec: 9,
+			sinceAgo: 2 * time.Second,
+			wantSkip: true,
+		},
+		{
+			name:     "lease5_log_boundary_no_skip",
+			leaseSec: 5,
+			sinceAgo: 1665 * time.Millisecond,
+			wantSkip: false,
+		},
+		{
+			name:     "lease5_still_inside",
+			leaseSec: 5,
+			sinceAgo: 1500 * time.Millisecond,
+			wantSkip: true,
+		},
+		{
+			name:     "lease5_past_interval",
+			leaseSec: 5,
+			sinceAgo: 5*time.Second/3 + 50*time.Millisecond,
+			wantSkip: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			updateFollowerReadLeaseTime(tt.leaseSec)
+			last := time.Now().Add(-tt.sinceAgo)
+			require.Equal(t, tt.wantSkip, testShouldSkipLeaseNotify(last))
+		})
+	}
+
+	t.Run("zero_last_notify_never_skip", func(t *testing.T) {
+		updateFollowerReadLeaseTime(9)
+		require.False(t, testShouldSkipLeaseNotify(time.Time{}))
+	})
+
+	t.Run("zero_without_guard_overflow_bug", func(t *testing.T) {
+		updateFollowerReadLeaseTime(9)
+		// Naive Since(zero)+slack < interval is true due to int64 overflow (why production checks IsZero).
+		require.True(t, testWouldSkipWithoutZeroGuard(time.Time{}))
+		since := time.Since(time.Time{})
+		require.True(t, since > testLeaseNotifyInterval())
+		left := since + leaseNotifyTimingSlack
+		require.True(t, left < testLeaseNotifyInterval())
+	})
+}
+
+func TestStartNotifyTimestamp_shouldSkip_exactBoundary(t *testing.T) {
+	t.Cleanup(func() {
+		atomic.StoreUint64(&nodeInfo.followerReadLeaseTime, 0)
+	})
+	updateFollowerReadLeaseTime(5)
+	interval := testLeaseNotifyInterval()
+
+	// Just under interval - slack: still inside window.
+	last := time.Now().Add(-interval + leaseNotifyTimingSlack + 10*time.Millisecond)
+	require.True(t, testShouldSkipLeaseNotify(last))
+
+	// At interval - slack: allow notify (matches log scenario ~1665ms for lease 5).
+	last = time.Now().Add(-interval + leaseNotifyTimingSlack/2)
+	require.False(t, testShouldSkipLeaseNotify(last))
+}
+
+type notifyTimestampRaftMock struct {
+	mockRaftPartitionForServeProxy
+	submitCalls int32
+}
+
+func (m *notifyTimestampRaftMock) Submit(cmd []byte) (interface{}, error) {
+	atomic.AddInt32(&m.submitCalls, 1)
+	return nil, nil
+}
+
+func newTestMetaPartitionForNotifyTimestamp(partitionID, nodeID uint64) *metaPartition {
+	return &metaPartition{
+		config: &MetaPartitionConfig{
+			PartitionId: partitionID,
+			NodeId:      nodeID,
+			Peers:       []proto.Peer{{ID: nodeID, Addr: "127.0.0.1:17210"}},
+		},
+		stopC: make(chan bool),
+		raftPartition: &notifyTimestampRaftMock{
+			mockRaftPartitionForServeProxy: mockRaftPartitionForServeProxy{
+				leaderID: nodeID,
+				term:     1,
+			},
+		},
+	}
+}
+
+// TestStartNotifyTimestamp_leaderSubmits runs startNotifyTimestamp to cover the leader submit path.
+func TestStartNotifyTimestamp_leaderSubmits(t *testing.T) {
+	t.Cleanup(func() {
+		atomic.StoreUint64(&nodeInfo.followerReadLeaseTime, 0)
+	})
+	updateFollowerReadLeaseTime(3) // notify interval 1s, ticker 1s
+
+	mp := newTestMetaPartitionForNotifyTimestamp(99, 1)
+	mock := mp.raftPartition.(*notifyTimestampRaftMock)
+
+	go mp.startNotifyTimestamp()
+	t.Cleanup(func() { close(mp.stopC) })
+
+	require.Eventually(t, func() bool {
+		return atomic.LoadInt32(&mock.submitCalls) >= 1
+	}, 3*time.Second, 50*time.Millisecond)
+}
+
+// TestStartNotifyTimestamp_secondTickSkipsWithinInterval covers the skip branch when ticker fires
+// before notifyInterval elapses (lease=30 -> interval 10s, ticker 5s).
+func TestStartNotifyTimestamp_secondTickSkipsWithinInterval(t *testing.T) {
+	t.Cleanup(func() {
+		atomic.StoreUint64(&nodeInfo.followerReadLeaseTime, 0)
+	})
+	updateFollowerReadLeaseTime(30)
+
+	mp := newTestMetaPartitionForNotifyTimestamp(100, 1)
+	mock := mp.raftPartition.(*notifyTimestampRaftMock)
+
+	go mp.startNotifyTimestamp()
+	t.Cleanup(func() { close(mp.stopC) })
+
+	require.Eventually(t, func() bool {
+		return atomic.LoadInt32(&mock.submitCalls) >= 1
+	}, 6*time.Second, 100*time.Millisecond)
+
+	time.Sleep(6 * time.Second)
+	require.Equal(t, int32(1), atomic.LoadInt32(&mock.submitCalls))
+}
+
+// TestStartNotifyTimestamp_nonLeaderNoSubmit ensures follower does not submit lease timestamps.
+func TestStartNotifyTimestamp_nonLeaderNoSubmit(t *testing.T) {
+	t.Cleanup(func() {
+		atomic.StoreUint64(&nodeInfo.followerReadLeaseTime, 0)
+	})
+	updateFollowerReadLeaseTime(3)
+
+	mp := newTestMetaPartitionForNotifyTimestamp(101, 2)
+	mock := mp.raftPartition.(*notifyTimestampRaftMock)
+	mock.leaderID = 1 // node 2 is not leader
+
+	go mp.startNotifyTimestamp()
+	t.Cleanup(func() { close(mp.stopC) })
+
+	time.Sleep(2 * time.Second)
+	require.Equal(t, int32(0), atomic.LoadInt32(&mock.submitCalls))
+}
+
 func TestStoreMsgInterval(t *testing.T) {
 	require.Equal(t, uint64(1000), StoreMsgInterval)
 }
@@ -944,6 +1188,24 @@ func TestNeedStoreMsg(t *testing.T) {
 			require.Equal(t, tt.want, mp.needStoreMsg(tt.curIndex))
 		})
 	}
+}
+
+// TestStartSchedule_timerBranch mirrors partition_store_ticket.go timer.C branch (lines 164-170).
+func TestStartSchedule_timerBranch(t *testing.T) {
+	mp := &metaPartition{}
+	mp.SetNeedStoreMsgFlag(NotStoreMsgFlag)
+	mp.applyID = 1500
+	curIndex := uint64(1000)
+
+	shouldResetTimer := mp.applyID <= curIndex || !mp.needStoreMsg(curIndex)
+	require.True(t, shouldResetTimer)
+
+	mp.applyID = 2000
+	shouldResetTimer = mp.applyID <= curIndex || !mp.needStoreMsg(curIndex)
+	require.False(t, shouldResetTimer)
+
+	shouldSubmit := mp.applyID > curIndex && mp.needStoreMsg(curIndex)
+	require.True(t, shouldSubmit)
 }
 
 // TestStartSchedulePersistGate mirrors the timer branch in startSchedule after store.

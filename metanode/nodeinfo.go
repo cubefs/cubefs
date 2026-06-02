@@ -18,8 +18,8 @@ const (
 	// DefaultDumpWaterLevel defines the default dump water level threshold
 	DefaultDumpWaterLevel = 100
 
-	// DefaultFollowerReadLeaseTime defines the default follower read lease time in seconds
-	DefaultFollowerReadLeaseTime = 5
+	// DefaultFollowerReadLeaseTime defines the default follower read lease time in seconds (fallback before cluster info is loaded).
+	DefaultFollowerReadLeaseTime = proto.DefaultFollowerReadLeaseTimeSec
 )
 
 // NodeInfo holds configuration information for the meta node
