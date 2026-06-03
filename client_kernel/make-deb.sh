@@ -19,7 +19,7 @@ command -v dpkg-deb >/dev/null || { echo "需要 dpkg-deb(Debian/Ubuntu)"; exit 
 # 1. 确保 cubefs.ko 已编译
 if [ ! -f "$HERE/cubefs.ko" ]; then
   echo "==> cubefs.ko 不存在，先编译"
-  make -C "$HERE"
+  ( cd "$HERE" && make )
 fi
 [ -f "$HERE/cubefs.ko" ] || { echo "cubefs.ko 编译失败"; exit 1; }
 
