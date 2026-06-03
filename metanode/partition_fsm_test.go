@@ -15,9 +15,12 @@
 package metanode
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -200,6 +203,110 @@ func TestApplySnapshot_Rocksdb(t *testing.T) {
 func TestCleanRocksdbMpFsmTestDir(t *testing.T) {
 	os.RemoveAll(RocksdbFsmTestDir)
 	os.RemoveAll(RocksdbFsmRootTestDir)
+}
+
+// testSnapIterator feeds prebuilt MetaItem records for ApplySnapshot tests.
+type testSnapIterator struct {
+	records [][]byte
+	pos     int
+}
+
+func (it *testSnapIterator) Next() ([]byte, error) {
+	if it.pos >= len(it.records) {
+		return nil, io.EOF
+	}
+	data := it.records[it.pos]
+	it.pos++
+	return data, nil
+}
+
+func (it *testSnapIterator) ApplyIndex() uint64 { return 1 }
+
+func (it *testSnapIterator) Close() {}
+
+func marshalMetaItemForSnapTest(t *testing.T, op uint32, k, v []byte) []byte {
+	t.Helper()
+	item := NewMetaItem(op, k, v)
+	data, err := item.MarshalBinary()
+	require.NoError(t, err)
+	return data
+}
+
+// corruptMultipartSnapValue mimics production snapshot blobs that panic in MultipartFromBytes.
+func corruptMultipartSnapValue() []byte {
+	raw := make([]byte, 247)
+	for i := range raw {
+		raw[i] = 0xff
+	}
+	return raw
+}
+
+func TestApplySnapshot_recoverMultipartDecodePanic_returnsError(t *testing.T) {
+	require.Panics(t, func() {
+		_ = MultipartFromBytes(corruptMultipartSnapValue())
+	}, "sanity: corrupt multipart bytes must panic without recovery")
+
+	mp := newMpForFsmTest(t, proto.StoreModeMem)
+	mpID := mp.config.PartitionId
+	corruptV := corruptMultipartSnapValue()
+
+	verBytes := make([]byte, 4)
+	binary.BigEndian.PutUint32(verBytes, SnapFormatVersion_1)
+	applyBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(applyBytes, 1)
+
+	iter := &testSnapIterator{records: [][]byte{
+		marshalMetaItemForSnapTest(t, opFSMSnapFormatVersion, nil, verBytes),
+		marshalMetaItemForSnapTest(t, opFSMApplyId, nil, applyBytes),
+		marshalMetaItemForSnapTest(t, opFSMCreateMultipart, nil, corruptV),
+	}}
+
+	var applyErr error
+	require.NotPanics(t, func() {
+		applyErr = mp.ApplySnapshot(nil, iter)
+	})
+	require.Error(t, applyErr)
+	require.Contains(t, applyErr.Error(), "ApplySnapshot panic")
+	require.Contains(t, applyErr.Error(), fmt.Sprintf("mpId(%v)", mpID))
+	require.Contains(t, applyErr.Error(), fmt.Sprintf("lastSnapOp(%v)", opFSMCreateMultipart))
+	require.Contains(t, applyErr.Error(), fmt.Sprintf("lastSnapValueLen(%v)", len(corruptV)))
+	require.True(t, strings.Contains(applyErr.Error(), "bounds") ||
+		strings.Contains(applyErr.Error(), "out of range"),
+		"panic value should mention slice bounds, got: %v", applyErr)
+}
+
+func TestApplySnapshot_recoverMultipartDecodePanic_rocksdb(t *testing.T) {
+	root := t.TempDir()
+	config := &MetaPartitionConfig{
+		PartitionId:   10002,
+		VolName:       VolNameForTest,
+		PartitionType: proto.VolumeTypeHot,
+		StoreMode:     proto.StoreModeRocksDb,
+		RootDir:       root,
+		RocksDBDir:    root + "/rocksdb",
+	}
+	mp := newPartition(config, newManager())
+	mp.manager.metaNode = &MetaNode{raftSyncSnapFormatVersion: SnapFormatVersion_1}
+	mp.uniqChecker = newUniqChecker()
+	mp.multiVersionList = &proto.VolVersionInfoList{}
+
+	corruptV := corruptMultipartSnapValue()
+
+	verBytes := make([]byte, 4)
+	binary.BigEndian.PutUint32(verBytes, SnapFormatVersion_1)
+	applyBytes := make([]byte, 8)
+	binary.BigEndian.PutUint64(applyBytes, 1)
+
+	iter := &testSnapIterator{records: [][]byte{
+		marshalMetaItemForSnapTest(t, opFSMSnapFormatVersion, nil, verBytes),
+		marshalMetaItemForSnapTest(t, opFSMApplyId, nil, applyBytes),
+		marshalMetaItemForSnapTest(t, opFSMCreateMultipart, nil, corruptV),
+	}}
+
+	err := mp.ApplySnapshot(nil, iter)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "ApplySnapshot panic")
+	require.Contains(t, err.Error(), fmt.Sprintf("lastSnapOp(%v)", opFSMCreateMultipart))
 }
 
 // Test cases for ApplyMemberChange function

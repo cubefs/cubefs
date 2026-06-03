@@ -24,6 +24,7 @@ import (
 	"net"
 	"os"
 	"path"
+	"runtime/debug"
 	"sync/atomic"
 	"time"
 
@@ -991,6 +992,23 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		return nil
 	}
 
+	var (
+		lastSnapOp       uint32
+		lastSnapValueLen int
+	)
+
+	// Recover decode panics (e.g. MultipartFromBytes slice bounds on corrupt snap.V) and return
+	// error so raft snapshot install fails and can retry instead of crashing the process.
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("ApplySnapshot panic: mpId(%v) index(%v) lastSnapOp(%v) lastSnapValueLen(%v): %v",
+				mp.config.PartitionId, index, lastSnapOp, lastSnapValueLen, r)
+			log.LogErrorf("ApplySnapshot: recovered panic (e.g. invalid multipart snapshot bytes), mpId(%v) index(%v) "+
+				"lastSnapOp(%v) lastSnapValueLen(%v) panic(%v) stack:\n%s",
+				mp.config.PartitionId, index, lastSnapOp, lastSnapValueLen, r, debug.Stack())
+		}
+	}()
+
 	for {
 		nextStart := time.Now()
 		data, err = iter.Next()
@@ -1056,6 +1074,8 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		}
 
 		index++
+		lastSnapOp = snap.Op
+		lastSnapValueLen = len(snap.V)
 		switch snap.Op {
 		case opFSMApplyId:
 			appIndexID = binary.BigEndian.Uint64(snap.V)
