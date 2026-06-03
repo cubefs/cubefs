@@ -77,7 +77,7 @@ int cfs_buffer_write(struct cfs_buffer *buffer, const char *fmt, ...)
 	if (ret < 0)
 		return ret;
 	if (ret >= avail_size) {
-		ret = cfs_buffer_grow(buffer, ret - avail_size);
+		ret = cfs_buffer_grow(buffer, ret - avail_size + 1);
 		if (ret < 0)
 			return -ENOMEM;
 
