@@ -197,7 +197,6 @@ static struct inode *cfs_inode_new(struct super_block *sb,
 
 	/* timestamps updated by server */
 	inode->i_flags |= S_NOATIME | S_NOCMTIME;
-	inode->i_flags |= S_NOSEC;
 
 	switch (inode->i_mode & S_IFMT) {
 	case S_IFREG:
