@@ -303,6 +303,14 @@ int cfs_socket_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 		cfs_buffer_data(csk->tx_buffer));
 #endif
 
+	/* v3.5: 写类 op 带 ProtoVersion 标志,避免 forbidWriteOpOfProtoVer0 拒绝 */
+	switch (packet->request.hdr.opcode) {
+	case CFS_OP_EXTENT_CREATE:
+	case CFS_OP_STREAM_WRITE:
+	case CFS_OP_STREAM_RANDOM_WRITE:
+		packet->request.hdr.ext_type |= 0x10;
+		break;
+	}
 	/* send hdr */
 	ret = cfs_socket_send(csk, &packet->request.hdr,
 			      sizeof(packet->request.hdr));
@@ -313,6 +321,13 @@ int cfs_socket_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 			      be64_to_cpu(packet->request.hdr.req_id),
 			      packet->request.hdr.opcode, ret);
 		return ret;
+	}
+	if (packet->request.hdr.ext_type & 0x10) {
+		u8 _pv[12] = { 0 };
+		_pv[11] = 1; /* VerSeq=0(8B) + ProtoVersion=1(4B BE) */
+		ret = cfs_socket_send(csk, _pv, sizeof(_pv));
+		if (ret < 0)
+			return ret;
 	}
 
 	/* send arg */
@@ -378,6 +393,14 @@ int cfs_socket_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 			      be64_to_cpu(packet->request.hdr.req_id),
 			      packet->request.hdr.opcode, ret);
 		return ret;
+	}
+
+	/* v3.5: 请求带 ProtoVersion 标志时 reply 也带,读掉 VerSeq(8)+ProtoVersion(4) 对齐 */
+	if (packet->request.hdr.ext_type & 0x10) {
+		u8 _pv[12];
+		ret = cfs_socket_recv(csk, _pv, sizeof(_pv));
+		if (ret < 0)
+			return ret;
 	}
 
 	arglen = be32_to_cpu(packet->reply.hdr.arglen);

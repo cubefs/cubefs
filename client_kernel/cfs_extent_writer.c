@@ -134,7 +134,6 @@ static void extent_writer_tx_work_cb(struct work_struct *work)
 		if (!(writer->flags &
 		      (EXTENT_WRITER_F_ERROR | EXTENT_WRITER_F_RECOVER))) {
 			int ret = cfs_socket_send_packet(writer->sock, packet);
-			printk(KERN_ERR "cfs:WR TX send ret=%d ext_id=%llu\n", ret, writer->ext_id);
 			if (ret < 0)
 				writer->flags |= EXTENT_WRITER_F_RECOVER;
 		}
@@ -179,7 +178,6 @@ static void extent_writer_rx_work_cb(struct work_struct *work)
 			goto recover_packet;
 
 		ret = cfs_socket_recv_packet(writer->sock, packet);
-		printk(KERN_ERR "cfs:WR RX recv ret=%d result=%d\n", ret, packet->reply.hdr.result_code);
 		if (ret < 0 || packet->reply.hdr.result_code != CFS_STATUS_OK) {
 			writer->flags |= EXTENT_WRITER_F_RECOVER;
 			goto recover_packet;
@@ -187,7 +185,6 @@ static void extent_writer_rx_work_cb(struct work_struct *work)
 		goto handle_packet;
 
 recover_packet:
-		printk(KERN_ERR "cfs:WR RECOVER flags=%x\n", writer->flags);
 		if (!recover) {
 			struct cfs_data_partition *dp;
 			u64 ext_id;

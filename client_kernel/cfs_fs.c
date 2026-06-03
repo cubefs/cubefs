@@ -1376,10 +1376,14 @@ static int cfs_statfs(struct dentry *dentry, struct kstatfs *kstatfs)
 	kstatfs->f_bsize = CFS_BLOCK_SIZE;
 	kstatfs->f_frsize = CFS_BLOCK_SIZE;
 	kstatfs->f_blocks = stat.total_size >> CFS_BLOCK_SIZE_SHIFT;
-	kstatfs->f_bfree = (stat.total_size - stat.used_size) >>
-			   CFS_BLOCK_SIZE_SHIFT;
-	kstatfs->f_bavail = (stat.total_size - stat.used_size) >>
-			    CFS_BLOCK_SIZE_SHIFT;
+	if (stat.used_size >= stat.total_size) {
+		kstatfs->f_bfree = 0;
+		kstatfs->f_bavail = 0;
+	} else {
+		kstatfs->f_bfree =
+			(stat.total_size - stat.used_size) >> CFS_BLOCK_SIZE_SHIFT;
+		kstatfs->f_bavail = kstatfs->f_bfree;
+	}
 	kstatfs->f_files = stat.inode_count;
 	kstatfs->f_ffree = CFS_INODE_MAX_ID - stat.inode_count;
 	cfs_volume_stat_clear(&stat);

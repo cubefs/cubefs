@@ -153,7 +153,6 @@ static int cfs_packet_inode_from_json(cfs_json_t *json,
 
 	ret = cfs_json_get_string_ptr(json, "mt", &val, &len);
 	CHECK_GOTO(ret, "not found mt");
-	printk(KERN_ERR "cfs: DBG mt=[%.*s] len=%d\n", (int)len, val, (int)len);
 	ret = cfs_parse_time(val, len, &info->modify_time);
 	CHECK_GOTO(ret, "failed to parse mt");
 
