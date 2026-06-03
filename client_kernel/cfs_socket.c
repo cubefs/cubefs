@@ -308,6 +308,7 @@ int cfs_socket_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 	case CFS_OP_EXTENT_CREATE:
 	case CFS_OP_STREAM_WRITE:
 	case CFS_OP_STREAM_RANDOM_WRITE:
+	case CFS_OP_TRUNCATE:
 		packet->request.hdr.ext_type |= 0x10;
 		break;
 	}

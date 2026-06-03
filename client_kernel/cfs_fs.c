@@ -1298,7 +1298,9 @@ static int cfs_unlink(struct inode *dir, struct dentry *dentry)
 static const char *cfs_get_link(struct dentry *dentry, struct inode *inode,
 				struct delayed_call *done)
 {
-	return inode->i_link;
+	const char *target = CFS_INODE(inode)->link_target;
+
+	return target ? target : ERR_PTR(-ENOENT);
 }
 #else
 static void *cfs_follow_link(struct dentry *dentry, struct nameidata *nd)

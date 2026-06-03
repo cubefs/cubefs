@@ -47,6 +47,12 @@ static int do_extent_request(struct cfs_extent_stream *es,
 		goto out;
 	}
 
+	if ((packet->request.hdr.opcode == CFS_OP_STREAM_WRITE ||
+	     packet->request.hdr.opcode == CFS_OP_STREAM_RANDOM_WRITE) &&
+	    !packet->request.hdr.crc)
+		packet->request.hdr.crc = cpu_to_be32(cfs_page_frags_crc32(
+			packet->request.data.write.frags,
+			packet->request.data.write.nr));
 	err = cfs_socket_send_packet(sock, packet);
 	if (err < 0) {
 		cfs_log_error(es->ec->log, "socket(%s) send packet error %d\n",
