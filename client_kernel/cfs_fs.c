@@ -145,6 +145,7 @@ static inline void cfs_inode_refresh_unlock(struct cfs_inode *ci,
 	set_nlink(inode, iinfo->nlink);
 	inode->i_generation = iinfo->generation;
 	i_size_write(inode, iinfo->size);
+	inode->i_blocks = (iinfo->size + 511) >> 9;
 	cfs_quota_info_array_clear(&ci->quota_infos);
 	cfs_quota_info_array_move(&ci->quota_infos, &iinfo->quota_infos);
 	if (ci->link_target)
