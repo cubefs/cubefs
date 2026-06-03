@@ -1389,7 +1389,7 @@ int cfs_meta_rename(struct cfs_meta_client *mc, u64 src_parent_ino,
 						dst_parent_ino, dst_name,
 						src_ino, &old_ino);
 	if (ret > 0) {
-		cfs_meta_iunlink_internal(mc, src_parent_mp, src_ino, NULL);
+		cfs_meta_iunlink_internal(mc, src_mp, src_ino, NULL);
 		ret = -ret;
 		goto unlock;
 	} else if (ret < 0)
@@ -1409,14 +1409,14 @@ int cfs_meta_rename(struct cfs_meta_client *mc, u64 src_parent_ino,
 							dst_name, old_ino,
 							NULL);
 		if (ret >= 0)
-			cfs_meta_iunlink_internal(mc, src_parent_mp, src_ino,
+			cfs_meta_iunlink_internal(mc, src_mp, src_ino,
 						  NULL);
 		ret = -old_ret;
 		goto unlock;
 	} else if (ret < 0)
 		goto unlock;
 
-	cfs_meta_iunlink_internal(mc, src_parent_mp, src_ino, NULL);
+	cfs_meta_iunlink_internal(mc, src_mp, src_ino, NULL);
 	if (old_ino != 0) {
 		struct cfs_meta_partition *old_mp;
 		old_mp = cfs_meta_get_partition_by_inode(mc, old_ino);
