@@ -4,6 +4,7 @@
 blobstore/.deps/
 blobstore/bin/
 build/bin
+/bin/
 build/include/
 build/lib/
 build/out/

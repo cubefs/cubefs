@@ -1,0 +1,24 @@
+# CubeFS 内核客户端挂载配置示例
+#
+# 用法:
+#   cp /etc/cubefs/cubefs.conf.example /etc/cubefs/data.conf   # 复制并改名(data 即实例名)
+#   vi /etc/cubefs/data.conf                                   # 填下面 5 项
+#   systemctl enable --now cubefs-client-kernel@data           # 开机自动挂载 + 立即挂载
+#
+# 多挂载点:复制成多个 <name>.conf，各 enable 一个实例即可。
+
+# master 地址(逗号分隔，带端口)
+MASTERS=10.54.121.101:17010,10.54.121.102:17010,10.54.121.106:17010
+
+# vol 名
+VOLUME=pvc-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+
+# vol owner(鉴权用，必填，须与 master 上登记的 owner 一致)
+OWNER=csiuser
+
+# 本地挂载点(不存在会自动创建)
+MOUNTPOINT=/mnt/cubefs
+
+# 可选:追加 mount 选项，必须带前导逗号。留空即用默认。
+# 例: MOUNT_OPTS=,dentry_cache_valid_ms=5000,attr_cache_valid_ms=30000,enable_quota=false
+MOUNT_OPTS=

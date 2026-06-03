@@ -30,6 +30,10 @@ blobstore:
 client:
 	@build/build.sh client $(GOMOD) --threads=$(threads)
 
+phony += client-kernel
+client-kernel:
+	@bash client_kernel/make-deb.sh
+
 authtool:
 	@build/build.sh authtool $(GOMOD) --threads=$(threads)
 

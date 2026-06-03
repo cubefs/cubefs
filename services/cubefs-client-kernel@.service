@@ -1,0 +1,27 @@
+[Unit]
+Description=CubeFS kernel client mount (%i)
+Documentation=https://github.com/cubefs/cubefs
+After=network-online.target
+Wants=network-online.target
+
+# 模板 unit:每个挂载点一个实例，配置读 /etc/cubefs/<instance>.conf
+#   cp /etc/cubefs/cubefs.conf.example /etc/cubefs/data.conf  # 编辑
+#   systemctl enable --now cubefs-client-kernel@data
+# %i = 实例名(如 data) → /etc/cubefs/data.conf
+AssertPathExists=/etc/cubefs/%i.conf
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+EnvironmentFile=/etc/cubefs/%i.conf
+# 确保内核模块已加载 + 挂载点存在
+ExecStartPre=/sbin/modprobe cubefs
+ExecStartPre=/bin/mkdir -p ${MOUNTPOINT}
+# 挂载:owner 必填，MOUNT_OPTS 为可选追加项(如 ,dentry_cache_valid_ms=5000)
+ExecStart=/bin/mount -t cubefs -o owner=${OWNER}${MOUNT_OPTS} //${MASTERS}/${VOLUME} ${MOUNTPOINT}
+ExecStop=/bin/umount ${MOUNTPOINT}
+# 挂载失败不反复重启刷屏，由运维介入
+Restart=no
+
+[Install]
+WantedBy=multi-user.target
