@@ -167,6 +167,7 @@ func TestPrepareMigrateTask(t *testing.T) {
 		// unlock failed
 		volume := MockMigrateVolInfoMap[100]
 		volume.VunitLocations[int(t1.SourceVuid.Index())].Vuid = volume.VunitLocations[int(t1.SourceVuid.Index())].Vuid + 1
+		volume.Status = proto.VolumeStatusLock
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Return(volume, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UnlockVolume(any, any, any).Return(errMock)
 		err = mgr.prepareTask()
@@ -179,6 +180,24 @@ func TestPrepareMigrateTask(t *testing.T) {
 		err = mgr.prepareTask()
 		require.NoError(t, err)
 		base.VolTaskLockerInst().Unlock(context.Background(), 100)
+	}
+	{
+		// source chunk has moved, volume NOT locked: skip UnlockVolume, finish task in advance directly
+		mgr := newMigrateMgr(t)
+		t1 := mockGenMigrateTask(proto.TaskTypeManualMigrate, "z0", 4, 300, proto.MigrateStateInited, MockMigrateVolInfoMap)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AddMigrateTask(any, any).Return(nil)
+		err := mgr.AddTask(ctx, t1)
+		require.NoError(t, err)
+
+		volume := MockMigrateVolInfoMap[300]
+		volume.VunitLocations[int(t1.SourceVuid.Index())].Vuid = volume.VunitLocations[int(t1.SourceVuid.Index())].Vuid + 1
+		// volume.Status is VolumeStatusIdle, UnlockVolume must not be called
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Return(volume, nil)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().DeleteMigrateTask(any, any).Return(nil)
+		mgr.taskLogger.(*mocks.MockRecordLogEncoder).EXPECT().Encode(any).Return(nil)
+		err = mgr.prepareTask()
+		require.NoError(t, err)
+		base.VolTaskLockerInst().Unlock(context.Background(), 300)
 	}
 	{
 		// one task and finish in advance because  other migrate task is doing on this volume

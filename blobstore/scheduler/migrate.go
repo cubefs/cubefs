@@ -592,11 +592,13 @@ func (mgr *MigrateMgr) prepareTask() (err error) {
 		// 2. alloc chunk failed and VolTaskLockerInst().Unlock
 		// 3. this volume maybe execute other tasks, such as disk repair
 		// 4. then enter this branch and volume status is locked
-		err := mgr.clusterMgrCli.UnlockVolume(ctx, migTask.SourceVuid.Vid(), volInfo.Epoch)
-		if err != nil {
-			span.Errorf("before finish in advance try unlock volume failed: vid[%d], err[%+v]",
-				migTask.SourceVuid.Vid(), err)
-			return err
+		if volInfo.Status == proto.VolumeStatusLock {
+			err := mgr.clusterMgrCli.UnlockVolume(ctx, migTask.SourceVuid.Vid(), volInfo.Epoch)
+			if err != nil {
+				span.Errorf("before finish in advance try unlock volume failed: vid[%d], err[%+v]",
+					migTask.SourceVuid.Vid(), err)
+				return err
+			}
 		}
 
 		mgr.finishTaskInAdvance(ctx, migTask, "volume has migrated")
@@ -1249,7 +1251,7 @@ func checkTaskUpdated(ctx context.Context, task *proto.MigrateTask, diskGetter D
 		}
 		disk, ok := diskGetter.GetDisk(diskID)
 		if ok && host != disk.Host {
-			span.Debugf("disk info updated for destination of task[%s], old[%s], new[%s]",
+			span.Debugf("disk info updated for source of task[%s], old[%s], new[%s]",
 				task.TaskID, host, disk.Host)
 			task.Sources[idx].Host = disk.Host
 			updated = true

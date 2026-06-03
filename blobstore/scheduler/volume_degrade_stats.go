@@ -16,12 +16,12 @@ package scheduler
 
 import (
 	"context"
+	"net/http"
 	"sort"
-	"strings"
 
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
-	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/scheduler/client"
 )
@@ -182,11 +182,16 @@ type VolumeDegradeStatsMgr struct {
 	cfg           *VolumeDegradeStatsCfg
 }
 
+const defaultDegradeBatch = 10000
+
 func newVolumeDegradeStatsMgr(
 	clusterID proto.ClusterID,
 	clusterMgrCli client.ClusterMgrAPI,
 	cfg *VolumeDegradeStatsCfg,
 ) *VolumeDegradeStatsMgr {
+	if cfg.Batch == 0 {
+		cfg.Batch = defaultDegradeBatch
+	}
 	return &VolumeDegradeStatsMgr{
 		clusterID:     clusterID,
 		stats:         newDegradeStatsCounter(cfg.Batch),
@@ -288,7 +293,7 @@ func (v *VolumeDegradeStatsMgr) initialize() error {
 	}
 
 	if err := v.getStatsFromKV(ctx); err != nil {
-		if !strings.Contains(err.Error(), errcode.ErrNotFound.Error()) {
+		if rpc.DetectStatusCode(err) != http.StatusNotFound {
 			span.Errorf("failed to get volume degrade batch size from kv, err[%+v]", err)
 			return err
 		}
