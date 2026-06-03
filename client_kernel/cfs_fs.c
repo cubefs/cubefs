@@ -999,6 +999,8 @@ static int cfs_create(struct user_namespace *mnt_userns, struct inode *dir, stru
 		quota = &CFS_INODE(dir)->quota_infos;
 	}
 
+	mode &= ~current_umask();
+
 	ret = cfs_meta_create(cmi->meta, dir->i_ino, &dentry->d_name, mode, uid,
 			      gid, NULL, quota, &iinfo);
 	if (ret < 0) {
