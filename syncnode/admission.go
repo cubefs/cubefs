@@ -36,7 +36,9 @@ import (
 //
 //   - 估算只是 best-effort 上界，宁可偏保守也不要让任务跑起来再 OOM。
 //     POSIX/FIO 用 sum(BS × IODepth × NumJobs) × 1.5 + 256 MiB；
-//     S3/SDK 用 NumJobs × maxObjectSize × 2；mdtest / ior 给保守常数。
+//     S3/SDK 用 NumJobs × min(maxObjectSize, multipart 上限) × 2（put 已流式，
+//     不再驻留整对象，get 流式不计；详见 estimateObjMemoryBytes）；
+//     mdtest / ior 给保守常数。
 //
 //   - admissionMemBudget = 0.7：留 30% 给 syncnode 自身、bench-tools
 //     sidecar、page cache 等无法精确估算的部分；test-hb 12 GiB 节点上
@@ -129,8 +131,22 @@ func estimateFIOMemoryBytes(rule *spec.BenchRule) uint64 {
 }
 
 // estimateObjMemoryBytes 估算 S3 / SDK 任务的 buffer 占用。
-// 每个 worker 同时持有一个 max-object 缓冲；NumJobs 是单 stage 的 worker 数。
+//
+// put 数据源已改为流式（executor.fixedReader，不再预分配整对象），所以单
+// worker 的常驻 buffer 不再随 objectSize 线性增长，而是被上传路径封顶：
+//   - 对象 ≤ multipartThreshold：simple PutObject，s3 后端 io.ReadAll 整对象 → maxObj
+//   - 对象 > multipartThreshold：multipart 流式，峰值 ≈ PartSize × Uploader 并发
+//
+// get / get_range / head / delete / list 不持有对象（get 走 io.Copy →
+// io.Discard 流式），只占一个小传输 buffer，与对象大小无关。
+//
+// 常量与 backend/s3 的默认配置对齐（MultipartThresholdMiB=64 / PartSizeMiB=16
+// / SDK Uploader 默认并发 5）。rule 通过 ObjOp.PartSizeMiB override 时实际峰值
+// 可能略高，但上层 baseline（256MiB）+ admissionMemBudget 的 30% 余量足以覆盖。
 func estimateObjMemoryBytes(rule *spec.BenchRule) uint64 {
+	const multipartThreshold = uint64(64) << 20    // s3 cfg MultipartThresholdMiB 默认
+	const multipartBufCap = (uint64(16) << 20) * 5 // PartSize(16MiB) × Uploader 并发(5)
+	const streamXferBuf = uint64(64) << 10         // get/list 等流式传输 buffer 上界
 	var peak uint64
 	for _, st := range rule.Stages {
 		jobs := st.NumJobs
@@ -144,8 +160,25 @@ func estimateObjMemoryBytes(rule *spec.BenchRule) uint64 {
 		if maxObj <= 0 {
 			maxObj = 4 << 20 // 4 MiB 兜底
 		}
-		// 双缓冲：一份在进 IO，一份在收 next。
-		stageBytes := uint64(jobs) * uint64(maxObj) * 2
+		// 只有 put 才需要对象大小级别的 buffer；其余 op 流式传输。
+		hasPut := false
+		for _, op := range st.Ops {
+			if op.Type == "put" || op.Type == "put_multipart" {
+				hasPut = true
+				break
+			}
+		}
+		var perWorker uint64
+		if hasPut {
+			perWorker = uint64(maxObj)
+			if perWorker > multipartThreshold {
+				perWorker = multipartBufCap // 大对象走 multipart 流式，封顶不随对象涨
+			}
+		} else {
+			perWorker = streamXferBuf
+		}
+		// 双缓冲：一份在进 IO，一份在备下一个。
+		stageBytes := uint64(jobs) * perWorker * 2
 		if stageBytes > peak {
 			peak = stageBytes
 		}

@@ -1133,6 +1133,12 @@ func (c *Cluster) checkLcNodeHeartbeat() {
 func (c *Cluster) checkSyncNodeHeartbeat() {
 	tasks := make([]*proto.AdminTask, 0)
 	deadAddrs := make([]string, 0)
+	// 心跳超时主动剔除：失联超过 evict 阈值的 syncnode 直接从注册表删除，不再
+	// 只标 IsActive=false 而永久残留（残留会让 /syncNode/list 仍显示、dispatcher
+	// 仍可能 round-robin 选中导致 task 卡死）。evict 阈值取 inactive 判定
+	// (defaultNodeTimeOutSec) 的 3 倍作 grace 期，避免短暂网络抖动误删。
+	evictAddrs := make([]string, 0)
+	evictTimeout := time.Second * time.Duration(defaultNodeTimeOutSec*3)
 	c.syncNodes.Range(func(addr, syncNode interface{}) bool {
 		node := syncNode.(*SyncNode)
 
@@ -1151,12 +1157,17 @@ func (c *Cluster) checkSyncNodeHeartbeat() {
 		// SyncNode's lock.
 		node.RLock()
 		nowActive := node.IsActive
+		reportTime := node.ReportTime
 		node.RUnlock()
 
 		if !nowActive {
 			log.LogInfof("checkSyncNodeHeartbeat: syncnode(%v) is inactive", node.Addr)
 			if wasActive {
 				deadAddrs = append(deadAddrs, node.Addr)
+			}
+			// 失联超过 grace 期 → 排队剔除（实际删除在 Range 外做，避免持锁）。
+			if time.Since(reportTime) > evictTimeout {
+				evictAddrs = append(evictAddrs, node.Addr)
 			}
 			return true
 		}
@@ -1185,6 +1196,27 @@ func (c *Cluster) checkSyncNodeHeartbeat() {
 		for _, addr := range deadAddrs {
 			c.syncDispatcher.handleNodeDeath(addr)
 		}
+	}
+	// 心跳超时剔除：对失联超 grace 期的节点，复用 decommission 的删除路径
+	// （raft 删 + 内存删 + dispatcher 清理）。此处不持有任何 SyncNode 锁，
+	// 符合 checkSyncNodeHeartbeat → dispatcher 的规范锁序。
+	for _, addr := range evictAddrs {
+		v, ok := c.syncNodes.Load(addr)
+		if !ok {
+			continue
+		}
+		sn := v.(*SyncNode)
+		if delErr := c.syncDeleteSyncNode(sn); delErr != nil {
+			log.LogErrorf("checkSyncNodeHeartbeat: evict syncnode(%v) raft delete failed: %v", addr, delErr)
+			continue
+		}
+		c.syncNodes.Delete(addr)
+		if c.syncDispatcher != nil {
+			c.syncDispatcher.handleNodeDeath(addr)
+		}
+		msg := fmt.Sprintf("syncnode(%v) evicted after inactive > %v", addr, evictTimeout)
+		log.LogWarnf("checkSyncNodeHeartbeat: %v", msg)
+		auditlog.LogMasterOp("SyncNodeEvict", msg, nil)
 	}
 	// Run the orphan-shard scan on the same tick. It must come AFTER
 	// checkLiveness has flipped IsActive on the dead nodes so the scan

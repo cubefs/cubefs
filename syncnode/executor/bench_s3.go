@@ -15,7 +15,6 @@
 package executor
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -267,7 +266,7 @@ func runObjStage(
 						sz := sizeFn(rng)
 						seq := objSeq.Add(1)
 						key := fmt.Sprintf("%sobj-%d", keyPrefix, seq)
-						body := bytes.NewReader(make([]byte, sz))
+						body := &fixedReader{remaining: sz}
 						_, opErr = b.Put(ctx, key, body, sz, backend.PutOptions{})
 						if opErr == nil {
 							opBytes = sz
@@ -284,7 +283,7 @@ func runObjStage(
 						sz := sizeFn(rng)
 						seq := objSeq.Add(1)
 						key := fmt.Sprintf("%sobj-%d", keyPrefix, seq)
-						body := bytes.NewReader(make([]byte, sz))
+						body := &fixedReader{remaining: sz}
 						partMiB := op.PartSizeMiB
 						if partMiB <= 0 {
 							partMiB = defaultMultipartPartMiB
@@ -534,7 +533,10 @@ func averageObjSize(s spec.ObjSize) int {
 	if s.Fixed > 0 {
 		return int(s.Fixed)
 	}
-	if s.Min > 0 && s.Max > s.Min {
+	// 与 resolveObjSize 同源：Min==Max（用 min/max 表达固定大小）必须生效。
+	// 原 Max>Min 在相等时落到 4KiB 兜底，会让带宽限速（TargetBwMiBs）按 4KiB
+	// 反算 ops/sec、严重高估目标速率、限速失效。放宽到 Max>=Min 保持一致。
+	if s.Min > 0 && s.Max >= s.Min {
 		return int((s.Min + s.Max) / 2)
 	}
 	return 4096
@@ -565,15 +567,45 @@ const (
 	defaultListMaxKeys      = 1000
 )
 
+// fixedReader streams exactly `remaining` bytes without ever allocating the
+// whole object: Read fills the caller-provided buffer, so memory stays
+// O(len(p)) regardless of object size. This lets large-object S3 put flow
+// through the multipart uploader holding only part-sized buffers, instead of
+// pinning numjobs × objectSize in RAM — the root cause of the admission
+// OOM-estimate blowup. Payload content is irrelevant for a throughput bench
+// (bytes are never verified or compressed), so we skip the memset; whatever
+// is already in the reused transfer buffer goes out the wire.
+type fixedReader struct{ remaining int64 }
+
+func (r *fixedReader) Read(p []byte) (int, error) {
+	if r.remaining <= 0 {
+		return 0, io.EOF
+	}
+	n := int64(len(p))
+	if n > r.remaining {
+		n = r.remaining
+	}
+	r.remaining -= n
+	return int(n), nil
+}
+
 // resolveObjSize returns a function that generates object sizes according to
 // the ObjSize configuration. Falls back to 4 KiB when no size is specified.
 func resolveObjSize(s spec.ObjSize) func(*rand.Rand) int64 {
 	if s.Fixed > 0 {
 		return func(_ *rand.Rand) int64 { return s.Fixed }
 	}
-	if s.Min > 0 && s.Max > s.Min {
+	// Min==Max（用 min/max 表达固定大小，而非 Fixed 字段）也必须生效：原先
+	// 判断 Max>Min，相等时落到下面的 4KiB 兜底——曾导致 objectSize=64MiB 的
+	// rule 实际只写 4KiB 对象（静默退化，bench 结果完全失真）。这里放宽到
+	// Max>=Min，span==0 时返回固定 Min，避免 rng.Int63n(0) panic。
+	if s.Min > 0 && s.Max >= s.Min {
+		span := s.Max - s.Min
 		return func(rng *rand.Rand) int64 {
-			return s.Min + rng.Int63n(s.Max-s.Min)
+			if span <= 0 {
+				return s.Min
+			}
+			return s.Min + rng.Int63n(span)
 		}
 	}
 	return func(_ *rand.Rand) int64 { return 4096 } // default 4 KiB
@@ -605,10 +637,9 @@ func runObjStageWarmup(ctx context.Context, stage spec.ObjStage, b backend.Backe
 		sz := sizeFn(rng)
 		seq := warmSeq.Add(1)
 		key := fmt.Sprintf("%swarmup-%d", keyPrefix, seq)
-		body := bytes.NewReader(make([]byte, sz))
+		body := &fixedReader{remaining: sz}
 		_, err := b.Put(ctx, key, body, sz, backend.PutOptions{})
 		return err
 	}
 	defaultWarmupRunner.run(ctx, taskID, strconv.Itoa(shardIdx), stage.Name, stage.Warmup, loop)
 }
-

@@ -184,6 +184,7 @@ func runMdtestStage(ctx context.Context, defaults spec.MdtestConfig, stage spec.
 	}
 
 	cmd := exec.CommandContext(ctx, mpiBin, args...)
+	setProcGroupKill(cmd)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, fmt.Errorf("stdoutpipe: %w", err)
@@ -249,11 +250,11 @@ type mdtestOp struct {
 // parseMdtestOutput scans the mdtest summary block for "<Op>: max min mean stddev"
 // lines. Format excerpt:
 //
-//	   Operation                      Max            Min           Mean        Std Dev
-//	   ---------                      ---            ---           ----        -------
-//	   Directory creation     :     2415.213       2415.213       2415.213          0.000
-//	   Directory stat         :     7032.119       7032.119       7032.119          0.000
-//	   ...
+//	Operation                      Max            Min           Mean        Std Dev
+//	---------                      ---            ---           ----        -------
+//	Directory creation     :     2415.213       2415.213       2415.213          0.000
+//	Directory stat         :     7032.119       7032.119       7032.119          0.000
+//	...
 //
 // Names are normalized to lower-kebab (e.g. "dir-create", "file-stat", "tree-removal").
 func parseMdtestOutput(output string) []mdtestOp {
@@ -330,4 +331,3 @@ func orInt(over, def, fallback int) int {
 // mdtest stage 执行失败分支内联，向新的 cubefs_bench_error_attr_total 指标
 // 写入错误归因。旧的 IncErr 调用保持不变。
 // ---------------------------------------------------------------------------
-

@@ -25,11 +25,32 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/cubefs/cubefs/syncnode/spec"
 	"github.com/cubefs/cubefs/util/log"
 )
+
+// setProcGroupKill 让外部基准进程（fio / mpirun 等）与其 fork 出的 worker 子
+// 进程同处一个进程组，并在 ctx 取消（task done / failed / cancel / 超 runtime）
+// 时杀掉整个进程组。
+//
+// 不这样做的后果：exec.CommandContext 默认只对主进程发 SIGKILL，而 fio 是
+// fork 模型——主进程被杀后 numjobs 个 worker 子进程会成为孤儿继续运行，占满
+// 内存、抢占 IO、污染后续所有测试，并把后续 task 顶进内存准入拒绝。负 PID
+// 表示向整个进程组发送信号，连 worker 一并清理。WaitDelay 给 Cancel 生效的
+// 缓冲，超时后 Wait 强制返回，避免 Wait 永久阻塞。
+func setProcGroupKill(cmd *exec.Cmd) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		if cmd.Process == nil {
+			return nil
+		}
+		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	}
+	cmd.WaitDelay = 5 * time.Second
+}
 
 // runBenchPosix runs a POSIX fio benchmark for a single shard.
 // workDir is created under rule.MountPath and optionally removed on completion
@@ -161,6 +182,7 @@ func runFIOStage(ctx context.Context, defaults spec.FIOConfig, stage spec.FIOSta
 	)
 
 	cmd := exec.CommandContext(ctx, "fio", args...)
+	setProcGroupKill(cmd)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		SetStageState(taskID, shardIdx, stage.Name, StageStateFailed)
@@ -613,6 +635,7 @@ func (fioRunnerImpl) run(ctx context.Context, defaults spec.FIOConfig, stage spe
 		"--output="+resultFile,
 	)
 	cmd := exec.CommandContext(ctx, "fio", args...)
+	setProcGroupKill(cmd)
 	if err := cmd.Run(); err != nil {
 		return nil, fmt.Errorf("fio component %q: %w", component.Name, err)
 	}
