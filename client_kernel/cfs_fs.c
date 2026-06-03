@@ -1264,6 +1264,8 @@ static int cfs_rename(struct user_namespace *mnt_userns, struct inode *old_dir,
 	ret = cfs_meta_rename(cmi->meta, old_dir->i_ino, &old_dentry->d_name,
 			      new_dir->i_ino, &new_dentry->d_name, true);
 	invalidate_iattr_cache(CFS_INODE(new_dir));
+	if (old_dir != new_dir)
+		invalidate_iattr_cache(CFS_INODE(old_dir));
 
 out:
 	cfs_log_audit(cmi->log, "Rename", old_dentry, new_dentry, ret,
