@@ -63,7 +63,7 @@ type VolumeMgrConfig struct {
 
 	MinAllocableHealthVolumeCount int  `json:"min_allocable_health_vol_count"`
 	CheckHealthyVolumeIntervalS   int  `json:"check_healthy_volume_interval_s"`
-	EnableDegradeRetain           bool `json:"degrade_retain_ratio"`
+	EnableDegradeRetain           bool `json:"enable_degrade_retain"`
 
 	// the volume in Proxy which free size small than FreezeThreshold treat filled
 	FreezeThreshold  uint64            `json:"-"`
