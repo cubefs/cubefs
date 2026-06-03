@@ -1287,7 +1287,10 @@ static int cfs_unlink(struct inode *dir, struct dentry *dentry)
 	ret = cfs_meta_delete(cmi->meta, dir->i_ino, &dentry->d_name,
 			      d_is_dir(dentry), &ino);
 	invalidate_iattr_cache(CFS_INODE(dir));
-	invalidate_iattr_cache(CFS_INODE(dentry->d_inode));
+	if (ret == 0 && dentry->d_inode && dentry->d_inode->i_nlink > 0)
+		drop_nlink(dentry->d_inode);
+	else
+		invalidate_iattr_cache(CFS_INODE(dentry->d_inode));
 	cfs_log_audit(cmi->log, "Unlink", dentry, NULL, ret,
 		      ktime_us_delta(ktime_get(), time), ino, 0);
 	return ret;
