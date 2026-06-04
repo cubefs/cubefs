@@ -88,6 +88,7 @@ struct cfs_extent_writer {
 	u32 w_size; /* write size */
 	volatile unsigned flags;
 	struct cfs_extent_writer *recover;
+	struct work_struct flush_work; /* 异步 flush（writer 切换时由 flusher 提交） */
 };
 
 struct cfs_extent_reader {
@@ -127,6 +128,13 @@ struct cfs_extent_stream {
 	u32 max_readers;
 	struct mutex lock_readers;
 	u64 ino;
+	/* writer 切换时由 cgwb flusher 异步提交的待 flush writer，避免在回写
+	 * 上下文同步等网络往返+meta commit 清零导致死锁。fsync/close/release
+	 * 经 cfs_extent_stream_flush 等 nr_pending_flush==0。 */
+	struct list_head pending_flush;
+	spinlock_t lock_pending;
+	atomic_t nr_pending_flush;
+	wait_queue_head_t flush_wq;
 };
 
 struct cfs_extent_client {
@@ -191,6 +199,8 @@ void cfs_extent_writer_release(struct cfs_extent_writer *writer);
 int cfs_extent_writer_flush(struct cfs_extent_writer *writer);
 void cfs_extent_writer_request(struct cfs_extent_writer *writer,
 			       struct cfs_packet *packet);
+/* writer 切换时由 flusher 异步提交 flush（见 cfs_extent_writer.c）。 */
+void extent_writer_submit_async_flush(struct cfs_extent_writer *writer);
 static inline void cfs_extent_writer_set_dirty(struct cfs_extent_writer *writer)
 {
 	writer->flags |= EXTENT_WRITER_F_DIRTY;

@@ -5,8 +5,19 @@
 #include <linux/kthread.h>
 
 extern struct workqueue_struct *extent_work_queue;
+extern struct workqueue_struct *cfs_flush_workqueue;
+
+/*
+ * 异步 flush 背压上限:每个 pending writer 持 1 socket + 1 recv kthread，
+ * numjobs=32 高速 buffered 写时 writer 切换(每 128MB)远快于 extent commit
+ * (meta RPC)，无背压则 pending writer 无限堆积、socket/kthread/内存耗尽拖垮
+ * 节点。pending 达此上限时 submit 在 flusher 上下文短暂等一个 flush 腾位
+ * (flush work 在独立 cfs_flush_workqueue 完成、不依赖本上下文，不会回到死锁)。
+ */
+#define CFS_MAX_PENDING_FLUSH 16
 
 static void extent_writer_tx_work_cb(struct work_struct *work);
+static void extent_writer_flush_work_cb(struct work_struct *work);
 /*
  * rx 改为 per-writer 专用 recv kthread（替代原共用 extent_work_queue 的
  * rx_work）。原 rx_work 同步阻塞 cfs_socket_recv_packet，高并发下大量
@@ -47,6 +58,7 @@ struct cfs_extent_writer *cfs_extent_writer_new(struct cfs_extent_stream *es,
 	INIT_LIST_HEAD(&writer->tx_packets);
 	INIT_LIST_HEAD(&writer->rx_packets);
 	INIT_WORK(&writer->tx_work, extent_writer_tx_work_cb);
+	INIT_WORK(&writer->flush_work, extent_writer_flush_work_cb);
 	init_waitqueue_head(&writer->tx_wq);
 	init_waitqueue_head(&writer->rx_wq);
 	init_waitqueue_head(&writer->rx_pending_wq);
@@ -109,6 +121,57 @@ int cfs_extent_writer_flush(struct cfs_extent_writer *writer)
 	cfs_packet_extent_array_clear(&discard_extents);
 	cfs_extent_writer_clear_dirty(writer);
 	return 0;
+}
+
+/*
+ * 异步 flush 回调：在 cfs_flush_workqueue 上下文执行原同步 flush（等 tx/rx
+ * 网络往返清零 + meta commit），完成后从 pending_flush 摘除并 release writer。
+ * 不在 cgwb flusher 上下文，flusher 提交后立即返回、不卡 → 根治 writeback
+ * 死锁。一致性约束全保留在 cfs_extent_writer_flush 内（ext_size 在 rx 清零后
+ * 读、cache_append(sync=true)+meta_commit 连续）。meta commit 失败的 page
+ * error 已在 reply_cb 处理。
+ * 注：cb 内 cfs_extent_writer_release 会 kfree(writer)（含本 flush_work）——
+ * 内核允许 work 回调内释放自身 work（process_one_work 在调 cb 前已 clear
+ * pending、cb 返回后不再访问 work data）。
+ */
+static void extent_writer_flush_work_cb(struct work_struct *work)
+{
+	struct cfs_extent_writer *writer =
+		container_of(work, struct cfs_extent_writer, flush_work);
+	struct cfs_extent_stream *es = writer->es;
+
+	cfs_extent_writer_flush(writer);
+	spin_lock(&es->lock_pending);
+	list_del(&writer->list);
+	spin_unlock(&es->lock_pending);
+	cfs_extent_writer_release(writer);
+	atomic_dec(&es->nr_pending_flush);
+	wake_up(&es->flush_wq);
+}
+
+/*
+ * 把需要 flush 的旧 writer 交后台异步 flush。由 extent_stream_get_writer 在
+ * cgwb flusher 上下文调用：writer 此前已从 es->writers 摘出，这里挂到
+ * es->pending_flush 并入队 cfs_flush_workqueue，flusher 不再同步等网络往返。
+ * fsync/close/stream_release 经 cfs_extent_stream_flush 等 nr_pending_flush==0。
+ */
+void extent_writer_submit_async_flush(struct cfs_extent_writer *writer)
+{
+	struct cfs_extent_stream *es = writer->es;
+
+	/*
+	 * 背压：pending writer 达上限时，在此等一个 flush 完成腾位再提交。
+	 * flush work 在独立 cfs_flush_workqueue 完成（atomic_dec+wake flush_wq），
+	 * 不依赖本上下文，故不会回到 flusher 同步等网络往返的死锁；只限制
+	 * pending writer 数（=socket/recv kthread 上限），避免资源耗尽拖垮节点。
+	 */
+	wait_event(es->flush_wq,
+		   atomic_read(&es->nr_pending_flush) < CFS_MAX_PENDING_FLUSH);
+	spin_lock(&es->lock_pending);
+	list_add_tail(&writer->list, &es->pending_flush);
+	spin_unlock(&es->lock_pending);
+	atomic_inc(&es->nr_pending_flush);
+	queue_work(cfs_flush_workqueue, &writer->flush_work);
 }
 
 void cfs_extent_writer_request(struct cfs_extent_writer *writer,

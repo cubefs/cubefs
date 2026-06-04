@@ -215,8 +215,12 @@ extent_stream_get_writer(struct cfs_extent_stream *es, loff_t offset,
 			mutex_unlock(&es->lock_writers);
 			return writer;
 		}
-		cfs_extent_writer_flush(writer);
-		cfs_extent_writer_release(writer);
+		/*
+		 * 旧 writer 异步 flush：不在 cgwb flusher 上下文同步等网络
+		 * 往返 + meta commit（writer 已从 es->writers 摘出）。这是
+		 * writeback 死锁根治——flusher 提交后立即用新 writer 继续。
+		 */
+		extent_writer_submit_async_flush(writer);
 	}
 
 	if (cfs_extent_cache_get_end(&es->cache, offset, &extent) &&
@@ -1160,6 +1164,10 @@ struct cfs_extent_stream *cfs_extent_stream_new(struct cfs_extent_client *ec,
 	mutex_init(&es->lock_writers);
 	mutex_init(&es->lock_readers);
 	mutex_init(&es->lock_io);
+	INIT_LIST_HEAD(&es->pending_flush);
+	spin_lock_init(&es->lock_pending);
+	atomic_set(&es->nr_pending_flush, 0);
+	init_waitqueue_head(&es->flush_wq);
 	return es;
 }
 
@@ -1177,6 +1185,15 @@ int cfs_extent_stream_flush(struct cfs_extent_stream *es)
 {
 	struct cfs_extent_writer *writer;
 	struct cfs_extent_reader *reader;
+
+	/*
+	 * 先等所有 get_writer 异步提交的 flush 完成（pending_flush 清空），
+	 * 保证 fsync/close/stream_release 的持久化语义，且避免 stream_release
+	 * 时后台 flush 仍访问已释放的 es（use-after-free）。本函数在用户上下文
+	 * （fsync/close）或 inode 析构调用，同步等 OK、不在 cgwb flusher 上下文
+	 * 故不会死锁。
+	 */
+	wait_event(es->flush_wq, atomic_read(&es->nr_pending_flush) == 0);
 
 	while (true) {
 		mutex_lock(&es->lock_writers);
@@ -1198,7 +1215,7 @@ int cfs_extent_stream_flush(struct cfs_extent_stream *es)
 		mutex_lock(&es->lock_readers);
 		reader = list_first_entry_or_null(
 			&es->readers, struct cfs_extent_reader, list);
-		if (!writer) {
+		if (!reader) {
 			mutex_unlock(&es->lock_readers);
 			break;
 		}

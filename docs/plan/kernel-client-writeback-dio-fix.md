@@ -125,6 +125,44 @@ Bug B 比 Bug A 复杂（涉及 VFS direct_IO 字节语义），且可被 buffer
 - 代码完成：cfs_extent.h（struct rx_work→rx_thread+rx_pending_wq）、cfs_extent_writer.c、cfs_extent_reader.c 对称改造。编译成功 srcversion **F2F9738B**（≠ 第二层 3907C2EF），无 error。
 - 待验证：换 ko 到 .40 → numjobs=32 不死锁。
 
+#### 第三层根治设计:writer flush 异步化(2026-06-04,#315)
+
+**精确定位**:page writeback 本身已异步(reply_cb 里 end_page_writeback)。flusher 卡的只是 `extent_stream_get_writer`(cfs_extent_stream.c:218-219)在 cgwb flusher 上下文**同步** `cfs_extent_writer_flush`(等 tx/rx_inflight 清零 + meta commit RPC)——writer 切换(offset 不连续/写满 EXTENT_SIZE/RECOVER)时换 writer 要先 flush 旧 writer。根治 = 把这个同步 flush 移出 flusher 上下文。
+
+**数据结构**(cfs_extent.h):
+- `struct cfs_extent_stream` 加:`struct list_head pending_flush`(待异步 flush 的 writer,复用 writer->list)、`spinlock_t lock_pending`、`atomic_t nr_pending_flush`、`wait_queue_head_t flush_wq`。
+- `struct cfs_extent_writer` 加:`struct work_struct flush_work`。
+- 全局 `cfs_flush_workqueue`(alloc_workqueue WQ_UNBOUND|WQ_MEM_RECLAIM,与 extent_work_queue 分开,避免和 tx 抢)。
+
+**改动点**:
+1. **新增 `extent_writer_submit_async_flush(writer)`**:摘出后的 writer 加入 es->pending_flush(lock_pending)+ atomic_inc(nr_pending_flush)+ queue_work(cfs_flush_workqueue, &writer->flush_work)。
+2. **新增 `extent_writer_flush_work_cb`**:`cfs_extent_writer_flush(writer)`(原同步逻辑:wait tx/rx + cache_append(sync=true)+ meta_append_extent,一致性约束全保留)→ `cfs_extent_writer_release(writer)` → 从 pending_flush 摘除 → atomic_dec(nr_pending_flush)→ wake_up(flush_wq)。meta commit 失败 → mapping_set_error(已在 reply_cb 处理 page error,这里补 inode 级)。
+3. **改 `extent_stream_get_writer`(cfs_extent_stream.c:218-219)**:摘出旧 writer 后,`cfs_extent_writer_flush+release` → 改 `extent_writer_submit_async_flush(writer)`,while 继续找/建新 writer。flusher 不再同步等。
+4. **改 `cfs_extent_stream_flush`(:1176,fsync/close/stream_release 调)**:先 `wait_event(flush_wq, nr_pending_flush==0)` 等所有异步 flush 完成,再同步 flush es->writers 剩余 active writer(原逻辑,fsync 用户上下文同步等 OK、不死锁)。保证 fsync 语义。
+5. **顺带修 :1201 `if(!writer)` → `if(!reader)`** bug(readers flush 循环第一个就退出)。
+
+**一致性/竞态保证**:
+- ext_size 在 flush_work_cb 的 wait rx_inflight==0 后读(约束1,不变)。cache_append(sync=true)+meta_commit 仍在 flush_work_cb 内连续(约束2/3)。release 在 flush 完成后(flush_work_cb 内,约束4)。
+- **use-after-free(最高风险)**:stream_release→stream_flush→wait nr_pending_flush==0 保证后台 flush_work 全完成才 cache_clear+kfree(es);flush_work_cb 访问 writer->es 安全。
+- recover writer:异步 flush 的 writer 已摘出 es->writers,其 rx_thread recover 时新建的 recover writer 仍加 es->writers,由后续 get_writer/stream_flush 处理(不变)。
+- 顺序:顺序写同时只 1 活跃 writer,pending flush 串行性由 EXTENT_SIZE(128MB)切换频率保证(不频繁);CFS_OP_EXTENT_ADD_WITH_CHECK meta 端有 check。
+
+**验证**:numjobs=32 size=2g:wb>0 持续、written 推进到完成、节点 Ready、删 pod 不卡;回归 numjobs≤8 带宽 + O_DIRECT + fsync 后数据一致(crc32c verify)。
+
+**回滚**:get_writer 改回同步 flush(去掉 submit_async)即回到当前行为。
+
+#### 异步化 v1 实测(srcversion 18DEF88)+ 背压 v2 需求(2026-06-04)
+
+**v1 结果——方向对但缺背压**:numjobs=32 size=2g 实测,**writeback 持续推进**(written 4s→3904 / 8s→13501 / 16s→31923 / 24s→51626MB,持续涨不停滞;dirty 受控低位 752~1764MB,wb 有活动)——对比修复前卡 25GB 死锁,**flusher 同步等待死锁已解**。但 fio 完成后/期间节点最终仍 **NotReady**:根因是**异步 flush 缺背压**——异步 flush 的 writer 在 flush 完成前不 release,numjobs=32 顺序写 2GB/文件每 128MB 切一次 writer(512 次切换),写速远超 extent commit(meta RPC)速度时,**pending writer 无限堆积**,每个持 1 socket + 1 recv kthread → socket/kthread/内存耗尽拖垮节点。
+
+**v2 背压设计**:`extent_writer_submit_async_flush` 入口加 `wait_event(es->flush_wq, nr_pending_flush < CFS_MAX_PENDING_FLUSH)`(如 16)。pending 满时在 flusher 上下文短暂等一个 flush 腾位——但 flush work 在独立 cfs_flush_workqueue 完成、不依赖本上下文,故**不会回到死锁**(对比原"每次 writer 切换都同步等完整 tx/rx 往返+meta commit");MAX 限制 pending writer 数 = socket/kthread 上限,资源可控。SB_I_CGROUPWB 的 balance_dirty_pages 限速是写入端节流,背压是 flush 端节流,二者互补。
+
+**v2 实测——#313 闭环成功(srcversion 04862A0,2026-06-04)**:
+- numjobs=32 size=2g:**64GB 全写完、2287 MiB/s、28.6s**(对比修复前卡 25GB 死锁、v1 无背压 pending 堆积拖垮节点 NotReady)。
+- 节点全程 **Ready**、load 正常;fio 完成后 cfs-wrx kthread **归 0**(writer 全 release、无泄漏——背压+异步 flush 正常清理)。
+- 回归:numjobs=8 buffered+fsync **3920 MiB/s** crc32c verify 通过;O_DIRECT 写 **1202 MiB/s** crc32c verify 通过(Bug B 不回归、数据一致)。
+- CFS_MAX_PENDING_FLUSH=16 实测够用(高带宽 + 资源不爆);后续可按 commit 速度微调。
+
 #### 工程插曲（运维注意）
 
 1. **make-deb.sh 不强制重编**：`if [ ! -f cubefs.ko ]` 残留旧 ko 就跳过编译、打包旧 ko。换版本必须先 `make clean && rm -f client_kernel/cubefs.ko` 再 `make client-kernel`，并核对 srcversion 变化确认。

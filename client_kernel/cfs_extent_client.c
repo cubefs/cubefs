@@ -6,6 +6,10 @@
 #define EXTENT_UPDATE_DP_INTERVAL_MS 5 * 60 * 1000u
 
 struct workqueue_struct *extent_work_queue;
+/* writer 异步 flush 专用 wq，与 extent_work_queue(tx 发包)分开，避免 flush
+ * 等网络往返时和 tx_work 抢 worker。WQ_MEM_RECLAIM：回写路径内存压力下需保证
+ * 有 rescuer 推进。 */
+struct workqueue_struct *cfs_flush_workqueue;
 
 struct cfs_data_partition *
 cfs_data_partition_new(struct cfs_data_partition_view *dp_view)
@@ -237,6 +241,13 @@ int cfs_extent_module_init(void)
 	if (!extent_work_queue) {
 		return -ENOMEM;
 	}
+	cfs_flush_workqueue =
+		alloc_workqueue("cfs_flush_wq", WQ_UNBOUND | WQ_MEM_RECLAIM, 0);
+	if (!cfs_flush_workqueue) {
+		destroy_workqueue(extent_work_queue);
+		extent_work_queue = NULL;
+		return -ENOMEM;
+	}
 	return 0;
 }
 
@@ -245,5 +256,9 @@ void cfs_extent_module_exit(void)
 	if (extent_work_queue) {
 		destroy_workqueue(extent_work_queue);
 		extent_work_queue = NULL;
+	}
+	if (cfs_flush_workqueue) {
+		destroy_workqueue(cfs_flush_workqueue);
+		cfs_flush_workqueue = NULL;
 	}
 }
