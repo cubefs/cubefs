@@ -1420,6 +1420,13 @@ static int cfs_show_options(struct seq_file *seq_file, struct dentry *dentry)
  * Filesystem
  */
 
+/* 每次 mount 递增，用于唯一化 BDI 名。固定名 "cubefs" 在 umount 未释放
+ * BDI 时（lazy umount / 异常路径，sb 引用未归零）会残留 /sys/class/bdi/cubefs，
+ * 下次 mount 的 super_setup_bdi_name 注册同名 kobject 报 -EEXIST、mount 失败；
+ * 而 BDI 无 sysfs 删除接口、rmmod 又被泄漏 sb 占住 use_count 卸不掉，只能重启
+ * 整机。改用唯一名后，即便某次 BDI 泄漏，下次 mount 用新名也不冲突。 */
+static atomic_long_t cfs_bdi_seq;
+
 static int cfs_fs_fill_super(struct super_block *sb, void *data, int silent)
 {
 	struct cfs_mount_info *cmi = data;
@@ -1428,7 +1435,9 @@ static int cfs_fs_fill_super(struct super_block *sb, void *data, int silent)
 	int ret;
 
 	sb->s_fs_info = cmi;
-	ret = super_setup_bdi_name(sb, "cubefs");
+	ret = super_setup_bdi_name(
+		sb, "cubefs-%lu",
+		(unsigned long)atomic_long_inc_return(&cfs_bdi_seq));
 	if (ret)
 		return ret;
 	sb->s_bdi->ra_pages = (2 * 1024 * 1024) / PAGE_SIZE;
