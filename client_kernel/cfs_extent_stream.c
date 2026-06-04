@@ -529,7 +529,12 @@ int cfs_extent_write_pages(struct cfs_extent_stream *es, struct page **pages,
 		es->ino, nr_pages, file_offset, first_page_offset,
 		end_page_size);
 #endif
-	cpages = kvmalloc(sizeof(*cpages) * nr_pages, GFP_KERNEL);
+	/* writeback/read hot path: must use GFP_NOFS — GFP_KERNEL here lets a
+	 * reclaim-triggered writeback recurse into fs reclaim, and under cgroup
+	 * memory pressure (dirty pages fill the limit) the allocation blocks
+	 * before set_page_writeback, so dirty never drains and the node hangs.
+	 * Rest of the IO path already uses GFP_NOFS; these were the stragglers. */
+	cpages = kvmalloc(sizeof(*cpages) * nr_pages, GFP_NOFS);
 	if (!cpages) {
 		for (i = 0; i < nr_pages; i++) {
 			SetPageError(pages[i]);
@@ -889,7 +894,12 @@ int cfs_extent_read_pages(struct cfs_extent_stream *es, bool direct_io,
 		end_page_size);
 #endif
 	BUG_ON(nr_pages == 0);
-	cpages = kvmalloc(sizeof(*cpages) * nr_pages, GFP_KERNEL);
+	/* writeback/read hot path: must use GFP_NOFS — GFP_KERNEL here lets a
+	 * reclaim-triggered writeback recurse into fs reclaim, and under cgroup
+	 * memory pressure (dirty pages fill the limit) the allocation blocks
+	 * before set_page_writeback, so dirty never drains and the node hangs.
+	 * Rest of the IO path already uses GFP_NOFS; these were the stragglers. */
+	cpages = kvmalloc(sizeof(*cpages) * nr_pages, GFP_NOFS);
 	if (!cpages) {
 		for (i = 0; i < nr_pages; i++) {
 			ClearPageUptodate(pages[i]);
@@ -1045,7 +1055,7 @@ static struct page **extent_dio_pages_alloc(struct iov_iter *iter, int type,
 	start = (unsigned long)(iter->iov->iov_base + iter->iov_offset);
 	nbytes = iter->iov->iov_len - iter->iov_offset;
 	npages = ((start & ~PAGE_MASK) + nbytes + PAGE_SIZE - 1) >> PAGE_SHIFT;
-	pages = kvzalloc(sizeof(*pages) * npages, GFP_KERNEL);
+	pages = kvzalloc(sizeof(*pages) * npages, GFP_NOFS);
 	if (!pages)
 		return ERR_PTR(-ENOMEM);
 
