@@ -1043,7 +1043,8 @@ static void extent_dio_pages_release(struct page **pages, int num_pages,
 static struct page **extent_dio_pages_alloc(struct iov_iter *iter, int type,
 					    size_t *nr_pages,
 					    size_t *first_page_offset,
-					    size_t *end_page_size)
+					    size_t *end_page_size,
+					    size_t *bytes)
 {
 	unsigned long start;
 	size_t nbytes;
@@ -1072,6 +1073,7 @@ static struct page **extent_dio_pages_alloc(struct iov_iter *iter, int type,
 	*end_page_size = ((start & ~PAGE_MASK) + nbytes) & ~PAGE_MASK;
 	if (*end_page_size == 0)
 		*end_page_size = PAGE_SIZE;
+	*bytes = nbytes;
 	return pages;
 }
 
@@ -1082,6 +1084,7 @@ int cfs_extent_dio_read_write(struct cfs_extent_stream *es, int type,
 	size_t nr_pages;
 	size_t first_page_offset;
 	size_t end_page_size;
+	size_t bytes = 0;
 	size_t i;
 	int ret = 0;
 
@@ -1090,7 +1093,8 @@ int cfs_extent_dio_read_write(struct cfs_extent_stream *es, int type,
 		     offset, iov_iter_count(iter));
 #endif
 	pages = extent_dio_pages_alloc(iter, type, &nr_pages,
-				       &first_page_offset, &end_page_size);
+				       &first_page_offset, &end_page_size,
+				       &bytes);
 	if (IS_ERR(pages)) {
 		cfs_log_error(es->ec->log, "ino(%llu) alloc pages error %ld\n",
 			      es->ino, PTR_ERR(pages));
@@ -1117,7 +1121,19 @@ int cfs_extent_dio_read_write(struct cfs_extent_stream *es, int type,
 			ret = -EIO;
 	}
 	extent_dio_pages_release(pages, nr_pages, type == READ);
-	return ret < 0 ? ret : iov_iter_count(iter);
+	if (ret < 0)
+		return ret;
+	/*
+	 * direct_IO 实现必须消费 iter 并返回实际传输字节数。否则 VFS
+	 * generic_file_write_iter 见 iov_iter_count != 0 会走 buffered
+	 * fallback 重写本段，导致 O_DIRECT 写数据重复 / 计数错乱（fio 报
+	 * Bad address、buflen 巨大；原代码返回未消费的 iov_iter_count）。
+	 * bytes 是 extent_dio_pages_alloc 处理的本段字节：单 iovec 即全部、
+	 * iter 清零，VFS 不再 fallback；multi-iovec 时余下段由 VFS 后续处理
+	 * （不重复）。
+	 */
+	iov_iter_advance(iter, bytes);
+	return bytes;
 }
 
 struct cfs_extent_stream *cfs_extent_stream_new(struct cfs_extent_client *ec,
