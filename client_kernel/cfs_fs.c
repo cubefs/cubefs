@@ -1432,6 +1432,20 @@ static int cfs_fs_fill_super(struct super_block *sb, void *data, int silent)
 	if (ret)
 		return ret;
 	sb->s_bdi->ra_pages = (2 * 1024 * 1024) / PAGE_SIZE;
+	/*
+	 * 启用 cgroup writeback。否则 inode 的 dirty page 归属 root wb，
+	 * balance_dirty_pages 按全局节点内存限速；在受限 cgroup（如 12Gi
+	 * 的 syncnode pod）内做高并发 buffered 写时，dirty 撑满 cgroup
+	 * memory，而回写这些 dirty 又需分配内存、cgroup 已满 → 死锁、
+	 * 拖垮整节点（实测 numjobs=32 size=2g 把节点干到 NotReady/load 130）。
+	 *
+	 * 设 SB_I_CGROUPWB 后 inode 自动 attach 到调用进程的 memcg wb，
+	 * balance_dirty_pages 改按该 memcg 的 dirty 限制提前限速写者，dirty
+	 * 不再撑满 cgroup（最坏写变慢，不死锁）。memcg dirty throttling 是
+	 * 纯 memory cgroup 机制，不依赖 blkcg block device，网络文件系统
+	 * 同样适用（NFS 亦设此标志）。
+	 */
+	sb->s_iflags |= SB_I_CGROUPWB;
 	sb->s_blocksize = CFS_BLOCK_SIZE;
 	sb->s_blocksize_bits = CFS_BLOCK_SIZE_SHIFT;
 	sb->s_maxbytes = MAX_LFS_FILESIZE;

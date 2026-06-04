@@ -86,9 +86,20 @@ Bug B 比 Bug A 复杂（涉及 VFS direct_IO 字节语义），且可被 buffer
 ## 当前进度
 
 - S0 done（根因确认）。
-- S1 代码 done：cfs_extent_stream.c 三处 `GFP_KERNEL`→`GFP_NOFS`（532 写热路径 / 897 读 / 1055 dio），`git diff` 干净，extent_stream.c 已无 GFP_KERNEL 分配。待 commit/push fangtaozc/cubefs。
-- **阻塞（编译部署访问）**：编译可加载 deb 需 syncnode 目标内核 5.15.0-72-generic 的内核头 + cubefs 源码；部署需 dpkg/systemctl 节点访问。实测：`ssh 10.54.120.40-43` 全部 publickey/password denied；唯一可达 `hb-test-pfs`(121.101) 内核 5.15.0-151（≠目标）、无源码、无 5.15.0-72 头，不能用。需用户提供节点访问方式，或用户手动执行编译部署（我出脚本）。
-- 下一步：定编译部署访问方式 → S1 编译 → S2 单节点验证死锁是否解除。
+- S1 done：cfs_extent_stream.c 三处 `GFP_KERNEL`→`GFP_NOFS`，commit 431dd8e27 已 push。编译部署用 `root`+`~/.ssh/lml_rsa` 上 .40（.42 key 未加），clone+`./configure`(生成 config.h，make-deb.sh 未自动跑—构建缺陷待修)+`make client-kernel`，deb 装到 .40（srcversion F5A60E31，service active）。
+- **S2 验证：GFP_NOFS 部分有效，但不够（第二层根因未解）**。.40 实测 numjobs=32 size=2g：
+  - **改善**：节点保持 Ready（kubelet 存活）。对比修复前 NotReady——GFP_NOFS 确实防住了"回写递归进 fs reclaim 拖垮整节点"。
+  - **未解**：writeback 仍=0、dirty 撑满 cgroup、fio 陷 D 态死锁；且因 reclaim 不再递归崩溃，反而**不自愈**，节点 load 飙到 98、ssh 卡死，需重启 .40 恢复。
+- **第二层根因（WQ 已排除）**：`extent_work_queue` 已是 `WQ_MEM_RECLAIM`（cfs_extent_client.c:236，有 rescuer，非此因）。死锁是 **cgroup memory + 网络 fs writeback 的固有死锁**：高并发 buffered 写（numjobs=32）产 dirty 速度 >> 异步 writeback（queue_work 到 extent_wq）速度，dirty 撑满 cgroup 12Gi；回写这批 dirty 需分配内存（cfs_page_vec_new / cfs_extent_write_pages 的 cpages，GFP_NOFS），但 cgroup 已满、唯一可释放的就是待回写的 dirty → 分配阻塞（NOFS 防递归不防"等内存"）→ 死锁。numjobs=8（16g）不触发（writeback 跟得上），numjobs≥32 触发。
+- **第二层精确根因（已定位，无需抓栈）**：`cfs_fs_fill_super` 漏设 `SB_I_CGROUPWB`。内核 `CONFIG_CGROUP_WRITEBACK=y`、cubefs BDI 已注册，但 `inode_cgwb_enabled()` 要求 sb 带 `SB_I_CGROUPWB`；未设 → inode dirty 归 root wb 而非进程 memcg wb → `balance_dirty_pages` 按全局节点内存限速（节点内存大、不限）→ 受限 cgroup 内 dirty 撑满 memory limit → 回写要内存而 cgroup 满 → 死锁。cubefs 全无 `s_iflags` 设置（grep 确认）。
+- **治本修复（已实施 commit 待补，待验证）**：`cfs_fs_fill_super` 加 `sb->s_iflags |= SB_I_CGROUPWB`（一行）。inode 自动 attach 进程 memcg wb，memcg dirty throttling 生效、按 pod memcg 的 dirty 限制提前限速写者，dirty 不撑满（最坏写变慢不死锁）。memcg throttling 是纯 memory 机制、不依赖 blkcg block device，网络 fs 适用（NFS/ext4/btrfs 均设此标志）。**不需要 mempool**：throttling 从源头防 dirty 撑满，回写不会再卡在满 cgroup 的内存分配。与第一层 GFP_NOFS 互补（前者防撑满、后者防回写递归 reclaim）。
+- .40 已 sysrq（`echo b > /proc/sysrq-trigger`）重启恢复，ko/service/mount 开机自启正常。`sshpass -p ... ssh root@.40/.42` 密码可访问（比 lml_rsa key 更可靠，.42 也通）。
+- 下一步：commit+push → .40 换 ko → 验证 numjobs=32 size=2g **不再死锁**（dirty 被 memcg 限速、不撑满、节点 Ready、fio 完成）→ 4 节点部署 → Bug B → 重跑 fuse vs 内核 client 对比。
+
+## 验证方式教训
+
+- 反复触发死锁验证成本极高：每次 numjobs=32 大写都把 .40 拖到 load 98 + ssh 卡死 + pod 删不掉，恢复要重启。**后续验证改为：先靠代码+一次 D 态栈精确定位，改对再验一次，不反复试**。
+- 换 ko 运维坑：HostToContainer 下 node_exporter（监控 DaemonSet，bind host rootfs）会继承 host 的 cubefs mount，持有 stale 引用让 cubefs use_count 卡住、rmmod 失败——换 ko 前需先删持有 stale 引用的进程/pod。pod 重建若在 host umount 期间启动，会 bind 到 ext4 空目录而非 cubefs，需 host 挂好后重建 pod。
 
 ## 风险
 
