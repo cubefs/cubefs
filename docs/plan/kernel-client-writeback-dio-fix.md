@@ -184,3 +184,51 @@ Bug B 比 Bug A 复杂（涉及 VFS direct_IO 字节语义），且可被 buffer
 | Bug B 根因未运行时钉死，改了不对 | direct 写仍错 | S3 先 fio 复现矩阵把触发条件钉到具体输入再改，不盲改 |
 | 修改触发内核 panic（历史有 symlink panic 整机重启） | 节点重启 | 单节点先验（S2/S4），4 节点滚动放最后；重启必通知用户 |
 | O_DIRECT 读也用同函数(892/1048) | 改 dio 影响读 | 读路径现正常，改写分支时保持读路径行为不变，回归验证读带宽 |
+
+---
+
+## 第 4 个上线阻断 bug：O_DIRECT 高并发 page lock 死锁（2026-06-04，方案 A 根治）
+
+### 现象
+4TB 独立卷 syncnode bench `numjobs=32 size=2g libaio direct=1`，4 节点跑同参，.43 撞死锁：32 个 fio 全 **D 态**、load 32、bench task 卡 3/4 永不 succeeded（平台只在全 succeeded 才聚合 shard 数据 → dashboard 看似"只有部分节点数据"）。numjobs=8 不复现（之前 O_DIRECT 写只验证到 8）。
+
+### D 态栈铁证
+```
+wait_on_page_bit_common → __lock_page → cfs_extent_dio_read_write+0x1fd
+  → cfs_direct_io → generic_file_direct_write → __generic_file_write_iter → aio_write
+```
+卡在 `cfs_extent_stream.c:1110 lock_page(pages[i])`。
+
+### 根因（设计级）
+`extent_dio_pages_alloc`(cfs_extent_stream.c:1067) 用 `get_user_pages_fast` 拿 **fio 用户态 IO buffer 的 page**；`cfs_extent_dio_read_write`(1110) 对这些**用户页** `lock_page`+`set_page_writeback`，把 page 的 PG_locked 借用成"异步 IO 完成"的同步原语（1123 `wait_on_page_locked` 等回调 unlock）。
+
+numjobs=32 iodepth=32 高并发时多个并发 dio 复用/共享同一用户 buffer 页（fio buffer pool 复用、相邻 IO 跨页边界），或单次 get_user_pages 返回重复页 → 对同一页第二次 `lock_page` → D 态死锁。PG_locked/PG_writeback 是 page cache 的同步协议，对 get_user_pages 的用户匿名页滥用，高并发必撞；numjobs=8 并发低、碰撞概率小没暴露。读路径(892/1118 direct_io=true)同样踩用户页，只是这次写先死。
+
+### 方案 A（独立临时内核页 + 逐页 copy，最小闭环根治）
+不再让 IO 直接踩用户页：
+- `extent_dio_pages_alloc`：`get_user_pages_fast` → `alloc_pages(GFP_NOFS)` 每个 dio 独立分配 npages 个临时页；写路径 `copy_page_from_iter` 把用户数据拷进临时页（按 first_page_offset/end_page_size 布局）。
+- `cfs_extent_dio_read_write`：读完成后 `copy_page_to_iter` 临时页→用户；iter 消费由 copy_page_*_iter 完成（替代 Bug B 的手动 iov_iter_advance）。
+- `extent_dio_pages_release`：去掉 `set_page_dirty_lock`（临时匿名页无需），put_page 即 free（refcount=1）。
+
+临时页每个 dio 独立、绝不跨 dio 共享 → `lock_page` 永不撞车、自死锁消除。**完成回调（315/418/460/646/740）、cfs_page 结构、write_pages/read_pages 全不改**：临时匿名页 mapping=NULL，对 set/end_page_writeback+lock/unlock 完全安全（回调 `mapping && !PageAnon` 处短路）。
+
+为什么不选"零拷贝+独立 completion"重构：memcpy ~20GB/s 远超实测 O_DIRECT 1.1GB/s（copy 开销 <5%），而 completion 方案要改 5 处回调+cfs_page 结构+read/write 双路径、漏一处即死锁/UAF，风险高一个量级。正确性与稳定优先于零拷贝。
+
+### 阶段
+- **C1 改码**：extent_dio_pages_alloc（临时页+copy_page_from_iter）+ dio_read_write（copy_page_to_iter+去手动 advance）+ release（去 set_page_dirty_lock）
+- **C2 编译**：`make clean && rm -f client_kernel/cubefs.ko && make client-kernel`，核对 srcversion 变化
+- **C3 4 节点换 ko**（.40/.41/.42/.43）：删持有 stale 引用的 pod、host umount、装新 deb、重挂卷 B
+- **C4 numjobs=32 重测**：fuse vs 内核 4TB 卷同参对比，验证无死锁、出聚合数据进 dashboard
+
+### 验收（2026-06-04 全部通过，ko srcversion 052A9879）
+- [x] numjobs=32 O_DIRECT 写/读 4 节点全完成、无 D 态、节点 Ready（4 shard errors=0）
+- [x] O_DIRECT 数据一致（.41 单节点 numjobs=32 crc32c verify 通过，写 1275/读 3724 MiB/s，不回归 Bug B）
+- [x] fuse vs 内核 numjobs=32 对比数据聚合进 dashboard
+
+### 实测结果（4TB 独立卷，4 节点聚合，numjobs=32 size=2g libaio direct=1）
+| 场景 | fuse CSI | 内核 client | 内核倍数 |
+|---|---|---|---|
+| seq-write | 822 MB/s | **2098 MB/s** | 2.6× |
+| seq-read | 1094 MB/s | **12570 MB/s** | 11.5× |
+
+per-node 内核 写 424~671 / 读 2628~3824 MB/s。之前 .43 正是卡死在 numjobs=32 O_DIRECT 写，方案 A 后 4 节点全 succeeded、errors=0、无死锁。换 ko 全程逐个重启（BDI 泄漏致 umount 后 use_count 仍=1、rmmod 卸不掉，重启是唯一干净路径）。

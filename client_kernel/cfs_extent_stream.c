@@ -1031,16 +1031,15 @@ err_page:
 	return ret;
 }
 
-static void extent_dio_pages_release(struct page **pages, int num_pages,
-				     bool dirty)
+static void extent_dio_pages_release(struct page **pages, int num_pages)
 {
 	int i;
 
-	for (i = 0; i < num_pages; i++) {
-		if (dirty)
-			set_page_dirty_lock(pages[i]);
-		put_page(pages[i]);
-	}
+	/* 临时内核页：alloc_page 分配，refcount=1，__free_page 直接回收。
+	 * 不再是 get_user_pages 的用户页，故无需 put_page / set_page_dirty_lock
+	 * （读路径的用户脏页由 dio_read_write 的 copy_page_to_iter 经 VFS 处理）。 */
+	for (i = 0; i < num_pages; i++)
+		__free_page(pages[i]);
 	kvfree(pages);
 }
 
@@ -1051,32 +1050,60 @@ static struct page **extent_dio_pages_alloc(struct iov_iter *iter, int type,
 					    size_t *bytes)
 {
 	unsigned long start;
-	size_t nbytes;
+	size_t nbytes, fpoff, eps, off, remain, len;
 	int npages;
 	struct page **pages;
 	int i;
-	int ret;
 
 	start = (unsigned long)(iter->iov->iov_base + iter->iov_offset);
 	nbytes = iter->iov->iov_len - iter->iov_offset;
-	npages = ((start & ~PAGE_MASK) + nbytes + PAGE_SIZE - 1) >> PAGE_SHIFT;
+	fpoff = start & ~PAGE_MASK;
+	npages = (fpoff + nbytes + PAGE_SIZE - 1) >> PAGE_SHIFT;
 	pages = kvzalloc(sizeof(*pages) * npages, GFP_NOFS);
 	if (!pages)
 		return ERR_PTR(-ENOMEM);
 
-	ret = get_user_pages_fast(start, npages, type == READ, pages);
-	if (ret != npages) {
-		for (i = 0; i < ret; i++)
-			put_page(pages[i]);
-		kvfree(pages);
-		return ERR_PTR(-ENOMEM);
+	/* 每个 dio 独立分配临时内核页，绝不复用 get_user_pages 的用户页：
+	 * 旧实现对用户 buffer 页 lock_page 当 IO 完成同步原语，numjobs=32
+	 * 高并发下多 dio 共享同一用户页 / 单次 get_user_pages 返回重复页时
+	 * lock_page 撞车 → D 态死锁。临时页独立、不跨 dio 共享，根除撞车。 */
+	for (i = 0; i < npages; i++) {
+		pages[i] = alloc_page(GFP_NOFS);
+		if (!pages[i]) {
+			while (i-- > 0)
+				__free_page(pages[i]);
+			kvfree(pages);
+			return ERR_PTR(-ENOMEM);
+		}
+	}
+
+	eps = (fpoff + nbytes) & ~PAGE_MASK;
+	if (eps == 0)
+		eps = PAGE_SIZE;
+
+	/* 写：把用户数据按与用户页一致的页内布局拷进临时页；
+	 * copy_page_from_iter 自动 advance iter，iter 消费由此完成
+	 * （替代旧 Bug B 修复里的手动 iov_iter_advance）。 */
+	if (type == WRITE) {
+		off = fpoff;
+		remain = nbytes;
+		for (i = 0; i < npages && remain > 0; i++) {
+			len = min_t(size_t, remain, PAGE_SIZE - off);
+			if (copy_page_from_iter(pages[i], off, len, iter) !=
+			    len) {
+				for (i = 0; i < npages; i++)
+					__free_page(pages[i]);
+				kvfree(pages);
+				return ERR_PTR(-EFAULT);
+			}
+			remain -= len;
+			off = 0;
+		}
 	}
 
 	*nr_pages = npages;
-	*first_page_offset = start & ~PAGE_MASK;
-	*end_page_size = ((start & ~PAGE_MASK) + nbytes) & ~PAGE_MASK;
-	if (*end_page_size == 0)
-		*end_page_size = PAGE_SIZE;
+	*first_page_offset = fpoff;
+	*end_page_size = eps;
 	*bytes = nbytes;
 	return pages;
 }
@@ -1089,6 +1116,7 @@ int cfs_extent_dio_read_write(struct cfs_extent_stream *es, int type,
 	size_t first_page_offset;
 	size_t end_page_size;
 	size_t bytes = 0;
+	size_t off, remain, len;
 	size_t i;
 	int ret = 0;
 
@@ -1124,19 +1152,25 @@ int cfs_extent_dio_read_write(struct cfs_extent_stream *es, int type,
 		if (TestClearPageError(pages[i]))
 			ret = -EIO;
 	}
-	extent_dio_pages_release(pages, nr_pages, type == READ);
+	/* 读：IO 已把数据填入临时页，按页内布局拷回用户 buffer。
+	 * copy_page_to_iter 自动 advance iter（写路径的 iter 已在
+	 * extent_dio_pages_alloc 由 copy_page_from_iter 消费）。direct_IO
+	 * 约定：必须消费 iter 并返回实际字节，否则 VFS 见 iov_iter_count!=0
+	 * 走 buffered fallback 重写本段（旧 Bug B：返回未消费 count 致数据
+	 * 重复 / 计数错乱）。现 iter 消费统一由 copy_page_*_iter 完成。 */
+	if (ret == 0 && type == READ) {
+		off = first_page_offset;
+		remain = bytes;
+		for (i = 0; i < nr_pages && remain > 0; i++) {
+			len = min_t(size_t, remain, PAGE_SIZE - off);
+			copy_page_to_iter(pages[i], off, len, iter);
+			remain -= len;
+			off = 0;
+		}
+	}
+	extent_dio_pages_release(pages, nr_pages);
 	if (ret < 0)
 		return ret;
-	/*
-	 * direct_IO 实现必须消费 iter 并返回实际传输字节数。否则 VFS
-	 * generic_file_write_iter 见 iov_iter_count != 0 会走 buffered
-	 * fallback 重写本段，导致 O_DIRECT 写数据重复 / 计数错乱（fio 报
-	 * Bad address、buflen 巨大；原代码返回未消费的 iov_iter_count）。
-	 * bytes 是 extent_dio_pages_alloc 处理的本段字节：单 iovec 即全部、
-	 * iter 清零，VFS 不再 fallback；multi-iovec 时余下段由 VFS 后续处理
-	 * （不重复）。
-	 */
-	iov_iter_advance(iter, bytes);
 	return bytes;
 }
 
