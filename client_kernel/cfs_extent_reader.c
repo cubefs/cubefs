@@ -2,11 +2,13 @@
  * Copyright 2023 The CubeFS Authors.
  */
 #include "cfs_extent.h"
+#include <linux/kthread.h>
 
 extern struct workqueue_struct *extent_work_queue;
 
 static void extent_reader_tx_work_cb(struct work_struct *work);
-static void extent_reader_rx_work_cb(struct work_struct *work);
+/* rx 改为 per-reader 专用 recv kthread，原理见 cfs_extent_writer.c 同改注释。 */
+static int extent_reader_rx_thread_fn(void *data);
 
 struct cfs_extent_reader *cfs_extent_reader_new(struct cfs_extent_stream *es,
 						struct cfs_data_partition *dp,
@@ -34,12 +36,19 @@ struct cfs_extent_reader *cfs_extent_reader_new(struct cfs_extent_stream *es,
 	INIT_LIST_HEAD(&reader->tx_packets);
 	INIT_LIST_HEAD(&reader->rx_packets);
 	INIT_WORK(&reader->tx_work, extent_reader_tx_work_cb);
-	INIT_WORK(&reader->rx_work, extent_reader_rx_work_cb);
 	init_waitqueue_head(&reader->tx_wq);
 	init_waitqueue_head(&reader->rx_wq);
+	init_waitqueue_head(&reader->rx_pending_wq);
 	atomic_set(&reader->tx_inflight, 0);
 	atomic_set(&reader->rx_inflight, 0);
 	reader->host_idx = host_idx;
+	reader->rx_thread = kthread_run(extent_reader_rx_thread_fn, reader,
+					"cfs-rrx-%llu", ext_id);
+	if (IS_ERR(reader->rx_thread)) {
+		cfs_socket_release(reader->sock, true);
+		kfree(reader);
+		return NULL;
+	}
 	return reader;
 }
 
@@ -47,8 +56,10 @@ void cfs_extent_reader_release(struct cfs_extent_reader *reader)
 {
 	if (!reader)
 		return;
+	/* 先停 tx（不再产生新 rx_packets），再停 recv 线程。 */
 	cancel_work_sync(&reader->tx_work);
-	cancel_work_sync(&reader->rx_work);
+	if (reader->rx_thread)
+		kthread_stop(reader->rx_thread);
 	cfs_data_partition_release(reader->dp);
 	cfs_socket_release(reader->sock, true);
 	kfree(reader);
@@ -101,22 +112,27 @@ static void extent_reader_tx_work_cb(struct work_struct *work)
 		list_add_tail(&packet->list, &reader->rx_packets);
 		spin_unlock(&reader->lock_rx);
 		atomic_inc(&reader->rx_inflight);
-		queue_work(extent_work_queue, &reader->rx_work);
+		wake_up(&reader->rx_pending_wq);
 	}
 	atomic_sub(cnt, &reader->tx_inflight);
 	wake_up(&reader->tx_wq);
 }
 
-static void extent_reader_rx_work_cb(struct work_struct *work)
+static int extent_reader_rx_thread_fn(void *data)
 {
-	struct cfs_extent_reader *reader =
-		container_of(work, struct cfs_extent_reader, rx_work);
+	struct cfs_extent_reader *reader = data;
 	struct cfs_extent_stream *es = reader->es;
-	struct cfs_extent_reader *recover = reader->recover;
+	struct cfs_extent_reader *recover;
 	struct cfs_packet *packet;
-	int cnt = 0;
+	int cnt;
 	int ret;
 
+	while (!kthread_should_stop()) {
+	wait_event(reader->rx_pending_wq,
+		   !list_empty_careful(&reader->rx_packets) ||
+			   kthread_should_stop());
+	recover = reader->recover;
+	cnt = 0;
 	while (true) {
 		spin_lock(&reader->lock_rx);
 		packet = list_first_entry_or_null(&reader->rx_packets,
@@ -185,4 +201,6 @@ handle_packet:
 	}
 	atomic_sub(cnt, &reader->rx_inflight);
 	wake_up(&reader->rx_wq);
+	}
+	return 0;
 }

@@ -94,7 +94,44 @@ Bug B 比 Bug A 复杂（涉及 VFS direct_IO 字节语义），且可被 buffer
 - **第二层精确根因（已定位，无需抓栈）**：`cfs_fs_fill_super` 漏设 `SB_I_CGROUPWB`。内核 `CONFIG_CGROUP_WRITEBACK=y`、cubefs BDI 已注册，但 `inode_cgwb_enabled()` 要求 sb 带 `SB_I_CGROUPWB`；未设 → inode dirty 归 root wb 而非进程 memcg wb → `balance_dirty_pages` 按全局节点内存限速（节点内存大、不限）→ 受限 cgroup 内 dirty 撑满 memory limit → 回写要内存而 cgroup 满 → 死锁。cubefs 全无 `s_iflags` 设置（grep 确认）。
 - **治本修复（已实施 commit 待补，待验证）**：`cfs_fs_fill_super` 加 `sb->s_iflags |= SB_I_CGROUPWB`（一行）。inode 自动 attach 进程 memcg wb，memcg dirty throttling 生效、按 pod memcg 的 dirty 限制提前限速写者，dirty 不撑满（最坏写变慢不死锁）。memcg throttling 是纯 memory 机制、不依赖 blkcg block device，网络 fs 适用（NFS/ext4/btrfs 均设此标志）。**不需要 mempool**：throttling 从源头防 dirty 撑满，回写不会再卡在满 cgroup 的内存分配。与第一层 GFP_NOFS 互补（前者防撑满、后者防回写递归 reclaim）。
 - .40 已 sysrq（`echo b > /proc/sysrq-trigger`）重启恢复，ko/service/mount 开机自启正常。`sshpass -p ... ssh root@.40/.42` 密码可访问（比 lml_rsa key 更可靠，.42 也通）。
-- 下一步：commit+push → .40 换 ko → 验证 numjobs=32 size=2g **不再死锁**（dirty 被 memcg 限速、不撑满、节点 Ready、fio 完成）→ 4 节点部署 → Bug B → 重跑 fuse vs 内核 client 对比。
+- **S2 验证（SB_I_CGROUPWB 已部署 .40，srcversion 3907C2EF）——三层结构浮现**：
+  - 第一层 GFP_NOFS：✓ 防回写递归 reclaim 拖垮节点。
+  - 第二层 SB_I_CGROUPWB：✓ memcg dirty throttling 生效。实测 numjobs=32 size=2g：dirty 被限在 2532MB（不再无限涨）、mem 稳定 10430MB（**不撑满 12286**，对比修复前撑满）、**节点运行时 Ready + ssh 18s 响应**（对比修复前 load 130 ssh 完全死）。致命的"拖垮节点失联"基本解决。
+  - **第三层（未解）：高并发下 cgwb writeback 停摆**。numjobs=32 时 written 卡 9026MB（其中 6494MB 已回写落盘、dirty 残 2532MB）、wb=0、fio D 态停滞。但：节点级 dd 512MB → dirty 3s 内回落到 0（root wb 回写正常）；pod cgroup 内 dd 512MB → dirty 立即 0（cgwb 小规模回写正常）。**仅 pod cgroup + 高并发 numjobs=32 触发停摆**。最可能：cgwb flusher 的 `cfs_page_vec_new`/`cpages`（GFP_NOFS）在 mem 逼近 memcg limit（10430/12286）时分配卡住——memcg 内可回收的只有 dirty，回收 dirty 又靠 flusher 自己 → 卡。删 pod 时 cgroup 销毁要回写残留 2532MB dirty，回写卡 → .40 又 NotReady（节点 hung-task 保护自重启）。
+- **第三层精确根因（D 态栈铁证，已抓到）**：**不是 mempool/内存死锁，是 workqueue 饱和死锁**。cgwb flusher（`wb_workfn`）回写栈：`cfs_writepages → cfs_extent_write_pages → extent_write_pages_normal → extent_stream_get_writer → cfs_extent_writer_flush → wait_event(tx_inflight==0 && rx_inflight==0)`（卡死）。机制：
+  - `extent_stream_get_writer`（cfs_extent_stream.c:209-218）在 writer offset 不连续 / 写满 EXTENT_SIZE 时调 `cfs_extent_writer_flush` 换 writer。
+  - `cfs_extent_writer_flush`（cfs_extent_writer.c:71-72）`wait_event` 同步等该 writer 的 tx/rx packet 飞行清零。
+  - tx/rx packet 收发**共用同一个 `extent_work_queue`**：`tx_work_cb`（:136 同步 send）发完 `queue_work(extent_work_queue, rx_work)`（:144）；`rx_work_cb`（:180 `cfs_socket_recv_packet` **同步阻塞等 datanode reply**）。
+  - 高并发（numjobs=32）下大量 rx_work 同步 recv 阻塞占满 extent_work_queue worker（mem 逼近 memcg limit 时 WQ_MEM_RECLAIM 退化单 rescuer 更甚），flusher 等的 writer 的 rx_work 排队跑不了 → rx_inflight 不减 → flusher 永久 D 态卡 → dirty 不回写。第二个 flusher 卡 `inode_sleep_on_writeback`（等第一个 flusher 持有的 inode I_SYNC）。numjobs≤8 worker 够、不饱和。
+- **第三层修复方向（架构级，非一行）**：根治需让 recv 不阻塞 wq worker（独立 recv 线程/socket 异步/epoll），或 writepages 路径不同步等网络往返；最小缓解 tx/rx 拆独立 wq + 调大 max_active（治标，仍可能被阻塞型 recv 占满）。属内核 client 回写架构改造。
+
+### 第三层根治方案（recv 异步化 — per-socket recv kthread，用户选定治本）
+
+核心：rx_work（同步阻塞 recv、共用 extent_work_queue）→ 每个 writer/reader 一个专用 recv kthread。recv 在专用线程阻塞，不再占 wq worker，互不饿死（网络 client 标准模式）。tx_work 仍走 wq（发送不阻塞）。
+
+改动点（writer + reader 对称）：
+- **cfs_extent.h**：struct 的 `struct work_struct rx_work` → `struct task_struct *rx_thread` + `wait_queue_head_t rx_pending_wq`（唤醒 recv 线程）。
+- **cfs_extent_writer.c / cfs_extent_reader.c**：
+  1. `#include <linux/kthread.h>`。
+  2. `rx_work_cb` 函数体原样包进 `rx_thread_fn`：`while(!kthread_should_stop()){ wait_event(rx_pending_wq, !list_empty_careful(rx_packets)||kthread_should_stop()); <原 rx_work_cb 体> }`。逻辑（recv + recover 重发 + handle_reply + atomic_sub rx_inflight + wake rx_wq）完全不变。
+  3. `*_new`：`init_waitqueue_head(&rx_pending_wq)` + `rx_thread = kthread_run(rx_thread_fn, w, "cfs-rx-%llu", ext_id)`；kthread 创建失败要回滚（release sock + kfree）。
+  4. `tx_work_cb`：发完 packet 入 rx_packets + inc rx_inflight 后，`wake_up(&rx_pending_wq)` 替代 `queue_work(extent_work_queue,&rx_work)`。
+  5. `*_release`：`cancel_work_sync(&tx_work)` 后 `kthread_stop(rx_thread)` 替代 `cancel_work_sync(&rx_work)`。注意顺序：先停 tx（不再产生新 rx_packets）再停 rx_thread。
+- **风险**：① kthread 生命周期（new 失败回滚 / release 先 tx 后 rx）；② wait_event 条件 race（用 list_empty_careful，醒来后 spin_lock 取）；③ recover 路径在 rx_thread 上下文新建 recover writer/reader（recover 自带 rx_thread）+ 重发，逻辑不变；④ kthread 数量 = 活跃 writer/reader 数（顺序写每文件通常 1 活跃 writer，numjobs=32≈32 kthread，可接受）；⑤ 改错 panic（内核模块）——单节点先验。
+- **验证**：numjobs=32 size=2g：writeback 持续推进（wb>0、dirty 回落）、fio 完成、节点 Ready、删 pod 不卡。回归 numjobs≤8 带宽不退化。
+
+#### 实施进展（recv kthread 重构）
+
+- 代码完成：cfs_extent.h（struct rx_work→rx_thread+rx_pending_wq）、cfs_extent_writer.c、cfs_extent_reader.c 对称改造。编译成功 srcversion **F2F9738B**（≠ 第二层 3907C2EF），无 error。
+- 待验证：换 ko 到 .40 → numjobs=32 不死锁。
+
+#### 工程插曲（运维注意）
+
+1. **make-deb.sh 不强制重编**：`if [ ! -f cubefs.ko ]` 残留旧 ko 就跳过编译、打包旧 ko。换版本必须先 `make clean && rm -f client_kernel/cubefs.ko` 再 `make client-kernel`，并核对 srcversion 变化确认。
+2. **BDI 泄漏致 mount EEXIST**：`super_setup_bdi_name(sb,"cubefs")` 用固定名；某次 mount 失败/umount 不干净时 sb 没释放 → BDI "cubefs" 泄漏（rmmod 模块都清不掉），后续 mount 报 `kobject_add -EEXIST`、`mount(2) File exists`。清理需重启节点。这是 cubefs BDI 生命周期的潜在 bug（可列后续：mount 失败路径要释放 BDI / 用唯一 BDI 名）。
+3. **换 ko use count 难清**：node_exporter + syncnode pod 经 hostPath/HostToContainer 持有 stale cubefs 引用；换 ko 必须删这些 pod 等 use count→0，且 host 要先 umount（否则重建 pod 继承 cubefs 又持有）。
+- **务实现状**：numjobs≤8 buffered 写正常完成（前两层后更稳，无残留 dirty、删 pod 不卡）；numjobs=32 极限并发仍卡（第三层）。对比测试用 numjobs≤8 可继续。
+- 下一步（待用户定）：A. 接受前两层（常规并发可用）→ numjobs≤8 重跑对比 + 修 Bug B，第三层列 backlog；B. 继续深挖第三层（mempool，成本高、反复拖垮节点）。
 
 ## 验证方式教训
 

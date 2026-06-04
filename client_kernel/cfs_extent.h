@@ -75,7 +75,8 @@ struct cfs_extent_writer {
 	spinlock_t lock_tx;
 	spinlock_t lock_rx;
 	struct work_struct tx_work;
-	struct work_struct rx_work;
+	struct task_struct *rx_thread;
+	wait_queue_head_t rx_pending_wq;
 	wait_queue_head_t tx_wq;
 	wait_queue_head_t rx_wq;
 	atomic_t tx_inflight;
@@ -99,7 +100,8 @@ struct cfs_extent_reader {
 	spinlock_t lock_tx;
 	spinlock_t lock_rx;
 	struct work_struct tx_work;
-	struct work_struct rx_work;
+	struct task_struct *rx_thread;
+	wait_queue_head_t rx_pending_wq;
 	wait_queue_head_t rx_wq;
 	wait_queue_head_t tx_wq;
 	atomic_t rx_inflight;

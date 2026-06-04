@@ -2,11 +2,20 @@
  * Copyright 2023 The CubeFS Authors.
  */
 #include "cfs_extent.h"
+#include <linux/kthread.h>
 
 extern struct workqueue_struct *extent_work_queue;
 
 static void extent_writer_tx_work_cb(struct work_struct *work);
-static void extent_writer_rx_work_cb(struct work_struct *work);
+/*
+ * rx 改为 per-writer 专用 recv kthread（替代原共用 extent_work_queue 的
+ * rx_work）。原 rx_work 同步阻塞 cfs_socket_recv_packet，高并发下大量
+ * rx_work 占满 wq worker，而 cgwb flusher 回写时 cfs_extent_writer_flush
+ * 同步 wait_event(rx_inflight==0) 等这些 work 完成 → wq 饱和则 flusher
+ * 永久卡、dirty 不回写、节点被拖垮。专用 recv 线程让 recv 不占 wq、
+ * 各 socket 互不饿死。
+ */
+static int extent_writer_rx_thread_fn(void *data);
 
 struct cfs_extent_writer *cfs_extent_writer_new(struct cfs_extent_stream *es,
 						struct cfs_data_partition *dp,
@@ -38,11 +47,18 @@ struct cfs_extent_writer *cfs_extent_writer_new(struct cfs_extent_stream *es,
 	INIT_LIST_HEAD(&writer->tx_packets);
 	INIT_LIST_HEAD(&writer->rx_packets);
 	INIT_WORK(&writer->tx_work, extent_writer_tx_work_cb);
-	INIT_WORK(&writer->rx_work, extent_writer_rx_work_cb);
 	init_waitqueue_head(&writer->tx_wq);
 	init_waitqueue_head(&writer->rx_wq);
+	init_waitqueue_head(&writer->rx_pending_wq);
 	atomic_set(&writer->tx_inflight, 0);
 	atomic_set(&writer->rx_inflight, 0);
+	writer->rx_thread = kthread_run(extent_writer_rx_thread_fn, writer,
+					"cfs-wrx-%llu", ext_id);
+	if (IS_ERR(writer->rx_thread)) {
+		cfs_socket_release(writer->sock, true);
+		kfree(writer);
+		return NULL;
+	}
 	return writer;
 }
 
@@ -50,8 +66,10 @@ void cfs_extent_writer_release(struct cfs_extent_writer *writer)
 {
 	if (!writer)
 		return;
+	/* 先停 tx（不再产生新 rx_packets），再停 recv 线程。 */
 	cancel_work_sync(&writer->tx_work);
-	cancel_work_sync(&writer->rx_work);
+	if (writer->rx_thread)
+		kthread_stop(writer->rx_thread);
 	cfs_data_partition_release(writer->dp);
 	cfs_socket_release(writer->sock, true);
 	kfree(writer);
@@ -141,22 +159,27 @@ static void extent_writer_tx_work_cb(struct work_struct *work)
 		list_add_tail(&packet->list, &writer->rx_packets);
 		spin_unlock(&writer->lock_rx);
 		atomic_inc(&writer->rx_inflight);
-		queue_work(extent_work_queue, &writer->rx_work);
+		wake_up(&writer->rx_pending_wq);
 	}
 	atomic_sub(cnt, &writer->tx_inflight);
 	wake_up(&writer->tx_wq);
 }
 
-static void extent_writer_rx_work_cb(struct work_struct *work)
+static int extent_writer_rx_thread_fn(void *data)
 {
-	struct cfs_extent_writer *writer =
-		container_of(work, struct cfs_extent_writer, rx_work);
+	struct cfs_extent_writer *writer = data;
 	struct cfs_extent_stream *es = writer->es;
-	struct cfs_extent_writer *recover = writer->recover;
+	struct cfs_extent_writer *recover;
 	struct cfs_packet *packet;
-	int cnt = 0;
+	int cnt;
 	int ret;
 
+	while (!kthread_should_stop()) {
+	wait_event(writer->rx_pending_wq,
+		   !list_empty_careful(&writer->rx_packets) ||
+			   kthread_should_stop());
+	recover = writer->recover;
+	cnt = 0;
 	while (true) {
 		spin_lock(&writer->lock_rx);
 		packet = list_first_entry_or_null(&writer->rx_packets,
@@ -242,4 +265,6 @@ handle_packet:
 	}
 	atomic_sub(cnt, &writer->rx_inflight);
 	wake_up(&writer->rx_wq);
+	}
+	return 0;
 }
