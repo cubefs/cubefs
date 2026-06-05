@@ -26,6 +26,7 @@ import (
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	api "github.com/cubefs/cubefs/blobstore/api/scheduler"
 	"github.com/cubefs/cubefs/blobstore/common/counter"
+	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/scheduler/client"
@@ -117,8 +118,9 @@ func newMockService(t *testing.T) *Service {
 	// report shard disk repair task
 	shardDiskRepair.EXPECT().ReportTask(any, any).Return(nil)
 
-	// add manual migrate task
-	manualMgr.EXPECT().AddManualTask(any, any, any).Return(nil)
+	// add manual migrate task: success when forbiddenDirectDownload=true, failure otherwise
+	manualMgr.EXPECT().AddManualTask(any, any, true).Return(nil)
+	manualMgr.EXPECT().AddManualTask(any, any, false).Return(errMock)
 
 	// acquire inspect task
 	inspectorMgr.EXPECT().AcquireInspect(any).Return(&proto.VolumeInspectTask{}, nil)
@@ -279,8 +281,13 @@ func TestServiceAPI(t *testing.T) {
 	require.NoError(t, err)
 
 	// add manual migrate task
+	// illegal arguments: AddManualTask must not be invoked
 	err = cli.AddManualMigrateTask(ctx, &api.AddManualMigrateArgs{})
 	require.Equal(t, 400, rpc.DetectStatusCode(err))
+	// AddManualTask fails: error is converted to ErrRequestNotAllow (400)
+	err = cli.AddManualMigrateTask(ctx, &api.AddManualMigrateArgs{Vuid: proto.Vuid(24726512599042), DirectDownload: true})
+	require.Equal(t, errcode.ErrRequestNotAllow.StatusCode(), rpc.DetectStatusCode(err))
+	// success
 	err = cli.AddManualMigrateTask(ctx, &api.AddManualMigrateArgs{Vuid: proto.Vuid(24726512599042)})
 	require.NoError(t, err)
 
