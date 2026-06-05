@@ -15,6 +15,8 @@
 package datanode
 
 import (
+	"go.uber.org/automaxprocs/maxprocs"
+
 	"bytes"
 	"errors"
 	"fmt"
@@ -24,7 +26,6 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -262,7 +263,8 @@ func NewServer() *DataNode {
 }
 
 func (s *DataNode) Start(cfg *config.Config) (err error) {
-	runtime.GOMAXPROCS(runtime.NumCPU())
+	// 按 cgroup CPU quota 设 GOMAXPROCS（容器环境），见 cmd/cmd.go 同改说明。
+	_, _ = maxprocs.Set()
 	return s.control.Start(s, cfg, doStart)
 }
 

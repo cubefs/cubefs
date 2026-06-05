@@ -25,7 +25,6 @@ import (
 	"os/signal"
 	"path"
 	"path/filepath"
-	"runtime"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -52,6 +51,7 @@ import (
 	sysutil "github.com/cubefs/cubefs/util/sys"
 	"github.com/cubefs/cubefs/util/ump"
 	"github.com/jacobsa/daemonize"
+	"go.uber.org/automaxprocs/maxprocs"
 )
 
 const (
@@ -336,8 +336,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	// for multi-cpu scheduling
-	runtime.GOMAXPROCS(runtime.NumCPU())
+	// 按 cgroup CPU quota 设 GOMAXPROCS：原 runtime.NumCPU() 读宿主机 128 核、无视
+	// pod cgroup limit(18 核)，致 128 个 P 抢 18 核 → CPU throttle + 大量 runnable 空等。
+	_, _ = maxprocs.Set()
 	if err = ump.InitUmp(role, umpDatadir); err != nil {
 		log.LogFlush()
 		err = errors.NewErrorf("Fatal: failed to init ump warnLogDir - %v", err)
