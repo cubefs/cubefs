@@ -700,10 +700,12 @@ func (s *ExtentStore) Write(param *WriteParam) (status uint8, err error) {
 	}
 	s.elMutex.RUnlock()
 
-	s.eiMutex.Lock()
+	// 写路径仅读 extentInfoMap，用读锁即可；原误用写锁会串行化所有并发写
+	// （高并发写下大量 goroutine 阻塞在此写锁，CPU/盘空转）。其他读点均为 RLock。
+	s.eiMutex.RLock()
 	status = proto.OpOk
 	ei = s.extentInfoMap[param.ExtentID]
-	s.eiMutex.Unlock()
+	s.eiMutex.RUnlock()
 	e, err = s.extentWithHeader(ei)
 	if err != nil {
 		return status, err
