@@ -6,6 +6,8 @@
 
 #include "cfs_common.h"
 
+#include <linux/rwsem.h>
+
 #include "cfs_log.h"
 #include "cfs_master.h"
 #include "cfs_meta.h"
@@ -122,7 +124,10 @@ struct cfs_extent_stream {
 	u32 nr_writers;
 	u32 max_writers;
 	struct mutex lock_writers;
-	struct mutex lock_io;
+	/* 读写锁:读路径 down_read 并发(多进程读同一文件),写路径 down_write 互斥。
+	 * cache 一致性由 cache->lock 独立保护,故读读并发安全。原为 mutex 把读读
+	 * 也串行,单文件多进程读被锁死在 ~600MB/s(见 docs/plan/read-optimization.md)。 */
+	struct rw_semaphore lock_io;
 	struct list_head readers;
 	u32 nr_readers;
 	u32 max_readers;

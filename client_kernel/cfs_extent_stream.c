@@ -584,12 +584,12 @@ int cfs_extent_write_pages(struct cfs_extent_stream *es, struct page **pages,
 			      es->ino, ret);
 		goto err_page;
 	}
-	mutex_lock(&es->lock_io);
+	down_write(&es->lock_io);
 	ret = cfs_prepare_extent_io_list(&es->cache, file_offset,
 					 cfs_page_iter_count(&iter),
 					 &io_info_list);
 	if (ret < 0) {
-		mutex_unlock(&es->lock_io);
+		up_write(&es->lock_io);
 		cfs_log_error(
 			es->ec->log,
 			"ino(%llu) prepare extent write request error %d\n",
@@ -614,14 +614,14 @@ int cfs_extent_write_pages(struct cfs_extent_stream *es, struct page **pages,
 		list_del(&io_info->list);
 		cfs_extent_io_info_release(io_info);
 		if (ret < 0) {
-			mutex_unlock(&es->lock_io);
+			up_write(&es->lock_io);
 			cfs_log_error(es->ec->log,
 				      "ino(%llu) write page error %d\n",
 				      es->ino, ret);
 			goto err_page;
 		}
 	}
-	mutex_unlock(&es->lock_io);
+	up_write(&es->lock_io);
 	return 0;
 
 err_page:
@@ -944,12 +944,12 @@ int cfs_extent_read_pages(struct cfs_extent_stream *es, bool direct_io,
 			      es->ino, ret);
 		goto err_page;
 	}
-	mutex_lock(&es->lock_io);
+	down_read(&es->lock_io);
 	ret = cfs_prepare_extent_io_list(&es->cache, file_offset,
 					 cfs_page_iter_count(&iter),
 					 &io_info_list);
 	if (ret < 0) {
-		mutex_unlock(&es->lock_io);
+		up_read(&es->lock_io);
 		cfs_log_error(
 			es->ec->log,
 			"ino(%llu) prepare extent write request error %d\n",
@@ -984,7 +984,7 @@ int cfs_extent_read_pages(struct cfs_extent_stream *es, bool direct_io,
 		else
 			ret = extent_read_pages_async(es, io_info, &iter);
 		if (ret < 0) {
-			mutex_unlock(&es->lock_io);
+			up_read(&es->lock_io);
 			cfs_log_error(es->ec->log,
 				      "ino(%llu) read pages error %d\n",
 				      es->ino, ret);
@@ -995,7 +995,7 @@ next:
 		list_del(&io_info->list);
 		cfs_extent_io_info_release(io_info);
 	}
-	mutex_unlock(&es->lock_io);
+	up_read(&es->lock_io);
 
 err_page:
 	while (!list_empty(&io_info_list)) {
@@ -1197,7 +1197,7 @@ struct cfs_extent_stream *cfs_extent_stream_new(struct cfs_extent_client *ec,
 	hash_add(ec->streams, &es->hash, ino);
 	mutex_init(&es->lock_writers);
 	mutex_init(&es->lock_readers);
-	mutex_init(&es->lock_io);
+	init_rwsem(&es->lock_io);
 	INIT_LIST_HEAD(&es->pending_flush);
 	spin_lock_init(&es->lock_pending);
 	atomic_set(&es->nr_pending_flush, 0);
