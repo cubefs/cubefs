@@ -192,37 +192,65 @@ extent_stream_get_writer(struct cfs_extent_stream *es, loff_t offset,
 	struct cfs_extent_writer *writer = NULL;
 	struct cfs_packet_extent extent;
 
-	while (true) {
-		mutex_lock(&es->lock_writers);
-		writer = list_first_entry_or_null(
-			&es->writers, struct cfs_extent_writer, list);
-		if (!writer) {
-			mutex_unlock(&es->lock_writers);
-			break;
-		}
-
+	/*
+	 * 遍历 es->writers 找“接续该 offset 流”的 writer（file_offset+w_size
+	 * == offset 且未写满 extent），命中即复用。原实现只取 list first，且
+	 * “offset 与当前 writer 末尾不连续就摘除当前 writer”——单文件多线程写
+	 * 不同 offset 时会互相踢掉对方的 writer，每次 get_writer 都触发
+	 * cfs_extent_id_new（申请新 extent，联系 master）+ async_flush（meta
+	 * commit）网络往返风暴，单文件多线程因此卡在 ~971MiB/s。改为按 offset
+	 * 匹配后，多个 offset 流各自保留各自的 writer，消除互踢。
+	 * get_writer 全程在 cfs_extent_write_pages 的 down_write(lock_io) 串行
+	 * 保护下执行，故此遍历不引入新的并发风险；坏 writer 仍即时清理。
+	 */
+retry:
+	mutex_lock(&es->lock_writers);
+	list_for_each_entry(writer, &es->writers, list) {
 		if (writer->flags &
 		    (EXTENT_WRITER_F_RECOVER | EXTENT_WRITER_F_ERROR)) {
+			/* 坏 writer：摘出，锁外异步 flush 后重扫 */
 			list_del(&writer->list);
 			es->nr_writers--;
 			mutex_unlock(&es->lock_writers);
-		} else if ((writer->file_offset + writer->w_size != offset) ||
-			   (writer->w_size + size > EXTENT_SIZE)) {
-			list_del(&writer->list);
-			es->nr_writers--;
-			mutex_unlock(&es->lock_writers);
-		} else {
-			mutex_unlock(&es->lock_writers);
-			return writer;
+			extent_writer_submit_async_flush(writer);
+			goto retry;
 		}
-		/*
-		 * 旧 writer 异步 flush：不在 cgwb flusher 上下文同步等网络
-		 * 往返 + meta commit（writer 已从 es->writers 摘出）。这是
-		 * writeback 死锁根治——flusher 提交后立即用新 writer 继续。
-		 */
+		if (writer->file_offset + writer->w_size == offset) {
+			/* 命中接续该 offset 流的 writer */
+			if (writer->w_size + size <= EXTENT_SIZE) {
+				mutex_unlock(&es->lock_writers);
+				return writer;
+			}
+			/*
+			 * 该流 writer 写满 extent(128MB)：摘除 + 异步 flush，
+			 * 跳到下方建新 extent 续写。原实现靠“满则摘除”推进
+			 * writer 生命周期，漏掉会导致顺序写时满 writer 在 list
+			 * 无限累积（遍历变慢 + extent 不提交 meta），稳态吞吐暴跌。
+			 */
+			list_del(&writer->list);
+			es->nr_writers--;
+			mutex_unlock(&es->lock_writers);
+			extent_writer_submit_async_flush(writer);
+			goto build_new;
+		}
+	}
+	/*
+	 * 无匹配 writer。正常多流并发（流数 < max_writers=64）直接建新；仅当
+	 * writer 数达上限才摘除最旧（list head）异步 flush 腾位，退化为接近原
+	 * “切换 writer”的行为，防止 writer 无界增长。
+	 */
+	if (es->nr_writers >= es->max_writers) {
+		writer = list_first_entry(&es->writers,
+					  struct cfs_extent_writer, list);
+		list_del(&writer->list);
+		es->nr_writers--;
+		mutex_unlock(&es->lock_writers);
 		extent_writer_submit_async_flush(writer);
+	} else {
+		mutex_unlock(&es->lock_writers);
 	}
 
+build_new:
 	if (cfs_extent_cache_get_end(&es->cache, offset, &extent) &&
 	    (extent.ext_id > EXTENT_TINY_MAX_ID &&
 	     extent.size + size <= EXTENT_SIZE)) {
