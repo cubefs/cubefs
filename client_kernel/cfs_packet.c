@@ -692,7 +692,9 @@ cfs_packet_sxattr_request_to_json(struct cfs_packet_sxattr_request *req,
 	CHECK(cfs_buffer_write(buffer, "\"pid\":%llu,", req->pid));
 	CHECK(cfs_buffer_write(buffer, "\"ino\":%llu,", req->ino));
 	CHECK(cfs_buffer_write(buffer, "\"key\":\"%s\",", req->key));
-	CHECK(cfs_buffer_write(buffer, "\"value\":\"%.*s\"", req->value_len,
+	/* metanode SetXAttrRequest.Value 的 json tag 是 "val"(见 proto/fs_proto.go),
+	 * 原写成 "value" 导致 metanode 忽略、value 丢失(key 存了但取回为空)。 */
+	CHECK(cfs_buffer_write(buffer, "\"val\":\"%.*s\"", req->value_len,
 			       req->value));
 	CHECK(cfs_buffer_write(buffer, "}"));
 	return 0;
@@ -1215,6 +1217,8 @@ void cfs_packet_reply_data_clear(struct cfs_packet *packet)
 	case CFS_OP_QUOTA_INODE_GET:
 		cfs_packet_gquota_reply_clear(&packet->reply.data.gquota);
 		break;
+	case CFS_OP_XATTR_SET:
+	case CFS_OP_XATTR_UPDATE:
 	case CFS_OP_EXTENT_ADD_WITH_CHECK:
 	case CFS_OP_TRUNCATE:
 	case CFS_OP_EXTENT_CREATE:

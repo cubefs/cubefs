@@ -1001,7 +1001,9 @@ static int cfs_meta_set_xattr_internal(struct cfs_meta_client *mc,
 				       const char *name, const char *value,
 				       size_t len, int flags)
 {
-	u8 op = flags & XATTR_CREATE ? CFS_OP_XATTR_SET : CFS_OP_XATTR_UPDATE;
+	/* setfattr 默认 flags=0(创建或覆盖)应走 SET;仅 XATTR_REPLACE 用 UPDATE。
+	 * 原逻辑把 flags=0 当 UPDATE(0x3b),而 v3.5 metanode 对 UPDATE 支持不全。 */
+	u8 op = (flags & XATTR_REPLACE) ? CFS_OP_XATTR_UPDATE : CFS_OP_XATTR_SET;
 	struct cfs_packet *packet;
 	struct cfs_packet_sxattr_request *request_data;
 	int ret;

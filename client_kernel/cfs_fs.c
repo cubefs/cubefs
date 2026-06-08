@@ -879,55 +879,55 @@ static int cfs_getattr(struct user_namespace *mnt_userns, const struct path *pat
 	return 0;
 }
 
-#ifdef ENABLE_XATTR
-static int cfs_setxattr(struct dentry *dentry, const char *name,
-			const void *value, size_t len, int flags)
+/* 5.15 已删 inode_operations 的 .setxattr/.getxattr/.removexattr,
+ * 改用 xattr_handler 数组(sb->s_xattr) + inode_operations.listxattr。
+ * 用通配 handler(prefix="")承接所有 name,cfs_meta 存完整 name。 */
+static int cfs_xattr_get(const struct xattr_handler *handler,
+			 struct dentry *dentry, struct inode *inode,
+			 const char *name, void *buffer, size_t size)
 {
-	struct super_block *sb = dentry->d_sb;
-	struct cfs_mount_info *cmi = sb->s_fs_info;
-	u64 ino = dentry->d_inode->i_ino;
+	struct cfs_mount_info *cmi = inode->i_sb->s_fs_info;
 
-	cfs_log_debug(cmi->log,
-		      "dentry=" fmt_dentry
-		      ", name=%s, value=%.*s, flags=0x%x\n",
-		      pr_dentry(dentry), name, (int)len, (const char *)value,
-		      flags);
-	return cfs_meta_set_xattr(cmi->meta, ino, name, value, len, flags);
+	cfs_log_debug(cmi->log, "inode=%lu, name=%s, size=%zu\n", inode->i_ino,
+		      name, size);
+	return cfs_meta_get_xattr(cmi->meta, inode->i_ino, name, buffer, size);
 }
 
-static ssize_t cfs_getxattr(struct dentry *dentry, const char *name,
-			    void *value, size_t size)
+static int cfs_xattr_set(const struct xattr_handler *handler,
+			 struct user_namespace *mnt_userns,
+			 struct dentry *dentry, struct inode *inode,
+			 const char *name, const void *value, size_t size,
+			 int flags)
 {
-	struct super_block *sb = dentry->d_sb;
-	struct cfs_mount_info *cmi = sb->s_fs_info;
-	u64 ino = dentry->d_inode->i_ino;
+	struct cfs_mount_info *cmi = inode->i_sb->s_fs_info;
 
-	cfs_log_debug(cmi->log, "dentry=" fmt_dentry ", name=%s\n",
-		      pr_dentry(dentry), name);
-	return cfs_meta_get_xattr(cmi->meta, ino, name, value, size);
+	cfs_log_debug(cmi->log, "inode=%lu, name=%s, size=%zu, flags=0x%x\n",
+		      inode->i_ino, name, size, flags);
+	/* value==NULL 是 VFS 约定的 removexattr */
+	if (!value)
+		return cfs_meta_remove_xattr(cmi->meta, inode->i_ino, name);
+	return cfs_meta_set_xattr(cmi->meta, inode->i_ino, name, value, size,
+				  flags);
 }
 
 static ssize_t cfs_listxattr(struct dentry *dentry, char *names, size_t size)
 {
-	struct super_block *sb = dentry->d_sb;
-	struct cfs_mount_info *cmi = sb->s_fs_info;
-	u64 ino = dentry->d_inode->i_ino;
+	struct inode *inode = d_inode(dentry);
+	struct cfs_mount_info *cmi = inode->i_sb->s_fs_info;
 
-	cfs_log_debug(cmi->log, "dentry=" fmt_dentry "\n", pr_dentry(dentry));
-	return cfs_meta_list_xattr(cmi->meta, ino, names, size);
+	return cfs_meta_list_xattr(cmi->meta, inode->i_ino, names, size);
 }
 
-static int cfs_removexattr(struct dentry *dentry, const char *name)
-{
-	struct super_block *sb = dentry->d_sb;
-	struct cfs_mount_info *cmi = sb->s_fs_info;
-	u64 ino = dentry->d_inode->i_ino;
+static const struct xattr_handler cfs_xattr_handler = {
+	.prefix = "", /* 通配:匹配所有 name */
+	.get = cfs_xattr_get,
+	.set = cfs_xattr_set,
+};
 
-	cfs_log_debug(cmi->log, "dentry=" fmt_dentry ", name=%s\n",
-		      pr_dentry(dentry), name);
-	return cfs_meta_remove_xattr(cmi->meta, ino, name);
-}
-#endif
+const struct xattr_handler *const cfs_xattr_handlers[] = {
+	&cfs_xattr_handler,
+	NULL,
+};
 
 static struct dentry *cfs_lookup(struct inode *dir, struct dentry *dentry,
 				 unsigned int flags)
@@ -1479,6 +1479,7 @@ static int cfs_fs_fill_super(struct super_block *sb, void *data, int silent)
 	sb->s_maxbytes = MAX_LFS_FILESIZE;
 	sb->s_magic = CFS_FS_MAGIC;
 	sb->s_op = &cfs_super_ops;
+	sb->s_xattr = cfs_xattr_handlers;
 	sb->s_d_op = &cfs_dentry_ops;
 	sb->s_time_gran = 1;
 	/* no acl */
@@ -1567,12 +1568,7 @@ const struct inode_operations cfs_file_iops = {
 	.permission = cfs_permission,
 	.setattr = cfs_setattr,
 	.getattr = cfs_getattr,
-#ifdef ENABLE_XATTR
-	.setxattr = cfs_setxattr,
-	.getxattr = cfs_getxattr,
 	.listxattr = cfs_listxattr,
-	.removexattr = cfs_removexattr,
-#endif
 };
 
 const struct file_operations cfs_dir_fops = {
@@ -1603,12 +1599,7 @@ const struct inode_operations cfs_dir_iops = {
 	.permission = cfs_permission,
 	.setattr = cfs_setattr,
 	.getattr = cfs_getattr,
-#ifdef ENABLE_XATTR
-	.setxattr = cfs_setxattr,
-	.getxattr = cfs_getxattr,
 	.listxattr = cfs_listxattr,
-	.removexattr = cfs_removexattr,
-#endif
 };
 
 const struct inode_operations cfs_symlink_iops = {
