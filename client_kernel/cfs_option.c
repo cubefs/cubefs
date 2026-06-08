@@ -44,13 +44,16 @@ static void cfs_options_clear(struct cfs_options *options)
 {
 	if (!options)
 		return;
+	/* 幂等:释放后置 NULL,避免 parse 失败路径与 cfs_options_release
+	 * 重复清理时 kfree 已释放指针造成 double-free(BUG slub.c:384)。
+	 * kfree(NULL) 安全,故不再判空。sockaddr_storage_array_clear 已幂等。 */
 	sockaddr_storage_array_clear(&options->addrs);
-	if (options->volume)
-		kfree(options->volume);
-	if (options->path)
-		kfree(options->path);
-	if (options->owner)
-		kfree(options->owner);
+	kfree(options->volume);
+	options->volume = NULL;
+	kfree(options->path);
+	options->path = NULL;
+	kfree(options->owner);
+	options->owner = NULL;
 }
 
 /**
@@ -184,11 +187,15 @@ static int cfs_options_parse(const char *dev_str, const char *opt_str,
 		} else if (strncmp(start, "enable_quota=", 13) == 0) {
 			start += 13;
 			end = strchr(start, ',');
+			/* 统一用 cfs_kstrntobool(支持 "true"/"false");内核 kstrtobool
+			 * 在 5.15 不识别 "false"/"true",末尾(无逗号)时会返回 -EINVAL
+			 * 触发上面的清理路径。 */
 			if (end)
 				ret = cfs_kstrntobool(start, end - start,
 						      &options->enable_quota);
 			else
-				ret = kstrtobool(start, &options->enable_quota);
+				ret = cfs_kstrntobool(start, strlen(start),
+						      &options->enable_quota);
 			if (ret < 0) {
 				cfs_options_clear(options);
 				return -EINVAL;
