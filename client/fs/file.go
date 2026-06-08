@@ -233,12 +233,11 @@ func (f *File) Forget() {
 	// if f.fWriter != nil {
 	//	f.fWriter.Close()
 	// }
-
+	f.super.fslock.Lock()
+	delete(f.super.nodeCache, ino)
+	f.super.fslock.Unlock()
 	if DisableMetaCache {
 		f.super.ic.Delete(ino)
-		f.super.fslock.Lock()
-		delete(f.super.nodeCache, ino)
-		f.super.fslock.Unlock()
 		if err := f.super.ec.EvictStream(ino); err != nil {
 			log.LogWarnf("Forget: stream not ready to evict, ino(%v) err(%v)", ino, err)
 			return
@@ -376,15 +375,10 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 		log.LogInfof("action[Release] %v", f.fWriter)
 		f.fWriter.FreeCache()
 		if f.super.ec.RefCnt(ino) == 0 && !f.super.metaCacheAcceleration {
-			// keep nodeCache hold the latest inode info
-			f.super.fslock.Lock()
-			delete(f.super.nodeCache, ino)
-			f.super.fslock.Unlock()
 			if DisableMetaCache {
 				f.super.ic.Delete(ino)
 			}
 			f.super.fslock.Lock()
-			delete(f.super.nodeCache, ino)
 			node, ok := f.super.nodeCache[f.parentIno]
 			if ok {
 				parent, ok := node.(*Dir)

@@ -399,6 +399,51 @@ func TestFile_Setattr_openForWriteFlag_stillPairsDirMutation(t *testing.T) {
 	require.False(t, inCount)
 }
 
+func TestFile_Forget_deletesFromNodeCache(t *testing.T) {
+	t.Parallel()
+	const ino uint64 = 95001
+	s := superForFileTest(t)
+	s.orphan = NewOrphanInodeList()
+	// Don't put ino into orphan list — Evict returns false so Forget returns early,
+	// avoiding nil mw.Evict while still executing the nodeCache deletion lines.
+	info := fileInodeInfoForMutationTest(ino)
+	s.ic.Put(info)
+	f := newTestFile(s, info, s.rootIno, "forget.txt")
+
+	// Pre-populate nodeCache with the file so we can verify deletion.
+	s.nodeCache[ino] = f
+	_, okBefore := s.nodeCache[ino]
+	require.True(t, okBefore, "nodeCache should contain the file inode before Forget")
+
+	f.Forget()
+
+	_, okAfter := s.nodeCache[ino]
+	require.False(t, okAfter, "Forget must delete the file from nodeCache")
+}
+
+func TestFile_Forget_deletesFromNodeCache_whenDisableMetaCacheOff(t *testing.T) {
+	t.Parallel()
+	const ino uint64 = 95002
+	origDisableMetaCache := DisableMetaCache
+	DisableMetaCache = false
+	t.Cleanup(func() { DisableMetaCache = origDisableMetaCache })
+
+	s := superForFileTest(t)
+	s.orphan = NewOrphanInodeList()
+	info := fileInodeInfoForMutationTest(ino)
+	f := newTestFile(s, info, s.rootIno, "forget2.txt")
+
+	// Pre-populate nodeCache with the file so we can verify deletion.
+	s.nodeCache[ino] = f
+	_, okBefore := s.nodeCache[ino]
+	require.True(t, okBefore, "nodeCache should contain the file inode before Forget")
+
+	f.Forget()
+
+	_, okAfter := s.nodeCache[ino]
+	require.False(t, okAfter, "Forget must delete the file from nodeCache even when DisableMetaCache is false")
+}
+
 func flagName(flag uint32) string {
 	switch flag {
 	case syscall.O_RDONLY:
