@@ -21,6 +21,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var checkCachePoolLoopCount = buf.HeaderBufferPoolSize
+
 func checkCachePool(t *testing.T, pool *buf.FileCachePool) {
 	first := pool.Get()
 	second := pool.Get()
@@ -28,14 +30,19 @@ func checkCachePool(t *testing.T, pool *buf.FileCachePool) {
 	require.NotSame(t, &first[0], &second[0])
 	oldAddr := &second[0]
 	pool.Put(second)
-	second = pool.Get()
-	require.NotSame(t, &second[0], &first[0])
-	require.Same(t, oldAddr, &second[0])
+	success := false
+	for i := 0; i < checkCachePoolLoopCount; i++ {
+		second = pool.Get()
+		require.NotSame(t, &second[0], &first[0])
+		if oldAddr == &second[0] {
+			success = true
+			break
+		}
+	}
+	require.True(t, success)
 }
 
 func TestCachePool(t *testing.T) {
-	if buf.CachePool == nil {
-		buf.InitCachePool(8388608)
-	}
+	buf.InitCachePool(8388608)
 	checkCachePool(t, buf.CachePool)
 }

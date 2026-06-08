@@ -904,6 +904,48 @@ func TestRackCanWriteForWithExcludeHosts(t *testing.T) {
 	require.True(t, canWrite, "NodeSet should be writable with combined exclusions")
 }
 
+// TestCheckNodeWriteableRejectsOfflineDataNode verifies offline nodes are excluded during nodeset selection.
+func TestCheckNodeWriteableRejectsOfflineDataNode(t *testing.T) {
+	_, _, _, ns := setupRackAwareTestEnvWithNodes(t, 1, 1)
+
+	var dn *DataNode
+	ns.dataNodes.Range(func(key, value interface{}) bool {
+		dn = value.(*DataNode)
+		return false
+	})
+	require.NotNil(t, dn)
+
+	param := &selectParam{}
+	dn.ToBeOffline = true
+	require.False(t, ns.checkNodeWriteable(dn, DataNodeType, param))
+
+	dn.ToBeOffline = false
+	require.True(t, ns.checkNodeWriteable(dn, DataNodeType, param))
+}
+
+// TestCheckNormalWriteableExcludesOfflineNodes verifies nodeset cannot satisfy replicaNum when nodes are offline.
+func TestCheckNormalWriteableExcludesOfflineNodes(t *testing.T) {
+	ns := newNodeSet(&Cluster{cfg: newClusterConfig()}, 3, 10, "test-zone", "")
+
+	for i := 0; i < 3; i++ {
+		addr := "10.0.0." + strconv.Itoa(i+1) + ":17310"
+		dn := createDataNodeWithRack(addr, "test-zone", "rack1", ns)
+		if i == 0 {
+			dn.ToBeOffline = true
+		}
+		ns.putDataNode(dn)
+	}
+
+	param := &selectParam{
+		replicaNum: 3,
+		rackLevel:  proto.RackAwareNone,
+	}
+	require.False(t, ns.checkNormalWriteable(ns.dataNodes, param, DataNodeType))
+
+	param.replicaNum = 2
+	require.True(t, ns.checkNormalWriteable(ns.dataNodes, param, DataNodeType))
+}
+
 // Test 23: Test checkNodeWriteable method with excludeHosts
 func TestRackCheckNodeWriteableWithExcludeHosts(t *testing.T) {
 	_, _, _, ns := setupRackAwareTestEnvWithNodes(t, 2, 2) // 2 racks, 2 nodes per rack = 4 nodes

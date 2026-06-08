@@ -87,6 +87,52 @@ func TestDataNodeIsWriteAbleWithSizeNoLockRejectsRemainingPreReservedUnderflow(t
 	require.False(t, dn.isWriteAbleWithSizeNoLock(10*util.GB, 1))
 }
 
+func TestDataNodePartitionCntLimitedEx(t *testing.T) {
+	const limit = uint64(100)
+
+	t.Run("online under limit", func(t *testing.T) {
+		dn := &DataNode{
+			DataPartitionCount: 10,
+			DpCntLimit:         limit,
+			AllDisks:           []string{"/data1"},
+		}
+		require.True(t, dn.PartitionCntLimitedEx(1))
+		require.True(t, dn.PartitionCntLimited())
+	})
+
+	t.Run("online over limit", func(t *testing.T) {
+		dn := &DataNode{
+			DataPartitionCount: 101,
+			DpCntLimit:         limit,
+			AllDisks:           []string{"/data1"},
+		}
+		require.False(t, dn.PartitionCntLimitedEx(1))
+	})
+
+	t.Run("ToBeOffline under limit", func(t *testing.T) {
+		dn := &DataNode{
+			DataPartitionCount: 10,
+			DpCntLimit:         limit,
+			ToBeOffline:        true,
+			AllDisks:           []string{"/data1"},
+		}
+		require.False(t, dn.PartitionCntLimitedEx(1))
+		require.True(t, dn.PartitionCntLimited())
+	})
+
+	t.Run("all disks decommissioned", func(t *testing.T) {
+		dn := &DataNode{
+			DataPartitionCount: 10,
+			DpCntLimit:         limit,
+			AllDisks:           []string{"/data1", "/data2"},
+		}
+		dn.DecommissionedDisks.Store("/data1", struct{}{})
+		dn.DecommissionedDisks.Store("/data2", struct{}{})
+		require.True(t, dn.IsOffline())
+		require.False(t, dn.PartitionCntLimitedEx(1))
+	})
+}
+
 func TestCalculateDpLimitByDiskCapacity(t *testing.T) {
 	t.Run("SSD", func(t *testing.T) {
 		cfg := newClusterConfig()

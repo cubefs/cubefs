@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMetaNode(t *testing.T) {
@@ -30,4 +31,35 @@ func getMetaNodeInfo(addr string, t *testing.T) {
 func decommissionMetaNode(addr string, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?addr=%v", hostAddr, proto.DecommissionMetaNode, addr)
 	process(reqURL, t)
+}
+
+func TestMetaNodePartitionCntLimitedEx(t *testing.T) {
+	const limit = uint64(100)
+
+	t.Run("online under limit", func(t *testing.T) {
+		mn := &MetaNode{
+			MetaPartitionCount: 10,
+			MpCntLimit:         limit,
+		}
+		require.True(t, mn.PartitionCntLimitedEx(1))
+		require.True(t, mn.PartitionCntLimited())
+	})
+
+	t.Run("online over limit", func(t *testing.T) {
+		mn := &MetaNode{
+			MetaPartitionCount: 101,
+			MpCntLimit:         limit,
+		}
+		require.False(t, mn.PartitionCntLimitedEx(1))
+	})
+
+	t.Run("ToBeOffline under limit", func(t *testing.T) {
+		mn := &MetaNode{
+			MetaPartitionCount: 10,
+			MpCntLimit:         limit,
+			ToBeOffline:        true,
+		}
+		require.False(t, mn.PartitionCntLimitedEx(1))
+		require.True(t, mn.PartitionCntLimited())
+	})
 }

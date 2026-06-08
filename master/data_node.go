@@ -483,10 +483,10 @@ func (dataNode *DataNode) PartitionCntLimited() bool {
 }
 
 func (dataNode *DataNode) PartitionCntLimitedEx(threshold float64) bool {
-	limited := float64(dataNode.DataPartitionCount+dataNode.PreReservedDpCount) <= float64(dataNode.GetPartitionLimitCnt())*threshold
+	limited := float64(dataNode.DataPartitionCount+dataNode.PreReservedDpCount) <= float64(dataNode.GetPartitionLimitCnt())*threshold && !dataNode.IsOffline()
 	if !limited {
-		log.LogInfof("dpCntInLimit: dp count is already over limit for node %s, cnt %d, simulate reserved cnt %d, limit %d, threshold %v",
-			dataNode.Addr, dataNode.DataPartitionCount, dataNode.PreReservedDpCount, dataNode.GetPartitionLimitCnt(), threshold)
+		log.LogInfof("dpCntInLimit: dp count is already over limit for node %s, cnt %d, simulate reserved cnt %d, limit %d, threshold %v, offline %v",
+			dataNode.Addr, dataNode.DataPartitionCount, dataNode.PreReservedDpCount, dataNode.GetPartitionLimitCnt(), threshold, dataNode.IsOffline())
 	}
 	return limited
 }

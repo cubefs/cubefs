@@ -264,7 +264,7 @@ func (metaNode *MetaNode) PartitionCntLimited() bool {
 }
 
 func (metaNode *MetaNode) PartitionCntLimitedEx(threshold float64) bool {
-	return float64(metaNode.MetaPartitionCount) <= float64(metaNode.GetPartitionLimitCnt())*threshold
+	return float64(metaNode.MetaPartitionCount) <= float64(metaNode.GetPartitionLimitCnt())*threshold && !metaNode.IsOffline()
 }
 
 // canAllocPartitionReason summarizes why the node cannot allocate new meta partitions (empty if allocatable).
