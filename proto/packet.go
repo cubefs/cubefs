@@ -363,6 +363,7 @@ var GOpInfo map[string]uint8 = map[string]uint8{
 	"metacreatedentry":                  OpMetaCreateDentry,
 	"metatxcreatedentry":                OpMetaTxCreateDentry,
 	"metaquotacreatedentry":             OpQuotaCreateDentry,
+	"metaquotaasynccreatedentry":        OpQuotaAsyncCreateDentry,
 	"metaupdatedentry":                  OpMetaUpdateDentry,
 	"metatxupdatedentry":                OpMetaTxUpdateDentry,
 	"metasetattr":                       OpMetaSetattr,

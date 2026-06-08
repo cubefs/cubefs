@@ -422,11 +422,11 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opMetaBatchSetInodeQuota(conn, p, remoteAddr)
 	case proto.OpMetaBatchDeleteInodeQuota:
 		err = m.opMetaBatchDeleteInodeQuota(conn, p, remoteAddr)
-	case proto.OpMetaGetInodeQuota:
+	case proto.OpMetaGetInodeQuota, proto.OpMetaAsyncGetInodeQuota:
 		err = m.opMetaGetInodeQuota(conn, p, remoteAddr)
 	case proto.OpQuotaCreateInode:
 		err = m.opQuotaCreateInode(conn, p, remoteAddr)
-	case proto.OpQuotaCreateDentry:
+	case proto.OpQuotaCreateDentry, proto.OpQuotaAsyncCreateDentry:
 		err = m.opQuotaCreateDentry(conn, p, remoteAddr)
 	case proto.OpMetaGetUniqID:
 		err = m.opMetaGetUniqID(conn, p, remoteAddr)

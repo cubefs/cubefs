@@ -39,6 +39,7 @@ func (m *metadataManager) IsForbiddenOp(mp MetaPartition, reqOp uint8) bool {
 		proto.OpMetaCreateDentry,
 		proto.OpMetaTxCreateDentry,
 		proto.OpQuotaCreateDentry,
+		proto.OpQuotaAsyncCreateDentry,
 		proto.OpMetaDeleteDentry,
 		proto.OpMetaTxDeleteDentry,
 		proto.OpMetaBatchDeleteDentry,
