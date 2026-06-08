@@ -1435,9 +1435,20 @@ static int cfs_fs_fill_super(struct super_block *sb, void *data, int silent)
 	int ret;
 
 	sb->s_fs_info = cmi;
-	ret = super_setup_bdi_name(
-		sb, "cubefs-%lu",
-		(unsigned long)atomic_long_inc_return(&cfs_bdi_seq));
+	/* BDI 名冲突重试：cfs_bdi_seq 是模块级变量，rmmod 重新 insmod（热换 ko）
+	 * 会重置为 0，而上次泄漏的 BDI（/sys/class/bdi/cubefs-N，umount 不净时
+	 * sb 引用未归零 → put_super 未释放）残留在内核全局、不随 rmmod 清除。
+	 * 仅靠递增名仍会从 cubefs-1 撞上历史泄漏。改为 -EEXIST 时继续递增重试，
+	 * 跳过所有已泄漏的名字，保证即便存在泄漏也能挂载成功。*/
+	{
+		int bdi_retry = 0;
+		do {
+			ret = super_setup_bdi_name(
+				sb, "cubefs-%lu",
+				(unsigned long)atomic_long_inc_return(
+					&cfs_bdi_seq));
+		} while (ret == -EEXIST && ++bdi_retry < 64);
+	}
 	if (ret)
 		return ret;
 	sb->s_bdi->ra_pages = (2 * 1024 * 1024) / PAGE_SIZE;
@@ -1669,14 +1680,31 @@ static int init_proc(struct cfs_mount_info *cmi)
 {
 	char *proc_name;
 
+	/* +32 给冲突时的 "-%lu" 后缀留空间 */
 	proc_name =
-		kzalloc(strlen("fs/cubefs/") + strlen(cmi->options->volume) + 1,
+		kzalloc(strlen("fs/cubefs/") + strlen(cmi->options->volume) + 32,
 			GFP_KERNEL);
 	if (!proc_name)
 		return -ENOMEM;
 
-	sprintf(proc_name, "fs/cubefs/%s", cmi->options->volume);
-	cmi->proc_dir = proc_mkdir(proc_name, NULL);
+	/* proc 条目同名冲突重试：umount 不净（hostPath 持有 sb → put_super 未
+	 * 触发 → unint_proc 未执行）会残留 /proc/fs/cubefs/<vol>，下次 mount
+	 * proc_mkdir 同名返回 NULL（already registered）。首次用 vol 名以保持
+	 * /proc/fs/cubefs/<vol> 路径约定，仅在冲突时加唯一 seq 后缀绕开泄漏。*/
+	{
+		unsigned long proc_seq = 0;
+
+		do {
+			if (proc_seq == 0)
+				sprintf(proc_name, "fs/cubefs/%s",
+					cmi->options->volume);
+			else
+				sprintf(proc_name, "fs/cubefs/%s-%lu",
+					cmi->options->volume, proc_seq);
+			cmi->proc_dir = proc_mkdir(proc_name, NULL);
+			proc_seq++;
+		} while (!cmi->proc_dir && proc_seq < 64);
+	}
 	if (!cmi->proc_dir) {
 		kfree(proc_name);
 		return -ENOMEM;
@@ -1728,7 +1756,6 @@ struct cfs_mount_info *cfs_mount_info_new(struct cfs_options *options)
 {
 	struct cfs_mount_info *cmi;
 	void *err_ptr;
-	int ret;
 
 	cmi = kzalloc(sizeof(*cmi), GFP_NOFS);
 	if (!cmi)
