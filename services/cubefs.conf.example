@@ -3,7 +3,7 @@
 # 用法:
 #   cp /etc/cubefs/cubefs.conf.example /etc/cubefs/data.conf   # 复制并改名(data 即实例名)
 #   vi /etc/cubefs/data.conf                                   # 填下面 5 项
-#   systemctl enable --now cubefs-client-kernel@data           # 开机自动挂载 + 立即挂载
+#   systemctl enable --now cubefs-mount@data           # 开机自动挂载 + 立即挂载
 #
 # 多挂载点:复制成多个 <name>.conf，各 enable 一个实例即可。
 

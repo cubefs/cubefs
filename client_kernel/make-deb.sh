@@ -30,7 +30,7 @@ mkdir -p "$P/DEBIAN" \
          "$P/lib/systemd/system" \
          "$P/etc/cubefs"
 cp "$HERE/cubefs.ko"                          "$P/lib/modules/$KVER/extra/"
-cp "$SERVICES/cubefs-client-kernel@.service"  "$P/lib/systemd/system/"
+cp "$SERVICES/cubefs-mount@.service"  "$P/lib/systemd/system/"
 cp "$SERVICES/cubefs.conf.example"            "$P/etc/cubefs/"
 
 # 3. control(包名+内核版本，多版本可共存仓库)
@@ -43,7 +43,7 @@ Section: kernel
 Priority: optional
 Description: CubeFS kernel client module + systemd mount units
  Prebuilt cubefs.ko for kernel ${KVER}, plus systemd template unit
- cubefs-client-kernel@.service for auto-mount on boot.
+ cubefs-mount@.service for auto-mount on boot.
  Bound to this kernel version (vermagic) — install only on matching kernel.
 EOF
 
@@ -58,7 +58,7 @@ depmod -a
 [ -d /run/systemd/system ] && systemctl daemon-reload || true
 echo "[cubefs-kmod] 已安装。配置自动挂载:"
 echo "  cp /etc/cubefs/cubefs.conf.example /etc/cubefs/data.conf && vi /etc/cubefs/data.conf"
-echo "  systemctl enable --now cubefs-client-kernel@data"
+echo "  systemctl enable --now cubefs-mount@data"
 EOF
 
 # 6. prerm: 停挂载服务 + umount + 卸载模块
@@ -66,7 +66,7 @@ cat > "$P/DEBIAN/prerm" <<'EOF'
 #!/bin/sh
 set -e
 if [ -d /run/systemd/system ]; then
-  systemctl stop 'cubefs-client-kernel@*' 2>/dev/null || true
+  systemctl stop 'cubefs-mount@*' 2>/dev/null || true
 fi
 umount -t cubefs -a 2>/dev/null || true
 rmmod cubefs 2>/dev/null || true

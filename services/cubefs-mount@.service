@@ -6,7 +6,7 @@ Wants=network-online.target
 
 # 模板 unit:每个挂载点一个实例，配置读 /etc/cubefs/<instance>.conf
 #   cp /etc/cubefs/cubefs.conf.example /etc/cubefs/data.conf  # 编辑
-#   systemctl enable --now cubefs-client-kernel@data
+#   systemctl enable --now cubefs-mount@data
 # %i = 实例名(如 data) → /etc/cubefs/data.conf
 AssertPathExists=/etc/cubefs/%i.conf
 
