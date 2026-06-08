@@ -227,9 +227,11 @@ static inline u32 ia_valid_to_u32(unsigned int ia_valid)
 		flags |= ATTR_UID;
 	if (ia_valid & ATTR_GID)
 		flags |= ATTR_GID;
-	if (ia_valid & ATTR_MTIME_SET)
+	/* 隐式时间更新(truncate/write/chmod 等触发 ATTR_MTIME/ATTR_ATIME,无 _SET 后缀)
+	 * 也需回写 metanode;原仅认 utimes(2) 的 ATTR_*_SET,导致 truncate 后 mtime 不更新。 */
+	if (ia_valid & (ATTR_MTIME | ATTR_MTIME_SET))
 		flags |= ATTR_MTIME_SET;
-	if (ia_valid & ATTR_ATIME_SET)
+	if (ia_valid & (ATTR_ATIME | ATTR_ATIME_SET))
 		flags |= ATTR_ATIME_SET;
 	return flags;
 }

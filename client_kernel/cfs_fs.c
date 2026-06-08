@@ -196,8 +196,9 @@ static struct inode *cfs_inode_new(struct super_block *sb,
 	update_iattr_cache(ci);
 	update_quota_cache(ci);
 
-	/* timestamps updated by server */
-	inode->i_flags |= S_NOATIME | S_NOCMTIME;
+	/* atime 由 server 管(noatime 语义);去掉 S_NOCMTIME 让 VFS 维护 ctime/mtime,
+	 * 配合 ia_valid_to_u32 回写 metanode —— 否则 truncate/write 后时间戳不更新。 */
+	inode->i_flags |= S_NOATIME;
 
 	switch (inode->i_mode & S_IFMT) {
 	case S_IFREG:
@@ -839,6 +840,13 @@ err = setattr_prepare(&init_user_ns, dentry, iattr);
 		err = cfs_extent_stream_truncate(ci->es, iattr->ia_size);
 		if (err)
 			goto out;
+		/* truncate 改 size 须更新 mtime/ctime(POSIX);truncate(2) 仅传
+		 * ATTR_SIZE(do_sys_truncate time_attrs=0),补 ATTR_MTIME 触发下方
+		 * metanode 回写(metanode 收 ATTR_SET 会顺带更 ctime)。 */
+		if (!(iattr->ia_valid & ATTR_MTIME)) {
+			iattr->ia_valid |= ATTR_MTIME;
+			iattr->ia_mtime = current_time(inode);
+		}
 	}
 
 	if (ia_valid_to_u32(iattr->ia_valid) != 0) {
