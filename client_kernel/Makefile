@@ -20,7 +20,8 @@ cubefs-y :=	btree.o \
 	cfs_option.o \
 	cfs_packet.o \
 	cfs_page.o \
-	cfs_socket.o
+	cfs_socket.o \
+	cfs_stats.o
 
 all:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules

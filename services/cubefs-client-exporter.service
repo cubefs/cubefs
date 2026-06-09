@@ -1,0 +1,19 @@
+[Unit]
+Description=CubeFS kernel client metrics exporter (Prometheus)
+Documentation=https://github.com/cubefs/cubefs
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# 可选:在 /etc/cubefs/exporter.conf 配 EXPORTER_OPTS,例如:
+#   EXPORTER_OPTS="-vol=<volume> -mountpoint=/mnt/cubefs-kernel -listen=:9970"
+# 默认值: -listen=:9970 -proc=/proc -sys=/sys -kmsg=/dev/kmsg
+#          -mountpoint=/mnt/cubefs-kernel -vol=cubefs-2rep-vol
+EnvironmentFile=-/etc/cubefs/exporter.conf
+ExecStart=/usr/local/bin/cubefs-client-exporter $EXPORTER_OPTS
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

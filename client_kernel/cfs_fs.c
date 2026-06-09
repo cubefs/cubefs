@@ -155,20 +155,39 @@ static inline void cfs_inode_refresh_unlock(struct cfs_inode *ci,
 
 static int cfs_inode_refresh(struct cfs_inode *ci)
 {
-	struct super_block *sb = ci->vfs_inode.i_sb;
+	struct inode *inode = &ci->vfs_inode;
+	struct super_block *sb = inode->i_sb;
 	struct cfs_mount_info *cmi = sb->s_fs_info;
 	struct cfs_packet_inode *iinfo;
+	bool data_changed;
 	int ret;
 
-	ret = cfs_meta_get(cmi->meta, ci->vfs_inode.i_ino, &iinfo);
+	ret = cfs_meta_get(cmi->meta, inode->i_ino, &iinfo);
 	if (ret < 0)
 		return ret;
-	spin_lock(&ci->vfs_inode.i_lock);
+	spin_lock(&inode->i_lock);
+	/* close-to-open 一致性:远端 mtime/size 变化=他节点改过数据,需失效本地
+	 * 缓存的干净 data page,否则读命中旧 page、永不重拉 backend。标志在锁内用
+	 * 旧 inode 值计算(refresh_unlock 之前),invalidate 可能睡眠故置于 unlock 后。
+	 * invalidate_mapping_pages 只清非 dirty page,本地未回写 dirty 不丢。 */
+	data_changed = S_ISREG(inode->i_mode) &&
+		       (timespec64_compare(&inode->i_mtime,
+					    &iinfo->modify_time) != 0 ||
+			i_size_read(inode) != (loff_t)iinfo->size);
 	cfs_inode_refresh_unlock(ci, iinfo);
 	update_iattr_cache(ci);
 	update_quota_cache(ci);
 	update_dentry_cache(ci);
-	spin_unlock(&ci->vfs_inode.i_lock);
+	spin_unlock(&inode->i_lock);
+	if (data_changed) {
+		/* 远端数据变:① 先强制刷 extent map——read 路径只 force=false 按需刷、
+		 * 本地 extent cache 非空即跳过,故覆写后本地仍是旧 extent、会读到旧/空;
+		 * ② 再失效 page cache,使重读从正确 extent 拉新数据。仅 S_ISREG 有 es,
+		 * data_changed 已含 S_ISREG 守卫。两调用均可能睡眠,故置于 spin_unlock 后。 */
+		if (ci->es)
+			cfs_extent_cache_refresh(&ci->es->cache, true);
+		invalidate_mapping_pages(inode->i_mapping, 0, -1);
+	}
 	cfs_packet_inode_release(iinfo);
 	return 0;
 }
@@ -237,9 +256,14 @@ static int cfs_readpage(struct file *file, struct page *page)
 {
 	struct inode *inode = file_inode(file);
 	struct cfs_inode *ci = (struct cfs_inode *)inode;
+	struct cfs_mount_info *cmi = inode->i_sb->s_fs_info;
+	int ret;
 
-	return cfs_extent_read_pages(ci->es, false, &page, 1, page_offset(page),
-				     0, PAGE_SIZE);
+	ret = cfs_extent_read_pages(ci->es, false, &page, 1, page_offset(page),
+				    0, PAGE_SIZE);
+	if (ret >= 0)
+		cfs_stat_io(cmi->stats, false, PAGE_SIZE);
+	return ret;
 }
 
 static int cfs_readpages_cb(void *data, struct page *page)
@@ -247,8 +271,10 @@ static int cfs_readpages_cb(void *data, struct page *page)
 	struct cfs_page_vec *vec = data;
 	struct inode *inode = page->mapping->host;
 	struct cfs_inode *ci = (struct cfs_inode *)inode;
+	struct cfs_mount_info *cmi = inode->i_sb->s_fs_info;
 	int ret;
 
+	cfs_stat_io(cmi->stats, false, PAGE_SIZE);
 	if (cfs_page_vec_append(vec, page))
 		return 0;
 	ret = cfs_extent_read_pages(ci->es, false, vec->pages, vec->nr,
@@ -306,12 +332,17 @@ static int cfs_writepage(struct page *page, struct writeback_control *wbc)
 {
 	struct inode *inode = page->mapping->host;
 	struct cfs_inode *ci = (struct cfs_inode *)inode;
+	struct cfs_mount_info *cmi = inode->i_sb->s_fs_info;
 	loff_t page_size;
+	int ret;
 
 	page_size = cfs_inode_page_size(ci, page);
 	set_page_writeback(page);
-	return cfs_extent_write_pages(ci->es, &page, 1, page_offset(page), 0,
-				      page_size);
+	ret = cfs_extent_write_pages(ci->es, &page, 1, page_offset(page), 0,
+				     page_size);
+	if (ret >= 0)
+		cfs_stat_io(cmi->stats, true, page_size);
+	return ret;
 }
 
 static int cfs_writepages_cb(struct page *page, struct writeback_control *wbc,
@@ -319,10 +350,12 @@ static int cfs_writepages_cb(struct page *page, struct writeback_control *wbc,
 {
 	struct inode *inode = page->mapping->host;
 	struct cfs_inode *ci = (struct cfs_inode *)inode;
+	struct cfs_mount_info *cmi = inode->i_sb->s_fs_info;
 	struct cfs_page_vec *vec = data;
 	loff_t page_size;
 	int ret;
 
+	cfs_stat_io(cmi->stats, true, cfs_inode_page_size(ci, page));
 	if (!cfs_page_vec_append(vec, page)) {
 		page_size = cfs_inode_page_size(ci, vec->pages[vec->nr - 1]);
 		ret = cfs_extent_write_pages(ci->es, vec->pages, vec->nr,
@@ -470,10 +503,15 @@ static ssize_t cfs_direct_io(struct kiocb *iocb, struct iov_iter *iter)
 {
 	struct file *file = iocb->ki_filp;
 	struct inode *inode = file_inode(file);
+	struct cfs_mount_info *cmi = inode->i_sb->s_fs_info;
 	loff_t offset = iocb->ki_pos;
+	ssize_t ret;
 
-	return cfs_extent_dio_read_write(CFS_INODE(inode)->es,
-					 iov_iter_rw(iter), iter, offset);
+	ret = cfs_extent_dio_read_write(CFS_INODE(inode)->es,
+					iov_iter_rw(iter), iter, offset);
+	if (ret > 0)
+		cfs_stat_io(cmi->stats, iov_iter_rw(iter) == WRITE, ret);
+	return ret;
 }
 #elif defined(KERNEL_HAS_DIO_WITH_ITER_AND_OFFSET)
 static ssize_t cfs_direct_io(struct kiocb *iocb, struct iov_iter *iter,
@@ -481,9 +519,14 @@ static ssize_t cfs_direct_io(struct kiocb *iocb, struct iov_iter *iter,
 {
 	struct file *file = iocb->ki_filp;
 	struct inode *inode = file_inode(file);
+	struct cfs_mount_info *cmi = inode->i_sb->s_fs_info;
+	ssize_t ret;
 
-	return cfs_extent_dio_read_write(CFS_INODE(inode)->es,
-					 iov_iter_rw(iter), iter, offset);
+	ret = cfs_extent_dio_read_write(CFS_INODE(inode)->es,
+					iov_iter_rw(iter), iter, offset);
+	if (ret > 0)
+		cfs_stat_io(cmi->stats, iov_iter_rw(iter) == WRITE, ret);
+	return ret;
 }
 #else
 static ssize_t cfs_direct_io(int type, struct kiocb *iocb,
@@ -494,13 +537,19 @@ static ssize_t cfs_direct_io(int type, struct kiocb *iocb,
 	struct inode *inode = file_inode(file);
 	struct iov_iter iter;
 
+	struct cfs_mount_info *cmi = inode->i_sb->s_fs_info;
+	ssize_t ret;
+
 #ifdef KERNEL_HAS_IOV_ITER_WITH_TAG
 	iov_iter_init(&iter, type, iov, nr_segs, iov_length(iov, nr_segs));
 #else
 	iov_iter_init(&iter, iov, nr_segs, iov_length(iov, nr_segs), 0);
 #endif
-	return cfs_extent_dio_read_write(CFS_INODE(inode)->es, type, &iter,
-					 offset);
+	ret = cfs_extent_dio_read_write(CFS_INODE(inode)->es, type, &iter,
+					offset);
+	if (ret > 0)
+		cfs_stat_io(cmi->stats, type == WRITE, ret);
+	return ret;
 }
 #endif
 
@@ -509,6 +558,7 @@ static int cfs_open(struct inode *inode, struct file *file)
 	struct cfs_file_info *cfi = file->private_data;
 	struct super_block *sb = inode->i_sb;
 	struct cfs_mount_info *cmi = sb->s_fs_info;
+	ktime_t time = ktime_get();
 	int ret = 0;
 
 	if (cfi) {
@@ -516,6 +566,13 @@ static int cfs_open(struct inode *inode, struct file *file)
 			     file);
 		return 0;
 	}
+	/* close-to-open 一致性:打开普通文件时,若 attr 缓存过期则向 metanode 重新
+	 * 拉取——cfs_inode_refresh 内按 mtime/size 变化失效 stale data page,使其他
+	 * 节点的修改在本节点 open 后可见。best-effort,失败不阻塞 open。
+	 * 沿用 attr_cache_valid_ms 窗口(缓存有效期内不发 RPC),只在过期时校验。 */
+	if (S_ISREG(inode->i_mode) &&
+	    !is_iattr_cache_valid((struct cfs_inode *)inode))
+		cfs_inode_refresh((struct cfs_inode *)inode);
 	cfi = kzalloc(sizeof(*cfi), GFP_NOFS);
 	if (!cfi) {
 		ret = -ENOMEM;
@@ -545,6 +602,8 @@ out:
 		      ", dentry=" fmt_dentry ", err=%d\n",
 		      pr_file(file), pr_inode(inode),
 		      pr_dentry(file_dentry(file)), ret);
+	cfs_stat_record(cmi->stats, CFS_VOP_OPEN,
+			ktime_us_delta(ktime_get(), time), ret);
 	return ret;
 }
 
@@ -595,6 +654,8 @@ static int cfs_flush(struct file *file, fl_owner_t id)
 out:
 	cfs_log_debug(cmi->log, "file=" fmt_file ", elapsed=%llu us, err=%d\n",
 		      pr_file(file), ktime_us_delta(ktime_get(), time), ret);
+	cfs_stat_record(cmi->stats, CFS_VOP_FLUSH,
+			ktime_us_delta(ktime_get(), time), ret);
 	return ret;
 }
 
@@ -624,6 +685,8 @@ static int cfs_fsync(struct file *file, loff_t start, loff_t end, int datasync)
 out:
 	cfs_log_debug(cmi->log, "file=" fmt_file ", elapsed=%llu us, err=%d\n",
 		      pr_file(file), ktime_us_delta(ktime_get(), time), ret);
+	cfs_stat_record(cmi->stats, CFS_VOP_FSYNC,
+			ktime_us_delta(ktime_get(), time), ret);
 	return ret;
 }
 
@@ -773,6 +836,8 @@ out:
 		pr_file(file), pr_inode(inode), pr_dentry(file_dentry(file)),
 		cfi->denties_offset, cfi->denties.num, cfi->done,
 		ktime_us_delta(ktime_get(), time), ret);
+	cfs_stat_record(cmi->stats, CFS_VOP_READDIR,
+			ktime_us_delta(ktime_get(), time), ret);
 	return 0;
 }
 
@@ -864,6 +929,8 @@ out:
 		      ", ia_valid=0x%x, elapsed=%llu us, err=%d\n",
 		      pr_dentry(dentry), pr_inode(inode), iattr->ia_valid,
 		      ktime_us_delta(ktime_get(), time), err);
+	cfs_stat_record(cmi->stats, CFS_VOP_SETATTR,
+			ktime_us_delta(ktime_get(), time), err);
 	return err;
 }
 
@@ -872,10 +939,14 @@ static int cfs_getattr(struct user_namespace *mnt_userns, const struct path *pat
 {
 	struct inode *inode = d_inode(path->dentry);
 	struct cfs_inode *ci = (struct cfs_inode *)inode;
+	struct cfs_mount_info *cmi = inode->i_sb->s_fs_info;
+	ktime_t time = ktime_get();
 
 	if (!is_iattr_cache_valid(ci))
 		cfs_inode_refresh(ci);
 	generic_fillattr(&init_user_ns, inode, stat);
+	cfs_stat_record(cmi->stats, CFS_VOP_GETATTR,
+			ktime_us_delta(ktime_get(), time), 0);
 	return 0;
 }
 
@@ -887,10 +958,15 @@ static int cfs_xattr_get(const struct xattr_handler *handler,
 			 const char *name, void *buffer, size_t size)
 {
 	struct cfs_mount_info *cmi = inode->i_sb->s_fs_info;
+	ktime_t time = ktime_get();
+	int ret;
 
 	cfs_log_debug(cmi->log, "inode=%lu, name=%s, size=%zu\n", inode->i_ino,
 		      name, size);
-	return cfs_meta_get_xattr(cmi->meta, inode->i_ino, name, buffer, size);
+	ret = cfs_meta_get_xattr(cmi->meta, inode->i_ino, name, buffer, size);
+	cfs_stat_record(cmi->stats, CFS_VOP_GETXATTR,
+			ktime_us_delta(ktime_get(), time), ret);
+	return ret;
 }
 
 static int cfs_xattr_set(const struct xattr_handler *handler,
@@ -900,14 +976,20 @@ static int cfs_xattr_set(const struct xattr_handler *handler,
 			 int flags)
 {
 	struct cfs_mount_info *cmi = inode->i_sb->s_fs_info;
+	ktime_t time = ktime_get();
+	int ret;
 
 	cfs_log_debug(cmi->log, "inode=%lu, name=%s, size=%zu, flags=0x%x\n",
 		      inode->i_ino, name, size, flags);
 	/* value==NULL 是 VFS 约定的 removexattr */
 	if (!value)
-		return cfs_meta_remove_xattr(cmi->meta, inode->i_ino, name);
-	return cfs_meta_set_xattr(cmi->meta, inode->i_ino, name, value, size,
-				  flags);
+		ret = cfs_meta_remove_xattr(cmi->meta, inode->i_ino, name);
+	else
+		ret = cfs_meta_set_xattr(cmi->meta, inode->i_ino, name, value,
+					 size, flags);
+	cfs_stat_record(cmi->stats, CFS_VOP_SETXATTR,
+			ktime_us_delta(ktime_get(), time), ret);
+	return ret;
 }
 
 static ssize_t cfs_listxattr(struct dentry *dentry, char *names, size_t size)
@@ -976,6 +1058,8 @@ out:
 		      ", flags=0x%x, elapsed=%llu us, err=%d\n",
 		      pr_inode(dir), pr_dentry(dentry), flags,
 		      ktime_us_delta(ktime_get(), time), ret);
+	cfs_stat_record(cmi->stats, CFS_VOP_LOOKUP,
+			ktime_us_delta(ktime_get(), time), ret);
 	return new_dentry;
 }
 
@@ -1030,6 +1114,8 @@ out:
 	cfs_log_audit(cmi->log, "Create", dentry, NULL, ret,
 		      ktime_us_delta(ktime_get(), time),
 		      inode ? inode->i_ino : 0, 0);
+	cfs_stat_record(cmi->stats, CFS_VOP_CREATE,
+			ktime_us_delta(ktime_get(), time), ret);
 	return ret;
 }
 
@@ -1065,6 +1151,8 @@ out:
 	cfs_log_audit(cmi->log, "Link", src_dentry, dst_dentry, ret,
 		      ktime_us_delta(ktime_get(), time),
 		      src_dentry->d_inode->i_ino, src_dentry->d_inode->i_ino);
+	cfs_stat_record(cmi->stats, CFS_VOP_LINK,
+			ktime_us_delta(ktime_get(), time), ret);
 	if (ret)
 		d_drop(dst_dentry);
 	return ret;
@@ -1122,6 +1210,8 @@ out:
 	cfs_log_audit(cmi->log, "Symlink", dentry, NULL, ret,
 		      ktime_us_delta(ktime_get(), time),
 		      inode ? inode->i_ino : 0, 0);
+	cfs_stat_record(cmi->stats, CFS_VOP_SYMLINK,
+			ktime_us_delta(ktime_get(), time), ret);
 	return ret;
 }
 
@@ -1174,6 +1264,8 @@ out:
 	cfs_log_audit(cmi->log, "Mkdir", dentry, NULL, ret,
 		      ktime_us_delta(ktime_get(), time),
 		      inode ? inode->i_ino : 0, 0);
+	cfs_stat_record(cmi->stats, CFS_VOP_MKDIR,
+			ktime_us_delta(ktime_get(), time), ret);
 	return ret;
 }
 
@@ -1191,6 +1283,8 @@ static int cfs_rmdir(struct inode *dir, struct dentry *dentry)
 	invalidate_iattr_cache(CFS_INODE(dir));
 	cfs_log_audit(cmi->log, "Rmdir", dentry, NULL, ret,
 		      ktime_us_delta(ktime_get(), time), ino, 0);
+	cfs_stat_record(cmi->stats, CFS_VOP_RMDIR,
+			ktime_us_delta(ktime_get(), time), ret);
 	return ret;
 }
 
@@ -1243,6 +1337,8 @@ out:
 	cfs_log_audit(cmi->log, "Mknod", dentry, NULL, ret,
 		      ktime_us_delta(ktime_get(), time),
 		      inode ? inode->i_ino : 0, 0);
+	cfs_stat_record(cmi->stats, CFS_VOP_MKNOD,
+			ktime_us_delta(ktime_get(), time), ret);
 	return ret;
 }
 
@@ -1280,6 +1376,8 @@ out:
 		      ktime_us_delta(ktime_get(), time),
 		      old_dentry->d_inode ? old_dentry->d_inode->i_ino : 0,
 		      new_dentry->d_inode ? new_dentry->d_inode->i_ino : 0);
+	cfs_stat_record(cmi->stats, CFS_VOP_RENAME,
+			ktime_us_delta(ktime_get(), time), ret);
 	if (ret)
 		d_drop(new_dentry);
 	return ret;
@@ -1303,6 +1401,8 @@ static int cfs_unlink(struct inode *dir, struct dentry *dentry)
 		invalidate_iattr_cache(CFS_INODE(dentry->d_inode));
 	cfs_log_audit(cmi->log, "Unlink", dentry, NULL, ret,
 		      ktime_us_delta(ktime_get(), time), ino, 0);
+	cfs_stat_record(cmi->stats, CFS_VOP_UNLINK,
+			ktime_us_delta(ktime_get(), time), ret);
 	return ret;
 }
 
@@ -1716,11 +1816,23 @@ static int init_proc(struct cfs_mount_info *cmi)
 		proc_remove(cmi->proc_dir);
 		return -ENOMEM;
 	}
+
+	/* stats 节点私有数据传 cmi->stats(seq_show 用 m->private);stats 必须已分配 */
+	cmi->proc_stats =
+		proc_create_data("stats", S_IRUSR | S_IRGRP | S_IROTH,
+				 cmi->proc_dir, &cfs_stats_fops, cmi->stats);
+	if (!cmi->proc_stats) {
+		proc_remove(cmi->proc_log);
+		proc_remove(cmi->proc_dir);
+		return -ENOMEM;
+	}
 	return 0;
 }
 
 static void unint_proc(struct cfs_mount_info *cmi)
 {
+	if (cmi->proc_stats)
+		proc_remove(cmi->proc_stats);
 	if (cmi->proc_log)
 		proc_remove(cmi->proc_log);
 	if (cmi->proc_dir)
@@ -1768,6 +1880,12 @@ struct cfs_mount_info *cfs_mount_info_new(struct cfs_options *options)
 		err_ptr = ERR_CAST(cmi->log);
 		goto err_log;
 	}
+	/* stats 须在 init_proc 之前分配(init_proc 把 cmi->stats 传给 stats proc 节点) */
+	cmi->stats = cfs_stats_new();
+	if (IS_ERR(cmi->stats)) {
+		err_ptr = ERR_CAST(cmi->stats);
+		goto err_stats;
+	}
 	if (init_proc(cmi) < 0) {
 		err_ptr = ERR_PTR(-ENOMEM);
 		goto err_proc;
@@ -1799,6 +1917,8 @@ err_meta:
 err_master:
 	unint_proc(cmi);
 err_proc:
+	cfs_stats_release(cmi->stats);
+err_stats:
 	cfs_log_release(cmi->log);
 err_log:
 	kfree(cmi);
@@ -1814,6 +1934,8 @@ void cfs_mount_info_release(struct cfs_mount_info *cmi)
 	cfs_meta_client_release(cmi->meta);
 	cfs_master_client_release(cmi->master);
 	unint_proc(cmi);
+	/* unint_proc 后再 free:proc_remove 同步等在途 single_open 读完,无悬空读 */
+	cfs_stats_release(cmi->stats);
 	cfs_log_release(cmi->log);
 	cfs_options_release(cmi->options);
 	kfree(cmi);

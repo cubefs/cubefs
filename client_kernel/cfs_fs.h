@@ -11,6 +11,7 @@
 #include "cfs_master.h"
 #include "cfs_meta.h"
 #include "cfs_option.h"
+#include "cfs_stats.h"
 
 extern const struct address_space_operations cfs_address_ops;
 extern const struct file_operations cfs_file_fops;
@@ -27,7 +28,9 @@ struct cfs_mount_info {
 	struct cfs_options *options;
 	struct proc_dir_entry *proc_dir;
 	struct proc_dir_entry *proc_log;
+	struct proc_dir_entry *proc_stats;
 	struct cfs_log *log;
+	struct cfs_stats *stats;
 	struct cfs_master_client *master;
 	struct cfs_meta_client *meta;
 	struct cfs_extent_client *ec;
