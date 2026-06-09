@@ -603,3 +603,218 @@ func startUTMetaPacketListener(t *testing.T, handler func(conn net.Conn) error) 
 	}
 	return addr, cleanup
 }
+
+// mockRenameMetaHandler handles the full RPC sequence required by rename_ll:
+// iget(dst parent) → lookup(src name) → getUniqID + ilink(src inode) → dcreate → iget(src inode) → ddelete(src) → getUniqID + iunlink(src inode)
+func mockRenameMetaHandler(srcInode uint64, dstParentIno uint64, srcParentIno uint64) func(net.Conn) error {
+	dstParentInfo := &proto.InodeInfo{
+		Inode:        dstParentIno,
+		Mode:         uint32(os.ModeDir | 0o755),
+		Nlink:        2,
+		Uid:          1000,
+		Gid:          1000,
+		StorageClass: proto.StorageClass_Replica_HDD,
+	}
+	srcFileInfo := &proto.InodeInfo{
+		Inode:        srcInode,
+		Mode:         uint32(0o644),
+		Nlink:        1,
+		Uid:          1000,
+		Gid:          1000,
+		StorageClass: proto.StorageClass_Replica_HDD,
+	}
+	return func(conn net.Conn) error {
+		for {
+			pkt := proto.NewPacket()
+			if err := pkt.ReadFromConnWithVer(conn, proto.ReadDeadlineTime); err != nil {
+				return err
+			}
+			resp := proto.NewPacketReqID()
+			resp.ReqID = pkt.ReqID
+			resp.Opcode = pkt.Opcode
+			resp.PartitionID = pkt.PartitionID
+			resp.ResultCode = proto.OpOk
+
+			var body []byte
+			var err error
+			switch pkt.Opcode {
+			case proto.OpMetaInodeGet, proto.OpMetaAsyncInodeGet:
+				// iget is called for dst parent first, then for src inode (InodeGet_ll)
+				// We return the appropriate InodeInfo depending on the request content.
+				req := new(proto.InodeGetRequest)
+				if unmarshalErr := pkt.UnmarshalData(req); unmarshalErr != nil {
+					body, err = json.Marshal(&proto.InodeGetResponse{Info: dstParentInfo})
+				} else if req.Inode == srcInode {
+					body, err = json.Marshal(&proto.InodeGetResponse{Info: srcFileInfo})
+				} else {
+					body, err = json.Marshal(&proto.InodeGetResponse{Info: dstParentInfo})
+				}
+			case proto.OpMetaLookup, proto.OpMetaAsyncLookup:
+				body, err = json.Marshal(&proto.LookupResponse{
+					Inode: srcInode,
+					Mode:  uint32(0o644),
+				})
+			case proto.OpMetaGetUniqID:
+				body, err = json.Marshal(&proto.GetUniqIDResponse{Start: 100})
+			case proto.OpMetaLinkInode, proto.OpMetaAsyncLinkInode:
+				body, err = json.Marshal(&proto.LinkInodeResponse{Info: srcFileInfo})
+			case proto.OpMetaCreateDentry, proto.OpMetaAsyncCreateDentry:
+				// dcreate success — empty body with OpOk is sufficient
+				body = nil
+			case proto.OpMetaDeleteDentry, proto.OpMetaAsyncDeleteDentry:
+				body, err = json.Marshal(&proto.DeleteDentryResponse{Inode: srcInode})
+			case proto.OpMetaUnlinkInode, proto.OpMetaAsyncUnlinkInode:
+				body, err = json.Marshal(&proto.UnlinkInodeResponse{Info: srcFileInfo})
+			default:
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			resp.Data = body
+			resp.Size = uint32(len(body))
+			if err = resp.WriteToConn(conn); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+func TestDir_Rename_dstCacheClearedAndDstInodeIcDeleted(t *testing.T) {
+	// When dstDir.dcache contains req.NewName and dstInode != 0,
+	// Rename must: (1) clear dstDir.dcache and dc for the new name,
+	// and (2) delete the dst inode from ic after Rename_ll succeeds.
+	const srcParentIno = uint64(88050)
+	const dstParentIno = uint64(88051)
+	const srcInode = uint64(88052)
+	const dstInode = uint64(88053)
+
+	addr, cleanup := startUTMetaPacketListener(t, mockRenameMetaHandler(srcInode, dstParentIno, srcParentIno))
+	t.Cleanup(cleanup)
+
+	mw := meta.NewTestMetaWrapperWithLeader(t, addr)
+	mw.DirChildrenNumLimit = proto.DefaultDirChildrenNumLimit // avoid "disk quota exceeded" in rename_ll
+
+	rm := NewRunningMonitor(30)
+	rm.Start()
+	t.Cleanup(rm.Stop)
+
+	s := &Super{
+		volname:               "ut-vol",
+		mw:                    mw,
+		metaCacheAcceleration: true,
+		volType:               proto.VolumeTypeHot,
+		rootIno:               1,
+		ic:                    NewInodeCache(time.Hour, 4096, true),
+		dc:                    NewDcache(time.Hour, 4096),
+		runningMonitor:        rm,
+		nodeCache:             make(map[uint64]fs.Node),
+		dirDirtyCache:         make(map[uint64]bool),
+		dirDirtyCount:         make(map[uint64]int),
+		fslock:                sync.Mutex{},
+		poolCache: map[uint8]*proto.StoragePoolInfo{
+			0: {Id: 0, StorageClass: uint8(proto.StorageClass_Replica_HDD)},
+		},
+	}
+
+	srcDirInfo := dirInodeInfoForMutationTest(srcParentIno)
+	srcDir := NewDir(s, srcDirInfo, 1, "src").(*Dir)
+	srcDir.dcache = NewDentryCache(true)
+	srcDir.dcache.Put("oldname", srcInode) // source file in src dir cache
+
+	dstDirInfo := dirInodeInfoForMutationTest(dstParentIno)
+	dstDir := NewDir(s, dstDirInfo, 1, "dst").(*Dir)
+	dstDir.dcache = NewDentryCache(true)
+	dstDir.dcache.Put("newname", dstInode) // existing file in dst dir cache → dstInode != 0
+
+	// Put dst inode into ic so we can verify it gets deleted
+	dstFileInfo := fileInodeInfoForMutationTest(dstInode)
+	s.ic.Put(dstFileInfo)
+	require.NotNil(t, s.ic.Get(dstInode), "dstInode should be in ic before Rename")
+
+	// Put the dentry into dc so we can verify it gets deleted
+	dstDcacheKey := dstDir.buildDcacheKey(dstParentIno, "newname")
+	s.dc.Put(&proto.DentryInfo{Name: dstDcacheKey, Inode: dstInode})
+	require.NotNil(t, s.dc.Get(dstDcacheKey), "dst dentry should be in dc before Rename")
+
+	err := srcDir.Rename(context.Background(), &fuse.RenameRequest{
+		Header:  fuse.Header{Pid: 1},
+		OldName: "oldname",
+		NewName: "newname",
+	}, dstDir)
+	require.NoError(t, err)
+
+	// Verify dstDir.dcache was cleared for NewName
+	_, ok := dstDir.dcache.Get("newname")
+	require.False(t, ok, "dstDir.dcache[newname] should be cleared after Rename")
+
+	// Verify dc was cleared for the dst dentry key
+	require.Nil(t, s.dc.Get(dstDcacheKey), "dc dst entry should be cleared after Rename")
+
+	// Verify dstInode was deleted from ic (dstInode != 0 branch)
+	require.Nil(t, s.ic.Get(dstInode), "dstInode should be deleted from ic after Rename when dstInode != 0")
+}
+
+func TestDir_Rename_dstInodeZero_skipsDstIcDelete(t *testing.T) {
+	// When dstInode == 0 (no existing file at dst), the ic.Delete(dstInode) branch must NOT execute.
+	const srcParentIno = uint64(88060)
+	const dstParentIno = uint64(88061)
+	const srcInode = uint64(88062)
+
+	addr, cleanup := startUTMetaPacketListener(t, mockRenameMetaHandler(srcInode, dstParentIno, srcParentIno))
+	t.Cleanup(cleanup)
+
+	mw := meta.NewTestMetaWrapperWithLeader(t, addr)
+	mw.DirChildrenNumLimit = proto.DefaultDirChildrenNumLimit
+
+	rm := NewRunningMonitor(30)
+	rm.Start()
+	t.Cleanup(rm.Stop)
+
+	s := &Super{
+		volname:               "ut-vol",
+		mw:                    mw,
+		metaCacheAcceleration: true,
+		volType:               proto.VolumeTypeHot,
+		rootIno:               1,
+		ic:                    NewInodeCache(time.Hour, 4096, true),
+		dc:                    NewDcache(time.Hour, 4096),
+		runningMonitor:        rm,
+		nodeCache:             make(map[uint64]fs.Node),
+		dirDirtyCache:         make(map[uint64]bool),
+		dirDirtyCount:         make(map[uint64]int),
+		fslock:                sync.Mutex{},
+		poolCache: map[uint8]*proto.StoragePoolInfo{
+			0: {Id: 0, StorageClass: uint8(proto.StorageClass_Replica_HDD)},
+		},
+	}
+
+	srcDirInfo := dirInodeInfoForMutationTest(srcParentIno)
+	srcDir := NewDir(s, srcDirInfo, 1, "src").(*Dir)
+	srcDir.dcache = NewDentryCache(true)
+	srcDir.dcache.Put("oldname", srcInode)
+
+	dstDirInfo := dirInodeInfoForMutationTest(dstParentIno)
+	dstDir := NewDir(s, dstDirInfo, 1, "dst").(*Dir)
+	dstDir.dcache = NewDentryCache(true)
+	// No entry for "newname" → dstInode will be 0
+
+	// Put a dentry in dc for dst (to verify dc.Delete is called even without dstInode in dcache)
+	dstDcacheKey := dstDir.buildDcacheKey(dstParentIno, "newname")
+	s.dc.Put(&proto.DentryInfo{Name: dstDcacheKey, Inode: 0})
+	require.NotNil(t, s.dc.Get(dstDcacheKey))
+
+	err := srcDir.Rename(context.Background(), &fuse.RenameRequest{
+		Header:  fuse.Header{Pid: 1},
+		OldName: "oldname",
+		NewName: "newname",
+	}, dstDir)
+	require.NoError(t, err)
+
+	// Verify dstDir.dcache.Delete was called (even for non-existing entry, it's a no-op but the line is executed)
+	_, ok := dstDir.dcache.Get("newname")
+	require.False(t, ok)
+
+	// Verify dc.Delete was called for the dst dentry key
+	require.Nil(t, s.dc.Get(dstDcacheKey))
+}

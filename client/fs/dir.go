@@ -876,7 +876,9 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 	d.dcache.Delete(req.OldName)
 	dcacheKey := d.buildDcacheKey(d.info.Inode, req.OldName)
 	d.super.dc.Delete(dcacheKey)
-
+	dstDir.dcache.Delete(req.NewName)
+	dstDcacheKey := dstDir.buildDcacheKey(dstDir.info.Inode, req.NewName)
+	d.super.dc.Delete(dstDcacheKey)
 	bgTime := stat.BeginStat()
 
 	metric := exporter.NewTPCnt("rename")
@@ -922,7 +924,9 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 	// }
 	d.super.ic.Delete(d.info.Inode)
 	d.super.ic.Delete(dstDir.info.Inode)
-
+	if dstInode != 0 {
+		d.super.ic.Delete(dstInode)
+	}
 	elapsed := time.Since(start)
 	log.LogDebugf("TRACE Rename: SrcParent(%v) OldName(%v) DstParent(%v) NewName(%v) (%v)ns",
 		d.info.Inode, req.OldName, dstDir.info.Inode, req.NewName, elapsed.Nanoseconds())

@@ -29,6 +29,7 @@ func NewTestMetaWrapperWithLeader(t testing.TB, leaderAddr string) *MetaWrapper 
 		dirtyInodes:      newDirtyInodeCache(DirtyInodeTTL, MaxDirtyInodeCache),
 		forceUpdate:      make(chan struct{}, 1),
 		forceUpdateLimit: rate.NewLimiter(1, MinForceUpdateMetaPartitionsInterval),
+		uniqidRangeMap:   make(map[uint64]*uniqidRange),
 	}
 	mw.partCond = sync.NewCond(&mw.partMutex)
 	if c, ok := t.(interface{ Cleanup(func()) }); ok {
