@@ -16,6 +16,7 @@ package meta
 
 import (
 	"os"
+	"path/filepath"
 	"syscall"
 	"testing"
 	"time"
@@ -23,6 +24,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/btree"
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/stretchr/testify/require"
 )
 
@@ -223,4 +225,36 @@ func TestGetExtentsPublicAPIUsesSyncOpcode(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for GetExtents request")
 	}
+}
+
+func TestBatchInodeGetExtentsOpLimitedIoErrLeavesInodeWithoutExtents(t *testing.T) {
+	const inode = uint64(100)
+
+	addr, cleanup := startMockMetaPacketListener(t, mockBatchIgetThenExtentsResultHandler(inode, proto.OpLimitedIoErr, nil))
+	t.Cleanup(cleanup)
+
+	tmpDir, err := os.MkdirTemp("", "sdk-meta-batch-extents-log-*")
+	require.NoError(t, err)
+
+	const module = "sdk-meta-batch-extents"
+	l, err := log.InitLog(tmpDir, module, log.ErrorLevel, nil, log.DefaultLogLeftSpaceLimitRatio)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		l.Flush()
+		_ = os.RemoveAll(tmpDir)
+	})
+
+	mw := newTrashDeleteTestMetaWrapper(t, addr)
+	infos := mw.BatchInodeGetExtents([]uint64{inode}, false)
+	require.Len(t, infos, 1)
+	require.Equal(t, inode, infos[0].Inode)
+	require.Nil(t, infos[0].Extents)
+
+	l.Flush()
+	time.Sleep(50 * time.Millisecond)
+
+	logDir := filepath.Join(tmpDir, module)
+	errLog, err := os.ReadFile(filepath.Join(logDir, module+log.ErrLogFileName))
+	require.NoError(t, err)
+	require.NotContains(t, errLog, "BatchInodeGetExtents: get extents fail")
 }

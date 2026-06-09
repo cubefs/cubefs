@@ -15,10 +15,12 @@
 package meta
 
 import (
+	"errors"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/cubefs/cubefs/proto"
 	masterSDK "github.com/cubefs/cubefs/sdk/master"
 	"github.com/stretchr/testify/require"
 )
@@ -116,4 +118,17 @@ func TestMetaWrapper_getMetaHostsMap_errorFromMaster(t *testing.T) {
 	require.Error(t, err)
 	require.NotNil(t, hosts)
 	require.Equal(t, 0, len(hosts))
+}
+
+func TestIsLimitedIo(t *testing.T) {
+	require.True(t, isLimitedIo(statusLimitedIo, 0))
+	require.True(t, isLimitedIo(statusOK, proto.OpLimitedIoErr))
+	require.False(t, isLimitedIo(statusOK, proto.OpErr))
+}
+
+func TestIsLimitedIoErr(t *testing.T) {
+	require.True(t, isLimitedIoErr(errors.New("OpLimitedIoErr")))
+	require.True(t, isLimitedIoErr(errors.New("operation rate limited")))
+	require.False(t, isLimitedIoErr(errors.New("EIO")))
+	require.False(t, isLimitedIoErr(nil))
 }

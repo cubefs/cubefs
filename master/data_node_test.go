@@ -2,11 +2,14 @@ package master
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/stretchr/testify/require"
 )
 
@@ -61,30 +64,154 @@ func updateDisks(addr string, t *testing.T) {
 	require.Equal(t, badDisk, dn.BadDisks)
 }
 
-func TestDataNodeIsWriteAbleWithSizeNoLockRejectsPreReservedUnderflow(t *testing.T) {
-	dn := &DataNode{
-		Addr:             "10.52.134.101:17310",
-		isActive:         true,
-		Total:            13 * util.TB,
-		Used:             8 * util.TB,
-		AvailableSpace:   2 * util.MB,
-		PreReservedSpace: 6 * util.GB,
+func TestDataNodeIsWriteAbleWithSizeNoLock(t *testing.T) {
+	const (
+		reqSize   = 10 * util.GB
+		threshold = 1.0
+		nodeAddr  = "10.52.134.101:17310"
+	)
+
+	tests := []struct {
+		name string
+		dn   *DataNode
+		want bool
+	}{
+		{
+			name: "strict underflow available less than preReserved",
+			dn: &DataNode{
+				Addr:             nodeAddr,
+				isActive:         true,
+				Total:            13 * util.TB,
+				Used:             8 * util.TB,
+				AvailableSpace:   2 * util.MB,
+				PreReservedSpace: 6 * util.GB,
+			},
+			want: false,
+		},
+		{
+			name: "equal available and preReserved both zero",
+			dn: &DataNode{
+				Addr:             nodeAddr,
+				isActive:         true,
+				Total:            100 * util.GB,
+				Used:             100 * util.GB,
+				AvailableSpace:   0,
+				PreReservedSpace: 0,
+			},
+			want: false,
+		},
+		{
+			name: "equal available and preReserved non-zero net zero",
+			dn: &DataNode{
+				Addr:             nodeAddr,
+				isActive:         true,
+				Total:            100 * util.GB,
+				Used:             50 * util.GB,
+				AvailableSpace:   6 * util.GB,
+				PreReservedSpace: 6 * util.GB,
+			},
+			want: false,
+		},
+		{
+			name: "remaining space after preReserved insufficient",
+			dn: &DataNode{
+				Addr:             nodeAddr,
+				isActive:         true,
+				Total:            100 * util.GB,
+				Used:             95 * util.GB,
+				AvailableSpace:   20 * util.GB,
+				PreReservedSpace: 6 * util.GB,
+			},
+			want: false,
+		},
+		{
+			name: "writable when available exceeds preReserved and size",
+			dn: &DataNode{
+				Addr:             nodeAddr,
+				isActive:         true,
+				Total:            100 * util.TB,
+				Used:             10 * util.TB,
+				AvailableSpace:   50 * util.TB,
+				PreReservedSpace: 6 * util.GB,
+			},
+			want: true,
+		},
+		{
+			name: "inactive node",
+			dn: &DataNode{
+				Addr:           nodeAddr,
+				isActive:       false,
+				AvailableSpace: 50 * util.TB,
+			},
+			want: false,
+		},
+		{
+			name: "readonly node",
+			dn: &DataNode{
+				Addr:           nodeAddr,
+				isActive:       true,
+				RdOnly:         true,
+				AvailableSpace: 50 * util.TB,
+			},
+			want: false,
+		},
 	}
 
-	require.False(t, dn.isWriteAbleWithSizeNoLock(10*util.GB, 1))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, tt.dn.isWriteAbleWithSizeNoLock(reqSize, threshold))
+		})
+	}
 }
 
-func TestDataNodeIsWriteAbleWithSizeNoLockRejectsRemainingPreReservedUnderflow(t *testing.T) {
-	dn := &DataNode{
-		Addr:             "10.52.134.101:17310",
-		isActive:         true,
-		Total:            100 * util.GB,
-		Used:             95 * util.GB,
-		AvailableSpace:   20 * util.GB,
-		PreReservedSpace: 6 * util.GB,
+func TestDataNodeIsWriteAbleWithSizeNoLockWarnOnlyOnStrictUnderflow(t *testing.T) {
+	tmpDir := t.TempDir()
+	const module = "dn_writable_warn"
+	l, err := log.InitLog(tmpDir, module, log.WarnLevel, nil, log.DefaultLogLeftSpaceLimitRatio)
+	require.NoError(t, err)
+	defer l.Close()
+
+	const (
+		reqSize   = 10 * util.GB
+		threshold = 1.0
+		nodeAddr  = "10.52.134.247:17310"
+	)
+	warnLogPath := func() string {
+		log.LogFlush()
+		return filepath.Join(tmpDir, module, module+log.WarnLogFileName)
+	}
+	readWarnLog := func() string {
+		data, readErr := os.ReadFile(warnLogPath())
+		require.NoError(t, readErr)
+		return string(data)
 	}
 
-	require.False(t, dn.isWriteAbleWithSizeNoLock(10*util.GB, 1))
+	t.Run("equal available and preReserved does not warn", func(t *testing.T) {
+		dn := &DataNode{
+			Addr:             nodeAddr,
+			isActive:         true,
+			Total:            100 * util.GB,
+			Used:             100 * util.GB,
+			AvailableSpace:   0,
+			PreReservedSpace: 0,
+		}
+		require.False(t, dn.isWriteAbleWithSizeNoLock(reqSize, threshold))
+		require.NotContains(t, readWarnLog(), "reject node")
+	})
+
+	t.Run("strict underflow warns", func(t *testing.T) {
+		dn := &DataNode{
+			Addr:             nodeAddr,
+			isActive:         true,
+			Total:            13 * util.TB,
+			Used:             8 * util.TB,
+			AvailableSpace:   2 * util.MB,
+			PreReservedSpace: 6 * util.GB,
+		}
+		require.False(t, dn.isWriteAbleWithSizeNoLock(reqSize, threshold))
+		require.Contains(t, readWarnLog(), "reject node")
+		require.Contains(t, readWarnLog(), "available(2097152) < preReserved(6442450944)")
+	})
 }
 
 func TestDataNodePartitionCntLimitedEx(t *testing.T) {

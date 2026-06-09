@@ -610,6 +610,19 @@ func parseStatus(result uint8) (status int) {
 	return
 }
 
+func isLimitedIo(status int, resultCode uint8) bool {
+	return status == statusLimitedIo || resultCode == proto.OpLimitedIoErr
+}
+
+func isLimitedIoErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "OpLimitedIoErr") ||
+		strings.Contains(msg, "operation rate limited")
+}
+
 func statusErrToErrno(status int, err error) error {
 	if status == statusOK && err != nil {
 		return syscall.EAGAIN

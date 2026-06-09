@@ -1446,9 +1446,12 @@ func (mw *MetaWrapper) getExtents(mp *MetaPartition, inode uint64, isCache bool,
 	if resp.Status != statusOK {
 		err = errors.New(packet.GetResultMsg())
 		msg := fmt.Sprintf("getExtents: packet(%v) mp(%v) result(%v)", packet, mp, packet.GetResultMsg())
-		if packet.ResultCode == proto.OpMismatchStorageClass {
+		switch {
+		case packet.ResultCode == proto.OpMismatchStorageClass:
 			log.LogWarnf(msg)
-		} else {
+		case isLimitedIo(resp.Status, packet.ResultCode):
+			log.LogWarnf(msg)
+		default:
 			log.LogError(msg)
 		}
 		return

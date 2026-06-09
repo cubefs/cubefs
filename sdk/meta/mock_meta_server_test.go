@@ -143,6 +143,10 @@ func mockLookupThenIgetHandler(lookupInode uint64, lookupMode uint32, igetNlink 
 }
 
 func mockExtentsListOKHandler(firstReq chan<- *proto.Packet) func(net.Conn) error {
+	return mockExtentsListResultHandler(proto.OpOk, firstReq)
+}
+
+func mockExtentsListResultHandler(resultCode uint8, firstReq chan<- *proto.Packet) func(net.Conn) error {
 	return func(conn net.Conn) error {
 		pkt := proto.NewPacket()
 		if err := pkt.ReadFromConnWithVer(conn, proto.ReadDeadlineTime); err != nil {
@@ -164,16 +168,18 @@ func mockExtentsListOKHandler(firstReq chan<- *proto.Packet) func(net.Conn) erro
 		resp.ReqID = pkt.ReqID
 		resp.Opcode = pkt.Opcode
 		resp.PartitionID = pkt.PartitionID
-		resp.ResultCode = proto.OpOk
-		body, err := json.Marshal(&proto.GetExtentsResponse{
-			Generation: 7,
-			Size:       4096,
-		})
-		if err != nil {
-			return err
+		resp.ResultCode = resultCode
+		if resultCode == proto.OpOk {
+			body, err := json.Marshal(&proto.GetExtentsResponse{
+				Generation: 7,
+				Size:       4096,
+			})
+			if err != nil {
+				return err
+			}
+			resp.Data = body
+			resp.Size = uint32(len(body))
 		}
-		resp.Data = body
-		resp.Size = uint32(len(body))
 		return resp.WriteToConn(conn)
 	}
 }
@@ -226,6 +232,10 @@ func mockInodeGetAndExtentsHandler(inode uint64, extentsOpCh chan<- uint8) func(
 }
 
 func mockBatchIgetThenExtentsListHandler(regularInode uint64, extentsOpCh chan<- uint8) func(net.Conn) error {
+	return mockBatchIgetThenExtentsResultHandler(regularInode, proto.OpOk, extentsOpCh)
+}
+
+func mockBatchIgetThenExtentsResultHandler(regularInode uint64, extentsResultCode uint8, extentsOpCh chan<- uint8) func(net.Conn) error {
 	return func(conn net.Conn) error {
 		for step := 0; step < 2; step++ {
 			pkt := proto.NewPacket()
@@ -237,12 +247,12 @@ func mockBatchIgetThenExtentsListHandler(regularInode uint64, extentsOpCh chan<-
 			resp.ReqID = pkt.ReqID
 			resp.Opcode = pkt.Opcode
 			resp.PartitionID = pkt.PartitionID
-			resp.ResultCode = proto.OpOk
 
 			var body []byte
 			var err error
 			switch pkt.Opcode {
 			case proto.OpMetaBatchInodeGet:
+				resp.ResultCode = proto.OpOk
 				body, err = json.Marshal(&proto.BatchInodeGetResponse{
 					Infos: []*proto.InodeInfo{{
 						Inode: regularInode,
@@ -253,15 +263,20 @@ func mockBatchIgetThenExtentsListHandler(regularInode uint64, extentsOpCh chan<-
 				if extentsOpCh != nil {
 					extentsOpCh <- pkt.Opcode
 				}
-				body, err = json.Marshal(&proto.GetExtentsResponse{Generation: 3, Size: 512})
+				resp.ResultCode = extentsResultCode
+				if extentsResultCode == proto.OpOk {
+					body, err = json.Marshal(&proto.GetExtentsResponse{Generation: 3, Size: 512})
+				}
 			default:
 				return fmt.Errorf("unexpected opcode %v", pkt.Opcode)
 			}
 			if err != nil {
 				return err
 			}
-			resp.Data = body
-			resp.Size = uint32(len(body))
+			if body != nil {
+				resp.Data = body
+				resp.Size = uint32(len(body))
+			}
 			if err = resp.WriteToConn(conn); err != nil {
 				return err
 			}

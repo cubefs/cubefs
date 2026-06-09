@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net"
 	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -12,6 +14,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/btree"
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/stretchr/testify/require"
 )
 
@@ -451,4 +454,95 @@ func TestGetExtentsRequestFields(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for getExtents request")
 	}
+}
+
+func TestGetExtentsOpLimitedIoErrReturnsErrorAndWarns(t *testing.T) {
+	addr, cleanup := startMockMetaPacketListener(t, mockExtentsListResultHandler(proto.OpLimitedIoErr, nil))
+	t.Cleanup(cleanup)
+
+	tmpDir, err := os.MkdirTemp("", "sdk-meta-getextents-log-*")
+	require.NoError(t, err)
+
+	const module = "sdk-meta-getextents"
+	l, err := log.InitLog(tmpDir, module, log.WarnLevel, nil, log.DefaultLogLeftSpaceLimitRatio)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		l.Flush()
+		_ = os.RemoveAll(tmpDir)
+	})
+
+	mw := newConnTestMetaWrapper()
+	t.Cleanup(func() { mw.conns.Close() })
+
+	const inode = uint64(100)
+	mp := &MetaPartition{
+		PartitionID: 77,
+		Start:       1,
+		End:         1 << 20,
+		LeaderAddr:  addr,
+		Members:     []string{addr},
+	}
+
+	resp, err := mw.getExtents(mp, inode, false, false, false, false)
+	require.Error(t, err)
+	require.NotNil(t, resp)
+	require.Equal(t, statusLimitedIo, resp.Status)
+	require.True(t, isLimitedIoErr(err))
+	require.Contains(t, err.Error(), "OpLimitedIoErr")
+
+	l.Flush()
+	time.Sleep(50 * time.Millisecond)
+
+	logDir := filepath.Join(tmpDir, module)
+	warnLog, err := os.ReadFile(filepath.Join(logDir, module+log.WarnLogFileName))
+	require.NoError(t, err)
+	require.Contains(t, string(warnLog), "getExtents:")
+	require.Contains(t, string(warnLog), "OpLimitedIoErr")
+
+	errLog, err := os.ReadFile(filepath.Join(logDir, module+log.ErrLogFileName))
+	require.NoError(t, err)
+	require.NotContains(t, string(errLog), "getExtents:")
+}
+
+func TestGetExtentsOtherErrReturnsErrorAndLogsError(t *testing.T) {
+	// OpErr triggers ShouldRetry; OpForbidErr shares code with OpAgainVerionList — use OpNotExistErr.
+	addr, cleanup := startMockMetaPacketListener(t, mockExtentsListResultHandler(proto.OpNotExistErr, nil))
+	t.Cleanup(cleanup)
+
+	tmpDir, err := os.MkdirTemp("", "sdk-meta-getextents-err-log-*")
+	require.NoError(t, err)
+
+	const module = "sdk-meta-getextents-err"
+	l, err := log.InitLog(tmpDir, module, log.ErrorLevel, nil, log.DefaultLogLeftSpaceLimitRatio)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		l.Flush()
+		_ = os.RemoveAll(tmpDir)
+	})
+
+	mw := newConnTestMetaWrapper()
+	t.Cleanup(func() { mw.conns.Close() })
+
+	mp := &MetaPartition{
+		PartitionID: 77,
+		Start:       1,
+		End:         1 << 20,
+		LeaderAddr:  addr,
+		Members:     []string{addr},
+	}
+
+	resp, err := mw.getExtents(mp, 100, false, false, false, false)
+	require.Error(t, err)
+	require.NotNil(t, resp)
+	require.False(t, isLimitedIoErr(err))
+	require.Contains(t, err.Error(), "NotExistErr")
+
+	l.Flush()
+	time.Sleep(50 * time.Millisecond)
+
+	logDir := filepath.Join(tmpDir, module)
+	errLog, err := os.ReadFile(filepath.Join(logDir, module+log.ErrLogFileName))
+	require.NoError(t, err)
+	require.Contains(t, string(errLog), "getExtents:")
+	require.NotContains(t, strings.ToLower(string(errLog)), "oplimitedioerr")
 }

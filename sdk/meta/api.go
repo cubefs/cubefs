@@ -555,7 +555,9 @@ func (mw *MetaWrapper) BatchInodeGetExtents(inodes []uint64, async bool) []*prot
 
 			resp, err := mw.getExtents(mp, tmpInfo.Inode, false, false, false, async)
 			if err != nil {
-				log.LogErrorf("BatchInodeGetExtents: get extents fail: ino(%v) err(%v)", tmpInfo.Inode, err)
+				if !isLimitedIoErr(err) {
+					log.LogErrorf("BatchInodeGetExtents: get extents fail: ino(%v) err(%v)", tmpInfo.Inode, err)
+				}
 				return
 			}
 			tmpInfo.Extents = resp
