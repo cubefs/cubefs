@@ -1234,10 +1234,11 @@ func (mp *metaPartition) parseCrcFromFile() ([]uint32, error) {
 }
 
 const (
-	CRC_COUNT_BASIC      int = 4
-	CRC_COUNT_TX_STUFF   int = 7
-	CRC_COUNT_UINQ_STUFF int = 8
-	CRC_COUNT_MULTI_VER  int = 9
+	CRC_COUNT_BASIC          int = 4
+	CRC_COUNT_TX_STUFF       int = 7
+	CRC_COUNT_UINQ_STUFF     int = 8
+	CRC_COUNT_MULTI_VER      int = 9
+	CRC_COUNT_OBJ_EXTENT_DEL int = 10 // v3.6.1 snapshot format; v3.6.0 accepts but skips load
 )
 
 func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
@@ -1254,7 +1255,8 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 	}
 
 	crc_count := len(crcs)
-	if crc_count != CRC_COUNT_BASIC && crc_count != CRC_COUNT_TX_STUFF && crc_count != CRC_COUNT_UINQ_STUFF && crc_count != CRC_COUNT_MULTI_VER {
+	if crc_count != CRC_COUNT_BASIC && crc_count != CRC_COUNT_TX_STUFF && crc_count != CRC_COUNT_UINQ_STUFF &&
+		crc_count != CRC_COUNT_MULTI_VER && crc_count != CRC_COUNT_OBJ_EXTENT_DEL {
 		log.LogErrorf("action[LoadSnapshot] crc array length %d not match", len(crcs))
 		return ErrSnapshotCrcMismatch
 	}
@@ -1274,7 +1276,7 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 		loadFuncs = append(loadFuncs, mp.loadUniqChecker)
 	}
 
-	if crc_count == CRC_COUNT_MULTI_VER {
+	if crc_count >= CRC_COUNT_MULTI_VER {
 		if err = mp.loadMultiVer(snapshotPath, crcs[CRC_COUNT_MULTI_VER-1]); err != nil {
 			return
 		}
@@ -1342,6 +1344,11 @@ func (mp *metaPartition) LoadSnapshot(snapshotPath string) (err error) {
 			multiVerList: mp.multiVersionList.VerList,
 			applyIndex:   mp.GetApplyID(),
 		})
+	}
+
+	if crc_count >= CRC_COUNT_OBJ_EXTENT_DEL {
+		log.LogWarnf("action[LoadSnapshot] mp(%v) skip deleted_obj_extents for downgrade compatibility",
+			mp.config.PartitionId)
 	}
 	return
 }

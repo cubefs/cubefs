@@ -148,6 +148,63 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 	require.Equal(t, ErrSnapshotCrcMismatch, err)
 }
 
+func TestLoadSnapshot_acceptsV361CRCCountForDowngrade(t *testing.T) {
+	testPath := t.TempDir()
+	mpC := &MetaPartitionConfig{
+		PartitionId:   3238,
+		VolName:       "test_vol",
+		Start:         0,
+		End:           100,
+		PartitionType: 1,
+		RootDir:       testPath,
+		StoreMode:     proto.StoreModeMem,
+	}
+	metaM := &metadataManager{
+		nodeId:          1,
+		zoneName:        "test",
+		partitions:      make(map[uint64]MetaPartition),
+		metaNode:        &MetaNode{},
+		fileStatsConfig: &fileStatsConfig{},
+	}
+
+	partition := NewMetaPartition(mpC, metaM)
+	mp := partition.(*metaPartition)
+	require.NoError(t, mp.initObjects(true))
+
+	snap, err := mp.GetSnapShot()
+	require.NoError(t, err)
+	msg := &storeMsg{
+		command:     1,
+		snap:        snap,
+		applyIndex:  mp.GetAppliedID(),
+		uniqId:      mp.GetUniqId(),
+		uniqChecker: mp.uniqChecker,
+	}
+	mp.uidManager = NewUidMgr(mpC.VolName, mpC.PartitionId)
+	mp.mqMgr = NewQuotaManager(mpC.VolName, mpC.PartitionId)
+	mp.multiVersionList = &proto.VolVersionInfoList{}
+	require.NoError(t, mp.store(msg))
+	snap.Close()
+
+	snapshotPath := path.Join(mp.config.RootDir, snapshotDir)
+	crcData, err := os.ReadFile(path.Join(snapshotPath, SnapshotSign))
+	require.NoError(t, err)
+	require.NoError(t, fileutil.WriteFileWithSync(
+		path.Join(snapshotPath, SnapshotSign),
+		append(append([]byte{}, crcData...), []byte(" 0")...),
+		0o644,
+	))
+
+	mp2 := NewMetaPartition(mpC, metaM).(*metaPartition)
+	require.NoError(t, mp2.initObjects(true))
+	require.NoError(t, mp2.LoadSnapshot(snapshotPath))
+
+	invalidCRC := append(append([]byte{}, crcData...), []byte(" 0 0")...)
+	require.NoError(t, fileutil.WriteFileWithSync(path.Join(snapshotPath, SnapshotSign), invalidCRC, 0o644))
+	err = mp2.LoadSnapshot(snapshotPath)
+	require.ErrorIs(t, err, ErrSnapshotCrcMismatch)
+}
+
 func TestMetaPartition_LoadHybridCloudMigrationSnapshot(t *testing.T) {
 	testPath := "/tmp/testMetaPartition/"
 	os.RemoveAll(testPath)
