@@ -456,7 +456,7 @@ func TestGetExtentsRequestFields(t *testing.T) {
 	}
 }
 
-func TestGetExtentsOpLimitedIoErrReturnsErrorAndWarns(t *testing.T) {
+func TestGetExtentsOpLimitedIoErrReturnsErrorAndInfos(t *testing.T) {
 	addr, cleanup := startMockMetaPacketListener(t, mockExtentsListResultHandler(proto.OpLimitedIoErr, nil))
 	t.Cleanup(cleanup)
 
@@ -464,7 +464,7 @@ func TestGetExtentsOpLimitedIoErrReturnsErrorAndWarns(t *testing.T) {
 	require.NoError(t, err)
 
 	const module = "sdk-meta-getextents"
-	l, err := log.InitLog(tmpDir, module, log.WarnLevel, nil, log.DefaultLogLeftSpaceLimitRatio)
+	l, err := log.InitLog(tmpDir, module, log.InfoLevel, nil, log.DefaultLogLeftSpaceLimitRatio)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		l.Flush()
@@ -483,7 +483,7 @@ func TestGetExtentsOpLimitedIoErrReturnsErrorAndWarns(t *testing.T) {
 		Members:     []string{addr},
 	}
 
-	resp, err := mw.getExtents(mp, inode, false, false, false, false)
+	resp, err := mw.getExtents(mp, inode, false, false, false, true)
 	require.Error(t, err)
 	require.NotNil(t, resp)
 	require.Equal(t, statusLimitedIo, resp.Status)
@@ -494,10 +494,14 @@ func TestGetExtentsOpLimitedIoErrReturnsErrorAndWarns(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	logDir := filepath.Join(tmpDir, module)
+	infoLog, err := os.ReadFile(filepath.Join(logDir, module+log.InfoLogFileName))
+	require.NoError(t, err)
+	require.Contains(t, string(infoLog), "getExtents:")
+	require.Contains(t, string(infoLog), "OpLimitedIoErr")
+
 	warnLog, err := os.ReadFile(filepath.Join(logDir, module+log.WarnLogFileName))
 	require.NoError(t, err)
-	require.Contains(t, string(warnLog), "getExtents:")
-	require.Contains(t, string(warnLog), "OpLimitedIoErr")
+	require.NotContains(t, string(warnLog), "getExtents:")
 
 	errLog, err := os.ReadFile(filepath.Join(logDir, module+log.ErrLogFileName))
 	require.NoError(t, err)

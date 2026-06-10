@@ -117,7 +117,7 @@ func (ol *OpLimiter) Wait(opCode uint8) (err error) {
 	// Unified rate limiting strategy based on timeout configuration
 	if lInfo.LimiterTimeout == 0 {
 		if !lInfo.Limiter.Allow() {
-			log.LogWarnf("wait op limiter for opCode[%v] rate limited", opCode)
+			log.LogInfof("wait op limiter for opCode[%v] rate limited", opCode)
 			return fmt.Errorf("rate limited")
 		}
 		return nil
@@ -127,7 +127,7 @@ func (ol *OpLimiter) Wait(opCode uint8) (err error) {
 	defer cancel()
 	err = lInfo.Limiter.Wait(ctx)
 	if err != nil {
-		log.LogWarnf("wait op limiter for opCode[%v] timeout after %ds: %v", opCode, lInfo.LimiterTimeout, err)
+		log.LogInfof("wait op limiter for opCode[%v] timeout after %ds: %v", opCode, lInfo.LimiterTimeout, err)
 		return fmt.Errorf("rate limited")
 	}
 	log.LogDebugf("wait op limiter for opCode[%v] succeeded", opCode)

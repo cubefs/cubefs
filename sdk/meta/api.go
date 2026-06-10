@@ -823,7 +823,9 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool, ful
 		// cannot delete .Trash
 		err, ret := mw.shouldNotMoveToTrash(parentMP, parentID, name, isDir, isAsync)
 		if err != nil {
-			if strings.Contains(err.Error(), "operation rate limited") || strings.Contains(err.Error(), syscall.ENOTEMPTY.Error()) {
+			if strings.Contains(err.Error(), "operation rate limited") {
+				log.LogInfof("Delete_ll: shouldNotMoveToTrash name %v failed %v, retry later", name, err)
+			} else if strings.Contains(err.Error(), syscall.ENOTEMPTY.Error()) {
 				log.LogWarnf("Delete_ll: shouldNotMoveToTrash name %v failed %v, retry later", name, err)
 			} else {
 				log.LogErrorf("Delete_ll: shouldNotMoveToTrash name %v failed %v", name, err)
@@ -842,7 +844,7 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool, ful
 					goto deleteDirectly
 				}
 				if strings.Contains(err.Error(), "operation rate limited") {
-					log.LogWarnf("Delete_ll: MoveToTrash name %v  failed %v, retry later", name, err)
+					log.LogInfof("Delete_ll: MoveToTrash name %v  failed %v, retry later", name, err)
 				} else {
 					log.LogErrorf("Delete_ll: MoveToTrash name %v  failed %v", name, err)
 				}
@@ -982,7 +984,9 @@ func (mw *MetaWrapper) Delete_ll_EX(parentID uint64, name string, isDir bool, ve
 		// cannot delete .Trash
 		err, ret := mw.shouldNotMoveToTrash(parentMP, parentID, name, isDir, isAsync)
 		if err != nil {
-			if strings.Contains(err.Error(), "operation rate limited") || strings.Contains(err.Error(), syscall.ENOTEMPTY.Error()) {
+			if strings.Contains(err.Error(), "operation rate limited") {
+				log.LogInfof("Delete_ll: shouldNotMoveToTrash name %v failed %v, retry later", name, err)
+			} else if strings.Contains(err.Error(), syscall.ENOTEMPTY.Error()) {
 				log.LogWarnf("Delete_ll: shouldNotMoveToTrash name %v failed %v, retry later", name, err)
 			} else {
 				log.LogErrorf("Delete_ll: shouldNotMoveToTrash name %v failed %v", name, err)
@@ -1001,7 +1005,7 @@ func (mw *MetaWrapper) Delete_ll_EX(parentID uint64, name string, isDir bool, ve
 					goto deleteDirectly
 				}
 				if strings.Contains(err.Error(), "operation rate limited") {
-					log.LogWarnf("Delete_ll: MoveToTrash name %v  failed %v, retry later", name, err)
+					log.LogInfof("Delete_ll: MoveToTrash name %v  failed %v, retry later", name, err)
 				} else {
 					log.LogErrorf("Delete_ll: MoveToTrash name %v  failed %v", name, err)
 				}

@@ -1122,7 +1122,7 @@ func (mw *MetaWrapper) lookup(mp *MetaPartition, parentID uint64, name string, v
 		}
 		err = errors.New(packet.GetResultMsg())
 		if status == statusLimitedIo {
-			log.LogWarnf("lookup: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+			log.LogInfof("lookup: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		} else {
 			log.LogErrorf("lookup: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		}
@@ -1187,7 +1187,9 @@ func (mw *MetaWrapper) iget(mp *MetaPartition, inode uint64, verSeq uint64, isAs
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
 		err = errors.New(packet.GetResultMsg())
-		if status == statusLimitedIo || packet.ResultCode == proto.OpNotExistErr {
+		if status == statusLimitedIo {
+			log.LogInfof("iget: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		} else if packet.ResultCode == proto.OpNotExistErr {
 			log.LogWarnf("iget: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		} else {
 			log.LogErrorf("iget: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
@@ -1243,7 +1245,7 @@ func (mw *MetaWrapper) batchIget(wg *sync.WaitGroup, mp *MetaPartition, inodes [
 	if status != statusOK {
 		err = errors.New(packet.GetResultMsg())
 		if status == statusLimitedIo {
-			log.LogWarnf("batchIget: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+			log.LogInfof("batchIget: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		} else {
 			log.LogErrorf("batchIget: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		}
@@ -1319,7 +1321,7 @@ func (mw *MetaWrapper) readDirLimit(mp *MetaPartition, parentID uint64, from str
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
 		if status == statusLimitedIo {
-			log.LogWarnf("readDirLimit: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+			log.LogInfof("readDirLimit: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		} else {
 			log.LogErrorf("readDirLimit: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		}
@@ -1450,7 +1452,7 @@ func (mw *MetaWrapper) getExtents(mp *MetaPartition, inode uint64, isCache bool,
 		case packet.ResultCode == proto.OpMismatchStorageClass:
 			log.LogWarnf(msg)
 		case isLimitedIo(resp.Status, packet.ResultCode):
-			log.LogWarnf(msg)
+			log.LogInfof(msg)
 		default:
 			log.LogError(msg)
 		}
@@ -2539,7 +2541,7 @@ func (mw *MetaWrapper) batchGetXAttr(mp *MetaPartition, inodes []uint64, keys []
 	if status != statusOK {
 		err = errors.New(packet.GetResultMsg())
 		if status == statusLimitedIo {
-			log.LogWarnf("batchGetXAttr: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+			log.LogInfof("batchGetXAttr: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		} else {
 			log.LogErrorf("batchGetXAttr: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		}

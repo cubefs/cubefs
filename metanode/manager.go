@@ -250,7 +250,11 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 	defer func() {
 		metric.SetWithLabels(err, labels)
 		if err != nil {
-			log.LogWarnf("HandleMetadataOperation output (%s), remote %s, err %s", p.String(), remoteAddr, err.Error())
+			if strings.Contains(err.Error(), "rate limited") {
+				log.LogInfof("HandleMetadataOperation output (%s), remote %s, err %s", p.String(), remoteAddr, err.Error())
+			} else {
+				log.LogWarnf("HandleMetadataOperation output (%s), remote %s, err %s", p.String(), remoteAddr, err.Error())
+			}
 			return
 		}
 
@@ -265,7 +269,7 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 
 	// Apply operation rate limiting
 	if err = m.metaNode.opLimiter.Wait(p.Opcode); err != nil {
-		log.LogWarnf("action[HandleMetadataOperation] op rate limited, opCode[%v] remote[%v] err[%v]",
+		log.LogInfof("action[HandleMetadataOperation] op rate limited, opCode[%v] remote[%v] err[%v]",
 			p.Opcode, remoteAddr, err)
 		p.PacketErrorWithBody(proto.OpLimitedIoErr, []byte("too many requests, please retry later"))
 		m.respondToClientWithVer(conn, p)
