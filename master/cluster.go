@@ -59,6 +59,8 @@ const (
 var (
 	clusterDpCntLimit                 uint64
 	clusterMpCntLimit                 uint64
+	clusterDpTagDecommissionLimit     uint64
+	clusterMpTagDecommissionLimit     uint64
 	distributionOptimizationThreshold atomicutil.Float64
 )
 
@@ -5793,6 +5795,54 @@ func (c *Cluster) setMaxMpCntLimit(val uint64) (err error) {
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("[setMaxMpCntLimit] failed to set mp limit to value(%v), err(%v)", val, err)
 		atomic.StoreUint64(&clusterMpCntLimit, oldVal)
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func normalizeDpTagDecommissionLimit(val uint64) uint64 {
+	if val == 0 {
+		return defaultMaxDpTagDecommissionLimit
+	}
+	return val
+}
+
+func (c *Cluster) getMaxDpTagDecommissionLimit() uint64 {
+	return normalizeDpTagDecommissionLimit(atomic.LoadUint64(&clusterDpTagDecommissionLimit))
+}
+
+func (c *Cluster) setMaxDpTagDecommissionLimit(val uint64) (err error) {
+	val = normalizeDpTagDecommissionLimit(val)
+	oldVal := atomic.LoadUint64(&clusterDpTagDecommissionLimit)
+	atomic.StoreUint64(&clusterDpTagDecommissionLimit, val)
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("[setMaxDpTagDecommissionLimit] failed to set dp tag decommission limit to value(%v), err(%v)", val, err)
+		atomic.StoreUint64(&clusterDpTagDecommissionLimit, oldVal)
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func normalizeMpTagDecommissionLimit(val uint64) uint64 {
+	if val == 0 {
+		return defaultMaxMpTagDecommissionLimit
+	}
+	return val
+}
+
+func (c *Cluster) getMaxMpTagDecommissionLimit() uint64 {
+	return normalizeMpTagDecommissionLimit(atomic.LoadUint64(&clusterMpTagDecommissionLimit))
+}
+
+func (c *Cluster) setMaxMpTagDecommissionLimit(val uint64) (err error) {
+	val = normalizeMpTagDecommissionLimit(val)
+	oldVal := atomic.LoadUint64(&clusterMpTagDecommissionLimit)
+	atomic.StoreUint64(&clusterMpTagDecommissionLimit, val)
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("[setMaxMpTagDecommissionLimit] failed to set mp tag decommission limit to value(%v), err(%v)", val, err)
+		atomic.StoreUint64(&clusterMpTagDecommissionLimit, oldVal)
 		err = proto.ErrPersistenceByRaft
 		return
 	}

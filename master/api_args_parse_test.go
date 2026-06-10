@@ -774,6 +774,8 @@ func TestParseAndExtractSetNodeInfoParams_comprehensive(t *testing.T) {
 	v.Set(clusterLoadFactorKey, "50.5")
 	v.Set(maxDpCntLimitKey, "1000")
 	v.Set(maxMpCntLimitKey, "2000")
+	v.Set(maxDpTagDecommissionLimitKey, "20")
+	v.Set(maxMpTagDecommissionLimitKey, "10")
 	v.Set(nodeDpRepairTimeOutKey, "300")
 	v.Set(nodeDpBackupKey, "400")
 	v.Set(nodeDpMaxRepairErrCntKey, "5")
@@ -828,6 +830,8 @@ func TestParseAndExtractSetNodeInfoParams_comprehensive(t *testing.T) {
 
 	m, err := parseAndExtractSetNodeInfoParams(apiArgsNewPostForm(t, v))
 	require.NoError(t, err)
+	require.Equal(t, uint64(20), m[maxDpTagDecommissionLimitKey])
+	require.Equal(t, uint64(10), m[maxMpTagDecommissionLimitKey])
 	require.GreaterOrEqual(t, len(m), 20)
 }
 
@@ -836,6 +840,27 @@ func TestParseAndExtractSetNodeInfoParams_invalidUint(t *testing.T) {
 	v.Set(nodeDeleteBatchCountKey, "x")
 	_, err := parseAndExtractSetNodeInfoParams(apiArgsNewPostForm(t, v))
 	require.Error(t, err)
+}
+
+func TestParseAndExtractSetNodeInfoParams_invalidTagDecommissionLimits(t *testing.T) {
+	tests := []struct {
+		name string
+		key  string
+	}{
+		{name: "dp_tag_decommission_limit", key: maxDpTagDecommissionLimitKey},
+		{name: "mp_tag_decommission_limit", key: maxMpTagDecommissionLimitKey},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v := url.Values{}
+			v.Set(tt.key, "not-a-number")
+
+			_, err := parseAndExtractSetNodeInfoParams(apiArgsNewPostForm(t, v))
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tt.key)
+		})
+	}
 }
 
 func TestParseSetConfigParam_allListedKeys(t *testing.T) {

@@ -4820,6 +4820,24 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if val, ok := params[maxDpTagDecommissionLimitKey]; ok {
+		if v, ok := val.(uint64); ok {
+			if err = m.cluster.setMaxDpTagDecommissionLimit(v); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[maxMpTagDecommissionLimitKey]; ok {
+		if v, ok := val.(uint64); ok {
+			if err = m.cluster.setMaxMpTagDecommissionLimit(v); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
 	if val, ok := params[clusterCreateTimeKey]; ok {
 		if createTimeParam, ok := val.(string); ok {
 			var createTime time.Time
@@ -5925,6 +5943,8 @@ func (m *Server) getNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	resp[clusterLoadFactorKey] = fmt.Sprintf("%v", m.cluster.cfg.ClusterLoadFactor)
 	resp[maxDpCntLimitKey] = fmt.Sprintf("%v", m.cluster.getMaxDpCntLimit())
 	resp[maxMpCntLimitKey] = fmt.Sprintf("%v", m.cluster.getMaxMpCntLimit())
+	resp[maxDpTagDecommissionLimitKey] = fmt.Sprintf("%v", m.cluster.getMaxDpTagDecommissionLimit())
+	resp[maxMpTagDecommissionLimitKey] = fmt.Sprintf("%v", m.cluster.getMaxMpTagDecommissionLimit())
 	resp[dpLimitSsdBaseCountKey] = fmt.Sprintf("%v", m.cluster.cfg.DpLimitSsdBaseCount)
 	resp[dpLimitSsdFactorKey] = fmt.Sprintf("%v", m.cluster.cfg.DpLimitSsdFactor)
 	resp[dpLimitHddBaseCountKey] = fmt.Sprintf("%v", m.cluster.cfg.DpLimitHddBaseCount)

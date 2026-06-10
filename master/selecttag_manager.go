@@ -28,7 +28,7 @@ import (
 
 const (
 	DefaultTag            = ""
-	MaxTagDecommissionNum = 100
+	MaxTagDecommissionNum = defaultMaxDpTagDecommissionLimit
 	TagReplicaRuleNum     = 3
 	CheckTagInterval      = 1 * time.Minute
 	StatusSleeping        = "sleeping"
@@ -39,7 +39,6 @@ const (
 	StatusRunning         = "running"
 	StatusStopping        = "stopping"
 	EmptyTag              = "null"
-	MaxMpDecommissionNum  = 5
 	MaxMpFailedKeys       = 1024
 	MaxTagSampleNum       = 10
 
@@ -131,7 +130,8 @@ func (c *Cluster) checkDpTag() {
 
 		count += vol.countTagDecommissionTask(c)
 	}
-	if count >= MaxTagDecommissionNum {
+	limit := c.getMaxDpTagDecommissionLimit()
+	if uint64(count) >= limit {
 		tagStateMu.Lock()
 		LastDpQuitReason = ReasonReachMaxDecommissionNum
 		tagStateMu.Unlock()
@@ -142,7 +142,7 @@ func (c *Cluster) checkDpTag() {
 	DpTagThreadStatus = StatusDecommissioning
 	tagStateMu.Unlock()
 
-	total := MaxTagDecommissionNum - count
+	total := int(limit - uint64(count))
 	for _, vol := range vols {
 		if vol.isInitializingOrInitFailed() || vol.dpReplicaNum < TagReplicaRuleNum {
 			continue
@@ -610,7 +610,8 @@ func (c *Cluster) checkMpTag() {
 	}
 
 	num := c.GetMetaPartitionDecommissionCount(proto.TagDecommission)
-	if num >= MaxMpDecommissionNum {
+	limit := c.getMaxMpTagDecommissionLimit()
+	if uint64(num) >= limit {
 		tagStateMu.Lock()
 		LastMpQuitReason = ReasonReachMaxDecommissionNum
 		tagStateMu.Unlock()
@@ -650,7 +651,7 @@ func (c *Cluster) checkMpTag() {
 		}
 
 		num++
-		if num >= MaxMpDecommissionNum {
+		if uint64(num) >= limit {
 			break
 		}
 	}

@@ -54,6 +54,8 @@ type clusterValue struct {
 	DataNodeAutoRepairLimitRate            uint64
 	MaxDpCntLimit                          uint64
 	MaxMpCntLimit                          uint64
+	MaxDpTagDecommissionLimit              uint64
+	MaxMpTagDecommissionLimit              uint64
 	FaultDomain                            bool
 	DiskQosEnable                          bool
 	QosLimitUpload                         uint64
@@ -136,6 +138,8 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		EnableMpDecommissionByLearner:          c.EnableMpDecommissionByLearner,
 		MaxDpCntLimit:                          c.getMaxDpCntLimit(),
 		MaxMpCntLimit:                          c.getMaxMpCntLimit(),
+		MaxDpTagDecommissionLimit:              c.getMaxDpTagDecommissionLimit(),
+		MaxMpTagDecommissionLimit:              c.getMaxMpTagDecommissionLimit(),
 		FaultDomain:                            c.FaultDomain,
 		DiskQosEnable:                          c.diskQosEnable,
 		QosLimitUpload:                         uint64(c.QosAcceptLimit.Limit()),
@@ -1403,6 +1407,14 @@ func (c *Cluster) updateMaxMpCntLimit(val uint64) {
 	atomic.StoreUint64(&clusterMpCntLimit, val)
 }
 
+func (c *Cluster) updateMaxDpTagDecommissionLimit(val uint64) {
+	atomic.StoreUint64(&clusterDpTagDecommissionLimit, normalizeDpTagDecommissionLimit(val))
+}
+
+func (c *Cluster) updateMaxMpTagDecommissionLimit(val uint64) {
+	atomic.StoreUint64(&clusterMpTagDecommissionLimit, normalizeMpTagDecommissionLimit(val))
+}
+
 func (c *Cluster) updateInodeIdStep(val uint64) {
 	atomic.StoreUint64(&c.cfg.MetaPartitionInodeIdStep, val)
 }
@@ -1672,6 +1684,8 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.updateDataPartitionBackupTimeOut(cv.DpBackupTimeOut)
 		c.updateMaxDpCntLimit(cv.MaxDpCntLimit)
 		c.updateMaxMpCntLimit(cv.MaxMpCntLimit)
+		c.updateMaxDpTagDecommissionLimit(cv.MaxDpTagDecommissionLimit)
+		c.updateMaxMpTagDecommissionLimit(cv.MaxMpTagDecommissionLimit)
 		if cv.MetaPartitionInodeIdStep == 0 {
 			cv.MetaPartitionInodeIdStep = defaultMetaPartitionInodeIDStep
 		}

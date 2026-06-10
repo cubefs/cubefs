@@ -72,6 +72,8 @@ const (
 	nodeAutoRepairRateKey                  = "autoRepairRate"
 	nodeMaxDpCntLimit                      = "maxDpCntLimit"
 	nodeMaxMpCntLimit                      = "maxMpCntLimit"
+	nodeMaxDpTagDecommissionLimit          = "maxDpTagDecommissionLimit"
+	nodeMaxMpTagDecommissionLimit          = "maxMpTagDecommissionLimit"
 	dpLimitSsdBaseCountKey                 = "dpLimitSsdBaseCount"
 	dpLimitSsdFactorKey                    = "dpLimitSsdFactor"
 	dpLimitHddBaseCountKey                 = "dpLimitHddBaseCount"
@@ -141,6 +143,8 @@ func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
 			stdout(fmt.Sprintf("  AutoRepairRate                : %v\n", clusterPara[nodeAutoRepairRateKey]))
 			stdout(fmt.Sprintf("  MaxDpCntLimit      : %v\n", clusterPara[nodeMaxDpCntLimit]))
 			stdout(fmt.Sprintf("  MaxMpCntLimit      : %v\n", clusterPara[nodeMaxMpCntLimit]))
+			stdout(fmt.Sprintf("  MaxDpTagDecommissionLimit: %v\n", clusterPara[nodeMaxDpTagDecommissionLimit]))
+			stdout(fmt.Sprintf("  MaxMpTagDecommissionLimit: %v\n", clusterPara[nodeMaxMpTagDecommissionLimit]))
 			stdout(fmt.Sprintf("  DpLimitSsdBaseCount: %v\n", clusterPara[dpLimitSsdBaseCountKey]))
 			stdout(fmt.Sprintf("  DpLimitSsdFactor   : %v\n", clusterPara[dpLimitSsdFactorKey]))
 			stdout(fmt.Sprintf("  DpLimitHddBaseCount: %v\n", clusterPara[dpLimitHddBaseCountKey]))
@@ -343,6 +347,8 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	enableMpDecommissionByLearner := ""
 	opMaxDpCntLimit := ""
 	opMaxMpCntLimit := ""
+	opMaxDpTagDecommissionLimit := ""
+	opMaxMpTagDecommissionLimit := ""
 	dpRepairTimeout := ""
 	dpTimeout := ""
 	mpTimeout := ""
@@ -464,6 +470,18 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 
 			if enableMpDecommissionByLearner != "" {
 				if _, err = strconv.ParseBool(enableMpDecommissionByLearner); err != nil {
+					return
+				}
+			}
+			if opMaxDpTagDecommissionLimit != "" {
+				if _, err = strconv.ParseUint(opMaxDpTagDecommissionLimit, 10, 64); err != nil {
+					err = fmt.Errorf("param maxDpTagDecommissionLimit(%v) should be uint", opMaxDpTagDecommissionLimit)
+					return
+				}
+			}
+			if opMaxMpTagDecommissionLimit != "" {
+				if _, err = strconv.ParseUint(opMaxMpTagDecommissionLimit, 10, 64); err != nil {
+					err = fmt.Errorf("param maxMpTagDecommissionLimit(%v) should be uint", opMaxMpTagDecommissionLimit)
 					return
 				}
 			}
@@ -797,6 +815,8 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				LoadFactor:                             optLoadFactor,
 				MaxDpCntLimit:                          opMaxDpCntLimit,
 				MaxMpCntLimit:                          opMaxMpCntLimit,
+				MaxDpTagDecommissionLimit:              opMaxDpTagDecommissionLimit,
+				MaxMpTagDecommissionLimit:              opMaxMpTagDecommissionLimit,
 				ClientIDKey:                            clientIDKey,
 				EnableAutoDecommissionDisk:             autoDecommissionDisk,
 				AutoDecommissionDiskInterval:           autoDecommissionDiskInterval,
@@ -861,6 +881,8 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optFollowerReadLeaseTime, "followerReadLeaseTime", "", fmt.Sprintf("Follower read lease time in seconds (%d-%d), default is %d", proto.MinFollowerReadLeaseTimeSec, proto.MaxFollowerReadLeaseTimeSec, proto.DefaultFollowerReadLeaseTimeSec))
 	cmd.Flags().StringVar(&opMaxDpCntLimit, CliFlagMaxDpCntLimit, "", "Maximum number of dp on each datanode, default 3000, 0 represents setting to default")
 	cmd.Flags().StringVar(&opMaxMpCntLimit, CliFlagMaxMpCntLimit, "", "Maximum number of mp on each metanode, default 300, 0 represents setting to default")
+	cmd.Flags().StringVar(&opMaxDpTagDecommissionLimit, CliFlagMaxDpTagDecommissionLimit, "", "Limit for parallel DP tag decommission tasks, 0 represents setting to default")
+	cmd.Flags().StringVar(&opMaxMpTagDecommissionLimit, CliFlagMaxMpTagDecommissionLimit, "", "Limit for parallel MP tag decommission tasks, 0 represents setting to default")
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	// cmd.Flags().StringVar(&dataNodesetSelector, CliFlagDataNodesetSelector, "", "Set the nodeset select policy(datanode) for cluster")
 	// cmd.Flags().StringVar(&metaNodesetSelector, CliFlagMetaNodesetSelector, "", "Set the nodeset select policy(metanode) for cluster")

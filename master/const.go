@@ -90,6 +90,8 @@ const (
 	clusterLoadFactorKey                   = "loadFactor"
 	maxDpCntLimitKey                       = "maxDpCntLimit"
 	maxMpCntLimitKey                       = "maxMpCntLimit"
+	maxDpTagDecommissionLimitKey           = "maxDpTagDecommissionLimit"
+	maxMpTagDecommissionLimitKey           = "maxMpTagDecommissionLimit"
 	clusterCreateTimeKey                   = "clusterCreateTime"
 	descriptionKey                         = "description"
 	dpSelectorNameKey                      = "dpSelectorName"

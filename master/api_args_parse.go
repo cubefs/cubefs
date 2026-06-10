@@ -1539,6 +1539,28 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		params[maxMpCntLimitKey] = val
 	}
 
+	if value = r.FormValue(maxDpTagDecommissionLimitKey); value != "" {
+		noParams = false
+		val := uint64(0)
+		val, err = strconv.ParseUint(value, 10, 64)
+		if err != nil {
+			err = unmatchedKey(maxDpTagDecommissionLimitKey)
+			return
+		}
+		params[maxDpTagDecommissionLimitKey] = val
+	}
+
+	if value = r.FormValue(maxMpTagDecommissionLimitKey); value != "" {
+		noParams = false
+		val := uint64(0)
+		val, err = strconv.ParseUint(value, 10, 64)
+		if err != nil {
+			err = unmatchedKey(maxMpTagDecommissionLimitKey)
+			return
+		}
+		params[maxMpTagDecommissionLimitKey] = val
+	}
+
 	if value = r.FormValue(nodeDpRepairTimeOutKey); value != "" {
 		noParams = false
 		val := uint64(0)

@@ -132,6 +132,8 @@ const (
 	defaultMasterMinQosAccept                          = 20000
 	defaultMaxDpCntLimit                               = 3000
 	defaultMaxMpCntLimit                               = 300
+	defaultMaxDpTagDecommissionLimit                   = 100
+	defaultMaxMpTagDecommissionLimit                   = 5
 	defaultStartLcScanTime                             = 1
 	defaultMaxConcurrentLcNodes                        = 3
 	metaPartitionInodeUsageThreshold           float64 = 0.75 // inode usage threshold on a meta partition

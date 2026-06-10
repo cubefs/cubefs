@@ -9,11 +9,14 @@
 package master
 
 import (
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"golang.org/x/time/rate"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/raftstore"
 )
 
 func TestNewClusterConfig_defaults(t *testing.T) {
@@ -31,6 +34,68 @@ func TestNewClusterConfig_defaults(t *testing.T) {
 	require.Equal(t, defaultDpLimitHddFactor, cfg.DpLimitHddFactor)
 	require.Nil(t, cfg.peers)
 	require.Nil(t, cfg.peerAddrs)
+}
+
+func TestNormalizeTagDecommissionLimit(t *testing.T) {
+	t.Parallel()
+	require.EqualValues(t, defaultMaxDpTagDecommissionLimit, normalizeDpTagDecommissionLimit(0))
+	require.EqualValues(t, defaultMaxDpTagDecommissionLimit-1, normalizeDpTagDecommissionLimit(defaultMaxDpTagDecommissionLimit-1))
+	require.EqualValues(t, defaultMaxDpTagDecommissionLimit+1, normalizeDpTagDecommissionLimit(defaultMaxDpTagDecommissionLimit+1))
+
+	require.EqualValues(t, defaultMaxMpTagDecommissionLimit, normalizeMpTagDecommissionLimit(0))
+	require.EqualValues(t, defaultMaxMpTagDecommissionLimit-1, normalizeMpTagDecommissionLimit(defaultMaxMpTagDecommissionLimit-1))
+	require.EqualValues(t, defaultMaxMpTagDecommissionLimit+1, normalizeMpTagDecommissionLimit(defaultMaxMpTagDecommissionLimit+1))
+}
+
+func newTagLimitTestCluster(name string, partition raftstore.Partition) *Cluster {
+	cfg := newClusterConfig()
+	return &Cluster{
+		Name:           name,
+		cfg:            cfg,
+		partition:      partition,
+		QosAcceptLimit: rate.NewLimiter(rate.Limit(cfg.QosMasterAcceptLimit), proto.QosDefaultBurst),
+	}
+}
+
+func TestClusterTagDecommissionLimitSetters(t *testing.T) {
+	oldDp := atomic.LoadUint64(&clusterDpTagDecommissionLimit)
+	oldMp := atomic.LoadUint64(&clusterMpTagDecommissionLimit)
+	t.Cleanup(func() {
+		atomic.StoreUint64(&clusterDpTagDecommissionLimit, oldDp)
+		atomic.StoreUint64(&clusterMpTagDecommissionLimit, oldMp)
+	})
+
+	c := newTagLimitTestCluster("tag-limit-test", &mockPartition{isLeader: true})
+	require.NoError(t, c.setMaxDpTagDecommissionLimit(7))
+	require.EqualValues(t, 7, c.getMaxDpTagDecommissionLimit())
+	require.NoError(t, c.setMaxDpTagDecommissionLimit(0))
+	require.EqualValues(t, defaultMaxDpTagDecommissionLimit, c.getMaxDpTagDecommissionLimit())
+
+	require.NoError(t, c.setMaxMpTagDecommissionLimit(3))
+	require.EqualValues(t, 3, c.getMaxMpTagDecommissionLimit())
+	require.NoError(t, c.setMaxMpTagDecommissionLimit(0))
+	require.EqualValues(t, defaultMaxMpTagDecommissionLimit, c.getMaxMpTagDecommissionLimit())
+}
+
+func TestClusterTagDecommissionLimitSettersRollbackOnPersistFailure(t *testing.T) {
+	oldDp := atomic.LoadUint64(&clusterDpTagDecommissionLimit)
+	oldMp := atomic.LoadUint64(&clusterMpTagDecommissionLimit)
+	t.Cleanup(func() {
+		atomic.StoreUint64(&clusterDpTagDecommissionLimit, oldDp)
+		atomic.StoreUint64(&clusterMpTagDecommissionLimit, oldMp)
+	})
+
+	c := newTagLimitTestCluster("tag-limit-fail-test", &failingSubmitPartition{mockPartition: mockPartition{isLeader: true}})
+
+	atomic.StoreUint64(&clusterDpTagDecommissionLimit, 11)
+	err := c.setMaxDpTagDecommissionLimit(12)
+	require.ErrorIs(t, err, proto.ErrPersistenceByRaft)
+	require.EqualValues(t, 11, atomic.LoadUint64(&clusterDpTagDecommissionLimit))
+
+	atomic.StoreUint64(&clusterMpTagDecommissionLimit, 4)
+	err = c.setMaxMpTagDecommissionLimit(5)
+	require.ErrorIs(t, err, proto.ErrPersistenceByRaft)
+	require.EqualValues(t, 4, atomic.LoadUint64(&clusterMpTagDecommissionLimit))
 }
 
 func TestParsePeerAddr(t *testing.T) {
@@ -91,9 +156,7 @@ func TestSetMetaNodeFollowerReadLeaseTime_validate(t *testing.T) {
 }
 
 func TestClusterConfig_parsePeers(t *testing.T) {
-	t.Parallel()
 	t.Run("ok_single", func(t *testing.T) {
-		t.Parallel()
 		cfg := newClusterConfig()
 		cfg.heartbeatPort = 5901
 		cfg.replicaPort = 5902
@@ -111,7 +174,6 @@ func TestClusterConfig_parsePeers(t *testing.T) {
 	})
 
 	t.Run("ok_multiple", func(t *testing.T) {
-		t.Parallel()
 		cfg := newClusterConfig()
 		cfg.heartbeatPort = 1
 		cfg.replicaPort = 2
@@ -125,7 +187,9 @@ func TestClusterConfig_parsePeers(t *testing.T) {
 	})
 
 	t.Run("err_bad_peer", func(t *testing.T) {
-		t.Parallel()
+		t.Cleanup(func() {
+			delete(AddrDatabase, 1)
+		})
 		cfg := newClusterConfig()
 		cfg.heartbeatPort = 1
 		cfg.replicaPort = 2

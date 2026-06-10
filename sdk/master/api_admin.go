@@ -838,6 +838,8 @@ type ClusterParas struct {
 	LoadFactor                             string
 	MaxDpCntLimit                          string
 	MaxMpCntLimit                          string
+	MaxDpTagDecommissionLimit              string
+	MaxMpTagDecommissionLimit              string
 	ClientIDKey                            string
 	EnableAutoDecommissionDisk             string
 	AutoDecommissionDiskInterval           string
@@ -906,6 +908,12 @@ func (api *AdminAPI) SetClusterParas(params *ClusterParas) (err error) {
 	request.addParam("loadFactor", params.LoadFactor)
 	request.addParam("maxDpCntLimit", params.MaxDpCntLimit)
 	request.addParam("maxMpCntLimit", params.MaxMpCntLimit)
+	if params.MaxDpTagDecommissionLimit != "" {
+		request.addParam("maxDpTagDecommissionLimit", params.MaxDpTagDecommissionLimit)
+	}
+	if params.MaxMpTagDecommissionLimit != "" {
+		request.addParam("maxMpTagDecommissionLimit", params.MaxMpTagDecommissionLimit)
+	}
 	request.addParam("clientIDKey", params.ClientIDKey)
 
 	// request.addParam("dataNodesetSelector", dataNodesetSelector)

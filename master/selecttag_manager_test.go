@@ -17,6 +17,7 @@ package master
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/cubefs/cubefs/proto"
@@ -470,9 +471,10 @@ func TestCheckDpSelectTagWithAutoFixDisabled(t *testing.T) {
 		cfg: cfg,
 	}
 
-	// Record initial status so this package-level variable is restored after the
+	// Record initial state so these package-level variables are restored after the
 	// disabled-path assertion.
 	initialStatus := DpTagThreadStatus
+	initialReason := LastDpQuitReason
 
 	// Execute check. It should return immediately and keep the checker sleeping.
 	c.checkDpTag()
@@ -480,8 +482,9 @@ func TestCheckDpSelectTagWithAutoFixDisabled(t *testing.T) {
 	// Status should return to sleeping immediately
 	assert.Equal(t, StatusSleeping, DpTagThreadStatus)
 
-	// Restore initial status
+	// Restore initial state.
 	DpTagThreadStatus = initialStatus
+	LastDpQuitReason = initialReason
 }
 
 // TestCheckMpSelectTagWithAutoFixDisabled tests no check is performed when AutoFixTag is disabled
@@ -493,9 +496,10 @@ func TestCheckMpSelectTagWithAutoFixDisabled(t *testing.T) {
 		cfg: cfg,
 	}
 
-	// Record initial status so the global checker state is not leaked to later
+	// Record initial state so the global checker state is not leaked to later
 	// tests.
 	initialStatus := MpTagThreadStatus
+	initialReason := LastMpQuitReason
 
 	// Execute check. No cluster plan state or volume map is needed because the
 	// disabled guard returns before those dependencies are touched.
@@ -504,8 +508,122 @@ func TestCheckMpSelectTagWithAutoFixDisabled(t *testing.T) {
 	// Status should return to sleeping immediately
 	assert.Equal(t, StatusSleeping, MpTagThreadStatus)
 
-	// Restore initial status
+	// Restore initial state.
 	MpTagThreadStatus = initialStatus
+	LastMpQuitReason = initialReason
+}
+
+func TestCheckDpTagLimitBranches(t *testing.T) {
+	oldLimit := atomic.LoadUint64(&clusterDpTagDecommissionLimit)
+	oldReason := LastDpQuitReason
+	oldStatus := DpTagThreadStatus
+	t.Cleanup(func() {
+		atomic.StoreUint64(&clusterDpTagDecommissionLimit, oldLimit)
+		tagStateMu.Lock()
+		LastDpQuitReason = oldReason
+		DpTagThreadStatus = oldStatus
+		tagStateMu.Unlock()
+	})
+
+	cfg := newClusterConfig()
+	cfg.AutoFixTag.Store(true)
+	c := &Cluster{cfg: cfg}
+	c.vols = make(map[string]*Vol)
+
+	atomic.StoreUint64(&clusterDpTagDecommissionLimit, 2)
+	c.checkDpTag()
+	_, _, lastDpReason, _, _, _, _ := snapshotTagState()
+	require.Equal(t, ReasonCloseOK, lastDpReason)
+
+	const (
+		dpID    = uint64(101)
+		srcAddr = "10.0.0.1:17310"
+	)
+	c.t = newTopology()
+	zone := newZone(DefaultZoneName, 0)
+	ns := newNodeSet(nil, 1, 18, DefaultZoneName, "")
+	zone.nodeSetMap[ns.ID] = ns
+	require.NoError(t, c.t.putZone(zone))
+	dataNode := &DataNode{Addr: srcAddr, ZoneName: DefaultZoneName, NodeSetID: ns.ID}
+	c.dataNodes.Store(srcAddr, dataNode)
+	require.True(t, ns.AcquireDecommissionToken(dpID, lowPriorityDecommissionWeight, c, false))
+
+	dp := &DataPartition{
+		PartitionID:         dpID,
+		DecommissionType:    proto.TagDecommission,
+		DecommissionSrcAddr: srcAddr,
+		DecommissionWeight:  lowPriorityDecommissionWeight,
+		DecommissionStatus:  markDecommission,
+	}
+	dpMap := newDataPartitionMap("vol-dp-limit")
+	dpMap.put(dp)
+	ns.decommissionDataPartitionList.Put(ns.ID, dp, c)
+	c.vols["vol-dp-limit"] = &Vol{
+		Name:           "vol-dp-limit",
+		Status:         proto.VolStatusNormal,
+		DpTag:          "tag-a",
+		dpReplicaNum:   TagReplicaRuleNum,
+		dataPartitions: dpMap,
+	}
+
+	atomic.StoreUint64(&clusterDpTagDecommissionLimit, 1)
+	c.checkDpTag()
+	_, _, lastDpReason, _, _, _, _ = snapshotTagState()
+	require.Equal(t, ReasonReachMaxDecommissionNum, lastDpReason)
+}
+
+func TestCheckMpTagReachMaxDecommissionLimit(t *testing.T) {
+	oldLimit := atomic.LoadUint64(&clusterMpTagDecommissionLimit)
+	oldReason := LastMpQuitReason
+	oldStatus := MpTagThreadStatus
+	t.Cleanup(func() {
+		atomic.StoreUint64(&clusterMpTagDecommissionLimit, oldLimit)
+		tagStateMu.Lock()
+		LastMpQuitReason = oldReason
+		MpTagThreadStatus = oldStatus
+		tagStateMu.Unlock()
+	})
+	tagStateMu.Lock()
+	LastMpQuitReason = ""
+	MpTagThreadStatus = StatusSleeping
+	tagStateMu.Unlock()
+
+	const addr = "10.0.0.2:17210"
+	cfg := newClusterConfig()
+	cfg.AutoFixTag.Store(true)
+	mp := &MetaPartition{
+		PartitionID: 201,
+		Replicas: []*MetaReplica{
+			{
+				Addr:      addr,
+				metaNode:  &MetaNode{Addr: addr, Tag: "node-tag"},
+				StoreMode: proto.StoreModeMem,
+			},
+		},
+		Peers: []proto.Peer{
+			{Addr: addr, Tag: "target-tag"},
+		},
+		RecoverPair: proto.RecoverPair{DecommissionType: proto.TagDecommission},
+	}
+	vol := &Vol{
+		Name:           "vol-mp-limit",
+		Status:         proto.VolStatusNormal,
+		MpTag:          "node-tag->target-tag",
+		MetaPartitions: map[uint64]*MetaPartition{mp.PartitionID: mp},
+	}
+	vol.mpsLock = &mpsLockManager{}
+	c := &Cluster{cfg: cfg}
+	c.vols = map[string]*Vol{vol.Name: vol}
+	c.BadMetaPartitionIds = new(sync.Map)
+	c.RecoverMetaPartitionIds = new(sync.Map)
+	c.BadMetaPartitionIds.Store(addr, []uint64{mp.PartitionID})
+
+	atomic.StoreUint64(&clusterMpTagDecommissionLimit, 1)
+	require.EqualValues(t, 1, c.GetMetaPartitionDecommissionCount(proto.TagDecommission))
+	c.checkMpTag()
+	_, _, _, lastMpReason, _, _, _ := snapshotTagState()
+	require.Equal(t, ReasonReachMaxDecommissionNum, lastMpReason)
+	require.False(t, c.IsClusterPlanNotIdle())
 }
 
 // TestGetSelectTagSummary tests getting select tag summary
