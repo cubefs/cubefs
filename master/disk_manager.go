@@ -72,7 +72,9 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 					c.Name, partitionID, partition.VolName))
 				continue
 			}
-			if vol.isUnavailable() {
+			if vol.isInitializingOrInitFailed() {
+				Warn(c.Name, fmt.Sprintf("checkDiskRecoveryProgress clusterID[%v],vol[%v] partitionID[%v] is initializing or init failed",
+					c.Name, partition.VolName, partitionID))
 				continue
 			}
 			log.LogInfof("action[checkDiskRecoveryProgress] dp %v isSpec %v replicas %v conf replicas num %v  status(%v)",

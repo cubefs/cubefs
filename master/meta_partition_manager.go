@@ -289,7 +289,9 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 				continue
 			}
 
-			if vol.isUnavailable() {
+			if vol.isInitializingOrInitFailed() {
+				Warn(c.Name, fmt.Sprintf("checkMetaPartitionRecoveryProgress clusterID[%v],vol[%v] partitionID[%v] is initializing or init failed",
+					c.Name, partition.volName, partitionID))
 				continue
 			}
 

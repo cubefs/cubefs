@@ -1,7 +1,9 @@
 package master
 
 import (
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/stretchr/testify/require"
@@ -253,4 +255,86 @@ func newClusterWithDecommissionPartitions(volName string, partitions ...*DataPar
 		},
 		partition: &mockPartition{isLeader: true},
 	}
+}
+
+func newDiskRecoveryTestCluster(vol *Vol, dp *DataPartition, badKey string) *Cluster {
+	volName := vol.Name
+	if vol.dataPartitions == nil {
+		vol.dataPartitions = newDataPartitionMap(volName)
+	}
+	dp.VolName = volName
+	vol.dataPartitions.put(dp)
+	cluster := &Cluster{
+		Name: "test-cluster",
+		ClusterVolSubItem: ClusterVolSubItem{
+			vols: map[string]*Vol{volName: vol},
+		},
+		ClusterDecommission: ClusterDecommission{
+			BadDataPartitionIds: new(sync.Map),
+		},
+		partition: &mockPartition{isLeader: true},
+	}
+	cluster.BadDataPartitionIds.Store(badKey, []uint64{dp.PartitionID})
+	return cluster
+}
+
+func TestCheckDiskRecoveryProgressSkipsInitializingVol(t *testing.T) {
+	const volName = "vol-init"
+	vol := &Vol{
+		Name:   volName,
+		Status: proto.VolStatusInitializing,
+	}
+	dp := &DataPartition{
+		PartitionID:        1,
+		VolName:            volName,
+		DecommissionStatus: DecommissionRunning,
+	}
+	cluster := newDiskRecoveryTestCluster(vol, dp, "10.0.0.1:/disk1")
+
+	cluster.checkDiskRecoveryProgress()
+
+	require.EqualValues(t, DecommissionRunning, dp.GetDecommissionStatus())
+}
+
+func TestCheckDiskRecoveryProgressDelayDeleteVolNotSkipped(t *testing.T) {
+	const volName = "vol-delay-delete"
+	vol := &Vol{
+		Name:   volName,
+		Status: proto.VolStatusMarkDelete,
+	}
+	vol.Forbidden = true
+	vol.DeleteExecTime = time.Now().Add(time.Hour)
+	require.True(t, vol.isUnavailable())
+	dp := &DataPartition{
+		PartitionID:        2,
+		VolName:            volName,
+		DecommissionStatus: DecommissionRunning,
+	}
+	cluster := newDiskRecoveryTestCluster(vol, dp, "10.0.0.1:/disk1")
+
+	cluster.checkDiskRecoveryProgress()
+
+	require.EqualValues(t, DecommissionSuccess, dp.GetDecommissionStatus())
+}
+
+func TestCheckDiskRecoveryProgressMarkDeleteWithoutForbiddenCompletes(t *testing.T) {
+	const volName = "vol-mark-delete"
+	vol := &Vol{
+		Name:   volName,
+		Status: proto.VolStatusMarkDelete,
+	}
+	vol.Forbidden = false
+	dp := &DataPartition{
+		PartitionID:        3,
+		VolName:            volName,
+		DecommissionStatus: DecommissionRunning,
+		Replicas: []*DataReplica{
+			{DataReplica: proto.DataReplica{Addr: "10.0.0.1"}},
+		},
+	}
+	cluster := newDiskRecoveryTestCluster(vol, dp, "10.0.0.1:/disk1")
+
+	cluster.checkDiskRecoveryProgress()
+
+	require.EqualValues(t, DecommissionSuccess, dp.GetDecommissionStatus())
 }
