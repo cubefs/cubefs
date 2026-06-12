@@ -125,6 +125,10 @@ func (vol *volume) canInsert() bool {
 	return vol.volInfoBase.Status == proto.VolumeStatusIdle
 }
 
+func (vol *volume) allocThreshHold() int {
+	return vol.volInfoBase.CodeMode.T().PutQuorum - vol.volInfoBase.CodeMode.GetShardNum()
+}
+
 func (vol *volume) canAlloc(allocatableSize uint64, allocatableScoreThreshold int) bool {
 	if vol.canInsert() && vol.volInfoBase.Free > allocatableSize && vol.volInfoBase.HealthScore >= allocatableScoreThreshold {
 		return true

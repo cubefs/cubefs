@@ -1533,6 +1533,7 @@ func BenchmarkRangeUpdateVolume(b *testing.B) {
 // buildIdleVolumes constructs an idleVolumes for EC15P12 with the given shardNum.
 func buildIdleVolumes(shardNum int) *idleVolumes {
 	mode := codemode.EC15P12
+	tactic := mode.Tactic()
 	shards := make([]*list.List, shardNum)
 	for i := range shards {
 		shards[i] = list.New()
@@ -1542,7 +1543,7 @@ func buildIdleVolumes(shardNum int) *idleVolumes {
 		allocatableShards: shards,
 		notAllocatable:    list.New(),
 		shardNum:          shardNum,
-		healths:           make([]int, mode.GetShardNum()+1),
+		healths:           make([]int, mode.GetShardNum()-tactic.PutQuorum+1),
 	}
 }
 
@@ -1576,10 +1577,9 @@ func TestHealthStat_AddNotAllocatable(t *testing.T) {
 	iv.addNotAllocatable(makeVol(1, 0))
 	iv.addNotAllocatable(makeVol(2, -2))
 
-	// healths covers all idle entries, including notAllocatable
-	require.Equal(t, 1, iv.healths[0])
-	require.Equal(t, 1, iv.healths[2])
-	// statAllocatableNum excludes notAllocatable
+	// healths only counts allocatable entries; notAllocatable must NOT be counted
+	require.Equal(t, 0, iv.healths[0])
+	require.Equal(t, 0, iv.healths[2])
 	require.Equal(t, 0, iv.statAllocatableNum())
 }
 
@@ -1613,18 +1613,19 @@ func TestHealthStat_AllocFromOptions(t *testing.T) {
 func TestHealthStat_MoveAllocatableToNotAllocatable(t *testing.T) {
 	iv := buildIdleVolumes(defaultShardNum)
 
-	// add as allocatable then re-add as notAllocatable (health degrades)
 	iv.addAllocatable(makeVol(1, 0))
 	require.Equal(t, 1, iv.healths[0])
 
-	// health drops, move to notAllocatable with health=-1
-	vol := makeVol(1, -1)
-	iv.addNotAllocatable(vol)
-
-	// old entry (health=0) removed, new entry (health=-1) added
+	// health drops, volume moves to notAllocatable: healths must NOT count notAllocatable entries
+	iv.addNotAllocatable(makeVol(1, -1))
 	require.Equal(t, 0, iv.healths[0])
-	require.Equal(t, 1, iv.healths[1])
+	require.Equal(t, 0, iv.healths[1])
 	require.Equal(t, 0, iv.statAllocatableNum())
+
+	// calling addNotAllocatable again (idempotent): healths must not go negative
+	iv.addNotAllocatable(makeVol(1, -1))
+	require.Equal(t, 0, iv.healths[0])
+	require.Equal(t, 0, iv.healths[1])
 }
 
 func TestStatHealthyAllocatable_PrefixSum(t *testing.T) {
