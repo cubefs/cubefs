@@ -144,6 +144,7 @@ func newMetaPartitionUpdateRegionCmd(client *master.MasterClient) *cobra.Command
 
 func newListCorruptMetaPartitionCmd(client *master.MasterClient) *cobra.Command {
 	var printManual bool
+	var printLeaseDetail bool
 	cmd := &cobra.Command{
 		Use:   CliOpCheck,
 		Short: cmdCheckCorruptMetaPartitionShort,
@@ -429,19 +430,22 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 
 			stdout("\n")
 			stdout("%v\n", "[Partition with lease time exceeded threshold]:")
-			stdout("%v\n", formatLeaseTimeExceededTableHeader())
-			sort.SliceStable(diagnosis.LeaseTimeExceededReplicas, func(i, j int) bool {
-				a, b := diagnosis.LeaseTimeExceededReplicas[i], diagnosis.LeaseTimeExceededReplicas[j]
-				if a.VolName != b.VolName {
-					return a.VolName < b.VolName
+			stdout("count: %v\n", len(diagnosis.LeaseTimeExceededReplicas))
+			if printLeaseDetail {
+				stdout("%v\n", formatLeaseTimeExceededTableHeader())
+				sort.SliceStable(diagnosis.LeaseTimeExceededReplicas, func(i, j int) bool {
+					a, b := diagnosis.LeaseTimeExceededReplicas[i], diagnosis.LeaseTimeExceededReplicas[j]
+					if a.VolName != b.VolName {
+						return a.VolName < b.VolName
+					}
+					if a.PartitionID != b.PartitionID {
+						return a.PartitionID < b.PartitionID
+					}
+					return a.ReplicaAddr < b.ReplicaAddr
+				})
+				for _, replica := range diagnosis.LeaseTimeExceededReplicas {
+					stdout("%v\n", formatLeaseTimeExceededRow(replica))
 				}
-				if a.PartitionID != b.PartitionID {
-					return a.PartitionID < b.PartitionID
-				}
-				return a.ReplicaAddr < b.ReplicaAddr
-			})
-			for _, replica := range diagnosis.LeaseTimeExceededReplicas {
-				stdout("%v\n", formatLeaseTimeExceededRow(replica))
 			}
 
 			if printManual {
@@ -464,6 +468,7 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 		},
 	}
 	cmd.Flags().BoolVar(&printManual, "manual", false, "print manual learner partitions")
+	cmd.Flags().BoolVarP(&printLeaseDetail, "lease-detail", "l", false, "print lease time exceeded replica details")
 	return cmd
 }
 
