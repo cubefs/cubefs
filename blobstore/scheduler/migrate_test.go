@@ -384,6 +384,38 @@ func TestFinishMigrateTask(t *testing.T) {
 	}
 }
 
+// TestFinishMigrateTask_ReleaseVunitIgnoredErrors verifies that ReleaseVolumeUnit errors
+// with CodeVuidNotFound or CodeDiskBroken are silently ignored: updateVolumeCache is NOT
+// called in the error recovery path, and the task completes successfully.
+func TestFinishMigrateTask_ReleaseVunitIgnoredErrors(t *testing.T) {
+	runCase := func(t *testing.T, releaseErr error, name string) {
+		t.Run(name, func(t *testing.T) {
+			mgr := newMigrateMgr(t)
+			t1 := mockGenMigrateTask(proto.TaskTypeManualMigrate, "z0", 4, 100, proto.MigrateStateWorkCompleted, MockMigrateVolInfoMap)
+			mgr.finishQueue.PushTask(t1.TaskID, t1)
+
+			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateMigrateTask(any, any).Return(nil)
+			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateVolume(any, any, any, any).Return(nil)
+			// ReleaseVolumeUnit returns an ignorable error code
+			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ReleaseVolumeUnit(any, any, any).Return(releaseErr)
+			// updateVolumeCache must NOT be called in the error recovery branch for these codes;
+			// GetVolumeInfo is called once for UnlockVolume
+			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Return(MockMigrateVolInfoMap[100], nil)
+			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UnlockVolume(any, any, any).Return(nil)
+			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().DeleteMigrateTask(any, any).Return(nil)
+			mgr.taskLogger.(*mocks.MockRecordLogEncoder).EXPECT().Encode(any).Return(nil)
+			// UpdateLeaderVolumeCache is still called at the end of finishTask (unconditional cache refresh)
+			mgr.volumeUpdater.(*MockTaskAPI).EXPECT().UpdateLeaderVolumeCache(any, any).Return(nil)
+
+			err := mgr.finishTask()
+			require.NoError(t, err)
+		})
+	}
+
+	runCase(t, errcode.ErrNoSuchVuid, "CodeVuidNotFound")
+	runCase(t, errcode.ErrDiskBroken, "CodeDiskBroken")
+}
+
 func TestAcquireMigrateTask(t *testing.T) {
 	ctx := context.Background()
 	idc := "z0"

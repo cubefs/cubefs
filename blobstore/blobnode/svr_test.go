@@ -622,6 +622,14 @@ func runTestServer(svr *Service) string {
 	return testServer.URL
 }
 
+func newTestBlobNodeClient() bnapi.StorageAPI {
+	return bnapi.New(&bnapi.Config{
+		Config: rpc.Config{
+			Tc: rpc.TransportConfig{DialTimeoutMs: 3000},
+		},
+	})
+}
+
 func runMockClusterMgr(mcm *mockClusterMgr) string {
 	r := mockClusterMgrRouter(mcm)
 	testServer := httptest.NewServer(r)

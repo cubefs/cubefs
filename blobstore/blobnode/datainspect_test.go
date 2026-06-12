@@ -1156,6 +1156,63 @@ func TestInspectBatch_RateLimitCtxCancel(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// inspectBatch: nil limiter must not panic (getLimiter returns nil for unknown disk)
+// ---------------------------------------------------------------------------
+
+func TestInspectBatch_NilLimiter(t *testing.T) {
+	ctr := gomock.NewController(t)
+	ctx := context.Background()
+
+	ds := NewMockDiskAPI(ctr)
+	ds.EXPECT().ID().Return(proto.DiskID(11)).AnyTimes()
+	ds.EXPECT().GetConfig().Return(&core.Config{
+		RuntimeConfig: core.RuntimeConfig{BatchBufferSize: 1024 * 1024},
+	}).AnyTimes()
+
+	svr := &Service{closeCh: make(chan struct{})}
+	mgr := newDataInspectMgr(t, DataInspectConf{IntervalSec: 1, RateLimit: 1024 * 1024}, svr)
+
+	si := &bnapi.ShardInfo{Bid: 6001, Vuid: proto.Vuid(1001), Size: 8, Offset: 0}
+	cs := NewMockChunkAPI(ctr)
+	cs.EXPECT().Vuid().Return(proto.Vuid(1001)).AnyTimes()
+	cs.EXPECT().BatchRead(any, any).Return(int64(0), nil)
+
+	// lmt == nil: rate-limiting loop is skipped, BatchRead is still called, no panic
+	bads, ioErr := mgr.inspectBatch(ctx, cs, ds, []*bnapi.ShardInfo{si}, nil)
+	require.NoError(t, ioErr)
+	require.Empty(t, bads)
+}
+
+func TestInspectChunk_NilLimiter(t *testing.T) {
+	ctr := gomock.NewController(t)
+	ctx := context.Background()
+
+	ds := NewMockDiskAPI(ctr)
+	ds.EXPECT().ID().Return(proto.DiskID(99)).AnyTimes()
+	ds.EXPECT().GetConfig().Return(&core.Config{
+		RuntimeConfig: core.RuntimeConfig{BatchBufferSize: 1024 * 1024},
+	}).AnyTimes()
+
+	svr := &Service{closeCh: make(chan struct{})}
+	// disk 99 is intentionally absent from mgr.limits so getLimiter returns nil
+	mgr := newDataInspectMgr(t, DataInspectConf{IntervalSec: 1, RateLimit: 1024 * 1024}, svr)
+
+	cs := NewMockChunkAPI(ctr)
+	cs.EXPECT().Vuid().Return(proto.Vuid(9001)).AnyTimes()
+	cs.EXPECT().ID().Return(clustermgr.ChunkID{}).AnyTimes()
+	cs.EXPECT().Disk().Return(ds).AnyTimes()
+	cs.EXPECT().ListShards(any, any, any, any).Return(
+		[]*bnapi.ShardInfo{{Bid: 6002, Size: 8, Offset: 0}}, proto.InValidBlobID, nil,
+	)
+	cs.EXPECT().BatchRead(any, any).Return(int64(0), nil)
+
+	// getLimiter(ds) == nil: no panic, inspection completes normally
+	bads, err := mgr.inspectChunk(ctx, cs)
+	require.NoError(t, err)
+	require.Empty(t, bads)
+}
+
+// ---------------------------------------------------------------------------
 // inspectDisk: cs.Disk().IsWritable() returns false mid-inspection → early return
 // ---------------------------------------------------------------------------
 

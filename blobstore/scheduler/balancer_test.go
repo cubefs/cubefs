@@ -499,6 +499,49 @@ func TestVunitLessHighUsage(t *testing.T) {
 		v := mk(20*gib, 4*gib)
 		require.False(t, mgr.vunitLessHighUsage(v, v))
 	})
+
+	t.Run("LogicSize=0 with MinLogicSize=0: no panic (float64 NaN, not integer div-by-zero)", func(t *testing.T) {
+		// When MinLogicSize=0, any vunit (including LogicSize=0) qualifies as "large",
+		// triggering the holeRate path: 1 - Used/LogicSize = NaN for 0/0.
+		// Go float64 division never panics; NaN comparisons simply return false.
+		mgrZeroMin := &BalanceMgr{cfg: &BalanceMgrConfig{
+			CompactMigrateHoleRate:     0.6,
+			CompactMigrateMinLogicSize: 0,
+		}}
+		vi := mk(0, 0)
+		vj := mk(0, 0)
+		require.NotPanics(t, func() { mgrZeroMin.vunitLessHighUsage(vi, vj) })
+		// sort stability: both are NaN, neither is "less"
+		require.False(t, mgrZeroMin.vunitLessHighUsage(vi, vj))
+	})
+}
+
+// TestMeetsCompactMigrateThreshold_ZeroLogicSize documents that LogicSize=0 never panics.
+func TestMeetsCompactMigrateThreshold_ZeroLogicSize(t *testing.T) {
+	const gib = uint64(1 << 30)
+	mk := func(logicSize, used uint64) *client.VunitInfoSimple {
+		return &client.VunitInfoSimple{LogicSize: logicSize, Used: used}
+	}
+
+	{
+		// MinLogicSize=0: LogicSize=0 is >= 0, enters holeRate branch; 1 - 0/0 = NaN.
+		// NaN >= threshold is false → returns false (no panic).
+		mgr := &BalanceMgr{cfg: &BalanceMgrConfig{
+			CompactMigrateHoleRate:     0.5,
+			CompactMigrateMinLogicSize: 0,
+		}}
+		v := mk(0, 0)
+		require.NotPanics(t, func() { mgr.meetsCompactMigrateThreshold(v) })
+		require.False(t, mgr.meetsCompactMigrateThreshold(v))
+	}
+	{
+		// MinLogicSize > 0: LogicSize=0 < MinLogicSize → early return false (no holeRate path at all).
+		mgr := &BalanceMgr{cfg: &BalanceMgrConfig{
+			CompactMigrateHoleRate:     0.5,
+			CompactMigrateMinLogicSize: 16 * gib,
+		}}
+		require.False(t, mgr.meetsCompactMigrateThreshold(mk(0, 0)))
+	}
 }
 
 func mustNewVuid(vid proto.Vid, idx uint8) proto.Vuid {
