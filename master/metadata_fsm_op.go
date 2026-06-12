@@ -1520,6 +1520,11 @@ func (c *Cluster) loadZoneValue() (err error) {
 			log.LogInfof("action[loadZoneValue]: set zone %s as %d", z.name, c.legacyDataMediaType)
 			z.SetDataMediaType(c.legacyDataMediaType)
 		}
+		if z.PoolId == 0 {
+			z.PoolId = getDefaultPoolIdByMediaType(z.dataMediaType)
+			log.LogWarnf("action[loadZoneValue] zone[%v] PoolId is 0, set to default pool[%d] based on mediaType[%v]",
+				z.name, z.PoolId, proto.MediaTypeString(z.dataMediaType))
+		}
 	}
 
 	return

@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore/raftstore_db"
 	"github.com/stretchr/testify/require"
 )
@@ -75,4 +76,42 @@ func TestFsmApplySnapshot(t *testing.T) {
 		cnt++
 	}
 	require.EqualValues(t, 1, cnt)
+}
+
+func TestLoadZoneValueBackfillsPoolIDForUnpersistedZone(t *testing.T) {
+	fsm := newFsmForMetadataFsmTest(t)
+	cluster := &Cluster{
+		fsm:                 fsm,
+		legacyDataMediaType: proto.MediaType_SSD,
+		ClusterTopoSubItem: ClusterTopoSubItem{
+			t: newTopology(),
+		},
+	}
+	zone := newZone("legacy-hdd-zone", proto.MediaType_HDD)
+	require.EqualValues(t, 0, zone.PoolId)
+	require.NoError(t, cluster.t.putZone(zone))
+
+	require.NoError(t, cluster.loadZoneValue())
+
+	require.EqualValues(t, proto.MediaType_HDD, zone.dataMediaType)
+	require.EqualValues(t, proto.DefaultHDDPoolId, zone.PoolId)
+}
+
+func TestLoadZoneValueBackfillsPoolIDAfterLegacyMediaType(t *testing.T) {
+	fsm := newFsmForMetadataFsmTest(t)
+	cluster := &Cluster{
+		fsm:                 fsm,
+		legacyDataMediaType: proto.MediaType_HDD,
+		ClusterTopoSubItem: ClusterTopoSubItem{
+			t: newTopology(),
+		},
+	}
+	zone := newZone("legacy-unspecified-zone", proto.MediaType_Unspecified)
+	require.EqualValues(t, 0, zone.PoolId)
+	require.NoError(t, cluster.t.putZone(zone))
+
+	require.NoError(t, cluster.loadZoneValue())
+
+	require.EqualValues(t, proto.MediaType_HDD, zone.dataMediaType)
+	require.EqualValues(t, proto.DefaultHDDPoolId, zone.PoolId)
 }
