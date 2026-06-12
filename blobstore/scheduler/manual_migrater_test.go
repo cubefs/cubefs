@@ -135,3 +135,53 @@ func TestManualMigrateRenewalTask(t *testing.T) {
 	err = mgr.RenewalTask(ctx, idc, "")
 	require.True(t, errors.Is(err, errMock))
 }
+
+// TestManualMigrateReportMissChuckMigrated verifies that reportMissChuckMigrated
+// (the reportTaskCallback wired in NewManualMigrateMgr) calls CancelAbnormal
+// without panic. CancelAbnormal sets the Prometheus gauge to 0 but does not
+// clear the in-memory reportedVuids map.
+func TestManualMigrateReportMissChuckMigrated(t *testing.T) {
+	mgr := newManualMigrater(t)
+	diskID := proto.DiskID(111)
+	vuid := proto.Vuid(20001)
+
+	// Simulate processDiskNotFoundErr marking this vuid as reported
+	mgr.abnormalReporter.SetVuidReported(vuid)
+	require.True(t, mgr.abnormalReporter.IsVuidReported(vuid))
+
+	// When the manual migrate task finishes, reportMissChuckMigrated is invoked
+	// as the reportTaskCallback; it must not panic.
+	require.NotPanics(t, func() {
+		mgr.reportMissChuckMigrated(diskID, vuid)
+	})
+
+	// CancelAbnormal only resets the Prometheus gauge; reportedVuids is unchanged,
+	// so subsequent DiskNotFound errors for this vuid are still skipped.
+	require.True(t, mgr.abnormalReporter.IsVuidReported(vuid))
+}
+
+// TestManualMigrateAddTask_ForbiddenDirectDownload verifies that the
+// ForbiddenDirectDownload flag is propagated into the constructed MigrateTask.
+func TestManualMigrateAddTask_ForbiddenDirectDownload(t *testing.T) {
+	ctx := context.Background()
+	ctr := gomock.NewController(t)
+	_ = ctr
+
+	for _, forbidden := range []bool{true, false} {
+		mgr := newManualMigrater(t)
+		volume := MockGenVolInfo(10001, codemode.EC6P6, proto.VolumeStatusIdle)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Return(volume, nil)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetDiskInfo(any, any).Return(&client.DiskInfoSimple{}, nil)
+
+		var capturedTask *proto.MigrateTask
+		mgr.IMigrator.(*MockMigrater).EXPECT().AddTask(any, any).DoAndReturn(
+			func(_ context.Context, task *proto.MigrateTask) error {
+				capturedTask = task
+				return nil
+			})
+
+		err := mgr.AddManualTask(ctx, proto.Vuid(1), forbidden)
+		require.NoError(t, err)
+		require.Equal(t, forbidden, capturedTask.ForbiddenDirectDownload)
+	}
+}

@@ -331,7 +331,7 @@ func (mgr *DataInspectMgr) inspectBatch(ctx context.Context, cs core.ChunkAPI, d
 
 	// rate limit by total batch size
 	remain := totalSize
-	for remain > 0 {
+	for remain > 0 && lmt != nil {
 		tokenSz := lmt.Burst()
 		if remain <= int64(tokenSz) {
 			tokenSz = int(remain)

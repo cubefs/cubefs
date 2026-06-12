@@ -269,6 +269,99 @@ func TestNewShardRepairMgr(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestProcessDiskNotFoundErr(t *testing.T) {
+	ctx := context.Background()
+	ctr := gomock.NewController(t)
+
+	volume := MockGenVolInfo(proto.Vid(1), codemode.EC3P3, proto.VolumeStatusActive)
+	repairMsg := &proto.ShardRepairMsg{Vid: proto.Vid(1), Bid: proto.BlobID(1), BadIdx: []uint8{0}}
+	missVuid := volume.VunitLocations[0].Vuid
+	missDisk := volume.VunitLocations[0].DiskID
+
+	newMgr := func() *ShardRepairMgr {
+		mgr := newShardRepairMgr(t)
+		mgr.chunkMissMigrateReporter = base.NewAbnormalReporter(proto.ClusterID(2), ShardRepair, base.ChunkMissMigrateAbnormal)
+		mgr.clusterMgrCli = NewMockClusterMgrAPI(ctr)
+		mgr.taskCli = NewMockTaskAPI(ctr)
+		return mgr
+	}
+
+	{
+		// case 1: vuid already reported → skip all downstream calls
+		mgr := newMgr()
+		mgr.chunkMissMigrateReporter.SetVuidReported(missVuid)
+		// GetDiskInfo must NOT be called
+		mgr.processDiskNotFoundErr(ctx, volume, repairMsg)
+		require.True(t, mgr.chunkMissMigrateReporter.IsVuidReported(missVuid))
+	}
+	{
+		// case 2: GetDiskInfo fails → continue to next idx (no GetVolumeInfo)
+		mgr := newMgr()
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetDiskInfo(any, missDisk).Return(nil, errMock)
+		mgr.processDiskNotFoundErr(ctx, volume, repairMsg)
+		require.False(t, mgr.chunkMissMigrateReporter.IsVuidReported(missVuid))
+	}
+	{
+		// case 3: disk.Status <= DiskStatusRepairing → continue (no GetVolumeInfo)
+		mgr := newMgr()
+		repairingDisk := MockGenDiskInfo(missDisk, proto.DiskStatusRepairing)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetDiskInfo(any, missDisk).Return(repairingDisk, nil)
+		mgr.processDiskNotFoundErr(ctx, volume, repairMsg)
+		require.False(t, mgr.chunkMissMigrateReporter.IsVuidReported(missVuid))
+	}
+	{
+		// case 4: GetVolumeInfo fails → continue (no CheckTaskExist)
+		mgr := newMgr()
+		repairedDisk := MockGenDiskInfo(missDisk, proto.DiskStatusRepaired)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetDiskInfo(any, missDisk).Return(repairedDisk, nil)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, proto.Vid(1)).Return(nil, errMock)
+		mgr.processDiskNotFoundErr(ctx, volume, repairMsg)
+		require.False(t, mgr.chunkMissMigrateReporter.IsVuidReported(missVuid))
+	}
+	{
+		// case 5: vol changed (!vol.EqualWith) → continue (no CheckTaskExist)
+		mgr := newMgr()
+		repairedDisk := MockGenDiskInfo(missDisk, proto.DiskStatusRepaired)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetDiskInfo(any, missDisk).Return(repairedDisk, nil)
+		changedVol := MockGenVolInfo(proto.Vid(1), codemode.EC3P3, proto.VolumeStatusActive)
+		changedVol.VunitLocations[0].Vuid += 1 // different vuid → EqualWith returns false
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, proto.Vid(1)).Return(changedVol, nil)
+		mgr.processDiskNotFoundErr(ctx, volume, repairMsg)
+		require.False(t, mgr.chunkMissMigrateReporter.IsVuidReported(missVuid))
+	}
+	{
+		// case 6: CheckTaskExist fails → continue (no ReportAbnormal, not set reported)
+		mgr := newMgr()
+		repairedDisk := MockGenDiskInfo(missDisk, proto.DiskStatusRepaired)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetDiskInfo(any, missDisk).Return(repairedDisk, nil)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, proto.Vid(1)).Return(volume, nil)
+		mgr.taskCli.(*MockTaskAPI).EXPECT().CheckTaskExist(any, proto.TaskTypeManualMigrate, missDisk, missVuid).Return(false, errMock)
+		mgr.processDiskNotFoundErr(ctx, volume, repairMsg)
+		require.False(t, mgr.chunkMissMigrateReporter.IsVuidReported(missVuid))
+	}
+	{
+		// case 7: task already exists → SetVuidReported, no ReportAbnormal
+		mgr := newMgr()
+		repairedDisk := MockGenDiskInfo(missDisk, proto.DiskStatusRepaired)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetDiskInfo(any, missDisk).Return(repairedDisk, nil)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, proto.Vid(1)).Return(volume, nil)
+		mgr.taskCli.(*MockTaskAPI).EXPECT().CheckTaskExist(any, proto.TaskTypeManualMigrate, missDisk, missVuid).Return(true, nil)
+		mgr.processDiskNotFoundErr(ctx, volume, repairMsg)
+		// vuid is marked reported (task exists, will skip in future)
+		require.True(t, mgr.chunkMissMigrateReporter.IsVuidReported(missVuid))
+	}
+	{
+		// case 8 (full path): disk Repaired, vol equal, task not exist → ReportAbnormal + SetVuidReported
+		mgr := newMgr()
+		repairedDisk := MockGenDiskInfo(missDisk, proto.DiskStatusRepaired)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetDiskInfo(any, missDisk).Return(repairedDisk, nil)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, proto.Vid(1)).Return(volume, nil)
+		mgr.taskCli.(*MockTaskAPI).EXPECT().CheckTaskExist(any, proto.TaskTypeManualMigrate, missDisk, missVuid).Return(false, nil)
+		mgr.processDiskNotFoundErr(ctx, volume, repairMsg)
+		require.True(t, mgr.chunkMissMigrateReporter.IsVuidReported(missVuid))
+	}
+}
+
 func TestTryRepair(t *testing.T) {
 	ctx := context.Background()
 	ctr := gomock.NewController(t)
