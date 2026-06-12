@@ -69,7 +69,7 @@ func mockPartitionRaftForFsmExtendTest(t *testing.T, ctrl *gomock.Controller, st
 func prepareInoForFsmExtendTest(t *testing.T, mp *metaPartition, ino uint64) {
 	handle, err := mp.inodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
-	inode := NewInode(ino, FileModeType)
+	inode := NewInodeTest(ino, FileModeType)
 	err = mp.inodeTree.Put(handle, inode)
 	require.NoError(t, err)
 	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)

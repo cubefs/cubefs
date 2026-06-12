@@ -74,8 +74,6 @@ func prepareInodeForFsmInodeTest(t *testing.T, mp *metaPartition, ino uint64) {
 	handle, err := mp.inodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
 	inode := NewInodeTest(ino, FileModeType)
-	inode.StorageClass = proto.StorageClass_Replica_SSD
-	inode.PoolId = proto.DefaultSSDPoolId
 	status, err := mp.fsmCreateInode(handle, inode)
 	require.NoError(t, err)
 	require.EqualValues(t, proto.OpOk, status)

@@ -382,7 +382,7 @@ func TestRollbackInodeInternalIncNLinkPersists(t *testing.T) {
 	handle, err := mp1.inodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
 	inode := NewInode(ino, FileModeType)
-	inode.PoolId = proto.DefaultSSDPoolId
+	initTestInodeStorage(inode)
 	inode.NLink = 1
 	_, _, err = mp1.inodeTree.ReplaceOrInsert(handle, inode, true)
 	require.NoError(t, err)
@@ -524,7 +524,7 @@ func mockAddTxInode(mp *metaPartition, t *testing.T) *TxRollbackInode {
 	txInodeInfo1.Timeout = 5
 	txInodeInfo1.CreateTime = time.Now().UnixNano()
 	inode1 := NewInode(inodeNum, FileModeType)
-	inode1.PoolId = proto.DefaultSSDPoolId
+	initTestInodeStorage(inode1)
 	rbInode := NewTxRollbackInode(inode1, []uint32{}, txInodeInfo1, TxDelete)
 	txRsc := mp.txProcessor.txResource
 
@@ -546,7 +546,7 @@ func mockAddTxInode(mp *metaPartition, t *testing.T) *TxRollbackInode {
 
 func mockDeleteTxInode(mp *metaPartition, t *testing.T) *TxRollbackInode {
 	inode2 := NewInode(inodeNum2, FileModeType)
-	inode2.PoolId = proto.DefaultSSDPoolId
+	initTestInodeStorage(inode2)
 	handle, err := mp.inodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
 	err = mp.inodeTree.Put(handle, inode2)
@@ -665,7 +665,7 @@ func testTxRscRollback(t *testing.T) {
 	handle, err := txRsc.txRbInodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
 	tmpIno := NewInode(pInodeNum, DirModeType)
-	tmpIno.PoolId = proto.DefaultSSDPoolId
+	initTestInodeStorage(tmpIno)
 	err = txRsc.txProcessor.mp.inodeTree.Put(handle, tmpIno)
 	require.NoError(t, err)
 	err = txRsc.txRbInodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
@@ -800,6 +800,7 @@ func TestTxRscCommit_Rocksdb(t *testing.T) {
 
 func putInodeForTxTest(t *testing.T, mp *metaPartition, ino *Inode) {
 	t.Helper()
+	initTestInodeStorage(ino)
 	handle, err := mp.inodeTree.CreateBatchWriteHandle()
 	require.NoError(t, err)
 	_, _, err = mp.inodeTree.ReplaceOrInsert(handle, ino, true)

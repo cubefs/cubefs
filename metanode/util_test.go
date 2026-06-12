@@ -4,7 +4,30 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/cubefs/cubefs/proto"
 )
+
+// initTestInodeStorage fills default StorageClass and PoolId for test inodes when unset.
+func initTestInodeStorage(inode *Inode) {
+	if inode == nil {
+		return
+	}
+	if !proto.IsValidStorageClass(inode.StorageClass) {
+		if proto.IsDir(inode.Type) {
+			inode.StorageClass = proto.StorageClass_Replica_HDD
+		} else {
+			inode.StorageClass = proto.StorageClass_Replica_SSD
+		}
+	}
+	if inode.PoolId == 0 {
+		poolId, err := getDefaultPoolIdByStorageClass(inode.StorageClass)
+		if err != nil {
+			poolId = proto.DefaultSSDPoolId
+		}
+		inode.PoolId = poolId
+	}
+}
 
 // mockFileInfo implements os.FileInfo for testing
 type mockFileInfo struct {

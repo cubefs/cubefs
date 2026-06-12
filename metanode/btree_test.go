@@ -301,7 +301,7 @@ func TestInodeTreeCreate(t *testing.T) {
 	memInodeTree, rocksInodeTree := InitInodeTree(rocksTree)
 	// create
 	inode := NewInode(1000, 0)
-	inode.PoolId = proto.DefaultSSDPoolId
+	initTestInodeStorage(inode)
 	_, _, errForMem = inodeCreate(memInodeTree, inode, true)
 	_, _, errForRocks = inodeCreate(rocksInodeTree, inode, true)
 	if errForRocks != nil || errForMem != nil {
@@ -357,7 +357,7 @@ func TestInodeTreeGet(t *testing.T) {
 	// create
 	for index := 1; index <= 100; index++ {
 		inode := NewInode(uint64(index), 0)
-		inode.PoolId = 101
+		initTestInodeStorage(inode)
 		_, _, errForMem = inodeCreate(memInodeTree, inode, true)
 		_, _, errForRocks = inodeCreate(rocksInodeTree, inode, true)
 	}
@@ -430,7 +430,7 @@ func TestInodeTreeGetMaxInode(t *testing.T) {
 	// create
 	for index := 1; index <= inodeCount; index++ {
 		inode := NewInode(uint64(index), 0)
-		inode.PoolId = proto.DefaultSSDPoolId
+		initTestInodeStorage(inode)
 		_, _, _ = inodeCreate(memInodeTree, inode, true)
 		_, _, _ = inodeCreate(rocksInodeTree, inode, true)
 	}
@@ -461,7 +461,7 @@ func TestInodeTreeRange(t *testing.T) {
 	// create
 	for index := 1; index <= inodeCount; index++ {
 		inode := NewInode(uint64(index), 0)
-		inode.PoolId = proto.DefaultSSDPoolId
+		initTestInodeStorage(inode)
 		_, _, _ = inodeCreate(memInodeTree, inode, true)
 		_, _, _ = inodeCreate(rocksInodeTree, inode, true)
 	}
@@ -504,7 +504,7 @@ func TestInodeTreeMaxItem(t *testing.T) {
 	// create
 	for index := 1; index <= inodeCount; index++ {
 		inode := NewInode(uint64(index), 0)
-		inode.PoolId = proto.DefaultSSDPoolId
+		initTestInodeStorage(inode)
 		_, _, _ = inodeCreate(memInodeTree, inode, true)
 		_, _, _ = inodeCreate(rocksInodeTree, inode, true)
 	}
@@ -634,6 +634,7 @@ func TestMemInodeCopyGetUpdateSnapshotIsolation(t *testing.T) {
 	handle, err := tree.CreateBatchWriteHandle()
 	require.NoError(t, err)
 	origin := NewInode(inoID, FileModeType)
+	initTestInodeStorage(origin)
 	origin.Size = 4096
 	_, ok, err := tree.ReplaceOrInsert(handle, origin, true)
 	require.NoError(t, err)

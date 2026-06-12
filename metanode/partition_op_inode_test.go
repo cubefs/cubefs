@@ -37,6 +37,7 @@ func TestInodeGet(t *testing.T) {
 	require.NoError(t, err)
 	inoId := uint64(time.Now().Unix())
 	ino := NewInode(inoId, 0)
+	initTestInodeStorage(ino)
 	ino.AccessTime = time.Now().Unix() - 3600
 	mp.inodeTree.ReplaceOrInsert(handle, ino, false)
 	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)
@@ -79,7 +80,7 @@ func TestInodeGetPerf(t *testing.T) {
 	require.NoError(t, err)
 	for idx := 1; idx < cnt; idx++ {
 		ino := NewInode(uint64(idx), 0)
-		ino.PoolId = proto.DefaultSSDPoolId
+		initTestInodeStorage(ino)
 		mp.inodeTree.ReplaceOrInsert(handle, ino, true)
 	}
 	err = mp.inodeTree.CommitAndReleaseBatchWriteHandle(handle, false)

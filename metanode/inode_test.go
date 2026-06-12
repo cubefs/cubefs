@@ -20,7 +20,7 @@ import (
 
 func TestEmptyV4Inode_Marshal(t *testing.T) {
 	ino := NewInode(1024, 0)
-	ino.StorageClass = proto.MediaType_HDD
+	ino.StorageClass = proto.StorageClass_Replica_HDD
 	ino.PoolId = 101
 	data, err := ino.Marshal()
 	require.NoError(t, err)
@@ -32,7 +32,7 @@ func TestEmptyV4Inode_Marshal(t *testing.T) {
 
 func TestHDDV4Inode_Marshal(t *testing.T) {
 	ino := NewInode(1024, 1)
-	ino.StorageClass = proto.MediaType_HDD
+	ino.StorageClass = proto.StorageClass_Replica_HDD
 	ino.PoolId = 101
 	ino.HybridCloudExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{
 		FileOffset: 11, PartitionId: 12,
@@ -88,13 +88,13 @@ func TestEBSV4Inode_Marshal(t *testing.T) {
 
 func TestSDDToHDDV4Inode_Marshal(t *testing.T) {
 	ino := NewInode(1024, 0)
-	ino.StorageClass = proto.MediaType_SSD
+	ino.StorageClass = proto.StorageClass_Replica_SSD
 	ino.PoolId = 101
 	ino.HybridCloudExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{
 		FileOffset: 11, PartitionId: 12,
 		ExtentId: 13, ExtentOffset: 0, Size: 0, CRC: 0,
 	}})
-	ino.HybridCloudExtentsMigration.storageClass = proto.MediaType_HDD
+	ino.HybridCloudExtentsMigration.storageClass = proto.StorageClass_Replica_HDD
 	ino.HybridCloudExtentsMigration.poolId = 102
 	ino.HybridCloudExtentsMigration.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{
 		FileOffset: 11, PartitionId: 14,
@@ -110,7 +110,7 @@ func TestSDDToHDDV4Inode_Marshal(t *testing.T) {
 
 func TestSDDToEBSV4Inode_Marshal(t *testing.T) {
 	ino := NewInode(1024, 0)
-	ino.StorageClass = proto.MediaType_SSD
+	ino.StorageClass = proto.StorageClass_Replica_SSD
 	ino.PoolId = 101
 	ino.HybridCloudExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{
 		FileOffset: 11, PartitionId: 12,
@@ -149,9 +149,9 @@ func TestV4InodeCopyDirectly(t *testing.T) {
 
 func TestV4MigrationInodeCopy(t *testing.T) {
 	ino := NewInode(1024, 0)
-	ino.StorageClass = proto.MediaType_SSD
+	ino.StorageClass = proto.StorageClass_Replica_SSD
 	ino.PoolId = 101
-	ino.HybridCloudExtentsMigration.storageClass = proto.MediaType_HDD
+	ino.HybridCloudExtentsMigration.storageClass = proto.StorageClass_Replica_HDD
 	ino.HybridCloudExtentsMigration.poolId = 102
 	ino.HybridCloudExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{
 		FileOffset: 11, PartitionId: 12,
@@ -168,7 +168,7 @@ func TestV4MigrationInodeCopy(t *testing.T) {
 
 func TestV4MigrationInodeCopyDirectly(t *testing.T) {
 	ino := NewInode(1024, 0)
-	ino.StorageClass = proto.MediaType_SSD
+	ino.StorageClass = proto.StorageClass_Replica_SSD
 	ino.PoolId = 101
 	ino.HybridCloudExtentsMigration.storageClass = proto.StorageClass_BlobStore
 	ino.HybridCloudExtentsMigration.poolId = 102
@@ -189,6 +189,7 @@ func TestInodeAlign(t *testing.T) {
 
 func TestUpdateHybridCloudParamsCopiesGeneration(t *testing.T) {
 	target := NewInode(100, 0)
+	initTestInodeStorage(target)
 	target.Generation = 1
 	target.LeaseExpireTime = 10
 
@@ -274,14 +275,14 @@ func TestInodeMarshal(t *testing.T) {
 
 	// check for migration empty
 	oldIno.HybridCloudExtentsMigration = &SortedHybridCloudExtentsMigration{
-		storageClass: proto.MediaType_SSD,
+		storageClass: proto.StorageClass_Replica_SSD,
 		poolId:       103,
 	}
 	checkInodeMarshal(oldIno, t)
 
 	oldIno.HybridCloudExtentsMigration = &SortedHybridCloudExtentsMigration{
 		sortedEks:    NewSortedExtentsFromEks([]proto.ExtentKey{{FileOffset: 1024}}),
-		storageClass: proto.MediaType_SSD,
+		storageClass: proto.StorageClass_Replica_SSD,
 		poolId:       103,
 	}
 	checkInodeMarshal(oldIno, t)
@@ -584,6 +585,118 @@ func TestInodeV5PoolIdCompatibility(t *testing.T) {
 		assert.Equal(t, ino1.PoolId, ino2.PoolId, "PoolId should be consistent after second round trip")
 		assert.Equal(t, ino.StorageClass, ino2.StorageClass, "StorageClass should be consistent")
 	})
+
+	// Test 5: v5 section persisted with PoolId=0 should derive pool from StorageClass on load
+	t.Run("V5ZeroPoolIdBackfillOnLoad", func(t *testing.T) {
+		patchV5PoolIds := func(data []byte, poolId, migPoolId uint8) []byte {
+			patched := append([]byte(nil), data...)
+			patched[len(patched)-2] = poolId
+			patched[len(patched)-1] = migPoolId
+			return patched
+		}
+
+		testCases := []struct {
+			name           string
+			storageClass   uint32
+			expectedPoolId uint8
+		}{
+			{"SSD", proto.StorageClass_Replica_SSD, proto.DefaultSSDPoolId},
+			{"HDD", proto.StorageClass_Replica_HDD, proto.DefaultHDDPoolId},
+			{"BlobStore", proto.StorageClass_BlobStore, proto.DefaultECPoolId},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				ino := createInode(0, tc.storageClass)
+				ino.PoolId = 0
+				buff := GetInodeBuf()
+				ino.MarshalValueV2(buff)
+				data := patchV5PoolIds(buff.Bytes(), 0, 101)
+
+				targetIno := NewInode(0, 0)
+				err := targetIno.UnmarshalInodeValueV2(GetReadBuf(data))
+				require.NoError(t, err)
+				assert.EqualValues(t, tc.expectedPoolId, targetIno.PoolId)
+			})
+		}
+	})
+
+	// Test 6: v5 section with migration poolId=0 should backfill from migration storageClass
+	t.Run("V5ZeroMigrationPoolIdBackfillOnLoad", func(t *testing.T) {
+		ino := createInode(proto.DefaultSSDPoolId, proto.StorageClass_Replica_SSD)
+		buff := GetInodeBuf()
+		ino.MarshalValueV2(buff)
+		data := append([]byte(nil), buff.Bytes()...)
+		data[len(data)-1] = 0
+
+		targetIno := NewInode(0, 0)
+		err := targetIno.UnmarshalInodeValueV2(GetReadBuf(data))
+		require.NoError(t, err)
+		assert.EqualValues(t, proto.DefaultSSDPoolId, targetIno.PoolId)
+		assert.EqualValues(t, proto.DefaultSSDPoolId, targetIno.HybridCloudExtentsMigration.poolId)
+	})
+
+	// Test 7: directory inode with PoolId=0 and Unspecified StorageClass should fail on load
+	t.Run("ZeroPoolIdUnspecifiedUnmarshalFails", func(t *testing.T) {
+		ino := NewInode(1, uint32(os.ModeDir))
+		ino.StorageClass = proto.StorageClass_Unspecified
+		ino.PoolId = 0
+		oldData, err := marshalOldVersion(ino)
+		require.NoError(t, err)
+
+		targetIno := NewInode(0, 0)
+		err = targetIno.UnmarshalInodeValueV2(GetReadBuf(oldData))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "PoolId(v5)")
+	})
+
+	// Test 8: marshal preserves PoolId=0; backfill happens only on unmarshal
+	t.Run("MarshalPreservesZeroPoolId", func(t *testing.T) {
+		testCases := []struct {
+			name           string
+			storageClass   uint32
+			expectedPoolId uint8
+		}{
+			{"SSD", proto.StorageClass_Replica_SSD, proto.DefaultSSDPoolId},
+			{"HDD", proto.StorageClass_Replica_HDD, proto.DefaultHDDPoolId},
+			{"BlobStore", proto.StorageClass_BlobStore, proto.DefaultECPoolId},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				ino := NewInode(1024, 0)
+				ino.StorageClass = tc.storageClass
+				ino.PoolId = 0
+
+				buff := GetInodeBuf()
+				ino.MarshalValueV2(buff)
+				assert.EqualValues(t, 0, ino.PoolId,
+					"marshal should not backfill in-memory PoolId")
+
+				targetIno := NewInode(0, 0)
+				err := targetIno.UnmarshalInodeValueV2(GetReadBuf(buff.Bytes()))
+				require.NoError(t, err)
+				assert.EqualValues(t, tc.expectedPoolId, targetIno.PoolId)
+			})
+		}
+	})
+
+	t.Run("MarshalPreservesZeroPoolIdUnspecified", func(t *testing.T) {
+		ino := NewInode(1024, uint32(os.ModeDir))
+		ino.StorageClass = proto.StorageClass_Unspecified
+		ino.PoolId = 0
+
+		buff := GetInodeBuf()
+		require.NotPanics(t, func() {
+			ino.MarshalValueV2(buff)
+		})
+		assert.EqualValues(t, 0, ino.PoolId)
+
+		targetIno := NewInode(0, 0)
+		err := targetIno.UnmarshalInodeValueV2(GetReadBuf(buff.Bytes()))
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "PoolId(v5)")
+	})
 }
 
 func oldMarshalInode(i *Inode, buff *buf.ByteBufExt) {
@@ -679,7 +792,7 @@ func oldMarshalInode(i *Inode, buff *buf.ByteBufExt) {
 		}
 	}
 
-	if i.HybridCloudExtentsMigration != nil && i.HybridCloudExtentsMigration.storageClass != proto.MediaType_Unspecified {
+	if i.HybridCloudExtentsMigration != nil && i.HybridCloudExtentsMigration.storageClass != proto.StorageClass_Unspecified {
 		reserved |= V4MigrationExtentsFlag
 	}
 

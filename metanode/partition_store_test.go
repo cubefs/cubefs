@@ -15,7 +15,7 @@ func TestStoreDentry(t *testing.T) {
 	require.NoError(t, err)
 	for i := 0; i < 100; i++ {
 		ino := NewInode(uint64(101+i), DirModeType)
-		ino.PoolId = proto.DefaultSSDPoolId
+		initTestInodeStorage(ino)
 		_, _, err := mp.inodeTree.ReplaceOrInsert(handle, ino, true)
 		require.NoError(t, err)
 	}
@@ -58,7 +58,7 @@ func TestStoreDentryCompitable(t *testing.T) {
 	require.NoError(t, err)
 	for i := 0; i < 5; i++ {
 		ino := NewInode(uint64(101+i), DirModeType)
-		ino.PoolId = proto.DefaultSSDPoolId
+		initTestInodeStorage(ino)
 		_, _, err := mp.inodeTree.ReplaceOrInsert(handle, ino, true)
 		require.NoError(t, err)
 	}

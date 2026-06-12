@@ -512,7 +512,15 @@ func NewSimpleInode(ino uint64) *Inode {
 }
 
 func NewInodeTest(ino uint64, t uint32) *Inode {
-	return NewInodeWithPoolId(ino, t, proto.DefaultSSDPoolId)
+	inode := NewInode(ino, t)
+	if proto.IsDir(t) {
+		inode.StorageClass = proto.StorageClass_Replica_HDD
+		inode.PoolId = proto.DefaultHDDPoolId
+	} else {
+		inode.StorageClass = proto.StorageClass_Replica_SSD
+		inode.PoolId = proto.DefaultSSDPoolId
+	}
+	return inode
 }
 
 func NewInodeWithPoolId(ino uint64, t uint32, poolId uint8) *Inode {
@@ -1409,8 +1417,8 @@ func (i *Inode) UnmarshalInodeValueV2(buff *buf.ReadByteBuff) (err error) {
 		}
 
 		if i.PoolId == 0 {
-			err = UnmarshalInodeFiledError("PoolId(v5)", errors.New("poolId is 0"))
-			return
+			log.LogWarnf("action[UnmarshalInodeValue] ino(%v) PoolId is 0, set to default pool[%d] based on storageClass[%v]",
+				i.Inode, i.PoolId, i.StorageClass)
 		}
 
 		if i.Reserved&V4MigrationExtentsFlag > 0 {
@@ -1421,8 +1429,8 @@ func (i *Inode) UnmarshalInodeValueV2(buff *buf.ReadByteBuff) (err error) {
 			}
 
 			if i.HybridCloudExtentsMigration.poolId == 0 {
-				err = UnmarshalInodeFiledError("HybridCloudExtentsMigration.poolId(v5)", errors.New("poolId is 0"))
-				return
+				log.LogWarnf("action[UnmarshalInodeValue] ino(%v) HybridCloudExtentsMigration.poolId is 0, set to default pool[%d] based on storageClass[%v]",
+					i.Inode, i.HybridCloudExtentsMigration.poolId, i.HybridCloudExtentsMigration.storageClass)
 			}
 		}
 	}

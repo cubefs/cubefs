@@ -1535,8 +1535,8 @@ func (mm *monitorMetrics) resetAllLeaderMetrics() {
 	mm.clearLcMetrics()
 
 	mm.partitionCreate.Reset()
-	mm.badMpCount.Set(0)
-	mm.badDpCount.Set(0)
+	mm.badMpCount.SetWithLabels(0, map[string]string{"type": "bad_mp"})
+	mm.badDpCount.SetWithLabels(0, map[string]string{"type": "bad_dp"})
 	mm.dataNodesCount.Set(0)
 	mm.metaNodesCount.Set(0)
 	mm.lcNodesCount.Set(0)

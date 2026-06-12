@@ -285,7 +285,7 @@ func prepareDataForMpTest(t *testing.T, mp *metaPartition) {
 	require.NoError(t, err)
 
 	ino := NewInode(0, DirModeType)
-	ino.PoolId = proto.DefaultHDDPoolId
+	initTestInodeStorage(ino)
 	_, _, err = mp.inodeTree.ReplaceOrInsert(handle, ino, true)
 	require.NoError(t, err)
 
@@ -542,7 +542,7 @@ func TestDoFileStats(t *testing.T) {
 	require.NoError(t, err)
 	for i := 0; i < 10000000; i++ {
 		ino := NewInode(uint64(i), 0)
-		ino.PoolId = proto.DefaultHDDPoolId
+		initTestInodeStorage(ino)
 		_, _, err = mp.inodeTree.ReplaceOrInsert(handle, ino, true)
 		require.NoError(t, err)
 	}
@@ -703,6 +703,7 @@ func TestUpdateSizeLoopFunc(t *testing.T) {
 	inoB.NLink = 1
 	inoB.Size = 300
 	inoB.StorageClass = proto.StorageClass_Replica_SSD
+	inoB.PoolId = proto.DefaultSSDPoolId
 	inoB.HybridCloudExtentsMigration = &SortedHybridCloudExtentsMigration{}
 	inoB.HybridCloudExtentsMigration.storageClass = proto.StorageClass_Replica_HDD
 	inoB.HybridCloudExtentsMigration.poolId = proto.DefaultHDDPoolId
