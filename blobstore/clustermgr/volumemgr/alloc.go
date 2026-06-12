@@ -53,7 +53,7 @@ type idleVolumes struct {
 	allocatableShards []*list.List
 	notAllocatable    *list.List
 	shardNum          int
-	healths           []int // idx * -1 is health score, and value is volume count,
+	healths           []int // idx * -1 is health score, and value is allocable volume count,
 	sync.RWMutex
 }
 
@@ -103,7 +103,9 @@ func (i *idleVolumes) addAllocatable(vol *volume) {
 	i.Lock()
 	if item, ok := i.m[vol.vid]; ok {
 		item.head.Remove(item.element)
-		i.healths[abs(item.health)]--
+		if item.head != i.notAllocatable {
+			i.healths[abs(item.health)]--
+		}
 	}
 	idx := int(vol.vid) % i.shardNum
 	e := i.allocatableShards[idx].PushFront(vol)
@@ -116,11 +118,12 @@ func (i *idleVolumes) addNotAllocatable(vol *volume) {
 	i.Lock()
 	if item, ok := i.m[vol.vid]; ok {
 		item.head.Remove(item.element)
-		i.healths[abs(item.health)]--
+		if item.head != i.notAllocatable {
+			i.healths[abs(item.health)]--
+		}
 	}
 	e := i.notAllocatable.PushFront(vol)
 	i.m[vol.vid] = idleItem{element: e, head: i.notAllocatable, health: vol.volInfoBase.HealthScore}
-	i.healths[abs(vol.volInfoBase.HealthScore)]++
 	i.Unlock()
 }
 
@@ -129,7 +132,9 @@ func (i *idleVolumes) delete(vid proto.Vid) {
 	if item, ok := i.m[vid]; ok {
 		item.head.Remove(item.element)
 		delete(i.m, vid)
-		i.healths[abs(item.health)]--
+		if item.head != i.notAllocatable {
+			i.healths[abs(item.health)]--
+		}
 	}
 	i.Unlock()
 }
@@ -148,6 +153,10 @@ func (i *idleVolumes) allocFromOptions(optionalVids []proto.Vid, count int) (suc
 	defer i.Unlock()
 	for _, vid := range optionalVids {
 		if item, ok := i.m[vid]; ok {
+			// skip vols that became non-allocatable between PreAlloc scan and here
+			if item.head == i.notAllocatable {
+				continue
+			}
 			item.head.Remove(item.element)
 			i.healths[abs(item.health)]--
 			delete(i.m, vid)
@@ -205,15 +214,13 @@ func newVolumeAllocator(cfg allocConfig) *volumeAllocator {
 		for i := 0; i < cfg.shardNum; i++ {
 			allocatableShard[i] = list.New()
 		}
+		healthsLen := modeConf.mode.GetShardNum() - modeConf.tactic.PutQuorum + 1
 		idles[modeConf.mode] = &idleVolumes{
 			m:                 make(map[proto.Vid]idleItem),
 			allocatableShards: allocatableShard,
 			shardNum:          cfg.shardNum,
 			notAllocatable:    list.New(),
-			healths:           make([]int, modeConf.mode.GetShardNum()+1),
-		}
-		for i := 0; i < modeConf.mode.GetShardNum(); i++ {
-			idles[modeConf.mode].healths[i] = 0
+			healths:           make([]int, healthsLen),
 		}
 	}
 	return &volumeAllocator{
@@ -229,9 +236,14 @@ func newVolumeAllocator(cfg allocConfig) *volumeAllocator {
 
 // volume free size or volume health change event callback, check if move volume into idle's allocatable head
 func (a *volumeAllocator) VolumeFreeHealthCallback(ctx context.Context, vol *volume) error {
+	if !vol.canInsert() {
+		return nil
+	}
 	allocatableScoreThreshold := a.codeModes[vol.volInfoBase.CodeMode].tactic.PutQuorum - a.getShardNum(vol.volInfoBase.CodeMode)
 	if vol.canAlloc(a.allocatableSize, allocatableScoreThreshold) {
 		a.idles[vol.volInfoBase.CodeMode].addAllocatable(vol)
+	} else {
+		a.idles[vol.volInfoBase.CodeMode].addNotAllocatable(vol)
 	}
 	return nil
 }
@@ -282,7 +294,11 @@ func (a *volumeAllocator) VolumeStatusLockCallback(ctx context.Context, vol *vol
 // Insert a volume into volume allocator's idles head
 // please ensure that this volume must be idle status
 func (a *volumeAllocator) Insert(v *volume, mode codemode.CodeMode) {
-	a.idles[mode].addAllocatable(v)
+	if v.volInfoBase.HealthScore >= v.allocThreshHold() {
+		a.idles[mode].addAllocatable(v)
+		return
+	}
+	a.idles[mode].addNotAllocatable(v)
 }
 
 // PreAlloc pre-allocates up to count volumes for the given code mode.
