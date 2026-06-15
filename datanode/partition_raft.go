@@ -319,6 +319,19 @@ func (dp *DataPartition) compareExtentsBySize(partitionID uint64, leaderExtents 
 	return true
 }
 
+// syncBaseExtentIDFromRemoteMax updates local baseExtentID when the leader reports a higher
+// allocation watermark, and returns the remote max extent id for repair progress tracking.
+func (dp *DataPartition) syncBaseExtentIDFromRemoteMax(remoteMaxExtentID uint64) (initMaxExtentID uint64, err error) {
+	log.LogWarnf("action[syncBaseExtentIDFromRemoteMax] PartitionID(%v) remoteMaxExtentID(%v) localBaseExtentID(%v)",
+		dp.partitionID, remoteMaxExtentID, dp.extentStore.GetBaseExtentID())
+	if remoteMaxExtentID > dp.extentStore.GetBaseExtentID() {
+		if err = dp.extentStore.UpdateBaseExtentID(remoteMaxExtentID); err != nil {
+			return 0, err
+		}
+	}
+	return remoteMaxExtentID, nil
+}
+
 // StartRaftAfterRepair starts the raft after repairing a partition.
 // It can only happens after all the extent files are repaired by the leader.
 // When the repair is finished, the local dp.partitionSize is same as the leader's dp.partitionSize.
@@ -356,7 +369,16 @@ func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 				continue
 			}
 			if initMaxExtentID == 0 || initPartitionSize == 0 {
-				initMaxExtentID, initPartitionSize, err = dp.getLeaderMaxExtentIDAndPartitionSize()
+				var remoteMaxExtentID uint64
+				remoteMaxExtentID, initPartitionSize, err = dp.getLeaderMaxExtentIDAndPartitionSize()
+				if err == nil {
+					initMaxExtentID, err = dp.syncBaseExtentIDFromRemoteMax(remoteMaxExtentID)
+					if err != nil {
+						log.LogWarnf("action[StartRaftAfterRepair] PartitionID(%v) sync baseExtentID to %v err(%v)",
+							dp.partitionID, remoteMaxExtentID, err)
+						continue
+					}
+				}
 			}
 
 			if err != nil {

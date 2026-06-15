@@ -178,3 +178,96 @@ func TestCompareExtentsBySizeSkipsDeleteCachedAndStillChecksOthers(t *testing.T)
 	dp.extentStore.PutNormalExtentToDeleteCache(idSkip)
 	require.True(t, dp.compareExtentsBySize(dp.partitionID, []*storage.ExtentInfo{skipRow, matchRow}))
 }
+
+func TestSyncBaseExtentIDFromRemoteMaxUpdatesWhenRemoteHigher(t *testing.T) {
+	dp, cleanup := newTestDataPartitionExtentStore(t, 200)
+	defer cleanup()
+
+	require.Equal(t, uint64(storage.MinExtentID), dp.extentStore.GetBaseExtentID())
+
+	initMaxExtentID, err := dp.syncBaseExtentIDFromRemoteMax(9204)
+	require.NoError(t, err)
+	require.Equal(t, uint64(9204), initMaxExtentID)
+	require.Equal(t, uint64(9204), dp.extentStore.GetBaseExtentID())
+
+	persistedID, err := dp.extentStore.GetPersistenceBaseExtentID()
+	require.NoError(t, err)
+	require.Equal(t, uint64(9204), persistedID)
+}
+
+func TestSyncBaseExtentIDFromRemoteMaxNoOpWhenRemoteNotHigher(t *testing.T) {
+	dp, cleanup := newTestDataPartitionExtentStore(t, 201)
+	defer cleanup()
+
+	id := createNormalExtentWithData(t, dp.extentStore)
+	require.Equal(t, id, dp.extentStore.GetBaseExtentID())
+
+	initMaxExtentID, err := dp.syncBaseExtentIDFromRemoteMax(id - 1)
+	require.NoError(t, err)
+	require.Equal(t, id-1, initMaxExtentID)
+	require.Equal(t, id, dp.extentStore.GetBaseExtentID())
+}
+
+func TestSyncBaseExtentIDFromRemoteMaxAfterAllExtentsDeleted(t *testing.T) {
+	dp, cleanup := newTestDataPartitionExtentStore(t, 202)
+	defer cleanup()
+
+	id := createNormalExtentWithData(t, dp.extentStore)
+	ei, err := dp.extentStore.Watermark(id)
+	require.NoError(t, err)
+	require.NoError(t, dp.extentStore.MarkDelete(id, 0, int64(ei.GetSize())))
+
+	maxExtentID, totalSize := dp.extentStore.GetMaxExtentIDAndPartitionSize()
+	require.Equal(t, id, maxExtentID)
+	require.Equal(t, uint64(0), totalSize)
+	require.False(t, dp.extentStore.HasExtent(id))
+	require.Equal(t, id, dp.extentStore.GetBaseExtentID())
+
+	initMaxExtentID, err := dp.syncBaseExtentIDFromRemoteMax(maxExtentID)
+	require.NoError(t, err)
+	require.Equal(t, maxExtentID, initMaxExtentID)
+	require.Equal(t, maxExtentID, dp.extentStore.GetBaseExtentID())
+}
+
+func TestSyncBaseExtentIDFromRemoteMaxSimulatesDecommissionFollower(t *testing.T) {
+	dir, err := os.MkdirTemp("", "cfs_partition_raft_decommission_")
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	dataPath := filepath.Join(dir, "extents")
+	s, err := storage.NewExtentStore(dataPath, 203, util.GB, proto.PartitionTypeNormal, 0, true)
+	require.NoError(t, err)
+	defer s.Close()
+
+	dp := &DataPartition{partitionID: 203, extentStore: s}
+	require.Equal(t, uint64(storage.MinExtentID), s.GetBaseExtentID())
+
+	const leaderMaxExtentID uint64 = 9204
+	initMaxExtentID, err := dp.syncBaseExtentIDFromRemoteMax(leaderMaxExtentID)
+	require.NoError(t, err)
+	require.Equal(t, leaderMaxExtentID, initMaxExtentID)
+	require.Equal(t, leaderMaxExtentID, s.GetBaseExtentID())
+}
+
+func TestSyncBaseExtentIDFromRemoteMaxWhenRemoteEqualsLocal(t *testing.T) {
+	dp, cleanup := newTestDataPartitionExtentStore(t, 204)
+	defer cleanup()
+
+	const remoteMaxExtentID uint64 = 9204
+	require.NoError(t, dp.extentStore.UpdateBaseExtentID(remoteMaxExtentID))
+
+	initMaxExtentID, err := dp.syncBaseExtentIDFromRemoteMax(remoteMaxExtentID)
+	require.NoError(t, err)
+	require.Equal(t, remoteMaxExtentID, initMaxExtentID)
+	require.Equal(t, remoteMaxExtentID, dp.extentStore.GetBaseExtentID())
+}
+
+func TestSyncBaseExtentIDFromRemoteMaxZeroRemote(t *testing.T) {
+	dp, cleanup := newTestDataPartitionExtentStore(t, 205)
+	defer cleanup()
+
+	initMaxExtentID, err := dp.syncBaseExtentIDFromRemoteMax(0)
+	require.NoError(t, err)
+	require.Equal(t, uint64(0), initMaxExtentID)
+	require.Equal(t, uint64(storage.MinExtentID), dp.extentStore.GetBaseExtentID())
+}

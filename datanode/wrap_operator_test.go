@@ -15,6 +15,7 @@
 package datanode
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"net"
 	"os"
@@ -692,4 +693,38 @@ func TestReloadDisk(t *testing.T) {
 		require.Equal(t, proto.OpIntraGroupNetErr, p.ResultCode)
 		require.Contains(t, string(p.Data), "not lost")
 	})
+}
+
+func TestHandlePacketToGetMaxExtentIDAndPartitionSizeIncludesBaseExtentID(t *testing.T) {
+	dn := newDataNodeForOperatorTest(t)
+	dp := newDpForOperatorTest(t, dn)
+
+	const remoteBaseExtentID uint64 = 9204
+	require.NoError(t, dp.extentStore.UpdateBaseExtentID(remoteBaseExtentID))
+
+	p := &repl.Packet{Object: dp}
+	dn.handlePacketToGetMaxExtentIDAndPartitionSize(p)
+	require.EqualValues(t, proto.OpOk, p.ResultCode)
+	require.GreaterOrEqual(t, len(p.Data), 16)
+
+	maxExtentID := binary.BigEndian.Uint64(p.Data[0:8])
+	totalSize := binary.BigEndian.Uint64(p.Data[8:16])
+	require.Equal(t, remoteBaseExtentID, maxExtentID)
+	require.Equal(t, uint64(0), totalSize)
+}
+
+func TestHandlePacketToGetMaxExtentIDAndPartitionSizeWithExtentFile(t *testing.T) {
+	dn := newDataNodeForOperatorTest(t)
+	dp := newDpForOperatorTest(t, dn)
+
+	id, err := dp.extentStore.NextExtentID()
+	require.NoError(t, err)
+	require.NoError(t, dp.extentStore.Create(id))
+
+	p := &repl.Packet{Object: dp}
+	dn.handlePacketToGetMaxExtentIDAndPartitionSize(p)
+	require.EqualValues(t, proto.OpOk, p.ResultCode)
+
+	maxExtentID := binary.BigEndian.Uint64(p.Data[0:8])
+	require.Equal(t, id, maxExtentID)
 }

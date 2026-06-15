@@ -1302,6 +1302,11 @@ func (s *ExtentStore) StoreSizeExtentID(maxExtentID uint64) (totalSize uint64) {
 	return totalSize
 }
 
+// GetBaseExtentID returns the current base extent ID used for allocation.
+func (s *ExtentStore) GetBaseExtentID() uint64 {
+	return atomic.LoadUint64(&s.baseExtentID)
+}
+
 // StoreSizeExtentID returns the size of the extent store
 func (s *ExtentStore) GetMaxExtentIDAndPartitionSize() (maxExtentID, totalSize uint64) {
 	extentInfos := make([]*ExtentInfo, 0)
@@ -1317,6 +1322,9 @@ func (s *ExtentStore) GetMaxExtentIDAndPartitionSize() (maxExtentID, totalSize u
 		totalSize += extentInfo.TotalSize()
 		log.LogDebugf("GetMaxExtentIDAndPartitionSize dp %v add extentInfo %v size %v", s.partitionID,
 			extentInfo.FileID, extentInfo.TotalSize())
+	}
+	if baseExtentID := s.GetBaseExtentID(); baseExtentID > maxExtentID {
+		maxExtentID = baseExtentID
 	}
 	return maxExtentID, totalSize
 }

@@ -343,3 +343,85 @@ func TestGetAllWatermarksSkipsNormalExtentDeleteCache(t *testing.T) {
 	}
 	require.True(t, found, "nil filter must not apply delete-cache filtering")
 }
+
+func TestGetMaxExtentIDIncludesBaseExtentID(t *testing.T) {
+	path, clean, err := getTestPathExtentStore()
+	require.NoError(t, err)
+	defer clean()
+	s, err := storage.NewExtentStore(path, 42, 1*util.GB, proto.PartitionTypeNormal, 0, true)
+	require.NoError(t, err)
+	defer s.Close()
+
+	id, err := s.NextExtentID()
+	require.NoError(t, err)
+	require.NoError(t, s.Create(id))
+	extentStoreNormalRwTest(t, s, id)
+	extentMarkDeleteNormalTest(t, s, id)
+
+	maxExtentID, totalSize := s.GetMaxExtentIDAndPartitionSize()
+	require.Equal(t, id, maxExtentID)
+	require.Equal(t, uint64(0), totalSize)
+	require.Equal(t, id, s.GetBaseExtentID())
+}
+
+func TestUpdateBaseExtentIDPersistsWithoutExtentFile(t *testing.T) {
+	path, clean, err := getTestPathExtentStore()
+	require.NoError(t, err)
+	defer clean()
+
+	s, err := storage.NewExtentStore(path, 42, 1*util.GB, proto.PartitionTypeNormal, 0, true)
+	require.NoError(t, err)
+
+	const remoteBaseExtentID uint64 = 9204
+	require.NoError(t, s.UpdateBaseExtentID(remoteBaseExtentID))
+	s.Close()
+
+	reloaded, err := storage.NewExtentStore(path, 42, 1*util.GB, proto.PartitionTypeNormal, 0, false)
+	require.NoError(t, err)
+	defer reloaded.Close()
+
+	require.Equal(t, remoteBaseExtentID, reloaded.GetBaseExtentID())
+	maxExtentID, totalSize := reloaded.GetMaxExtentIDAndPartitionSize()
+	require.Equal(t, remoteBaseExtentID, maxExtentID)
+	require.Equal(t, uint64(0), totalSize)
+
+	persistedID, err := reloaded.GetPersistenceBaseExtentID()
+	require.NoError(t, err)
+	require.Equal(t, remoteBaseExtentID, persistedID)
+}
+
+func TestGetMaxExtentIDPrefersHigherBaseExtentID(t *testing.T) {
+	path, clean, err := getTestPathExtentStore()
+	require.NoError(t, err)
+	defer clean()
+	s, err := storage.NewExtentStore(path, 42, 1*util.GB, proto.PartitionTypeNormal, 0, true)
+	require.NoError(t, err)
+	defer s.Close()
+
+	id, err := s.NextExtentID()
+	require.NoError(t, err)
+	require.NoError(t, s.Create(id))
+	extentStoreNormalRwTest(t, s, id)
+
+	const higherBaseExtentID uint64 = 15000
+	require.NoError(t, s.UpdateBaseExtentID(higherBaseExtentID))
+
+	maxExtentID, _ := s.GetMaxExtentIDAndPartitionSize()
+	require.Equal(t, higherBaseExtentID, maxExtentID)
+	require.True(t, s.HasExtent(id))
+}
+
+func TestGetBaseExtentIDTracksAllocationWatermark(t *testing.T) {
+	path, clean, err := getTestPathExtentStore()
+	require.NoError(t, err)
+	defer clean()
+
+	s, err := storage.NewExtentStore(path, 42, 1*util.GB, proto.PartitionTypeNormal, 0, true)
+	require.NoError(t, err)
+	defer s.Close()
+
+	require.Equal(t, uint64(storage.MinExtentID), s.GetBaseExtentID())
+	id, err := s.NextExtentID()
+	require.NoError(t, err)
+	require.Equal(t, id, s.GetBaseExtentID())
+}
