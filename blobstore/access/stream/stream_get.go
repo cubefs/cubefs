@@ -64,10 +64,11 @@ func (blob *blobGetArgs) ID() string {
 }
 
 type shardData struct {
-	index  int
-	status bool
-	buffer []byte
-	time   int
+	index   int
+	status  bool
+	buffer  []byte
+	time    int
+	errCode int
 }
 
 type sortedVuid struct {
@@ -378,6 +379,8 @@ func (h *Handler) readOneBlob(ctx context.Context, getTime *timeReadWrite,
 		h.memPool.Zero(shards[idx])
 	}
 
+	errCodeCount := make(map[int]int)
+
 	startRead := time.Now()
 	reconstructed := false
 	got, mostTime := 0, 0
@@ -413,6 +416,9 @@ func (h *Handler) readOneBlob(ctx context.Context, getTime *timeReadWrite,
 		}
 
 		received[shard.index] = shard.status
+		if !shard.status && shard.errCode > 0 {
+			errCodeCount[shard.errCode]++
+		}
 		if len(received) < dataN {
 			continue
 		}
@@ -493,7 +499,11 @@ func (h *Handler) readOneBlob(ctx context.Context, getTime *timeReadWrite,
 	if reconstructed {
 		return nil
 	}
-	return fmt.Errorf("broken %s", blob.ID())
+	msg := fmt.Sprintf("broken %s", blob.ID())
+	if topCode := mostFrequentErrorCode(errCodeCount); topCode > 0 {
+		return rpc.NewError(topCode, "", fmt.Errorf("%s", msg))
+	}
+	return fmt.Errorf("%s", msg)
 }
 
 func (h *Handler) readOneShard(ctx context.Context, serviceController controller.ServiceController,
@@ -527,23 +537,29 @@ func (h *Handler) readOneShard(ctx context.Context, serviceController controller
 	if hErr := hystrix.Do(rwCommand, func() error {
 		body, crc, err = h.getOneShardFromHost(ctx, serviceController, vuid.host, vuid.diskID, args,
 			vuid.index, clusterID, vid, 3, stopChan)
-		if err != nil && (errorTimeout(err) || rpc.DetectStatusCode(err) == errcode.CodeOverload) {
-			return err
+		if err != nil {
+			code := rpc.DetectStatusCode(err)
+			if code == errcode.CodeTimeout || code == errcode.CodeOverload {
+				return err
+			}
 		}
 		return nil
 	}, nil); hErr != nil {
+		shardResult.errCode = rpc.DetectStatusCode(wrapHystrixError(hErr))
 		span.Warnf("hystrix: read %s on %s: %s", blob.ID(), vuid.ID(), hErr.Error())
 		return shardResult
 	}
 
 	if err != nil {
 		if err == errPunishedDisk {
+			shardResult.errCode = errcode.CodePunishedDisk
 			span.Warnf("read %s on %s: %s", blob.ID(), vuid.ID(), err.Error())
 			return shardResult
 		}
 		if err == errCanceledReadShard {
 			return shardResult
 		}
+		shardResult.errCode = rpc.DetectStatusCode(err)
 		span.Warnf("rpc read %s on %s: %s", blob.ID(), vuid.ID(), errors.Detail(err))
 		return shardResult
 	}
@@ -568,6 +584,7 @@ func (h *Handler) readOneShard(ctx context.Context, serviceController controller
 			reportDownload(clusterID, "Download", "CrcMismatch")
 			span.Errorf("blob:%+v vuid:%s crc mismatch 0x%x(%d) != 0x%x(%d)",
 				blob, vuid.ID(), crc, crc, newCrc, newCrc)
+			shardResult.errCode = errcode.CodeCrcMismatch
 			return shardResult
 		}
 	}
@@ -719,7 +736,7 @@ func (h *Handler) getOneShardFromHost(ctx context.Context, serviceController con
 		case errcode.CodeDiskBroken, errcode.CodeVUIDReadonly:
 			h.punishDisk(ctx, clusterID, diskID, host, "BrokenOrRO")
 			span.Warnf("punish disk:%d on:%s cos:blobnode/%d", diskID, host, code)
-			return true, fmt.Errorf("punished disk (%d %s)", diskID, host)
+			return true, err
 
 		// vuid not found means the reflection between vuid and diskID has change,
 		// should refresh the blob volume cache
@@ -756,11 +773,11 @@ func (h *Handler) getOneShardFromHost(ctx context.Context, serviceController con
 		if errorTimeout(err) {
 			h.updateVolume(ctx, clusterID, vid)
 			h.punishDiskWith(ctx, clusterID, diskID, host, "Timeout")
-			return true, err
+			return true, errcode.ErrTimeout
 		}
 		if errorConnectionRefused(err) {
 			h.updateVolume(ctx, clusterID, vid)
-			return true, err
+			return true, errcode.ErrConnectionRefused
 		}
 		span.Debugf("read from disk:%d blobnode/%s", diskID, err.Error())
 
@@ -926,6 +943,20 @@ func emptyDataShardIndexes(sizes ec.BufferSizes) map[int]struct{} {
 	}
 
 	return set
+}
+
+func mostFrequentErrorCode(counts map[int]int) int {
+	if len(counts) == 0 {
+		return 0
+	}
+	maxCode, maxCount := 0, 0
+	for code, count := range counts {
+		if count > maxCount || (count == maxCount && code > maxCode) {
+			maxCode = code
+			maxCount = count
+		}
+	}
+	return maxCode
 }
 
 func shardSegment(shardSize, blobOffset, blobReadSize int) (shardOffset, shardReadSize int) {

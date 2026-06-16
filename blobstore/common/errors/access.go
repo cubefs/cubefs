@@ -25,6 +25,10 @@ const (
 	CodeAccessReadRequestBody = 466 // read request body error
 	CodeCallShardNodeFail     = 467 // call shard node failed
 	CodeConnectionRefused     = 468 //
+	CodePunishedDisk          = 469 // disk is punished
+	CodeTimeout               = 470 // request timeout
+	CodeHystrixCircuit        = 471 // hystrix circuit breaker
+	CodeCrcMismatch           = 472 // shard crc mismatch
 )
 
 // errro of access
@@ -37,4 +41,8 @@ var (
 	ErrAccessNotFoundShard    = Error(CodeShardNotFound)
 	ErrCallShardNodeFail      = Error(CodeCallShardNodeFail)
 	ErrConnectionRefused      = Error(CodeConnectionRefused)
+	ErrPunishedDisk           = Error(CodePunishedDisk)
+	ErrTimeout                = Error(CodeTimeout)
+	ErrHystrixCircuit         = Error(CodeHystrixCircuit)
+	ErrCrcMismatch            = Error(CodeCrcMismatch)
 )

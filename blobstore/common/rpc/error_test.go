@@ -56,6 +56,7 @@ func TestErrorBase(t *testing.T) {
 		require.Equal(t, 499, DetectStatusCode(ctx.Err()))
 
 		require.Equal(t, 500, DetectStatusCode(errors.New("server error")))
+		require.Equal(t, 604, DetectStatusCode(NewError(604, "", errors.New("i/o timeout"))))
 	}
 	{
 		require.Equal(t, "", DetectErrorCode(nil))

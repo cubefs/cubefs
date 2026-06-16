@@ -140,13 +140,14 @@ func (d *shardsData) set(vuid proto.Vuid, bid proto.BlobID, b []byte) {
 }
 
 type vuidControl struct {
-	mutex    sync.Mutex
-	broken   map[proto.Vuid]bool
-	blocked  map[proto.Vuid]bool
-	slowdown map[proto.Vuid]time.Duration
-	crc      map[proto.Vuid]bool
-	block    func()
-	duration time.Duration
+	mutex     sync.Mutex
+	broken    map[proto.Vuid]bool
+	brokenErr map[proto.Vuid]errcode.Error
+	blocked   map[proto.Vuid]bool
+	slowdown  map[proto.Vuid]time.Duration
+	crc       map[proto.Vuid]bool
+	block     func()
+	duration  time.Duration
 
 	isBNRealError bool // is return blobnode real error
 }
@@ -219,6 +220,25 @@ func (c *vuidControl) GetCrcMismatch(id proto.Vuid) bool {
 	return v
 }
 
+func (c *vuidControl) SetBrokenError(id proto.Vuid, e errcode.Error) {
+	c.mutex.Lock()
+	c.brokenErr[id] = e
+	c.mutex.Unlock()
+}
+
+func (c *vuidControl) ClearBrokenError(id proto.Vuid) {
+	c.mutex.Lock()
+	delete(c.brokenErr, id)
+	c.mutex.Unlock()
+}
+
+func (c *vuidControl) GetBrokenError(id proto.Vuid) (errcode.Error, bool) {
+	c.mutex.Lock()
+	v, ok := c.brokenErr[id]
+	c.mutex.Unlock()
+	return v, ok
+}
+
 func (c *vuidControl) SetBNRealError(b bool) {
 	c.mutex.Lock()
 	c.isBNRealError = b
@@ -240,9 +260,12 @@ var storageAPIRangeGetShard = func(ctx context.Context, host string, args *blobn
 	body io.ReadCloser, shardCrc uint32, err error,
 ) {
 	if vuidController.Isbroken(args.Vuid) {
-		err = errors.New("get shard fake error")
-		if vuidController.IsBNRealError() {
+		if specificErr, ok := vuidController.GetBrokenError(args.Vuid); ok {
+			err = specificErr
+		} else if vuidController.IsBNRealError() {
 			err = randBlobnodeRealError(getErrors)
+		} else {
+			err = errors.New("get shard fake error")
 		}
 		return
 	}
@@ -524,10 +547,11 @@ func initEC() {
 
 func initController() {
 	vuidController = &vuidControl{
-		broken:   make(map[proto.Vuid]bool),
-		blocked:  make(map[proto.Vuid]bool),
-		slowdown: make(map[proto.Vuid]time.Duration),
-		crc:      make(map[proto.Vuid]bool),
+		broken:    make(map[proto.Vuid]bool),
+		brokenErr: make(map[proto.Vuid]errcode.Error),
+		blocked:   make(map[proto.Vuid]bool),
+		slowdown:  make(map[proto.Vuid]time.Duration),
+		crc:       make(map[proto.Vuid]bool),
 		block: func() {
 			time.Sleep(200 * time.Millisecond)
 		},

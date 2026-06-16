@@ -17,6 +17,7 @@ package stream
 import (
 	"bytes"
 	"crypto/rand"
+	"errors"
 	"math"
 	mrand "math/rand"
 	"testing"
@@ -25,7 +26,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
+	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/rpc"
 )
 
 func TestAccessStreamGetBase(t *testing.T) {
@@ -650,6 +653,160 @@ type writer struct {
 func (w *writer) Write(p []byte) (n int, err error) {
 	copy(w.buf, p)
 	return len(p), nil
+}
+
+func TestMostFrequentErrorCode(t *testing.T) {
+	// empty map returns 0
+	require.Equal(t, 0, mostFrequentErrorCode(nil))
+	require.Equal(t, 0, mostFrequentErrorCode(map[int]int{}))
+
+	// single error code
+	require.Equal(t, 604, mostFrequentErrorCode(map[int]int{604: 1}))
+
+	// multiple codes, different frequencies — returns highest frequency
+	require.Equal(t, 604, mostFrequentErrorCode(map[int]int{604: 3, 613: 1, 673: 2}))
+
+	// multiple codes, same frequency — returns numerically largest
+	require.Equal(t, 673, mostFrequentErrorCode(map[int]int{604: 2, 673: 2}))
+	require.Equal(t, 613, mostFrequentErrorCode(map[int]int{604: 1, 611: 1, 613: 1}))
+}
+
+func TestAccessStreamGetBrokenErrorCode(t *testing.T) {
+	ctx := ctxWithName("TestAccessStreamGetBrokenErrorCode")
+	defer func() {
+		dataShards.clean()
+		for ii := 0; ii < len(allID); ii++ {
+			vuidController.Unbreak(proto.Vuid(allID[ii]))
+			vuidController.ClearBrokenError(proto.Vuid(allID[ii]))
+		}
+		vuidController.Break(1005)
+	}()
+
+	dataShards.clean()
+	tactic := codemode.EC6P6.Tactic()
+	size := tactic.N * tactic.MinShardSize
+	data := make([]byte, size)
+	rand.Read(data)
+	time.Sleep(time.Second * time.Duration(punishServiceS))
+	loc, err := streamer.Put(ctx(), bytes.NewReader(data), int64(size), nil, proto.ClusterID(0), codemode.CodeModeNone)
+	require.NoError(t, err)
+
+	// case 1: all broken shards return same bottom-layer error code (604 overload).
+	// Use exactly 7 broken shards (EC6P6 M+1) so all failures are recorded before early-stop.
+	for _, id := range allID[:7] {
+		vuidController.Break(proto.Vuid(id))
+		vuidController.SetBrokenError(proto.Vuid(id), errcode.ErrOverload)
+	}
+	{
+		buff := bytes.NewBuffer(nil)
+		transfer, err := streamer.Get(ctx(), buff, *loc, uint64(size), 0)
+		require.Nil(t, err)
+		err = transfer()
+		require.Error(t, err)
+		require.Equal(t, errcode.CodeOverload, rpc.DetectStatusCode(err))
+		require.Contains(t, err.Error(), "broken")
+
+		var rpcErr *rpc.Error
+		require.True(t, errors.As(err, &rpcErr))
+		require.Equal(t, errcode.CodeOverload, rpcErr.StatusCode())
+	}
+
+	// cleanup
+	for _, id := range allID {
+		vuidController.Unbreak(proto.Vuid(id))
+		vuidController.ClearBrokenError(proto.Vuid(id))
+	}
+	time.Sleep(time.Second * time.Duration(punishServiceS))
+
+	// case 2: mixed error codes — most frequent wins (deterministic).
+	// EC6P6 early-stop fires exactly when the 7th failure is received (badShards > M=6).
+	// Using exactly 7 broken shards guarantees all 7 report their errCode before early-stop
+	// triggers, so the frequency count is never disrupted by goroutine cancellation.
+	// With 7 failures, the remaining 5 healthy shards < dataN(6), so EC reconstruction fails.
+	// 5 shards of ErrOverload(604) vs 2 shards of ErrDiskBroken(613) → 604 must win.
+	for _, id := range allID[:5] {
+		vuidController.Break(proto.Vuid(id))
+		vuidController.SetBrokenError(proto.Vuid(id), errcode.ErrOverload)
+	}
+	for _, id := range allID[5:7] {
+		vuidController.Break(proto.Vuid(id))
+		vuidController.SetBrokenError(proto.Vuid(id), errcode.ErrDiskBroken)
+	}
+	{
+		buff := bytes.NewBuffer(nil)
+		transfer, err := streamer.Get(ctx(), buff, *loc, uint64(size), 0)
+		require.Nil(t, err)
+		err = transfer()
+		require.Error(t, err)
+		require.Equal(t, errcode.CodeOverload, rpc.DetectStatusCode(err))
+		var rpcErr *rpc.Error
+		require.True(t, errors.As(err, &rpcErr))
+	}
+
+	// cleanup
+	for _, id := range allID {
+		vuidController.Unbreak(proto.Vuid(id))
+		vuidController.ClearBrokenError(proto.Vuid(id))
+	}
+	time.Sleep(time.Second * time.Duration(punishServiceS))
+
+	// case 3: broken shards with no explicit blobnode error code (generic error).
+	// rpc.DetectStatusCode returns 500 for plain errors; all 7 are counted in errCodeCount
+	// and the final error is wrapped as rpc.NewError(500,...).
+	for _, id := range allID[:7] {
+		vuidController.Break(proto.Vuid(id))
+	}
+	{
+		buff := bytes.NewBuffer(nil)
+		transfer, err := streamer.Get(ctx(), buff, *loc, uint64(size), 0)
+		require.Nil(t, err)
+		err = transfer()
+		require.Error(t, err)
+		require.Equal(t, 500, rpc.DetectStatusCode(err))
+		require.Contains(t, err.Error(), "broken")
+
+		var rpcErr *rpc.Error
+		require.True(t, errors.As(err, &rpcErr))
+		require.Equal(t, 500, rpcErr.StatusCode())
+	}
+
+	// cleanup
+	for _, id := range allID {
+		vuidController.Unbreak(proto.Vuid(id))
+	}
+	time.Sleep(time.Second * time.Duration(punishServiceS))
+
+	// case 4: crc mismatch on 7 shards — returns CodeCrcMismatch (472)
+	for _, id := range allID[:7] {
+		vuidController.SetCrcMismatch(proto.Vuid(id), true)
+	}
+	{
+		buff := bytes.NewBuffer(nil)
+		transfer, err := streamer.Get(ctx(), buff, *loc, uint64(size), 0)
+		require.Nil(t, err)
+		err = transfer()
+		require.Error(t, err)
+		require.Equal(t, errcode.CodeCrcMismatch, rpc.DetectStatusCode(err))
+		require.Contains(t, err.Error(), "broken")
+	}
+	for _, id := range allID[:7] {
+		vuidController.SetCrcMismatch(proto.Vuid(id), false)
+	}
+	time.Sleep(time.Second * time.Duration(punishServiceS))
+
+	// case 5: not enough broken shards — read succeeds, no error code
+	vuidController.Break(1001)
+	vuidController.SetBrokenError(1001, errcode.ErrOverload)
+	{
+		buff := bytes.NewBuffer(nil)
+		transfer, err := streamer.Get(ctx(), buff, *loc, uint64(size), 0)
+		require.Nil(t, err)
+		err = transfer()
+		require.NoError(t, err)
+		require.True(t, dataEqual(data, buff.Bytes()))
+	}
+	vuidController.Unbreak(1001)
+	vuidController.ClearBrokenError(1001)
 }
 
 func BenchmarkAccessStreamGet(b *testing.B) {

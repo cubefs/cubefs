@@ -33,6 +33,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/ec"
+	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/resourcepool"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -596,4 +597,16 @@ func errorTimeout(err error) bool {
 
 func errorConnectionRefused(err error) bool {
 	return strings.Contains(err.Error(), "connection refused")
+}
+
+func wrapHystrixError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, hystrix.ErrCircuitOpen) ||
+		errors.Is(err, hystrix.ErrMaxConcurrency) ||
+		errors.Is(err, hystrix.ErrTimeout) {
+		return errcode.ErrHystrixCircuit
+	}
+	return err
 }
