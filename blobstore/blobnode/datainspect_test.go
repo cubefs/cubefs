@@ -214,8 +214,8 @@ func TestDataInspect(t *testing.T) {
 	}
 
 	{
-		// BatchRead IO error: skip the batch, continue inspection → 0 bad shards, nil error.
-		// Behavior change from per-shard path: EIO no longer terminates chunk inspection.
+		// BatchRead returns EIO → inspectBatch returns EIO as ioErr → scanFn returns EIO
+		// → inspectChunk returns EIO immediately, no bad shards accumulated.
 		cs := NewMockChunkAPI(ctr)
 		cs.EXPECT().Vuid().Return(proto.Vuid(1001)).AnyTimes()
 		cs.EXPECT().ID().Return(clustermgr.ChunkID{}).AnyTimes()
@@ -226,7 +226,7 @@ func TestDataInspect(t *testing.T) {
 		ds1.EXPECT().ID().Return(proto.DiskID(11)).AnyTimes()
 
 		bads, err = mgr.inspectChunk(ctx, cs)
-		require.NoError(t, err)
+		require.ErrorIs(t, err, syscall.EIO)
 		require.Equal(t, 0, len(bads))
 	}
 
@@ -300,9 +300,7 @@ func TestInspectChunk_NoGoroutineLeak(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// allow scheduler to settle
-	// (if a leak existed via a background goroutine, goroutine count would keep growing)
-	// small sleep to stabilize, not too long to avoid slowing CI, 50 iterations are enough to detect growth
+	// inspectChunk is single-threaded with no goroutines; repeated calls must not increase goroutine count.
 	after := runtime.NumGoroutine()
 	// tolerate a small delta for unrelated goroutines
 	const tolerance = 5
@@ -1358,4 +1356,209 @@ func TestInspectHTTPHandlers(t *testing.T) {
 
 	// CleanInspectMetric: success
 	require.Equal(t, http.StatusOK, do(http.MethodPost, ts.URL+"/inspect/cleanmetric?diskid=11"))
+}
+
+// ---------------------------------------------------------------------------
+// EIO propagation: fallback per-shard and CRC re-inspect paths
+// ---------------------------------------------------------------------------
+
+func TestInspectBatch_FallbackEIO(t *testing.T) {
+	ctr := gomock.NewController(t)
+	ctx := context.Background()
+
+	ds := NewMockDiskAPI(ctr)
+	ds.EXPECT().ID().Return(proto.DiskID(11)).AnyTimes()
+	ds.EXPECT().GetConfig().Return(&core.Config{
+		RuntimeConfig: core.RuntimeConfig{BatchBufferSize: 1024 * 1024},
+	}).AnyTimes()
+
+	svr := &Service{closeCh: make(chan struct{})}
+	mgr := newDataInspectMgr(t, DataInspectConf{IntervalSec: 1, RateLimit: 1024 * 1024}, svr)
+	lmt := rate.NewLimiter(rate.Limit(1024*1024), 2*1024*1024)
+
+	{
+		// BatchRead returns non-EIO/non-BidNotMatch error → fallback per-shard.
+		// Per-shard Read returns EIO → propagated as ioErr, not counted as bad shard.
+		si := &bnapi.ShardInfo{Bid: 7001, Vuid: proto.Vuid(1001), Size: 8, Offset: 0}
+		cs := NewMockChunkAPI(ctr)
+		cs.EXPECT().Vuid().Return(proto.Vuid(1001)).AnyTimes()
+		cs.EXPECT().BatchRead(any, any).Return(int64(0), errMock)
+		cs.EXPECT().Read(any, any).Return(int64(0), syscall.EIO)
+		cs.EXPECT().ReadShardMeta(any, any).Return(&core.ShardMeta{Size: 1}, nil)
+
+		bads, ioErr := mgr.inspectBatch(ctx, cs, ds, []*bnapi.ShardInfo{si}, lmt)
+		require.ErrorIs(t, ioErr, syscall.EIO)
+		require.Empty(t, bads)
+	}
+
+	{
+		// NewBatchShardReader fails (duplicate offset) → same fallback path.
+		// First shard returns EIO → iteration stops, second shard is never inspected.
+		si0 := &bnapi.ShardInfo{Bid: 7002, Vuid: proto.Vuid(1001), Size: 8, Offset: 100}
+		si1 := &bnapi.ShardInfo{Bid: 7003, Vuid: proto.Vuid(1001), Size: 8, Offset: 100}
+		cs := NewMockChunkAPI(ctr)
+		cs.EXPECT().Vuid().Return(proto.Vuid(1001)).AnyTimes()
+		cs.EXPECT().BatchRead(any, any).Times(0)
+		cs.EXPECT().Read(any, any).Return(int64(0), syscall.EIO)
+		cs.EXPECT().ReadShardMeta(any, any).Return(&core.ShardMeta{Size: 1}, nil)
+
+		bads, ioErr := mgr.inspectBatch(ctx, cs, ds, []*bnapi.ShardInfo{si0, si1}, lmt)
+		require.ErrorIs(t, ioErr, syscall.EIO)
+		require.Empty(t, bads)
+	}
+}
+
+func TestInspectBatch_CRCMismatch_EIO(t *testing.T) {
+	// BatchRead succeeds but CRC mismatch detected → re-inspect per-shard returns EIO.
+	// EIO propagated as ioErr, not counted as bad shard.
+	ctr := gomock.NewController(t)
+	ctx := context.Background()
+
+	ds := NewMockDiskAPI(ctr)
+	ds.EXPECT().ID().Return(proto.DiskID(11)).AnyTimes()
+	ds.EXPECT().GetConfig().Return(&core.Config{
+		RuntimeConfig: core.RuntimeConfig{BatchBufferSize: 1024 * 1024},
+	}).AnyTimes()
+
+	svr := &Service{closeCh: make(chan struct{})}
+	mgr := newDataInspectMgr(t, DataInspectConf{IntervalSec: 1, RateLimit: 1024 * 1024}, svr)
+	lmt := rate.NewLimiter(rate.Limit(1024*1024), 2*1024*1024)
+
+	data := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}
+	// si.Crc is intentionally wrong so crcWriter adds it to badBids
+	si := &bnapi.ShardInfo{Bid: 8001, Vuid: proto.Vuid(1001), Size: 8, Offset: 0, Crc: 0xDEADBEEF}
+
+	cs := NewMockChunkAPI(ctr)
+	cs.EXPECT().Vuid().Return(proto.Vuid(1001)).AnyTimes()
+	cs.EXPECT().BatchRead(any, any).DoAndReturn(func(_ context.Context, bs *core.BatchShard) (int64, error) {
+		var hdr bnapi.ShardsHeader
+		hdr.Set(http.StatusOK)
+		bs.Writer.Write(hdr[:])
+		bs.Writer.Write(data)
+		return int64(len(data)), nil
+	})
+	cs.EXPECT().Read(any, any).Return(int64(0), syscall.EIO)
+	cs.EXPECT().ReadShardMeta(any, any).Return(&core.ShardMeta{Size: 1}, nil)
+
+	bads, ioErr := mgr.inspectBatch(ctx, cs, ds, []*bnapi.ShardInfo{si}, lmt)
+	require.ErrorIs(t, ioErr, syscall.EIO)
+	require.Empty(t, bads)
+}
+
+func TestHandleBidNotMatch_EIO(t *testing.T) {
+	ctr := gomock.NewController(t)
+	ctx := context.Background()
+
+	ds := NewMockDiskAPI(ctr)
+	ds.EXPECT().ID().Return(proto.DiskID(11)).AnyTimes()
+	ds.EXPECT().GetConfig().Return(&core.Config{
+		RuntimeConfig: core.RuntimeConfig{BatchBufferSize: 1024 * 1024},
+	}).AnyTimes()
+
+	svr := &Service{closeCh: make(chan struct{})}
+	mgr := newDataInspectMgr(t, DataInspectConf{IntervalSec: 1, RateLimit: 1024 * 1024}, svr)
+	lmt := rate.NewLimiter(rate.Limit(1024*1024), 2*1024*1024)
+
+	writeShardOK := func(bs *core.BatchShard, data []byte) {
+		var hdr bnapi.ShardsHeader
+		hdr.Set(http.StatusOK)
+		bs.Writer.Write(hdr[:])
+		bs.Writer.Write(data)
+	}
+	writeShardErr := func(bs *core.BatchShard) {
+		var hdr bnapi.ShardsHeader
+		hdr.Set(http.StatusNotFound)
+		bs.Writer.Write(hdr[:])
+	}
+
+	{
+		// failIdx=0: the BidNotMatch shard itself triggers EIO during fallback inspect.
+		// reInspectCRCMismatches is a noop (no pre-failure bad bids);
+		// fallbackInspectShards for shards[0] returns EIO → propagated immediately.
+		si := &bnapi.ShardInfo{Bid: 9001, Vuid: proto.Vuid(1001), Size: 8, Offset: 0}
+		cs := NewMockChunkAPI(ctr)
+		cs.EXPECT().Vuid().Return(proto.Vuid(1001)).AnyTimes()
+		cs.EXPECT().BatchRead(any, any).DoAndReturn(func(_ context.Context, bs *core.BatchShard) (int64, error) {
+			writeShardErr(bs)
+			return 0, bloberr.ErrBidNotMatch
+		})
+		cs.EXPECT().Read(any, any).Return(int64(0), syscall.EIO)
+		cs.EXPECT().ReadShardMeta(any, any).Return(&core.ShardMeta{Size: 1}, nil)
+
+		bads, ioErr := mgr.inspectBatch(ctx, cs, ds, []*bnapi.ShardInfo{si}, lmt)
+		require.ErrorIs(t, ioErr, syscall.EIO)
+		require.Empty(t, bads)
+	}
+
+	{
+		// failIdx=1: si0 has CRC mismatch (in badBids), si1 is the BidNotMatch shard.
+		// reInspectCRCMismatches re-inspects si0 → Read returns EIO → returns EIO immediately
+		// before ever reaching the si1 fallback or any remaining-shard batch.
+		data0 := []byte{0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x11, 0x22}
+		si0 := &bnapi.ShardInfo{Bid: 9002, Vuid: proto.Vuid(1001), Size: 8, Offset: 0, Crc: 0xDEADBEEF}
+		si1 := &bnapi.ShardInfo{Bid: 9003, Vuid: proto.Vuid(1001), Size: 8, Offset: 100}
+		cs := NewMockChunkAPI(ctr)
+		cs.EXPECT().Vuid().Return(proto.Vuid(1001)).AnyTimes()
+		cs.EXPECT().BatchRead(any, any).DoAndReturn(func(_ context.Context, bs *core.BatchShard) (int64, error) {
+			writeShardOK(bs, data0) // si0 written; wrong Crc → added to crcWriter.badBids
+			writeShardErr(bs)       // si1 non-200 header → ErrBidNotMatch
+			return 0, bloberr.ErrBidNotMatch
+		})
+		// si0 re-inspect returns EIO; si1 fallback is never reached
+		cs.EXPECT().Read(any, any).Return(int64(0), syscall.EIO)
+		cs.EXPECT().ReadShardMeta(any, any).Return(&core.ShardMeta{Size: 1}, nil)
+
+		bads, ioErr := mgr.inspectBatch(ctx, cs, ds, []*bnapi.ShardInfo{si0, si1}, lmt)
+		require.ErrorIs(t, ioErr, syscall.EIO)
+		require.Empty(t, bads)
+	}
+}
+
+func TestInspectDisk_EIOStopsInspection(t *testing.T) {
+	// EIO from the fallback per-shard path terminates the entire disk inspection:
+	// after the first chunk returns EIO, inspectDisk returns without touching the second chunk.
+	ctr := gomock.NewController(t)
+
+	ds := NewMockDiskAPI(ctr)
+	ds.EXPECT().ID().Return(proto.DiskID(11)).AnyTimes()
+	ds.EXPECT().DiskInfo().Return(clustermgr.BlobNodeDiskInfo{}).AnyTimes()
+	ds.EXPECT().GetConfig().Return(&core.Config{
+		RuntimeConfig: core.RuntimeConfig{BatchBufferSize: 1024 * 1024},
+	}).Times(1)
+	ds.EXPECT().IsWritable().Return(true).Times(1)
+	ds.EXPECT().ListChunks(any).Return([]core.VuidMeta{
+		{Vuid: proto.Vuid(1001), Status: clustermgr.ChunkStatusNormal},
+		{Vuid: proto.Vuid(1002), Status: clustermgr.ChunkStatusNormal},
+	}, nil)
+
+	cs1 := NewMockChunkAPI(ctr)
+	cs2 := NewMockChunkAPI(ctr)
+
+	ds.EXPECT().GetChunkStorage(proto.Vuid(1001)).Return(cs1, true)
+	// cs2 must never be fetched after cs1 returns EIO
+	ds.EXPECT().GetChunkStorage(proto.Vuid(1002)).Times(0)
+
+	cs1.EXPECT().Vuid().Return(proto.Vuid(1001)).AnyTimes()
+	cs1.EXPECT().ID().Return(clustermgr.ChunkID{}).AnyTimes()
+	// cs1.Disk() called twice: once in inspectDisk (IsWritable), once in inspectChunk (ds := cs.Disk())
+	cs1.EXPECT().Disk().Return(ds).Times(2)
+	cs1.EXPECT().ListShards(any, any, any, any).Return(
+		[]*bnapi.ShardInfo{{Bid: 1, Vuid: proto.Vuid(1001), Size: 8, Offset: 0}},
+		proto.InValidBlobID, nil,
+	)
+	cs1.EXPECT().BatchRead(any, any).Return(int64(0), errMock)
+	cs1.EXPECT().Read(any, any).Return(int64(0), syscall.EIO)
+	cs1.EXPECT().ReadShardMeta(any, any).Return(&core.ShardMeta{Size: 1}, nil)
+
+	cs2.EXPECT().Disk().Times(0)
+	cs2.EXPECT().ListShards(any, any, any, any).Times(0)
+	cs2.EXPECT().BatchRead(any, any).Times(0)
+
+	svr := &Service{closeCh: make(chan struct{})}
+	mgr := newDataInspectMgr(t, DataInspectConf{IntervalSec: 1, RateLimit: 1024 * 1024}, svr)
+	mgr.setLimiters([]core.DiskAPI{ds})
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	mgr.inspectDisk(ds, &wg)
 }

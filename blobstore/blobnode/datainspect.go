@@ -286,19 +286,22 @@ func splitIntoBatches(shards []*bnapi.ShardInfo, maxSize int64) [][]*bnapi.Shard
 // fallbackInspectShards inspects each shard individually, used when BatchRead fails.
 func (mgr *DataInspectMgr) fallbackInspectShards(ctx context.Context, cs core.ChunkAPI, ds core.DiskAPI,
 	shards []*bnapi.ShardInfo,
-) []bnapi.BadShard {
+) ([]bnapi.BadShard, error) {
 	var badShards []bnapi.BadShard
 	for _, si := range shards {
 		if err := mgr.inspectShard(ctx, cs, si); err != nil {
+			if base.IsEIO(err) {
+				return badShards, err
+			}
 			badShards = append(badShards, bnapi.BadShard{DiskID: ds.ID(), Vuid: si.Vuid, Bid: si.Bid, Err: err})
 		}
 	}
-	return badShards
+	return badShards, nil
 }
 
-func (mgr *DataInspectMgr) reInspectCRCMismatches(ctx context.Context, cs core.ChunkAPI, ds core.DiskAPI, shards []*bnapi.ShardInfo, badBids []proto.BlobID, lmt *rate.Limiter) []bnapi.BadShard {
+func (mgr *DataInspectMgr) reInspectCRCMismatches(ctx context.Context, cs core.ChunkAPI, ds core.DiskAPI, shards []*bnapi.ShardInfo, badBids []proto.BlobID) ([]bnapi.BadShard, error) {
 	if len(badBids) == 0 {
-		return nil
+		return nil, nil
 	}
 	span := trace.SpanFromContextSafe(ctx)
 	badBidSet := make(map[proto.BlobID]struct{}, len(badBids))
@@ -312,10 +315,13 @@ func (mgr *DataInspectMgr) reInspectCRCMismatches(ctx context.Context, cs core.C
 		}
 		span.Warnf("crc mismatch detected, re-inspecting shard. vuid:%d, bid:%d", cs.Vuid(), si.Bid)
 		if err := mgr.inspectShard(ctx, cs, si); err != nil {
+			if base.IsEIO(err) {
+				return badShards, err
+			}
 			badShards = append(badShards, bnapi.BadShard{DiskID: ds.ID(), Vuid: si.Vuid, Bid: si.Bid, Err: err})
 		}
 	}
-	return badShards
+	return badShards, nil
 }
 
 func (mgr *DataInspectMgr) inspectBatch(ctx context.Context, cs core.ChunkAPI, ds core.DiskAPI, shards []*bnapi.ShardInfo, lmt *rate.Limiter) (badShards []bnapi.BadShard, ioErr error) {
@@ -348,7 +354,7 @@ func (mgr *DataInspectMgr) inspectBatch(ctx context.Context, cs core.ChunkAPI, d
 	if err != nil {
 		// offsets not monotonically increasing or invalid param; fallback per-shard
 		span.Warnf("create batch reader failed, fallback per-shard. vuid:%d, err:%+v", cs.Vuid(), err)
-		return mgr.fallbackInspectShards(ctx, cs, ds, shards), nil
+		return mgr.fallbackInspectShards(ctx, cs, ds, shards)
 	}
 
 	if _, err = cs.BatchRead(ctx, batchShard); err != nil {
@@ -359,10 +365,10 @@ func (mgr *DataInspectMgr) inspectBatch(ctx context.Context, cs core.ChunkAPI, d
 			return mgr.handleBidNotMatch(ctx, cs, ds, shards, crcWriter, lmt)
 		}
 		span.Warnf("batch read failed, fallback per-shard. vuid:%d, err:%+v", cs.Vuid(), err)
-		return mgr.fallbackInspectShards(ctx, cs, ds, shards), nil
+		return mgr.fallbackInspectShards(ctx, cs, ds, shards)
 	}
 
-	return mgr.reInspectCRCMismatches(ctx, cs, ds, shards, crcWriter.badBids, lmt), nil
+	return mgr.reInspectCRCMismatches(ctx, cs, ds, shards, crcWriter.badBids)
 }
 
 func (mgr *DataInspectMgr) handleBidNotMatch(ctx context.Context, cs core.ChunkAPI, ds core.DiskAPI,
@@ -372,13 +378,20 @@ func (mgr *DataInspectMgr) handleBidNotMatch(ctx context.Context, cs core.ChunkA
 	failIdx := crcWriter.idx
 
 	// reuse CRC results for shards already read before the failure
-	badShards = mgr.reInspectCRCMismatches(ctx, cs, ds, shards[:failIdx], crcWriter.badBids, lmt)
+	var err error
+	badShards, err = mgr.reInspectCRCMismatches(ctx, cs, ds, shards[:failIdx], crcWriter.badBids)
+	if err != nil {
+		return badShards, err
+	}
 
 	// the failing shard has a corrupted file header; confirm via per-shard flow
 	if failIdx < len(shards) {
 		span.Warnf("bid header mismatch, re-inspecting shard. vuid:%d, bid:%d", cs.Vuid(), shards[failIdx].Bid)
-		bads := mgr.fallbackInspectShards(ctx, cs, ds, shards[failIdx:failIdx+1])
+		bads, err := mgr.fallbackInspectShards(ctx, cs, ds, shards[failIdx:failIdx+1])
 		badShards = append(badShards, bads...)
+		if err != nil {
+			return badShards, err
+		}
 	}
 
 	// continue batch inspection for shards that were never read
@@ -392,8 +405,8 @@ func (mgr *DataInspectMgr) handleBidNotMatch(ctx context.Context, cs core.ChunkA
 
 func (mgr *DataInspectMgr) inspectChunk(pCtx context.Context, cs core.ChunkAPI) ([]bnapi.BadShard, error) {
 	span := trace.SpanFromContextSafe(pCtx)
-	ctx, cancel := context.WithCancel(context.Background())
-	span, ctx = trace.StartSpanFromContextWithTraceID(ctx, "", span.TraceID())
+	var ctx context.Context
+	span, ctx = trace.StartSpanFromContextWithTraceID(context.Background(), "", span.TraceID())
 	span.Debugf("start to inspect chunk vuid:%d, chunk:%s.", cs.Vuid(), cs.ID())
 
 	ctx = bnapi.SetIoType(ctx, bnapi.BackgroundIO)
@@ -409,13 +422,15 @@ func (mgr *DataInspectMgr) inspectChunk(pCtx context.Context, cs core.ChunkAPI) 
 				span.Warnf("inspect chunk stop, upper context canceled. vuid:%d, chunk:%s.", cs.Vuid(), cs.ID())
 				return pCtx.Err()
 			case <-mgr.svr.closeCh:
-				cancel()
 				span.Warnf("inspect chunk stop, service is closed. vuid:%d, chunk:%s.", cs.Vuid(), cs.ID())
 				return errServiceClosed
 			default:
 			}
 
 			bads, ioErr := mgr.inspectBatch(ctx, cs, ds, batch, mgr.getLimiter(ds))
+			if base.IsEIO(ioErr) {
+				return ioErr
+			}
 			badShards = append(badShards, bads...)
 			if ioErr != nil {
 				span.Warnf("batch read io error, skip batch. vuid:%d, err:%+v", cs.Vuid(), ioErr)
