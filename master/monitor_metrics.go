@@ -835,6 +835,9 @@ func (mm *monitorMetrics) setMpAndDpMetrics() {
 		vol.mpsLock.RLock()
 		for _, mp := range vol.MetaPartitions {
 			if !mp.isLeaderExist() && time.Now().Unix()-mp.LeaderReportTime > mm.cluster.cfg.MpNoLeaderReportIntervalSec {
+				reportTime := time.Unix(mp.LeaderReportTime, 0)
+				msg := fmt.Sprintf("mp(%v) lost leader, leader last report time(%v), since report time(%v)", mp.PartitionID, reportTime, time.Since(reportTime))
+				auditlog.LogMasterOp("setMpAndDpMetrics", msg, nil)
 				mpMissingLeaderCount++
 			}
 			if len(mp.getActiveAddrs(mm.cluster.getMetaPartitionTimeoutSec())) < int(mp.ReplicaNum) {

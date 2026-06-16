@@ -11,10 +11,13 @@
 package master
 
 import (
+	"os"
+	"path"
 	"testing"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
@@ -565,4 +568,169 @@ func TestResetAllLeaderMetricsClearsFollowerUnsafeGaugeVecs(t *testing.T) {
 	require.Zero(t, gaugeVecValue(t, mm.lcVolStatus, "lc-vol1"))
 	require.Zero(t, gaugeVecValue(t, mm.lcVolScanned, "lc-vol1", "file"))
 	require.Empty(t, mm.lcId)
+}
+
+func newMonitorMetricsForMpDpMetricsTest(t *testing.T, c *Cluster) *monitorMetrics {
+	t.Helper()
+	mm := newMonitorMetrics(c)
+	mm.DpMissingLeaderCount = newTestGaugeVec(t, "test_dp_missing_Leader_count", []string{"replicaNum", "media"})
+	mm.ReplicaMissingDPCount = newTestGaugeVec(t, "test_replica_missing_dp_count", []string{"replicaNum", "media"})
+	mm.MpMissingLeaderCount = exporter.NewGauge("test_mp_missing_Leader_count")
+	mm.MpMissingReplicaCount = exporter.NewGauge("test_mp_missing_Replica_count")
+	mm.MpFailedRecoveryCount = exporter.NewGauge("test_mp_failed_recovery_count")
+	return mm
+}
+
+func testMetaReplicaForMetrics(addr string, isLeader bool) *MetaReplica {
+	mn := clusterStatWritableMetaNode(addr, "stat-test-zone")
+	return &MetaReplica{
+		Addr:       addr,
+		Status:     proto.ReadWrite,
+		IsLeader:   isLeader,
+		ReportTime: time.Now().Unix(),
+		metaNode:   mn,
+	}
+}
+
+func initMasterAuditLogForTest(t *testing.T) string {
+	t.Helper()
+	auditlog.StopAudit()
+	tmpDir := t.TempDir()
+	_, err := auditlog.InitAuditWithPrefix(tmpDir, "master", 1024*1024, nil)
+	require.NoError(t, err)
+	t.Cleanup(auditlog.StopAudit)
+	return tmpDir
+}
+
+func readMasterAuditLog(t *testing.T, tmpDir string) string {
+	t.Helper()
+	time.Sleep(100 * time.Millisecond)
+	auditlog.StopAudit()
+	content, err := os.ReadFile(path.Join(tmpDir, "master", "audit.log"))
+	require.NoError(t, err)
+	return string(content)
+}
+
+func TestSetMpAndDpMetrics_mpNoLeader_writesAuditLog(t *testing.T) {
+	tmpDir := initMasterAuditLogForTest(t)
+
+	c := clusterStatTestCluster(t, "mp-no-leader-audit")
+	c.cfg.MpNoLeaderReportIntervalSec = 5
+
+	vol := clusterStatTestVol("audit-vol", proto.VolStatusNormal, 100)
+	vol.MetaPartitions[474] = &MetaPartition{
+		PartitionID:      474,
+		ReplicaNum:       3,
+		LeaderReportTime: time.Now().Unix() - 60,
+		Replicas: []*MetaReplica{
+			testMetaReplicaForMetrics("10.0.0.1:17210", false),
+			testMetaReplicaForMetrics("10.0.0.2:17210", false),
+			testMetaReplicaForMetrics("10.0.0.3:17210", false),
+		},
+	}
+	c.volMutex.Lock()
+	c.vols["audit-vol"] = vol
+	c.volMutex.Unlock()
+
+	mm := newMonitorMetricsForMpDpMetricsTest(t, c)
+	mm.setMpAndDpMetrics()
+
+	logContent := readMasterAuditLog(t, tmpDir)
+	require.Contains(t, logContent, "setMpAndDpMetrics")
+	require.Contains(t, logContent, "mp(474) lost leader")
+	require.Contains(t, logContent, "leader last report time")
+}
+
+func TestSetMpAndDpMetrics_mpNoLeader_withinInterval_noAudit(t *testing.T) {
+	tmpDir := initMasterAuditLogForTest(t)
+
+	c := clusterStatTestCluster(t, "mp-no-leader-skip")
+	c.cfg.MpNoLeaderReportIntervalSec = 300
+
+	vol := clusterStatTestVol("skip-vol", proto.VolStatusNormal, 100)
+	vol.MetaPartitions[474] = &MetaPartition{
+		PartitionID:      474,
+		ReplicaNum:       3,
+		LeaderReportTime: time.Now().Unix() - 10,
+		Replicas: []*MetaReplica{
+			testMetaReplicaForMetrics("10.0.0.1:17210", false),
+		},
+	}
+	c.volMutex.Lock()
+	c.vols["skip-vol"] = vol
+	c.volMutex.Unlock()
+
+	mm := newMonitorMetricsForMpDpMetricsTest(t, c)
+	mm.setMpAndDpMetrics()
+
+	logContent := readMasterAuditLog(t, tmpDir)
+	require.NotContains(t, logContent, "mp(474) lost leader")
+}
+
+func TestSetMpAndDpMetrics_mpWithLeader_noAudit(t *testing.T) {
+	tmpDir := initMasterAuditLogForTest(t)
+
+	c := clusterStatTestCluster(t, "mp-has-leader")
+	c.cfg.MpNoLeaderReportIntervalSec = 5
+
+	vol := clusterStatTestVol("leader-vol", proto.VolStatusNormal, 100)
+	vol.MetaPartitions[474] = &MetaPartition{
+		PartitionID:      474,
+		ReplicaNum:       3,
+		LeaderReportTime: time.Now().Unix() - 60,
+		Replicas: []*MetaReplica{
+			testMetaReplicaForMetrics("10.0.0.1:17210", true),
+			testMetaReplicaForMetrics("10.0.0.2:17210", false),
+		},
+	}
+	c.volMutex.Lock()
+	c.vols["leader-vol"] = vol
+	c.volMutex.Unlock()
+
+	mm := newMonitorMetricsForMpDpMetricsTest(t, c)
+	mm.setMpAndDpMetrics()
+
+	logContent := readMasterAuditLog(t, tmpDir)
+	require.NotContains(t, logContent, "mp(474) lost leader")
+}
+
+func TestSetMpAndDpMetrics_dpNoLeader_writesAuditLog(t *testing.T) {
+	tmpDir := initMasterAuditLogForTest(t)
+
+	c := clusterStatTestCluster(t, "dp-no-leader-audit")
+	c.cfg.DpNoLeaderReportIntervalSec = 5
+
+	vol := clusterStatTestVol("dp-audit-vol", proto.VolStatusNormal, 100)
+	vol.dpReplicaNum = 3
+	dn := clusterStatWritableDataNode("10.0.0.1:17310", "stat-test-zone", proto.MediaType_HDD)
+	dp := &DataPartition{
+		PartitionID:      9001,
+		PartitionType:    proto.PartitionTypeNormal,
+		ReplicaNum:       3,
+		MediaType:        proto.MediaType_HDD,
+		LeaderReportTime: time.Now().Unix() - 60,
+		Replicas: []*DataReplica{
+			{
+				DataReplica: proto.DataReplica{
+					Addr:       dn.Addr,
+					IsLeader:   false,
+					ReportTime: time.Now().Unix(),
+					Status:     proto.ReadWrite,
+				},
+				dataNode: dn,
+			},
+		},
+	}
+	vol.dataPartitions.put(dp)
+
+	c.volMutex.Lock()
+	c.vols["dp-audit-vol"] = vol
+	c.volMutex.Unlock()
+
+	mm := newMonitorMetricsForMpDpMetricsTest(t, c)
+	mm.setMpAndDpMetrics()
+
+	logContent := readMasterAuditLog(t, tmpDir)
+	require.Contains(t, logContent, "setMpAndDpMetrics")
+	require.Contains(t, logContent, "dp(9001) lost leader")
 }
