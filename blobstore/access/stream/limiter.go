@@ -118,20 +118,20 @@ type Writer struct {
 var _ io.Writer = &Writer{}
 
 func (w *Writer) Write(p []byte) (n int, err error) {
-	n, err = w.underlying.Write(p)
-
 	now := time.Now()
-	reserve := w.rate.ReserveN(now, n)
+	reserve := w.rate.ReserveN(now, len(p))
 
 	// Wait if necessary
 	delay := reserve.DelayFrom(now)
 	if delay == 0 {
+		n, err = w.underlying.Write(p)
 		return
 	}
 
 	span := trace.SpanFromContextSafe(w.ctx)
 	if !reserve.OK() {
-		span.Warnf("writer exceeds limiter n:%d, burst:%d", n, w.rate.Burst())
+		span.Warnf("writer exceeds limiter n:%d, burst:%d", len(p), w.rate.Burst())
+		n, err = w.underlying.Write(p)
 		return
 	}
 	t := time.NewTimer(delay)
@@ -143,6 +143,7 @@ func (w *Writer) Write(p []byte) (n int, err error) {
 	select {
 	case <-t.C:
 		// We can proceed.
+		n, err = w.underlying.Write(p)
 		return
 	case <-w.ctx.Done():
 		// Context was canceled before we could proceed.  Cancel the
