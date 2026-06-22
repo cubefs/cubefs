@@ -274,7 +274,7 @@ func TestSelectDisks(t *testing.T) {
 		mgr.cfg.DiskUsageThreshold = 0
 		mgr.clusterTopology = buildTopology(allDisks)
 		mgr.IMigrator.(*MockMigrater).EXPECT().IsMigratingDisk(any).AnyTimes().Return(false)
-		selected := mgr.selectDisks(mgr.cfg.MaxDiskFreeChunkCnt, mgr.cfg.MinDiskFreeChunkCnt)
+		selected := mgr.selectDisks(context.Background(), mgr.cfg.MaxDiskFreeChunkCnt, mgr.cfg.MinDiskFreeChunkCnt)
 		ids := diskIDs(selected)
 		require.Contains(t, ids, diskSlot.DiskID)
 		require.NotContains(t, ids, diskWatermark.DiskID)
@@ -288,7 +288,7 @@ func TestSelectDisks(t *testing.T) {
 		mgr.cfg.DiskUsageThreshold = 0.9
 		mgr.clusterTopology = buildTopology(allDisks)
 		mgr.IMigrator.(*MockMigrater).EXPECT().IsMigratingDisk(any).AnyTimes().Return(false)
-		selected := mgr.selectDisks(mgr.cfg.MaxDiskFreeChunkCnt, mgr.cfg.MinDiskFreeChunkCnt)
+		selected := mgr.selectDisks(context.Background(), mgr.cfg.MaxDiskFreeChunkCnt, mgr.cfg.MinDiskFreeChunkCnt)
 		ids := diskIDs(selected)
 		require.Contains(t, ids, diskSlot.DiskID)
 		require.Contains(t, ids, diskWatermark.DiskID)
@@ -606,6 +606,7 @@ func TestCollectionTaskPriorityPath(t *testing.T) {
 
 		idleVol := MockGenVolInfo(vuid.Vid(), codemode.EC6P6, proto.VolumeStatusIdle)
 		gomock.InOrder(
+			mgr.IMigrator.(*MockMigrater).EXPECT().IsMigratingDisk(disk.DiskID).Return(false),
 			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, vuid.Vid()).Return(idleVol, nil),
 			mgr.IMigrator.(*MockMigrater).EXPECT().IsTaskExist(disk.DiskID, vuid).Return(false),
 			mgr.IMigrator.(*MockMigrater).EXPECT().AddTask(any, any).Return(nil),

@@ -124,6 +124,9 @@ func (mgr *BalanceMgr) collectionTask() (err error) {
 
 	balanceDiskCnt := 0
 	for vuid, disk := range mgr.priorityVuids {
+		if mgr.IMigrator.IsMigratingDisk(disk.DiskID) {
+			continue
+		}
 		volInfo, err := mgr.clusterMgrCli.GetVolumeInfo(ctx, vuid.Vid())
 		if err != nil {
 			span.Errorf("get volume info failed: vid[%d], err[%+v]", vuid.Vid(), err)
@@ -135,6 +138,7 @@ func (mgr *BalanceMgr) collectionTask() (err error) {
 		if err = mgr.generateTask(ctx, vuid, disk); err != nil {
 			continue
 		}
+		span.Debugf("add balance task from priority vuid[%d] success, disk[%d]", vuid, disk.DiskID)
 		balanceDiskCnt++
 		if balanceDiskCnt >= needBalanceDiskCnt {
 			return nil
@@ -142,7 +146,7 @@ func (mgr *BalanceMgr) collectionTask() (err error) {
 	}
 
 	// select balance disks
-	disks := mgr.selectDisks(mgr.cfg.MaxDiskFreeChunkCnt, mgr.cfg.MinDiskFreeChunkCnt)
+	disks := mgr.selectDisks(ctx, mgr.cfg.MaxDiskFreeChunkCnt, mgr.cfg.MinDiskFreeChunkCnt)
 	span.Debugf("select balance disks: len[%d]", len(disks))
 
 	for _, disk := range disks {
@@ -161,7 +165,8 @@ func (mgr *BalanceMgr) collectionTask() (err error) {
 	return nil
 }
 
-func (mgr *BalanceMgr) selectDisks(maxFreeChunkCnt, minFreeChunkCnt int64) []*client.DiskInfoSimple {
+func (mgr *BalanceMgr) selectDisks(ctx context.Context, maxFreeChunkCnt, minFreeChunkCnt int64) []*client.DiskInfoSimple {
+	span := trace.SpanFromContextSafe(ctx)
 	var allDisks []*client.DiskInfoSimple
 	for idcName := range mgr.clusterTopology.GetIDCs() {
 		maxFreeChunksDisk := mgr.clusterTopology.MaxFreeChunksDisk(idcName)
@@ -176,11 +181,16 @@ func (mgr *BalanceMgr) selectDisks(maxFreeChunkCnt, minFreeChunkCnt int64) []*cl
 		if !disk.IsHealth() || mgr.IMigrator.IsMigratingDisk(disk.DiskID) {
 			continue
 		}
-		if disk.FreeChunkCnt < minFreeChunkCnt ||
-			(mgr.cfg.DiskUsageThreshold > 0 && disk.UsageRatio() >= mgr.cfg.DiskUsageThreshold) {
+		if disk.FreeChunkCnt < minFreeChunkCnt {
 			selected = append(selected, disk)
+			span.Debugf("select balance disk for free chunk count, disk[%d], free[%d]", disk.DiskID, disk.FreeChunkCnt)
 			continue
 		}
+		if mgr.cfg.DiskUsageThreshold > 0 && disk.UsageRatio() >= mgr.cfg.DiskUsageThreshold {
+			selected = append(selected, disk)
+			span.Debugf("select balance disk for disk usage, disk[%d], usage[%f]", disk.DiskID, disk.UsageRatio())
+		}
+
 	}
 	return selected
 }
