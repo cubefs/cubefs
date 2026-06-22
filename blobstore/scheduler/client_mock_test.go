@@ -213,10 +213,10 @@ func (mr *MockClusterMgrAPIMockRecorder) GetMigratingDisk(arg0, arg1, arg2 inter
 }
 
 // GetService mocks base method.
-func (m *MockClusterMgrAPI) GetService(arg0 context.Context, arg1 string, arg2 proto.ClusterID) ([]string, error) {
+func (m *MockClusterMgrAPI) GetService(arg0 context.Context, arg1 string, arg2 proto.ClusterID) ([]clustermgr.ServiceNode, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetService", arg0, arg1, arg2)
-	ret0, _ := ret[0].([]string)
+	ret0, _ := ret[0].([]clustermgr.ServiceNode)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

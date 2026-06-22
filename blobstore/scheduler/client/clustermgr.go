@@ -79,7 +79,7 @@ type ClusterMgrDiskAPI interface {
 
 type ClusterMgrServiceAPI interface {
 	Register(ctx context.Context, info RegisterInfo) error
-	GetService(ctx context.Context, name string, clusterID proto.ClusterID) (hosts []string, err error)
+	GetService(ctx context.Context, name string, clusterID proto.ClusterID) (nodes []cmapi.ServiceNode, err error)
 }
 
 type ClusterMgrTaskAPI interface {
@@ -871,18 +871,19 @@ func (c *clustermgrClient) Register(ctx context.Context, info RegisterInfo) erro
 	return c.client.RegisterService(ctx, node, info.HeartbeatIntervalS, info.HeartbeatTicks, info.ExpiresTicks)
 }
 
-// GetService returns services
-func (c *clustermgrClient) GetService(ctx context.Context, name string, clusterID proto.ClusterID) (hosts []string, err error) {
+// GetService returns service nodes (with host and idc) for the given name and cluster.
+func (c *clustermgrClient) GetService(ctx context.Context, name string, clusterID proto.ClusterID) ([]cmapi.ServiceNode, error) {
 	svrInfos, err := c.client.GetService(ctx, cmapi.GetServiceArgs{Name: name})
 	if err != nil {
 		return nil, err
 	}
+	nodes := make([]cmapi.ServiceNode, 0, len(svrInfos.Nodes))
 	for _, s := range svrInfos.Nodes {
 		if clusterID == proto.ClusterID(s.ClusterID) {
-			hosts = append(hosts, s.Host)
+			nodes = append(nodes, s)
 		}
 	}
-	return
+	return nodes, nil
 }
 
 // AddMigrateTask adds migrate task
