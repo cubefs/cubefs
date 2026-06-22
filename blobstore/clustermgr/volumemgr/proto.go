@@ -192,6 +192,7 @@ func (vUnit *volumeUnit) ToVolumeUnitRecord() (ret *volumedb.VolumeUnitRecord) {
 		Used:       vUnit.vuInfo.Used,
 		Total:      vUnit.vuInfo.Total,
 		Compacting: vUnit.vuInfo.Compacting,
+		LogicSize:  vUnit.vuInfo.LogicSize,
 	}
 }
 
@@ -429,6 +430,7 @@ func volumeUnitRecordToVolumeUnit(record *volumedb.VolumeUnitRecord) (ret *volum
 			Used:       record.Used,
 			Total:      record.Total,
 			Compacting: record.Compacting,
+			LogicSize:  record.LogicSize,
 		},
 	}
 }
