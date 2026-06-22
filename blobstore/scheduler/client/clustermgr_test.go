@@ -620,10 +620,10 @@ func TestClustermgrClientExtra(t *testing.T) {
 				{ClusterID: 2, Host: "127.0.0.2:8080"},
 			},
 		}, nil)
-		hosts, err := cli.GetService(ctx, "scheduler", proto.ClusterID(1))
+		nodes, err := cli.GetService(ctx, "scheduler", proto.ClusterID(1))
 		require.NoError(t, err)
-		require.Equal(t, 1, len(hosts))
-		require.Equal(t, "127.0.0.1:8080", hosts[0])
+		require.Equal(t, 1, len(nodes))
+		require.Equal(t, "127.0.0.1:8080", nodes[0].Host)
 
 		mockCli.EXPECT().GetService(any, any).Return(cmapi.ServiceInfo{}, errMock)
 		_, err = cli.GetService(ctx, "scheduler", proto.ClusterID(1))

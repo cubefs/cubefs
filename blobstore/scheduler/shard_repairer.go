@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/Shopify/sarama"
@@ -105,7 +106,7 @@ type ShardRepairMgr struct {
 	punishTime          time.Duration
 
 	blobnodeCli      client.BlobnodeAPI
-	blobnodeSelector selector.Selector
+	blobnodeSelector *idcSelector
 	clusterMgrCli    client.ClusterMgrAPI
 	taskCli          client.TaskAPI
 
@@ -137,9 +138,6 @@ func NewShardRepairMgr(
 		return nil, err
 	}
 
-	workerSelector := selector.MakeSelector(60*1000, func() (hosts []string, err error) {
-		return clusterMgrCli.GetService(context.Background(), proto.ServiceNameWorker, cfg.ClusterID)
-	})
 	failMsgSender, err := base.NewMsgSender(cfg.failedProducerConfig())
 	if err != nil {
 		return nil, err
@@ -150,14 +148,14 @@ func NewShardRepairMgr(
 		return nil, err
 	}
 
-	return &ShardRepairMgr{
+	mgr := &ShardRepairMgr{
 		blobnodeCli:      blobnodeCli,
 		clusterMgrCli:    clusterMgrCli,
 		taskCli:          taskAPI,
 		taskPool:         taskpool.New(cfg.TaskPoolSize, cfg.TaskPoolSize),
 		taskSwitch:       taskSwitch,
 		clusterTopology:  clusterTopology,
-		blobnodeSelector: workerSelector,
+		blobnodeSelector: newIDCSelector(clusterMgrCli, cfg.ClusterID),
 
 		kafkaConsumerClient: kafkaClient,
 		failMsgSender:       failMsgSender,
@@ -174,7 +172,9 @@ func NewShardRepairMgr(
 
 		cfg:    cfg,
 		Closer: closer.New(),
-	}, nil
+	}
+
+	return mgr, nil
 }
 
 // Enabled returns true if shard repair task is enabled, otherwise returns false
@@ -400,20 +400,21 @@ func (mgr *ShardRepairMgr) repairShard(ctx context.Context, volInfo *client.Volu
 
 	span.Infof("repair shard: msg[%+v], vol info[%+v]", repairMsg, volInfo)
 
-	// update host info
+	// update host info and cache IDC per index
+	idcByVunitIdx := make([]string, len(volInfo.VunitLocations))
 	for idx := range volInfo.VunitLocations {
 		location := &volInfo.VunitLocations[idx]
 		disk, ok := mgr.clusterTopology.GetDisk(location.DiskID)
 		if ok {
 			location.Host = disk.Host
+			idcByVunitIdx[idx] = disk.Idc
 		}
 	}
 
-	hosts := mgr.blobnodeSelector.GetRandomN(1)
-	if len(hosts) == 0 {
+	workerHost := mgr.blobnodeSelector.get(ctx, mgr.resolveRepairIDC(ctx, repairMsg, idcByVunitIdx))
+	if workerHost == "" {
 		return volInfo, ErrBlobnodeServiceUnavailable
 	}
-	workerHost := hosts[0]
 
 	task := proto.ShardRepairTask{
 		Bid:      repairMsg.Bid,
@@ -518,4 +519,116 @@ func (mgr *ShardRepairMgr) send2FailQueue(ctx context.Context, msg *proto.ShardR
 	}
 
 	return nil
+}
+
+// resolveRepairIDC resolves the target IDC by iterating BadIdx until it finds
+// a bad index whose disk IDC is known (non-empty). Returns "" if none match.
+//
+// Iterating all BadIdx is strictly better than using only BadIdx[0]:
+//   - If BadIdx[0] maps to a disk whose topology info is stale/missing but another
+//     BadIdx has a valid disk, the repair can still target the correct AZ.
+//   - If the bad shards span multiple AZs, local repair is impossible anyway,
+//     so the returned AZ (whichever is found first) does not matter — the
+//     blobnode's own localRepairable() will fall back to global repair.
+//
+// In all cases, the worst outcome is an unnecessary cross-AZ request; correctness is preserved.
+func (mgr *ShardRepairMgr) resolveRepairIDC(ctx context.Context, repairMsg *proto.ShardRepairMsg, idcByVunitIdx []string) string {
+	span := trace.SpanFromContextSafe(ctx)
+	span.Debugf("resolveRepairIDC: repairMsg[%+v], idcByVunitIdx[%+v]", repairMsg, idcByVunitIdx)
+	for _, badIdx := range repairMsg.BadIdx {
+		idx := int(badIdx)
+		if idx < len(idcByVunitIdx) && idcByVunitIdx[idx] != "" {
+			return idcByVunitIdx[idx]
+		}
+	}
+	return ""
+}
+
+// idcSelector provides AZ-aware worker selection for shard repair.
+// Each per-IDC selector and the all-worker selector are backed by
+// selector.MakeSelector, which handles interval-based refresh internally.
+type idcSelector struct {
+	clusterMgrCli client.ClusterMgrAPI
+	clusterID     proto.ClusterID
+
+	mu        sync.RWMutex
+	selectors map[string]selector.Selector // key: idc ("" for all workers), created lazily
+}
+
+func newIDCSelector(clusterMgrCli client.ClusterMgrAPI, clusterID proto.ClusterID) *idcSelector {
+	return &idcSelector{
+		clusterMgrCli: clusterMgrCli,
+		clusterID:     clusterID,
+		selectors:     make(map[string]selector.Selector),
+	}
+}
+
+// getSelector lazily creates and caches a per-IDC (or all) worker selector.
+// The underlying MakeSelector handles its own interval-based background refresh.
+func (s *idcSelector) getSelector(ctx context.Context, idc string) selector.Selector {
+	// fast path: read-lock check, multiple readers proceed concurrently
+	s.mu.RLock()
+	sel := s.selectors[idc]
+	s.mu.RUnlock()
+	if sel != nil {
+		return sel
+	}
+
+	// slow path: write-lock, double-check to prevent duplicate MakeSelector
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if sel = s.selectors[idc]; sel != nil {
+		return sel
+	}
+
+	sel = selector.MakeSelector(60*1000, func() ([]string, error) {
+		bgCtx := context.Background()
+		nodes, err := s.clusterMgrCli.GetService(bgCtx, proto.ServiceNameWorker, s.clusterID)
+		if err != nil {
+			span := trace.SpanFromContextSafe(bgCtx)
+			span.Warnf("refresh worker services failed: err[%+v]", err)
+			return nil, err
+		}
+		if idc == "" {
+			hosts := make([]string, len(nodes))
+			for i, n := range nodes {
+				hosts[i] = n.Host
+			}
+			return hosts, nil
+		}
+		var hosts []string
+		for _, n := range nodes {
+			if n.Idc == idc {
+				hosts = append(hosts, n.Host)
+			}
+		}
+		return hosts, nil
+	})
+	s.selectors[idc] = sel
+	return sel
+}
+
+// Get returns a worker host in the given IDC. If the IDC has no workers,
+// it falls back to a random worker from any IDC. Returns empty if no
+// workers are available at all.
+func (s *idcSelector) get(ctx context.Context, idc string) string {
+	span := trace.SpanFromContextSafe(ctx)
+	if idc != "" {
+		sel := s.getSelector(ctx, idc)
+		hosts := sel.GetRandomN(1)
+		if len(hosts) > 0 {
+			span.Debugf("selected blobnode host[%s] for idc[%s]", hosts[0], idc)
+			return hosts[0]
+		}
+		span.Debugf("no blobnode in idc[%s], fallback to global", idc)
+	}
+
+	sel := s.getSelector(ctx, "")
+	hosts := sel.GetRandomN(1)
+	if len(hosts) > 0 {
+		span.Debugf("selected blobnode host[%s] from global", hosts[0])
+		return hosts[0]
+	}
+	span.Debugf("no blobnode available at all")
+	return ""
 }
