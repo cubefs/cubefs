@@ -26,6 +26,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/ec"
 	rp "github.com/cubefs/cubefs/blobstore/common/resourcepool"
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
+	"github.com/cubefs/cubefs/blobstore/util"
 )
 
 const (
@@ -168,6 +169,54 @@ func TestBufferRelease(t *testing.T) {
 		buffer, err := ec.NewBuffer(kb, codemode.EC6P6.Tactic(), memPool)
 		require.NoError(t, err)
 		require.NoError(t, buffer.Release())
+	}
+}
+
+func adaptShardSize(dataSize int, cm codemode.Tactic) int {
+	shardSize := (dataSize + cm.N - 1) / cm.N
+	if cm.AdaptShardSize > 0 && dataSize < cm.MinShardSize {
+		shardSize = util.AlignedFull(dataSize, cm.AdaptShardSize)
+	} else if shardSize < cm.MinShardSize {
+		shardSize = cm.MinShardSize
+	}
+	return shardSize
+}
+
+func TestGetBufferSizesAdaptShardSize(t *testing.T) {
+	cm := codemode.EC3P3Align8kAdapt256.Tactic()
+	minShard := cm.MinShardSize // 8192
+	step := cm.AdaptShardSize   // 256
+	N := cm.N                   // 3
+
+	cases := []struct {
+		dataSize      int
+		wantShardSize int
+		desc          string
+	}{
+		{100, step, "roundUp(100,256)=256"},
+		{256, step, "roundUp(256,256)=256"},
+		{N * step, 3 * step, "roundUp(768,256)=768"},
+		{N*step + 1, 4 * step, "roundUp(769,256)=1024"},
+		{1000, 4 * step, "roundUp(1000,256)=1024"},
+		{minShard - 1, minShard, "roundUp(8191,256)=8192 capped at MinShardSize"},
+
+		{minShard, minShard, "dataSize==MinShardSize, original path"},
+		{minShard + 1, minShard, "dataSize>MinShardSize, ceil/N<min -> MinShardSize"},
+		{N * minShard, minShard, "dataSize=N×MinShardSize, ceil(N×min/N)=min"},
+	}
+
+	for _, cs := range cases {
+		t.Run(cs.desc, func(t *testing.T) {
+			wantShard := adaptShardSize(cs.dataSize, cm)
+			require.Equal(t, cs.wantShardSize, wantShard, "shardSize mismatch")
+
+			sizes, err := ec.GetBufferSizes(cs.dataSize, cm)
+			require.NoError(t, err)
+			require.Equal(t, cs.wantShardSize, sizes.ShardSize)
+			require.Equal(t, cs.dataSize, sizes.DataSize)
+			require.Equal(t, cs.wantShardSize*cm.N, sizes.ECDataSize)
+			require.Equal(t, cs.wantShardSize*(cm.N+cm.M+cm.L), sizes.ECSize)
+		})
 	}
 }
 

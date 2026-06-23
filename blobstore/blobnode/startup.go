@@ -69,8 +69,16 @@ func NewService(conf Config) (svr *Service, err error) {
 		span.Fatalf("load extend codemode from clusterMgr error:%+v", err)
 	}
 	for _, ecmode := range codemode.GetECCodeModes() {
-		if alignedSize := ecmode.Tactic().MinShardSize; alignedSize > 0 {
-			client.NopdataSize(alignedSize)
+		tactic := ecmode.Tactic()
+		if tactic.MinShardSize <= 0 {
+			continue
+		}
+		if tactic.AdaptShardSize > 0 {
+			for size := tactic.AdaptShardSize; size <= tactic.MinShardSize; size += tactic.AdaptShardSize {
+				client.NopdataSize(size)
+			}
+		} else {
+			client.NopdataSize(tactic.MinShardSize)
 		}
 	}
 
