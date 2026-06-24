@@ -1,19 +1,51 @@
 package stream
 
 import (
+	"bytes"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/data/manager"
 	"github.com/cubefs/cubefs/sdk/data/wrapper"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/log"
+	"golang.org/x/time/rate"
 )
+
+type testSimpleClient struct {
+	latestVer uint64
+}
+
+func (c *testSimpleClient) GetFlowInfo() (*proto.ClientReportLimitInfo, bool) {
+	return nil, false
+}
+
+func (c *testSimpleClient) UpdateFlowInfo(*proto.LimitRsp2Client) {}
+
+func (c *testSimpleClient) SetClientID(uint64) error { return nil }
+
+func (c *testSimpleClient) UpdateLatestVer(verList *proto.VolVersionInfoList) error {
+	if verList != nil && len(verList.VerList) > 0 {
+		c.latestVer = verList.VerList[len(verList.VerList)-1].Ver
+	}
+	return nil
+}
+
+func (c *testSimpleClient) GetReadVer() uint64 { return 0 }
+
+func (c *testSimpleClient) GetLatestVer() uint64 { return c.latestVer }
+
+func (c *testSimpleClient) GetVerMgr() *proto.VolVersionInfoList { return nil }
+
+func (c *testSimpleClient) UpdateRemoteCacheConfig(*proto.SimpleVolView) {}
 
 func newTestStreamerWithAheadRead(t *testing.T, partitionID uint64) (*Streamer, *AheadReadCache) {
 	t.Helper()
 
 	w := &wrapper.Wrapper{}
+	w.SimpleClient = &testSimpleClient{}
 	w.InitInnerReq(true)
 	// Preload a DataPartition to avoid fetching from master
 	dp := &wrapper.DataPartition{
@@ -45,6 +77,29 @@ func newTestStreamerWithAheadRead(t *testing.T, partitionID uint64) (*Streamer, 
 		taskC:    make(chan *AheadReadTask, arc.winCnt),
 	}
 	s.aheadReadBlockSize = util.CacheReadBlockSize
+	return s, arc
+}
+
+func newTestStreamerWithAheadReadAndWriteSupport(t *testing.T, partitionID uint64) (*Streamer, *AheadReadCache) {
+	t.Helper()
+
+	s, arc := newTestStreamerWithAheadRead(t, partitionID)
+	s.client.writeLimiter = rate.NewLimiter(rate.Inf, 128)
+	s.client.LimitManager = manager.NewLimitManager(s.client)
+	s.client.appendExtentKey = func(uint64, uint64, proto.ExtentKey, []proto.ExtentKey, bool, uint8, bool) (int, error) {
+		return 0, nil
+	}
+	s.client.splitExtentKey = func(uint64, uint64, proto.ExtentKey, uint8) error {
+		return nil
+	}
+	s.client.truncate = func(uint64, uint64, string) error {
+		return nil
+	}
+	s.client.getExtents = func(uint64, bool, bool, bool) (uint64, uint64, []proto.ExtentKey, error) {
+		return 1, 0, nil, nil
+	}
+	s.dirtylist = NewDirtyExtentList()
+	s.handler = &ExtentHandler{}
 	return s, arc
 }
 
@@ -267,5 +322,142 @@ func TestAheadRead_EvictCacheBlock(t *testing.T) {
 	// Verify it's deleted from cache
 	if _, ok := arc.blockCache.Load(key); ok {
 		t.Fatalf("block should be deleted from cache after evictCacheBlock")
+	}
+}
+
+func TestAheadRead_EvictCacheBlock_MultiBlockAndZeroSize(t *testing.T) {
+	s, arc := newTestStreamerWithAheadRead(t, 6)
+	defer arc.Stop()
+
+	firstKey := putCacheBlock(arc, s.inode, 6, 600, 0, util.CacheReadBlockSize, 'A')
+	secondKey := putCacheBlock(arc, s.inode, 6, 600, util.CacheReadBlockSize, util.CacheReadBlockSize, 'B')
+
+	s.aheadReadWindow.evictCacheBlock(&ExtentRequest{
+		FileOffset: 0,
+		Size:       util.CacheReadBlockSize + 1,
+		ExtentKey:  &proto.ExtentKey{PartitionId: 6, ExtentId: 600, FileOffset: 0, ExtentOffset: 0, Size: 8 * util.MB},
+	})
+
+	if _, ok := arc.blockCache.Load(firstKey); ok {
+		t.Fatalf("first block should be evicted")
+	}
+	if _, ok := arc.blockCache.Load(secondKey); ok {
+		t.Fatalf("second block should be evicted")
+	}
+
+	zeroKey := putCacheBlock(arc, s.inode, 6, 601, 0, util.CacheReadBlockSize, 'C')
+	s.aheadReadWindow.evictCacheBlock(&ExtentRequest{
+		FileOffset: 0,
+		Size:       0,
+		ExtentKey:  &proto.ExtentKey{PartitionId: 6, ExtentId: 601, FileOffset: 0, ExtentOffset: 0, Size: 8 * util.MB},
+	})
+	if _, ok := arc.blockCache.Load(zeroKey); !ok {
+		t.Fatalf("zero-size request should not evict cache blocks")
+	}
+}
+
+func TestAheadRead_EvictCacheBlock_DebugAndMiss(t *testing.T) {
+	_, err := log.InitLog("", "stream_cov", log.DebugLevel, nil, log.DefaultLogLeftSpaceLimitRatio)
+	if err != nil {
+		t.Fatalf("init log: %v", err)
+	}
+	t.Cleanup(func() {
+		log.SetLogLevelV2(log.InfoLevel)
+	})
+
+	s, arc := newTestStreamerWithAheadRead(t, 9)
+	defer arc.Stop()
+
+	firstKey := putCacheBlock(arc, s.inode, 9, 900, 0, util.CacheReadBlockSize, 'Z')
+	s.aheadReadWindow.evictCacheBlock(&ExtentRequest{
+		FileOffset: 0,
+		Size:       util.CacheReadBlockSize*2 - 1,
+		ExtentKey:  &proto.ExtentKey{PartitionId: 9, ExtentId: 900, FileOffset: 0, ExtentOffset: 0, Size: 8 * util.MB},
+	})
+
+	if _, ok := arc.blockCache.Load(firstKey); ok {
+		t.Fatalf("first block should be evicted in debug path")
+	}
+}
+
+func TestStreamerWriteLazyInitAheadReadWindow(t *testing.T) {
+	s, arc := newTestStreamerWithAheadReadAndWriteSupport(t, 7)
+	defer arc.Stop()
+	if proto.Buffers == nil {
+		proto.InitBufferPool(32768)
+	}
+	s.client.AheadRead = arc
+	s.aheadReadWindow = nil
+
+	ec := &proto.ExtentKey{
+		PartitionId:  7,
+		ExtentId:     700,
+		FileOffset:   0,
+		ExtentOffset: 0,
+		Size:         uint32(util.CacheReadBlockSize),
+	}
+	s.extents.Append(ec, true)
+	s.extents.SetSize(uint64(util.CacheReadBlockSize), false)
+	s.verSeq = 1
+	s.minReadAheadSize = 1
+
+	cacheKey := putCacheBlock(arc, s.inode, 7, 700, 0, util.CacheReadBlockSize, 'D')
+
+	dp := &wrapper.DataPartition{
+		DataPartitionResponse: proto.DataPartitionResponse{
+			PartitionID: 7,
+			LeaderAddr:  "",
+			Hosts:       []string{},
+			Status:      proto.ReadWrite,
+		},
+		Metrics: wrapper.NewDataPartitionMetrics(),
+	}
+	dp.ClientWrapper = s.client.dataWrapper
+	wrapper.InsertPartitionForTest(s.client.dataWrapper, dp)
+
+	listenerAddr, closeFn := startOverwriteReplyServer(t, proto.OpOk, new(int32), 1)
+	defer closeFn()
+	dp.LeaderAddr = listenerAddr
+	dp.Hosts = []string{listenerAddr}
+
+	data := bytes.Repeat([]byte("a"), 1024)
+	req := &ExtentRequest{
+		FileOffset:  0,
+		Size:        len(data),
+		Data:        data,
+		ExtentKey:   ec,
+		CreateNewEk: false,
+	}
+
+	total, err := s.write(data, req.FileOffset, req.Size, 0, nil, 0, false)
+	if err != nil {
+		t.Fatalf("write error: %v", err)
+	}
+	if total != req.Size {
+		t.Fatalf("write size mismatch, want %d, got %d", req.Size, total)
+	}
+	if s.aheadReadWindow == nil {
+		t.Fatalf("ahead read window should be initialized lazily")
+	}
+	if _, ok := arc.blockCache.Load(cacheKey); ok {
+		t.Fatalf("cache block should be evicted after write")
+	}
+}
+
+func TestStreamerTruncateLazyInitAheadReadWindow(t *testing.T) {
+	s, arc := newTestStreamerWithAheadReadAndWriteSupport(t, 8)
+	defer arc.Stop()
+
+	s.extents.SetSize(uint64(2*util.CacheReadBlockSize), false)
+	s.minReadAheadSize = 1
+	s.client.AheadRead = arc
+	s.aheadReadWindow = nil
+	s.handler = nil
+
+	if err := s.truncate(0, "/tmp/test-truncate"); err != nil {
+		t.Fatalf("truncate error: %v", err)
+	}
+	if s.aheadReadWindow == nil {
+		t.Fatalf("ahead read window should be initialized lazily on truncate")
 	}
 }

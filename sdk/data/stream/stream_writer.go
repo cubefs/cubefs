@@ -458,8 +458,13 @@ begin:
 				log.LogDebugf("action[streamer.write] ino %v doOverWriteByAppend extent key (%v)", s.inode, req.ExtentKey)
 				writeSize, _, err, _ = s.doOverWriteByAppend(req, direct, poolId, isMigration)
 			}
-			if s.aheadReadEnable && s.aheadReadWindow != nil && s.aheadReadWindow.cache != nil {
-				s.aheadReadWindow.evictCacheBlock(req)
+			if s.aheadReadEnable {
+				if s.aheadReadWindow == nil && s.client.AheadRead != nil && uint64(fileSize) > s.minReadAheadSize {
+					s.aheadReadWindow = NewAheadReadWindow(s.client.AheadRead, s)
+				}
+				if s.aheadReadWindow != nil && s.aheadReadWindow.cache != nil {
+					s.aheadReadWindow.evictCacheBlock(req)
+				}
 			}
 			if s.client.bcacheEnable {
 				cacheKey := util.GenerateKey(s.client.volumeName, s.inode, uint64(req.FileOffset))
@@ -1301,8 +1306,14 @@ func (s *Streamer) truncate(size int, fullPath string) error {
 		return err
 	}
 
-	if s.aheadReadEnable && s.aheadReadWindow != nil {
-		s.aheadReadWindow.evictAllBlocks()
+	if s.aheadReadEnable {
+		curSize, _ := s.extents.Size()
+		if s.aheadReadWindow == nil && s.client.AheadRead != nil && uint64(curSize) > s.minReadAheadSize {
+			s.aheadReadWindow = NewAheadReadWindow(s.client.AheadRead, s)
+		}
+		if s.aheadReadWindow != nil {
+			s.aheadReadWindow.evictAllBlocks()
+		}
 	}
 
 	err = s.client.truncate(s.inode, uint64(size), fullPath)

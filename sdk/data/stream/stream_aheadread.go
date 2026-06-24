@@ -509,19 +509,34 @@ func (arw *AheadReadWindow) getAheadReadTask(dp *wrapper.DataPartition, req *Ext
 }
 
 func (arw *AheadReadWindow) evictCacheBlock(req *ExtentRequest) {
+	if req.Size == 0 {
+		return
+	}
 	offset := req.FileOffset - int(req.ExtentKey.FileOffset) + int(req.ExtentKey.ExtentOffset)
 	if readDataFromTinyExtent(req.ExtentKey.ExtentId) {
 		offset = req.FileOffset - int(req.ExtentKey.FileOffset)
 	}
-	cacheOffset := offset / int(arw.streamer.aheadReadBlockSize) * int(arw.streamer.aheadReadBlockSize)
-	key := createAheadBlockKey(arw.streamer.inode, req.ExtentKey.PartitionId, req.ExtentKey.ExtentId, req.ExtentKey.ExtentOffset, cacheOffset)
-	value, ok := arw.cache.blockCache.Load(key)
-	if ok {
+	blockSize := int(arw.streamer.aheadReadBlockSize)
+	startCacheOffset := offset / blockSize * blockSize
+	endCacheOffset := (offset + req.Size - 1) / blockSize * blockSize
+	if log.EnableDebug() {
+		log.LogDebugf("evictCacheBlock inode(%v) offset(%v) size(%v) cacheOffset(%v-%v) ek(%v)",
+			arw.streamer.inode, offset, req.Size, startCacheOffset, endCacheOffset, req.ExtentKey)
+	}
+	for cacheOffset := startCacheOffset; cacheOffset <= endCacheOffset; cacheOffset += blockSize {
+		key := createAheadBlockKey(arw.streamer.inode, req.ExtentKey.PartitionId, req.ExtentKey.ExtentId, req.ExtentKey.ExtentOffset, cacheOffset)
+		value, ok := arw.cache.blockCache.Load(key)
+		if !ok {
+			continue
+		}
 		bv := value.(*AheadReadBlock)
 		bv.lock.Lock()
 		bv.key = ""
 		if atomic.LoadUint32(&bv.state) == AheadReadBlockStateInit {
 			if actual, loaded := arw.cache.blockCache.LoadAndDelete(key); loaded {
+				if log.EnableDebug() {
+					log.LogDebugf("evictCacheBlock evict key(%v)", key)
+				}
 				arw.cache.putAheadReadBlock(key, actual.(*AheadReadBlock))
 			}
 		}
