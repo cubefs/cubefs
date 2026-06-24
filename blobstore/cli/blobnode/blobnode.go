@@ -33,6 +33,7 @@ func Register(app *grumble.App) {
 	addCmdShard(blobnodeCommand)
 	addCmdInspect(blobnodeCommand)
 	addCmdIOStat(blobnodeCommand)
+	addCmdMigrateVerify(blobnodeCommand)
 }
 
 func blobnodeFlags(f *grumble.Flags) {
