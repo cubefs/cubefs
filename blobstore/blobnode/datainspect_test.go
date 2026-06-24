@@ -13,12 +13,16 @@ import (
 	"testing"
 
 	"github.com/golang/mock/gomock"
+	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/time/rate"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
+	"github.com/cubefs/cubefs/blobstore/common/crc32block"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/recordlog"
@@ -44,7 +48,63 @@ func newDataInspectMgr(t *testing.T, conf DataInspectConf, svr *Service) *DataIn
 	recorder := mocks.NewMockRecordLogEncoder(ctr)
 	mgr.recorder = recorder
 
+	// unit tests have no real cluster manager/proxy; disable the lazy builder so
+	// trySendCrcRepair gets a nil sender and returns early (svr.Conf may be nil).
+	mgr.repairSender.build = nil
+
 	return mgr
+}
+
+func TestTrySendCrcRepair(t *testing.T) {
+	ctr := gomock.NewController(t)
+	ctx := context.Background()
+
+	vuid0, _ := proto.NewVuid(100, 0, 1)
+	vuid3, _ := proto.NewVuid(100, 3, 1)
+
+	// sender nil: no-op, no chunk methods touched.
+	mgr := &DataInspectMgr{}
+	mgr.trySendCrcRepair(ctx, NewMockChunkAPI(ctr), []bnapi.BadShard{{Vuid: vuid0, Bid: 1, Err: errMock}})
+
+	// sender set: only a crc-bad shard is sent; deleted and other errors skipped.
+	var sent []*proxy.ShardRepairArgs
+	sender := mocks.NewMockProxyLbRpcClient(ctr)
+	sender.EXPECT().SendShardRepairMsg(any, any).Times(1).DoAndReturn(
+		func(_ context.Context, args *proxy.ShardRepairArgs) error {
+			sent = append(sent, args)
+			return nil
+		})
+	mgr.repairSender.sender = sender
+
+	ds := NewMockDiskAPI(ctr)
+	ds.EXPECT().DiskInfo().Return(clustermgr.BlobNodeDiskInfo{
+		DiskInfo: clustermgr.DiskInfo{ClusterID: 7},
+	}).Times(1)
+	cs := NewMockChunkAPI(ctr)
+	cs.EXPECT().Disk().Return(ds).Times(1)
+
+	mgr.trySendCrcRepair(ctx, cs, []bnapi.BadShard{
+		{Vuid: vuid0, Bid: 11, Err: crc32block.ErrMismatchedCrc}, // crc bad -> sent
+		{Vuid: vuid3, Bid: 22, Err: bloberr.ErrNoSuchBid},        // deleted -> skipped
+		{Vuid: vuid3, Bid: 23, Err: errMock},                     // other error -> only reported, skipped
+	})
+
+	require.Equal(t, 1, len(sent))
+	got := sent[0]
+	require.Equal(t, proto.ClusterID(7), got.ClusterID)
+	require.Equal(t, proto.BlobID(11), got.Bid)
+	require.Equal(t, proto.Vid(100), got.Vid)
+	require.Equal(t, []uint8{0}, got.BadIdxes)
+	require.Equal(t, proto.ShardRepairReasonInspectCrc, got.Reason)
+
+	// sender error does not panic and does not crash inspection.
+	sender2 := mocks.NewMockProxyLbRpcClient(ctr)
+	sender2.EXPECT().SendShardRepairMsg(any, any).Return(errMock).Times(1)
+	mgr.repairSender.sender = sender2
+	ds.EXPECT().DiskInfo().Return(clustermgr.BlobNodeDiskInfo{}).Times(1)
+	cs2 := NewMockChunkAPI(ctr)
+	cs2.EXPECT().Disk().Return(ds).Times(1)
+	mgr.trySendCrcRepair(ctx, cs2, []bnapi.BadShard{{Vuid: vuid0, Bid: 33, Err: crc32block.ErrMismatchedCrc}})
 }
 
 func TestDataInspect(t *testing.T) {
@@ -305,6 +365,56 @@ func TestInspectChunk_NoGoroutineLeak(t *testing.T) {
 	// tolerate a small delta for unrelated goroutines
 	const tolerance = 5
 	require.LessOrEqual(t, after, before+tolerance)
+}
+
+func TestReportBatchBadShardsCrcMetric(t *testing.T) {
+	ctx := context.Background()
+	ctr := gomock.NewController(t)
+	ds := NewMockDiskAPI(ctr)
+	svr := &Service{
+		Disks:   map[proto.DiskID]core.DiskAPI{11: ds},
+		ctx:     context.Background(),
+		closeCh: make(chan struct{}),
+	}
+	mgr := newDataInspectMgr(t, DataInspectConf{IntervalSec: 100, RateLimit: 2}, svr)
+	defer close(svr.closeCh)
+
+	const cid, did = 9001, 9002
+	ds.EXPECT().DiskInfo().Return(clustermgr.BlobNodeDiskInfo{
+		DiskInfo:          clustermgr.DiskInfo{ClusterID: cid},
+		DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{DiskID: did},
+	}).AnyTimes()
+	cs := NewMockChunkAPI(ctr)
+	cs.EXPECT().Disk().Return(ds).AnyTimes()
+	cs.EXPECT().Vuid().Return(proto.Vuid(1001)).AnyTimes()
+	mgr.recorder.(*mocks.MockRecordLogEncoder).EXPECT().Encode(any).AnyTimes()
+
+	gauge := dataInspectMetric.WithLabelValues(proto.ClusterID(cid).ToString(), proto.DiskID(did).ToString())
+	gauge.Set(0)
+
+	// crc-only batch: recorded to local log but NOT counted into the metric.
+	crcBads := []bnapi.BadShard{
+		{DiskID: did, Vuid: 1001, Bid: 1, Err: crc32block.ErrMismatchedCrc},
+		{DiskID: did, Vuid: 1001, Bid: 2, Err: crc32block.ErrMismatchedCrc},
+	}
+	require.Equal(t, 2, mgr.reportBatchBadShards(ctx, cs, crcBads))
+	require.Equal(t, float64(0), gaugeValue(gauge))
+
+	// mixed batch: only the non-crc shard is reported to the metric.
+	mixedBads := []bnapi.BadShard{
+		{DiskID: did, Vuid: 1001, Bid: 3, Err: crc32block.ErrMismatchedCrc},
+		{DiskID: did, Vuid: 1001, Bid: 4, Err: errMock},
+	}
+	require.Equal(t, 2, mgr.reportBatchBadShards(ctx, cs, mixedBads))
+	require.Equal(t, float64(1), gaugeValue(gauge))
+}
+
+func gaugeValue(g prometheus.Gauge) float64 {
+	m := &dto.Metric{}
+	if err := g.Write(m); err != nil {
+		return -1
+	}
+	return m.GetGauge().GetValue()
 }
 
 func TestDataInspectMetric(t *testing.T) {

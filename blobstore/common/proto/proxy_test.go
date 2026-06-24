@@ -26,10 +26,14 @@ func TestShardRepairMsg_IsValid(t *testing.T) {
 		msg ShardRepairMsg
 		ok  bool
 	}{
-		{ShardRepairMsg{1, 1, 1, []uint8{1}, 0, "access", ""}, true},
-		{ShardRepairMsg{1, 0, 1, []uint8{1}, 0, "access", ""}, false},
-		{ShardRepairMsg{1, 1, 0, []uint8{1}, 0, "access", ""}, false},
-		{ShardRepairMsg{1, 1, 1, []uint8{}, 0, "access", ""}, false},
+		{ShardRepairMsg{ClusterID: 1, Bid: 1, Vid: 1, BadIdx: []uint8{1}, Reason: "access"}, true},
+		{ShardRepairMsg{ClusterID: 1, Bid: 0, Vid: 1, BadIdx: []uint8{1}, Reason: "access"}, false},
+		{ShardRepairMsg{ClusterID: 1, Bid: 1, Vid: 0, BadIdx: []uint8{1}, Reason: "access"}, false},
+		{ShardRepairMsg{ClusterID: 1, Bid: 1, Vid: 1, BadIdx: []uint8{}, Reason: "access"}, false},
+		// crc repair: identified by reason, validity still requires a BadIdx.
+		{ShardRepairMsg{ClusterID: 1, Bid: 1, Vid: 1, BadIdx: []uint8{1}, Reason: ShardRepairReasonInspectCrc}, true},
+		// crc repair without any BadIdx is invalid.
+		{ShardRepairMsg{ClusterID: 1, Bid: 1, Vid: 1, Reason: ShardRepairReasonInspectCrc}, false},
 	} {
 		require.Equal(t, cs.ok, cs.msg.IsValid())
 	}

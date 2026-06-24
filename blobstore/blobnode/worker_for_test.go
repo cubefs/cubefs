@@ -234,6 +234,14 @@ func (getter *MockGetter) Delete(ctx context.Context, vuid proto.Vuid, bid proto
 	getter.vunits[vuid].delete(bid)
 }
 
+// Corrupt garbles the shard data in place while keeping the meta Normal,
+// simulating a silent CRC corruption detected by data inspect.
+func (getter *MockGetter) Corrupt(ctx context.Context, vuid proto.Vuid, bid proto.BlobID) {
+	getter.mu.Lock()
+	defer getter.mu.Unlock()
+	getter.vunits[vuid].corrupt(bid)
+}
+
 func (getter *MockGetter) StatShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, ioType api.IOType) (si *client.ShardInfo, err error) {
 	getter.mu.Lock()
 	defer getter.mu.Unlock()
@@ -402,6 +410,23 @@ func (m *mockVunit) recover(bid proto.BlobID) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.bidInfos[bid].Flag = api.ShardStatusNormal
+}
+
+// corrupt simulates silent data corruption: the on-disk data is garbled while
+// the shard meta (Flag/Crc) stays Normal, just like a real CRC rot found by
+// data inspect. statShard still reports Normal; only reading the data reveals it.
+func (m *mockVunit) corrupt(bid proto.BlobID) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.shards[bid]; !ok {
+		return
+	}
+	bad := make([]byte, len(m.shards[bid]))
+	for i := range bad {
+		bad[i] = m.shards[bid][i] ^ 0xff
+	}
+	m.shards[bid] = bad
+	m.crc32[bid] = crc32.ChecksumIEEE(bad)
 }
 
 type mockShardGetter struct {

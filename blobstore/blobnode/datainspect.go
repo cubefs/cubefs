@@ -17,8 +17,10 @@ import (
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
+	"github.com/cubefs/cubefs/blobstore/common/crc32block"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/recordlog"
@@ -52,6 +54,8 @@ type DataInspectConf struct {
 	NextRoundSec  int   `json:"next_round_sec"`  // wait next round inspect interval
 	BatchReadSize int64 `json:"batch_read_size"` // max data bytes per BatchRead call; default 16MB
 
+	Proxy proxy.LbConfig `json:"proxy"` // used to send crc repair messages.
+
 	Record recordlog.Config `json:"record"`
 }
 
@@ -59,6 +63,23 @@ type DataInspectStat struct {
 	DataInspectConf
 	Open     bool                 `json:"open"`
 	Progress map[proto.DiskID]int `json:"progress"`
+}
+
+// lazyRepairSender builds the proxy repair client on first use and caches it.
+type lazyRepairSender struct {
+	once   sync.Once
+	sender proxy.LbMsgSender
+	build  func() proxy.LbMsgSender
+}
+
+// get returns the cached sender, building it once on first call.
+func (l *lazyRepairSender) get() proxy.LbMsgSender {
+	l.once.Do(func() {
+		if l.build != nil {
+			l.sender = l.build()
+		}
+	})
+	return l.sender
 }
 
 type DataInspectMgr struct {
@@ -71,6 +92,8 @@ type DataInspectMgr struct {
 	round    uint64            // round of data inspect
 	progress sync.Map          // progress of data inspect: diskID -> progress[0, 100]
 	recorder recordlog.Encoder // local record log
+
+	repairSender lazyRepairSender // proxy client to send crc repair msg, lazily built on first send
 }
 
 func NewDataInspectMgr(svr *Service, conf DataInspectConf, switchMgr *taskswitch.SwitchMgr) (*DataInspectMgr, error) {
@@ -99,6 +122,9 @@ func NewDataInspectMgr(svr *Service, conf DataInspectConf, switchMgr *taskswitch
 		svr:        svr,
 		taskSwitch: taskSwitch,
 		recorder:   recorder,
+	}
+	mgr.repairSender.build = func() proxy.LbMsgSender {
+		return proxy.NewMQLbClient(&mgr.conf.Proxy, svr.ClusterMgrClient, svr.Conf.HostInfo.ClusterID)
 	}
 	return mgr, nil
 }
@@ -441,9 +467,47 @@ func (mgr *DataInspectMgr) inspectChunk(pCtx context.Context, cs core.ChunkAPI) 
 
 	err := mgr.scanShards(ctx, cs, scanFn)
 	mgr.reportBatchBadShards(ctx, cs, badShards)
+	mgr.trySendCrcRepair(ctx, cs, badShards)
 	span.Infof("finish to inspect chunk, vuid:%d, chunk:%s, total:%d, wrong:%d, err:%+v",
 		cs.Vuid(), cs.ID(), total, len(badShards), err)
 	return badShards, err
+}
+
+// trySendCrcRepair sends an in-place crc repair message to proxy for each
+// confirmed CRC-corrupted shard.
+func (mgr *DataInspectMgr) trySendCrcRepair(ctx context.Context, cs core.ChunkAPI, badShards []bnapi.BadShard) {
+	if len(badShards) == 0 {
+		return
+	}
+	sender := mgr.repairSender.get()
+	if sender == nil {
+		return
+	}
+	span := trace.SpanFromContextSafe(ctx)
+	clusterID := cs.Disk().DiskInfo().ClusterID
+
+	for _, bad := range badShards {
+		// only data-corruption (crc) shards are repaired in place; other error
+		// types are reported only and must not trigger an in-place rebuild.
+		if !errors.Is(bad.Err, crc32block.ErrMismatchedCrc) {
+			continue
+		}
+		idx := bad.Vuid.Index()
+		// the inspect-crc reason tells the repairer to rebuild this idx in place
+		// even though its meta still reports Normal.
+		args := &proxy.ShardRepairArgs{
+			ClusterID: clusterID,
+			Bid:       bad.Bid,
+			Vid:       bad.Vuid.Vid(),
+			BadIdxes:  []uint8{idx},
+			Reason:    proto.ShardRepairReasonInspectCrc,
+		}
+		if err := sender.SendShardRepairMsg(ctx, args); err != nil {
+			span.Errorf("send crc repair msg failed, vuid:%d, bid:%d, err:%+v", bad.Vuid, bad.Bid, err)
+			continue
+		}
+		span.Infof("send crc repair msg, vuid:%d, bid:%d, idx:%d", bad.Vuid, bad.Bid, idx)
+	}
 }
 
 // inspectShard checks shard integrity and metadata double-check.
@@ -524,6 +588,12 @@ func (mgr *DataInspectMgr) reportBadShard(ctx context.Context, cs core.ChunkAPI,
 	// Report with "add" and combine it with "record" for analysis and processing
 	diskInfo := cs.Disk().DiskInfo()
 	mgr.recordBadBids(ctx, cs, []string{blobID.ToString()}, err.Error())
+
+	// crc-mismatch shard is handled by in-place repair, so it is not reported to the metric
+	if errors.Is(err, crc32block.ErrMismatchedCrc) {
+		return
+	}
+
 	dataInspectMetric.WithLabelValues(
 		diskInfo.ClusterID.ToString(),
 		diskInfo.DiskID.ToString(),
@@ -543,6 +613,7 @@ func (mgr *DataInspectMgr) reportBatchBadShards(ctx context.Context, cs core.Chu
 	//          "err 22": ["bid66", "77", "88"],
 	//      }
 	uniqueErr := map[string][]string{}
+	metricBadBid := 0 // count of bad bids reported to metric, excluding crc (repaired in place)
 	for _, item := range items {
 		if isInspectReportIgnoredError(item.Err) {
 			continue
@@ -550,26 +621,34 @@ func (mgr *DataInspectMgr) reportBatchBadShards(ctx context.Context, cs core.Chu
 
 		uniqueErr[item.Err.Error()] = append(uniqueErr[item.Err.Error()], item.Bid.ToString())
 		span.Errorf("inspect blob error, bad shard:%v", item)
+		// crc-mismatch shards are handled by in-place repair, so they are still
+		// recorded to the local log but not reported to the cumulative metric
+		// (which cannot be cleaned after repair).
+		if !errors.Is(item.Err, crc32block.ErrMismatchedCrc) {
+			metricBadBid++
+		}
 	}
 
 	if len(uniqueErr) == 0 {
 		return 0
 	}
 
-	// record local log
+	// record local log (includes crc-mismatch shards)
 	totalBadBid, diskInfo := 0, cs.Disk().DiskInfo()
 	for errStr, bids := range uniqueErr {
 		totalBadBid += len(bids)
 		mgr.recordBadBids(ctx, cs, bids, errStr)
 	}
 
-	// report metric
-	dataInspectMetric.WithLabelValues(
-		diskInfo.ClusterID.ToString(),
-		diskInfo.DiskID.ToString(),
-	).Add(float64(totalBadBid))
+	// report metric, excluding crc-mismatch shards
+	if metricBadBid > 0 {
+		dataInspectMetric.WithLabelValues(
+			diskInfo.ClusterID.ToString(),
+			diskInfo.DiskID.ToString(),
+		).Add(float64(metricBadBid))
+	}
 
-	span.Errorf("inspect blob error, total bad count:%d", totalBadBid)
+	span.Errorf("inspect blob error, total bad count:%d, metric count:%d", totalBadBid, metricBadBid)
 	return totalBadBid
 }
 
