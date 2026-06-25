@@ -840,7 +840,7 @@ func genLocationBlobs(location *proto.Location, readSize uint64, offset uint64) 
 }
 
 func genSortedVuidByIDC(ctx context.Context,
-	serviceController controller.ServiceController, idc string, vuidPhys []controller.Unit,
+	serviceController controller.ServiceController, idc string, vuidPhys []controller.VolumeUnitPhy,
 	ordered bool, ignoreIDC bool,
 ) []sortedVuid {
 	span := trace.SpanFromContextSafe(ctx)
