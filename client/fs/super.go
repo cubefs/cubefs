@@ -335,6 +335,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		BcacheOnlyForNotSSD: opt.BcacheOnlyForNotSSD,
 
 		AheadReadEnable:       opt.AheadReadEnable,
+		AheadReadFollowerRead: opt.AheadReadFollowerRead,
 		AheadReadTotalMem:     opt.AheadReadTotalMem,
 		AheadReadBlockTimeOut: opt.AheadReadBlockTimeOut,
 		AheadReadWindowCnt:    opt.AheadReadWindowCnt,

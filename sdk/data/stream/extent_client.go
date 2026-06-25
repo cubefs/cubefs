@@ -163,6 +163,7 @@ type ExtentConfig struct {
 	BcacheOnlyForNotSSD bool
 
 	AheadReadEnable       bool
+	AheadReadFollowerRead bool
 	AheadReadTotalMem     int64
 	AheadReadBlockTimeOut int
 	AheadReadWindowCnt    int

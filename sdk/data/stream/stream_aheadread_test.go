@@ -58,6 +58,7 @@ func newTestStreamerWithAheadRead(t *testing.T, partitionID uint64) (*Streamer, 
 
 	client := &ExtentClient{}
 	client.dataWrapper = w
+	client.extentConfig = &ExtentConfig{}
 	client.streamRetryTimeout = time.Second
 
 	// Enable AheadRead cache
@@ -225,7 +226,8 @@ func TestAheadRead_DoTask_ReadFailed(t *testing.T) {
 	dp := &wrapper.DataPartition{
 		DataPartitionResponse: proto.DataPartitionResponse{
 			PartitionID: 4,
-			Hosts:       []string{"127.0.0.1:1"}, // invalid host
+			LeaderAddr:  "127.0.0.1:1",
+			Hosts:       []string{"127.0.0.1:1", "127.0.0.1:2"}, // invalid hosts
 		},
 	}
 	ek := &proto.ExtentKey{PartitionId: 4, ExtentId: 400, FileOffset: 0, ExtentOffset: 0, Size: 8 * util.MB}
@@ -262,6 +264,70 @@ func TestAheadRead_DoTask_ReadFailed(t *testing.T) {
 	// Block should be deleted from cache
 	if _, ok := arc.blockCache.Load(key); ok {
 		t.Fatalf("block should be deleted from cache after read failure")
+	}
+}
+
+func TestAheadRead_DoTask_FollowerReadUsesRotatedHosts(t *testing.T) {
+	s, arc := newTestStreamerWithAheadRead(t, 41)
+	defer arc.Stop()
+	s.client.dataWrapper.InitFollowerRead(true)
+
+	dp := &wrapper.DataPartition{
+		DataPartitionResponse: proto.DataPartitionResponse{
+			PartitionID: 41,
+			LeaderAddr:  "127.0.0.1:1",
+			Hosts:       []string{"127.0.0.1:1", "127.0.0.1:2"},
+		},
+	}
+	ek := &proto.ExtentKey{PartitionId: 41, ExtentId: 4100, FileOffset: 0, ExtentOffset: 0, Size: 8 * util.MB}
+	p := NewReadPacket(ek, 0, util.CacheReadBlockSize, s.inode, 0, false)
+	req := &ExtentRequest{
+		FileOffset: 0,
+		Size:       util.CacheReadBlockSize,
+		ExtentKey:  ek,
+	}
+
+	task := &AheadReadTask{
+		p:         p,
+		dp:        dp,
+		time:      time.Now(),
+		req:       req,
+		cacheSize: util.CacheReadBlockSize,
+		cacheType: "test",
+		logTime:   &time.Time{},
+		reqID:     "req-rotate",
+		poolId:    0,
+		retry:     MaxCacheBlockRetry + 1,
+	}
+
+	s.aheadReadWindow.doTask(task)
+}
+
+func TestAheadRead_GetAheadReadTask_FollowerReadFlag(t *testing.T) {
+	s, arc := newTestStreamerWithAheadRead(t, 42)
+	defer arc.Stop()
+	s.client.dataWrapper.InitFollowerRead(true)
+
+	dp := &wrapper.DataPartition{
+		DataPartitionResponse: proto.DataPartitionResponse{
+			PartitionID: 42,
+			LeaderAddr:  "127.0.0.1:1",
+			Hosts:       []string{"127.0.0.1:1", "127.0.0.1:2"},
+		},
+	}
+	ek := &proto.ExtentKey{PartitionId: 42, ExtentId: 4200, FileOffset: 0, ExtentOffset: 0, Size: 8 * util.MB}
+	req := &ExtentRequest{
+		FileOffset: 0,
+		Size:       util.CacheReadBlockSize,
+		ExtentKey:  ek,
+	}
+
+	task := s.aheadReadWindow.getAheadReadTask(dp, req, 1, util.CacheReadBlockSize, 0)
+	if task == nil {
+		t.Fatal("expected task")
+	}
+	if task.p.Opcode != proto.OpStreamFollowerRead {
+		t.Fatalf("expected follower read opcode, got %v", task.p.Opcode)
 	}
 }
 

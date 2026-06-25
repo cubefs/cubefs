@@ -85,6 +85,7 @@ const (
 	AheadReadTotalMemGB
 	AheadReadBlockTimeOut
 	AheadReadWindowCnt
+	AheadReadFollowerRead
 	// min read ahead size
 	MinReadAheadSize
 	ReqChanCnt
@@ -206,6 +207,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[AheadReadTotalMemGB] = MountOption{"aheadReadTotalMemGB", "ahead read total mem(GB)", "", int64(10)}
 	opts[AheadReadBlockTimeOut] = MountOption{"aheadReadBlockTimeOut", "ahead read block expiration time", "", int64(3)}
 	opts[AheadReadWindowCnt] = MountOption{"aheadReadWindowCnt", "ahead read window block count", "", int64(8)}
+	opts[AheadReadFollowerRead] = MountOption{"aheadReadFollowerRead", "enable ahead read from follower", "", true}
 	opts[MinReadAheadSize] = MountOption{"minReadAheadSize", "minimum file size to trigger ahead read (bytes); -1 means use master volume config", "", int64(-1)}
 	opts[ForceRemoteCache] = MountOption{"forceRemoteCache", "All read requests are handled by the remote cache.", "", false}
 	opts[DebugCluster] = MountOption{"debugCluster", "display cluster name", "", ""}
@@ -417,6 +419,7 @@ type MountOptions struct {
 	AheadReadTotalMem     int64
 	AheadReadBlockTimeOut int
 	AheadReadWindowCnt    int
+	AheadReadFollowerRead bool
 
 	// remote cache
 	ForceRemoteCache bool

@@ -1092,6 +1092,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.ExtentHandlerMaxRetryTime = int(GlobalMountOptions[proto.ExtentHandlerMaxRetryTime].GetInt64())
 	opt.ForceRemoteCache = GlobalMountOptions[proto.ForceRemoteCache].GetBool()
 	opt.AheadReadEnable = GlobalMountOptions[proto.AheadReadEnable].GetBool()
+	opt.AheadReadFollowerRead = GlobalMountOptions[proto.AheadReadFollowerRead].GetBool()
 	opt.EnableAsyncFlush = GlobalMountOptions[proto.EnableAsyncFlush].GetBool()
 	opt.RemoteCacheName = GlobalMountOptions[proto.RemoteCacheName].GetString()
 

@@ -302,8 +302,22 @@ func (arw *AheadReadWindow) doTask(task *AheadReadTask) {
 	arw.cache.blockCache.Store(key, cacheBlock)
 	cacheBlock.time = time.Now().Unix()
 	atomic.StoreUint64(&cacheBlock.readBytes, 0)
-	// randomly shuffle the order of hosts to evenly distribute access pressure.
-	hosts := getRotatedHosts(task.dp.Hosts)
+	followerRead := arw.streamer.client.dataWrapper.FollowerRead() || arw.streamer.client.extentConfig.AheadReadFollowerRead
+	var hosts []string
+	if followerRead {
+		// randomly shuffle the order of hosts to evenly distribute access pressure.
+		hosts = getRotatedHosts(task.dp.Hosts)
+	} else {
+		hosts = make([]string, 0, len(task.dp.Hosts))
+		if task.dp.LeaderAddr != "" {
+			hosts = append(hosts, task.dp.LeaderAddr)
+		}
+		for _, h := range task.dp.Hosts {
+			if h != task.dp.LeaderAddr {
+				hosts = append(hosts, h)
+			}
+		}
+	}
 	shouldRetry := true
 	for _, host := range hosts {
 		err = sendToNode(host, task.p, key, task.reqID, func(conn *net.TCPConn) (error, bool) {
@@ -496,7 +510,8 @@ func (arw *AheadReadWindow) getAheadReadTask(dp *wrapper.DataPartition, req *Ext
 	if readDataFromTinyExtent(req.ExtentKey.ExtentId) {
 		cacheOffset = int(req.ExtentKey.ExtentOffset)
 	}
-	p := NewReadPacket(req.ExtentKey, cacheOffset, size, arw.streamer.inode, req.FileOffset, true)
+	followerRead := arw.streamer.client.dataWrapper.FollowerRead() || arw.streamer.client.extentConfig.AheadReadFollowerRead
+	p := NewReadPacket(req.ExtentKey, cacheOffset, size, arw.streamer.inode, req.FileOffset, followerRead)
 	task := &AheadReadTask{
 		p:         p,
 		dp:        dp,
