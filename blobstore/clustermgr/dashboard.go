@@ -187,7 +187,7 @@ func (d *dashboardMgr) Simulate(nodes []string) clustermgr.ClusterDashboard {
 	for idx, node := range services.Nodes {
 		if _, hit := shutdownIPs[hostIP(node.Host)]; hit {
 			serviceChanged = true
-			node.ExpireAt = 0
+			node.ExpireAt = time.Now().Unix() - 1 // mark as just-expired for simulation
 			services.Nodes[idx] = node
 		}
 	}
@@ -428,7 +428,6 @@ func buildService(services []clustermgr.ServiceNode,
 ) clustermgr.ServiceStat {
 	var offlineNodes []clustermgr.ServiceNode
 	onlineByTypeIDC := make(map[string]map[string]int)
-	now := time.Now().Unix()
 	for _, n := range services {
 		if onlineByTypeIDC[n.Name] == nil {
 			onlineByTypeIDC[n.Name] = make(map[string]int)
@@ -436,7 +435,7 @@ func buildService(services []clustermgr.ServiceNode,
 		if _, ok := onlineByTypeIDC[n.Name][n.Idc]; !ok {
 			onlineByTypeIDC[n.Name][n.Idc] = 0
 		}
-		if n.ExpireAt < now {
+		if n.ExpireAt != 0 {
 			offlineNodes = append(offlineNodes, n)
 		} else {
 			onlineByTypeIDC[n.Name][n.Idc]++

@@ -135,3 +135,109 @@ func TestServiceMgr_Apply(t *testing.T) {
 	err = serviceMgr.Flush(ctx)
 	require.NoError(t, err)
 }
+
+func TestGetServiceInfoExcludesExpired(t *testing.T) {
+	tmpDBPath := "/tmp/tmpservicenormaldb" + strconv.Itoa(rand.Intn(1000000000))
+	defer os.RemoveAll(tmpDBPath)
+
+	db, err := normaldb.OpenNormalDB(tmpDBPath)
+	require.NoError(t, err)
+	defer db.Close()
+
+	svcMgr := NewServiceMgr(normaldb.OpenServiceTable(db))
+
+	const svcName = "testSvc"
+	span, ctx := trace.StartSpanFromContext(context.Background(), "")
+
+	onlineHosts := []string{"host-online-1", "host-online-2", "host-online-3"}
+	expiredHosts := []string{"host-expired-1", "host-expired-2"}
+
+	for _, host := range append(onlineHosts, expiredHosts...) {
+		data, err := json.Marshal(&clustermgr.RegisterArgs{
+			ServiceNode: clustermgr.ServiceNode{Name: svcName, Host: host},
+			Timeout:     60,
+		})
+		require.NoError(t, err)
+		err = svcMgr.Apply(ctx, []int32{OpRegister}, [][]byte{data}, []base.ProposeContext{{ReqID: span.TraceID()}})
+		require.NoError(t, err)
+	}
+
+	// simulate expiry: push Expires into the past
+	v, ok := svcMgr.cache.Load(svcName)
+	require.True(t, ok)
+	sv := v.(*service)
+	sv.Lock()
+	for _, host := range expiredHosts {
+		node := sv.nodes[host]
+		node.Expires = time.Now().Add(-time.Second)
+		sv.nodes[host] = node
+	}
+	sv.Unlock()
+
+	// GetServiceInfo must exclude expired nodes
+	info := svcMgr.GetServiceInfo(svcName)
+	require.Equal(t, len(onlineHosts), len(info.Nodes))
+	for _, n := range info.Nodes {
+		require.Contains(t, n.Host, "online", "expired node must not appear in GetServiceInfo")
+	}
+}
+
+func TestListServiceInfoMarksExpired(t *testing.T) {
+	tmpDBPath := "/tmp/tmpservicenormaldb" + strconv.Itoa(rand.Intn(1000000000))
+	defer os.RemoveAll(tmpDBPath)
+
+	db, err := normaldb.OpenNormalDB(tmpDBPath)
+	require.NoError(t, err)
+	defer db.Close()
+
+	svcMgr := NewServiceMgr(normaldb.OpenServiceTable(db))
+
+	const svcName = "testSvc"
+	span, ctx := trace.StartSpanFromContext(context.Background(), "")
+
+	onlineHosts := []string{"host-online-1", "host-online-2"}
+	expiredHosts := []string{"host-expired-1", "host-expired-2", "host-expired-3"}
+
+	for _, host := range append(onlineHosts, expiredHosts...) {
+		data, err := json.Marshal(&clustermgr.RegisterArgs{
+			ServiceNode: clustermgr.ServiceNode{Name: svcName, Host: host},
+			Timeout:     60,
+		})
+		require.NoError(t, err)
+		err = svcMgr.Apply(ctx, []int32{OpRegister}, [][]byte{data}, []base.ProposeContext{{ReqID: span.TraceID()}})
+		require.NoError(t, err)
+	}
+
+	expiredAt := time.Now().Add(-time.Second)
+	v, ok := svcMgr.cache.Load(svcName)
+	require.True(t, ok)
+	sv := v.(*service)
+	sv.Lock()
+	for _, host := range expiredHosts {
+		node := sv.nodes[host]
+		node.Expires = expiredAt
+		sv.nodes[host] = node
+	}
+	sv.Unlock()
+
+	now := time.Now().Unix()
+	listInfo, err := svcMgr.ListServiceInfo()
+	require.NoError(t, err)
+	require.Equal(t, len(onlineHosts)+len(expiredHosts), len(listInfo.Nodes))
+
+	onlineCount, expiredCount := 0, 0
+	for _, n := range listInfo.Nodes {
+		if n.ExpireAt == 0 {
+			// online node: ExpireAt == 0
+			onlineCount++
+			require.Contains(t, n.Host, "online")
+		} else {
+			// expired node: ExpireAt > 0 and in the past
+			expiredCount++
+			require.Contains(t, n.Host, "expired")
+			require.LessOrEqual(t, n.ExpireAt, now, "ExpireAt of an expired node must be <= now")
+		}
+	}
+	require.Equal(t, len(onlineHosts), onlineCount)
+	require.Equal(t, len(expiredHosts), expiredCount)
+}
