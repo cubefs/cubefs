@@ -201,11 +201,12 @@ func (v *VolumeStat) CalcScore() {
 			maxLoad = tl.TopN[0].Load
 		}
 	}
-	reason := fmt.Sprintf("disk_overload: maxLoad=%d > threshold=%d", maxLoad, diskLoadThreshold)
 	switch {
-	case maxLoad > diskLoadThreshold*2:
+	case maxLoad > diskLoadThreshold && maxLoad-diskLoadThreshold > diskLoadThreshold:
+		reason := fmt.Sprintf("disk_overload: maxLoad=%d > threshold=%d", maxLoad, diskLoadThreshold)
 		v.Score = DashboardScore{Score: DashboardScoreMajor, Reason: reason}
 	case maxLoad > diskLoadThreshold:
+		reason := fmt.Sprintf("disk_overload: maxLoad=%d > threshold=%d", maxLoad, diskLoadThreshold)
 		v.Score = DashboardScore{Score: DashboardScoreWarning, Reason: reason}
 	default:
 	}

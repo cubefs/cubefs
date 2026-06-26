@@ -496,15 +496,14 @@ func TestBuildService_Empty(t *testing.T) {
 }
 
 func TestBuildService_AllOnline(t *testing.T) {
-	now := time.Now()
 	services := []clustermgr.ServiceNode{
-		svcNode(proto.ServiceNameProxy, "idc1", "h1", now.Add(60*time.Second).Unix()),
-		svcNode(proto.ServiceNameProxy, "idc1", "h2", now.Add(60*time.Second).Unix()),
-		svcNode(proto.ServiceNameScheduler, "idc1", "h1", now.Add(60*time.Second).Unix()),
-		svcNode(proto.ServiceNameWorker, "idc1", "h1", now.Add(60*time.Second).Unix()),
-		svcNode(proto.ServiceNameWorker, "idc1", "h2", now.Add(60*time.Second).Unix()),
-		svcNode(proto.ServiceNameBlobNode, "idc1", "h1", now.Add(60*time.Second).Unix()),
-		svcNode(proto.ServiceNameBlobNode, "idc1", "h2", now.Add(60*time.Second).Unix()),
+		svcNode(proto.ServiceNameProxy, "idc1", "h1", 0),
+		svcNode(proto.ServiceNameProxy, "idc1", "h2", 0),
+		svcNode(proto.ServiceNameScheduler, "idc1", "h1", 0),
+		svcNode(proto.ServiceNameWorker, "idc1", "h1", 0),
+		svcNode(proto.ServiceNameWorker, "idc1", "h2", 0),
+		svcNode(proto.ServiceNameBlobNode, "idc1", "h1", 0),
+		svcNode(proto.ServiceNameBlobNode, "idc1", "h2", 0),
 	}
 	s := buildService(services, nil, noHost)
 	require.Equal(t, clustermgr.DashboardScoreOK, s.Score.Score)
@@ -512,13 +511,12 @@ func TestBuildService_AllOnline(t *testing.T) {
 }
 
 func TestBuildService_SomeOffline(t *testing.T) {
-	now := time.Now()
 	services := []clustermgr.ServiceNode{
-		svcNode(proto.ServiceNameProxy, "idc1", "h1", now.Add(60*time.Second).Unix()),
-		svcNode(proto.ServiceNameProxy, "idc1", "h2", now.Add(-1*time.Second).Unix()), // offline
-		svcNode(proto.ServiceNameScheduler, "idc1", "h1", now.Add(60*time.Second).Unix()),
-		svcNode(proto.ServiceNameWorker, "idc1", "h1", now.Add(60*time.Second).Unix()),
-		svcNode(proto.ServiceNameBlobNode, "idc1", "h1", now.Add(60*time.Second).Unix()),
+		svcNode(proto.ServiceNameProxy, "idc1", "h1", 0),
+		svcNode(proto.ServiceNameProxy, "idc1", "h2", time.Now().Add(-time.Second).Unix()), // offline
+		svcNode(proto.ServiceNameScheduler, "idc1", "h1", 0),
+		svcNode(proto.ServiceNameWorker, "idc1", "h1", 0),
+		svcNode(proto.ServiceNameBlobNode, "idc1", "h1", 0),
 	}
 	s := buildService(services, nil, noHost)
 	require.Equal(t, clustermgr.DashboardScoreWarning, s.Score.Score) // proxy idc1: 1 online → Warning
@@ -527,10 +525,9 @@ func TestBuildService_SomeOffline(t *testing.T) {
 }
 
 func TestBuildService_OfflineNodes(t *testing.T) {
-	now := time.Now()
 	services := []clustermgr.ServiceNode{
-		svcNode("sched", "idc1", "h1", now.Add(30*time.Second).Unix()),
-		svcNode("sched", "idc1", "h2", now.Add(-1*time.Second).Unix()), // offline
+		svcNode("sched", "idc1", "h1", 0),
+		svcNode("sched", "idc1", "h2", time.Now().Add(-time.Second).Unix()), // offline
 	}
 	s := buildService(services, nil, noHost)
 	require.Len(t, s.OfflineNodes, 1)
@@ -1015,8 +1012,8 @@ func TestSimulate_NoNodeMatch_SnapshotUnchanged(t *testing.T) {
 
 	// Pre-store a recognisable snapshot.
 	preService := buildService([]clustermgr.ServiceNode{
-		svcNode(proto.ServiceNameProxy, "idc1", "http://10.0.1.10:9100", time.Now().Add(time.Minute).Unix()),
-		svcNode(proto.ServiceNameProxy, "idc1", "http://10.0.1.20:9100", time.Now().Add(time.Minute).Unix()),
+		svcNode(proto.ServiceNameProxy, "idc1", "http://10.0.1.10:9100", 0),
+		svcNode(proto.ServiceNameProxy, "idc1", "http://10.0.1.20:9100", 0),
 	}, nil, noHost)
 	d.snapshot.Store(&dashboardSnapshot{
 		dashboard: clustermgr.ClusterDashboard{Score: preService.Score, Service: preService},

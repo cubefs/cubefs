@@ -116,7 +116,7 @@ func (s *ServiceMgr) ListServiceInfo() (info clustermgr.ServiceInfo, err error) 
 		sv.RLock()
 		for _, val := range sv.nodes {
 			var expireAt int64
-			if time.Until(val.Expires) > 0 {
+			if time.Until(val.Expires) <= 0 {
 				expireAt = val.Expires.Unix()
 			}
 			node := clustermgr.ServiceNode{
