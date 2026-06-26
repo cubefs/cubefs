@@ -15,6 +15,7 @@
 package stream
 
 import (
+	"container/list"
 	"fmt"
 	"hash/crc32"
 	"net"
@@ -112,6 +113,7 @@ type AheadReadCache struct {
 	stopC                 chan interface{}
 	blockCache            sync.Map
 	creatingBlockCacheMap sync.Map
+	overwriteInodes       *overwriteInodeCache
 }
 
 func NewAheadReadCache(enable bool, totalMem int64, blockTimeOut, winCnt int) *AheadReadCache {
@@ -119,11 +121,12 @@ func NewAheadReadCache(enable bool, totalMem int64, blockTimeOut, winCnt int) *A
 		return nil
 	}
 	arc := &AheadReadCache{
-		enable:        enable,
-		blockTimeOut:  blockTimeOut,
-		winCnt:        winCnt,
-		stopC:         make(chan interface{}),
-		totalBlockCnt: totalMem / util.CacheReadBlockSize,
+		enable:          enable,
+		blockTimeOut:    blockTimeOut,
+		winCnt:          winCnt,
+		stopC:           make(chan interface{}),
+		totalBlockCnt:   totalMem / util.CacheReadBlockSize,
+		overwriteInodes: newOverwriteInodeCache(OverwriteInodeTTL, MaxOverwriteInodeCache),
 	}
 	atomic.StoreInt64(&arc.availableBlockCnt, arc.totalBlockCnt)
 	arc.availableBlockC = make(chan struct{}, arc.availableBlockCnt)
@@ -303,6 +306,9 @@ func (arw *AheadReadWindow) doTask(task *AheadReadTask) {
 	cacheBlock.time = time.Now().Unix()
 	atomic.StoreUint64(&cacheBlock.readBytes, 0)
 	followerRead := arw.streamer.client.dataWrapper.FollowerRead() || arw.streamer.client.extentConfig.AheadReadFollowerRead
+	if arw.cache.overwriteInodes.isOverwrite(arw.streamer.inode) {
+		followerRead = false
+	}
 	var hosts []string
 	if followerRead {
 		// randomly shuffle the order of hosts to evenly distribute access pressure.
@@ -395,7 +401,11 @@ func (arw *AheadReadWindow) doTask(task *AheadReadTask) {
 		" marking as recycled and deleting cache block",
 		cacheBlock.inode, key, task.p.ExtentOffset, task.cacheSize, err, task.reqID)
 	if actual, loaded1 := arw.cache.blockCache.LoadAndDelete(key); loaded1 {
-		arw.cache.putAheadReadBlock(key, actual.(*AheadReadBlock))
+		blk := actual.(*AheadReadBlock)
+		blk.lock.Lock()
+		blk.key = ""
+		blk.lock.Unlock()
+		arw.cache.putAheadReadBlock(key, blk)
 	}
 	// retry failed task for updateRightIndex cannot be reverted
 	if task.retry <= MaxCacheBlockRetry && shouldRetry {
@@ -511,6 +521,9 @@ func (arw *AheadReadWindow) getAheadReadTask(dp *wrapper.DataPartition, req *Ext
 		cacheOffset = int(req.ExtentKey.ExtentOffset)
 	}
 	followerRead := arw.streamer.client.dataWrapper.FollowerRead() || arw.streamer.client.extentConfig.AheadReadFollowerRead
+	if arw.cache.overwriteInodes.isOverwrite(arw.streamer.inode) {
+		followerRead = false
+	}
 	p := NewReadPacket(req.ExtentKey, cacheOffset, size, arw.streamer.inode, req.FileOffset, followerRead)
 	task := &AheadReadTask{
 		p:         p,
@@ -524,6 +537,7 @@ func (arw *AheadReadWindow) getAheadReadTask(dp *wrapper.DataPartition, req *Ext
 }
 
 func (arw *AheadReadWindow) evictCacheBlock(req *ExtentRequest) {
+	arw.cache.overwriteInodes.mark(arw.streamer.inode)
 	if req.Size == 0 {
 		return
 	}
@@ -778,6 +792,7 @@ func (arw *AheadReadWindow) evictAllBlocks() {
 		return
 	}
 	inode := arw.streamer.inode
+	arw.cache.overwriteInodes.mark(arw.streamer.inode)
 	arw.cache.blockCache.Range(func(key, value interface{}) bool {
 		bv := value.(*AheadReadBlock)
 		if bv.inode != inode {
@@ -814,4 +829,139 @@ func (arw *AheadReadWindow) evictAllBlocks() {
 		time.Sleep(time.Millisecond)
 	}
 	log.LogDebugf("evictAllBlocks inode(%v) complete", arw.streamer.inode)
+}
+
+const (
+	OverwriteInodeTTL         = 30 * time.Second
+	MaxOverwriteInodeCache    = 200000
+	overwriteInodeEvictMin    = 10
+	overwInodeEvictMax        = 1000
+	overwInodeBgEvictInterval = 2 * time.Minute
+)
+
+type overwriteInodeEntry struct {
+	ino    uint64
+	expiry int64 // Unix seconds
+}
+
+type overwriteInodeCache struct {
+	sync.RWMutex
+	cache       map[uint64]*list.Element
+	lruList     *list.List
+	expiration  time.Duration
+	maxElements int
+}
+
+func newOverwriteInodeCache(exp time.Duration, maxElements int) *overwriteInodeCache {
+	dc := &overwriteInodeCache{
+		cache:       make(map[uint64]*list.Element),
+		lruList:     list.New(),
+		expiration:  exp,
+		maxElements: maxElements,
+	}
+	go dc.backgroundEviction()
+	return dc
+}
+
+func (dc *overwriteInodeCache) mark(ino uint64) {
+	dc.Lock()
+	old, ok := dc.cache[ino]
+	if ok {
+		dc.lruList.Remove(old)
+		delete(dc.cache, ino)
+	}
+
+	if dc.lruList.Len() >= dc.maxElements {
+		dc.evict(true)
+	}
+
+	entry := &overwriteInodeEntry{
+		ino:    ino,
+		expiry: time.Now().Add(dc.expiration).Unix(),
+	}
+	element := dc.lruList.PushFront(entry)
+	dc.cache[ino] = element
+	if log.EnableDebug() {
+		log.LogDebugf("overwriteInodeCache: mark ino(%v), expiry(%v), len(%d)", ino, entry.expiry, dc.lruList.Len())
+	}
+	dc.Unlock()
+}
+
+func (dc *overwriteInodeCache) isOverwrite(ino uint64) bool {
+	dc.RLock()
+	element, ok := dc.cache[ino]
+	if !ok {
+		dc.RUnlock()
+		return false
+	}
+	entry := element.Value.(*overwriteInodeEntry)
+	expired := time.Now().Unix() > entry.expiry
+	dc.RUnlock()
+
+	if expired {
+		dc.Lock()
+		// Re-check under write lock to avoid double delete.
+		if el, still := dc.cache[ino]; still {
+			if time.Now().Unix() > el.Value.(*overwriteInodeEntry).expiry {
+				dc.lruList.Remove(el)
+				delete(dc.cache, ino)
+				if log.EnableDebug() {
+					log.LogDebugf("overwriteInodeCache: evict ino(%v),len(%d)", ino, dc.lruList.Len())
+				}
+			}
+		}
+		dc.Unlock()
+		return false
+	}
+	return true
+}
+
+func (dc *overwriteInodeCache) evict(foreground bool) {
+	for i := 0; i < overwriteInodeEvictMin; i++ {
+		element := dc.lruList.Back()
+		if element == nil {
+			return
+		}
+		entry := element.Value.(*overwriteInodeEntry)
+		if !foreground && time.Now().Unix() <= entry.expiry {
+			return
+		}
+		dc.lruList.Remove(element)
+		delete(dc.cache, entry.ino)
+		if log.EnableDebug() {
+			log.LogDebugf("overwriteInodeCache: evict ino(%v), expiry(%v)", entry.ino, entry.expiry)
+		}
+	}
+
+	if foreground {
+		return
+	}
+
+	for i := 0; i < overwInodeEvictMax; i++ {
+		element := dc.lruList.Back()
+		if element == nil {
+			break
+		}
+		entry := element.Value.(*overwriteInodeEntry)
+		if time.Now().Unix() <= entry.expiry {
+			break
+		}
+		dc.lruList.Remove(element)
+		delete(dc.cache, entry.ino)
+		if log.EnableDebug() {
+			log.LogDebugf("overwriteInodeCache: evict ino(%v),expiry(%v)", entry.ino, entry.expiry)
+		}
+	}
+}
+
+func (dc *overwriteInodeCache) backgroundEviction() {
+	t := time.NewTicker(overwInodeBgEvictInterval)
+	defer t.Stop()
+	for range t.C {
+		start := time.Now()
+		dc.Lock()
+		dc.evict(false)
+		log.LogDebugf("overwriteInodeCache: bg evict done, remaining(%d), cost(%v)", dc.lruList.Len(), time.Since(start))
+		dc.Unlock()
+	}
 }

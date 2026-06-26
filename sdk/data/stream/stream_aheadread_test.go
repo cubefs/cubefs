@@ -2,10 +2,12 @@ package stream
 
 import (
 	"bytes"
+	"container/list"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/agiledragon/gomonkey/v2"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data/manager"
 	"github.com/cubefs/cubefs/sdk/data/wrapper"
@@ -328,6 +330,256 @@ func TestAheadRead_GetAheadReadTask_FollowerReadFlag(t *testing.T) {
 	}
 	if task.p.Opcode != proto.OpStreamFollowerRead {
 		t.Fatalf("expected follower read opcode, got %v", task.p.Opcode)
+	}
+}
+
+func TestAheadRead_GetAheadReadTask_DisableFollowerReadOnOverwrite(t *testing.T) {
+	s, arc := newTestStreamerWithAheadRead(t, 43)
+	defer arc.Stop()
+	s.client.dataWrapper.InitFollowerRead(true)
+
+	req := &ExtentRequest{
+		FileOffset: 0,
+		Size:       util.CacheReadBlockSize,
+		ExtentKey: &proto.ExtentKey{
+			PartitionId:  43,
+			ExtentId:     4300,
+			FileOffset:   0,
+			ExtentOffset: 0,
+			Size:         8 * util.MB,
+		},
+	}
+	s.aheadReadWindow.evictCacheBlock(req)
+
+	dp := &wrapper.DataPartition{
+		DataPartitionResponse: proto.DataPartitionResponse{
+			PartitionID: 43,
+			LeaderAddr:  "127.0.0.1:1",
+			Hosts:       []string{"127.0.0.1:1", "127.0.0.1:2"},
+		},
+	}
+
+	task := s.aheadReadWindow.getAheadReadTask(dp, req, 1, util.CacheReadBlockSize, 0)
+	if task == nil {
+		t.Fatal("expected task")
+	}
+	if task.p.Opcode != proto.OpStreamRead {
+		t.Fatalf("expected overwrite to disable follower read, got %v", task.p.Opcode)
+	}
+}
+
+func TestAheadRead_DoTask_DisableFollowerReadOnOverwrite(t *testing.T) {
+	s, arc := newTestStreamerWithAheadRead(t, 44)
+	defer arc.Stop()
+	s.client.dataWrapper.InitFollowerRead(true)
+	atomic.StoreUint64(&rrIdx, 1)
+	t.Cleanup(func() {
+		atomic.StoreUint64(&rrIdx, 0)
+	})
+
+	ek := &proto.ExtentKey{PartitionId: 44, ExtentId: 4400, FileOffset: 0, ExtentOffset: 0, Size: 8 * util.MB}
+	req := &ExtentRequest{FileOffset: 0, Size: util.CacheReadBlockSize, ExtentKey: ek}
+	s.aheadReadWindow.evictCacheBlock(req)
+
+	var gotHost string
+	patches := gomonkey.ApplyFunc(sendToNode, func(host string, p *Packet, key, reqID string, getReply GetReplyFunc) error {
+		gotHost = host
+		return nil
+	})
+	defer patches.Reset()
+
+	dp := &wrapper.DataPartition{
+		DataPartitionResponse: proto.DataPartitionResponse{
+			PartitionID: 44,
+			LeaderAddr:  "127.0.0.1:1",
+			Hosts:       []string{"127.0.0.1:1", "127.0.0.1:2"},
+		},
+	}
+	p := NewReadPacket(ek, 0, util.CacheReadBlockSize, s.inode, 0, true)
+	task := &AheadReadTask{
+		p:         p,
+		dp:        dp,
+		time:      time.Now(),
+		req:       req,
+		cacheSize: util.CacheReadBlockSize,
+		cacheType: "test",
+		logTime:   &time.Time{},
+		reqID:     "req-overwrite",
+		poolId:    0,
+		retry:     MaxCacheBlockRetry + 1,
+	}
+
+	s.aheadReadWindow.doTask(task)
+
+	if gotHost != dp.LeaderAddr {
+		t.Fatalf("expected leader host to be selected first, got %q want %q", gotHost, dp.LeaderAddr)
+	}
+}
+
+func TestOverwriteInodeCacheBranches(t *testing.T) {
+	_, err := log.InitLog("", "stream_cov_overwrite", log.DebugLevel, nil, log.DefaultLogLeftSpaceLimitRatio)
+	if err != nil {
+		t.Fatalf("init log: %v", err)
+	}
+	t.Cleanup(func() {
+		log.SetLogLevelV2(log.InfoLevel)
+	})
+
+	c := &overwriteInodeCache{
+		cache:       make(map[uint64]*list.Element),
+		lruList:     list.New(),
+		expiration:  time.Hour,
+		maxElements: 1,
+	}
+
+	if c.isOverwrite(100) {
+		t.Fatal("missing inode should not be marked as overwrite")
+	}
+
+	c.mark(100)
+	if !c.isOverwrite(100) {
+		t.Fatal("marked inode should be reported as overwrite")
+	}
+
+	c.mark(100)
+	c.mark(101)
+
+	expired := &overwriteInodeCache{
+		cache:       make(map[uint64]*list.Element),
+		lruList:     list.New(),
+		expiration:  time.Hour,
+		maxElements: 2,
+	}
+	expiredEl := expired.lruList.PushFront(&overwriteInodeEntry{
+		ino:    200,
+		expiry: time.Now().Add(-time.Second).Unix(),
+	})
+	expired.cache[200] = expiredEl
+	if expired.isOverwrite(200) {
+		t.Fatal("expired inode should not be reported as overwrite")
+	}
+
+	foreground := &overwriteInodeCache{
+		cache:       make(map[uint64]*list.Element),
+		lruList:     list.New(),
+		expiration:  time.Hour,
+		maxElements: 4,
+	}
+	for i := 0; i < 10; i++ {
+		ino := uint64(300 + i)
+		foreground.cache[ino] = foreground.lruList.PushFront(&overwriteInodeEntry{
+			ino:    ino,
+			expiry: time.Now().Add(-time.Second).Unix(),
+		})
+	}
+	foreground.evict(true)
+	if len(foreground.cache) != 0 {
+		t.Fatalf("foreground eviction should clear entries, got %d", len(foreground.cache))
+	}
+
+	fastEvict := &overwriteInodeCache{
+		cache:       make(map[uint64]*list.Element),
+		lruList:     list.New(),
+		expiration:  time.Hour,
+		maxElements: 16,
+	}
+	for i := 0; i < 11; i++ {
+		ino := uint64(400 + i)
+		el := fastEvict.lruList.PushFront(&overwriteInodeEntry{
+			ino:    ino,
+			expiry: time.Now().Add(-time.Second).Unix(),
+		})
+		fastEvict.cache[ino] = el
+	}
+	fastEvict.evict(false)
+	if len(fastEvict.cache) != 0 {
+		t.Fatalf("background-style eviction should clear expired entries, got %d", len(fastEvict.cache))
+	}
+
+	unexpired := &overwriteInodeCache{
+		cache:       make(map[uint64]*list.Element),
+		lruList:     list.New(),
+		expiration:  time.Hour,
+		maxElements: 16,
+	}
+	for i := 0; i < 10; i++ {
+		ino := uint64(500 + i)
+		el := unexpired.lruList.PushFront(&overwriteInodeEntry{
+			ino:    ino,
+			expiry: time.Now().Add(-time.Second).Unix(),
+		})
+		unexpired.cache[ino] = el
+	}
+	keepEl := unexpired.lruList.PushFront(&overwriteInodeEntry{
+		ino:    999,
+		expiry: time.Now().Add(time.Hour).Unix(),
+	})
+	unexpired.cache[999] = keepEl
+	unexpired.evict(false)
+	if _, ok := unexpired.cache[999]; !ok {
+		t.Fatal("unexpired inode should remain after eviction pass")
+	}
+
+	earlyReturn := &overwriteInodeCache{
+		cache:       make(map[uint64]*list.Element),
+		lruList:     list.New(),
+		expiration:  time.Hour,
+		maxElements: 16,
+	}
+	earlyEl := earlyReturn.lruList.PushFront(&overwriteInodeEntry{
+		ino:    600,
+		expiry: time.Now().Add(time.Hour).Unix(),
+	})
+	earlyReturn.cache[600] = earlyEl
+	earlyReturn.evict(false)
+	if len(earlyReturn.cache) != 1 {
+		t.Fatalf("unexpired eviction early return should keep entry, got %d", len(earlyReturn.cache))
+	}
+}
+
+func TestOverwriteInodeCacheBackgroundEviction(t *testing.T) {
+	c := &overwriteInodeCache{
+		cache:   make(map[uint64]*list.Element),
+		lruList: list.New(),
+	}
+	ticks := make(chan time.Time, 1)
+	patches := gomonkey.ApplyFunc(time.NewTicker, func(d time.Duration) *time.Ticker {
+		return &time.Ticker{C: ticks}
+	})
+	defer patches.Reset()
+
+	done := make(chan struct{})
+	go func() {
+		c.backgroundEviction()
+		close(done)
+	}()
+
+	ticks <- time.Now()
+	close(ticks)
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("backgroundEviction did not exit")
+	}
+}
+
+func TestAheadRead_EvictAllBlocksMarksOverwriteAndClearsCache(t *testing.T) {
+	s, arc := newTestStreamerWithAheadRead(t, 45)
+	defer arc.Stop()
+
+	key := putCacheBlock(arc, s.inode, 45, 4500, 0, util.CacheReadBlockSize, 'E')
+	if _, ok := arc.blockCache.Load(key); !ok {
+		t.Fatal("expected cache block before evictAllBlocks")
+	}
+
+	s.aheadReadWindow.evictAllBlocks()
+
+	if _, ok := arc.blockCache.Load(key); ok {
+		t.Fatal("cache block should be cleared by evictAllBlocks")
+	}
+	if !arc.overwriteInodes.isOverwrite(s.inode) {
+		t.Fatal("evictAllBlocks should mark inode as overwrite")
 	}
 }
 

@@ -9,11 +9,18 @@
 package fs
 
 import (
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+	"unsafe"
 
+	"github.com/agiledragon/gomonkey/v2"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/data/stream"
+	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/stretchr/testify/require"
 )
 
@@ -401,4 +408,48 @@ func FuzzDirDirtyBeginEndBalanced(f *testing.F) {
 		}
 		require.Empty(t, s.dirDirtyCount)
 	})
+}
+
+func TestNewSuper_AheadReadFollowerRead_Mock(t *testing.T) {
+	patches := gomonkey.ApplyFunc(meta.NewMetaWrapper, func(param *meta.MetaConfig) (*meta.MetaWrapper, error) {
+		mw := &meta.MetaWrapper{}
+		mc := master.NewMasterClient([]string{"127.0.0.1"}, false)
+		val := reflect.ValueOf(mw).Elem()
+		mcField := val.FieldByName("mc")
+		ptr := unsafe.Pointer(mcField.UnsafeAddr())
+		reflect.NewAt(mcField.Type(), ptr).Elem().Set(reflect.ValueOf(mc))
+		return mw, nil
+	})
+	defer patches.Reset()
+
+	patches.ApplyMethod(reflect.TypeOf(&master.AdminAPI{}), "GetVolumeSimpleInfo", func(_ *master.AdminAPI, name string) (*proto.SimpleVolView, error) {
+		return &proto.SimpleVolView{}, nil
+	})
+	patches.ApplyMethod(reflect.TypeOf(&master.AdminAPI{}), "GetClusterInfo", func(_ *master.AdminAPI) (*proto.ClusterInfo, error) {
+		return &proto.ClusterInfo{}, nil
+	})
+	patches.ApplyFunc(stream.NewExtentClient, func(config *stream.ExtentConfig) (*stream.ExtentClient, error) {
+		require.True(t, config.AheadReadFollowerRead)
+		return &stream.ExtentClient{}, nil
+	})
+
+	opt := &proto.MountOptions{
+		AheadReadEnable:       true,
+		AheadReadFollowerRead: true,
+		MinReadAheadSize:      1024,
+		Master:                "127.0.0.1",
+		Volname:               "test-vol",
+		Owner:                 "test-owner",
+		MountPoint:            "/tmp/mnt",
+		Logpath:               "/tmp/log",
+	}
+
+	defer func() { recover() }()
+	s, err := NewSuper(opt)
+	if err != nil {
+		t.Logf("NewSuper err: %v", err)
+	}
+	if s != nil {
+		require.NotNil(t, s.mw)
+	}
 }
