@@ -15,6 +15,7 @@
 package config
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"reflect"
@@ -22,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 
+	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/cli/common"
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
@@ -95,6 +97,11 @@ func LoadConfig(path string) {
 		panic(err)
 	}
 	load(conf)
+	if clusters := Clusters(); len(clusters) > 0 {
+		if err := cmapi.LoadExtendCodemode(context.Background(), Cluster()); err != nil {
+			panic(err)
+		}
+	}
 }
 
 type typeValuer struct {
