@@ -83,7 +83,7 @@ func TestNewDiskStorage(t *testing.T) {
 		NotifyCompacting: setChunkCompactFn,
 		HandleIOError:    handleIOErrorFn,
 	}
-	ds, err := NewDiskStorage(ctx, diskConfig)
+	ds, err := NewDiskStorage(ctx, testInspectConfig(diskConfig))
 	require.NoError(t, err)
 	require.NotNil(t, ds)
 
@@ -119,7 +119,7 @@ func TestNewDiskStorage(t *testing.T) {
 	}
 
 	// second time. reload
-	ds, err = NewDiskStorage(ctx, diskConfig)
+	ds, err = NewDiskStorage(ctx, testInspectConfig(diskConfig))
 	require.NoError(t, err)
 	require.NotNil(t, ds)
 	require.Equal(t, 2, len(ds.Chunks))
@@ -132,11 +132,11 @@ func TestNewDiskStorage(t *testing.T) {
 	// err condition
 
 	diskConfig.MustMountPoint = true
-	_, err = NewDiskStorage(ctx, diskConfig)
+	_, err = NewDiskStorage(ctx, testInspectConfig(diskConfig))
 	require.Error(t, err)
 
 	diskConfig.Path = "/tmp/test.txt"
-	_, err = NewDiskStorage(ctx, diskConfig)
+	_, err = NewDiskStorage(ctx, testInspectConfig(diskConfig))
 	require.Error(t, err)
 }
 
@@ -164,7 +164,7 @@ func TestRunCompact(t *testing.T) {
 		NotifyCompacting: setChunkCompactFn,
 		HandleIOError:    handleIOErrorFn,
 	}
-	ds, err := NewDiskStorage(ctx, diskConfig)
+	ds, err := NewDiskStorage(ctx, testInspectConfig(diskConfig))
 	require.NoError(t, err)
 	require.NotNil(t, ds)
 	ds.Conf.CompactEmptyRateThreshold = 0
@@ -220,7 +220,7 @@ func TestDiskStorage_UpdateChunkStatus(t *testing.T) {
 		NotifyCompacting: setChunkCompactFn,
 		HandleIOError:    handleIOErrorFn,
 	}
-	ds, err := NewDiskStorage(context.TODO(), diskConfig)
+	ds, err := NewDiskStorage(context.TODO(), testInspectConfig(diskConfig))
 	require.NoError(t, err)
 	require.NotNil(t, ds)
 	defer ds.ResetChunks(context.TODO())
@@ -271,7 +271,7 @@ func TestSuperBlock_UpdateDiskStatus(t *testing.T) {
 		NotifyCompacting: setChunkCompactFn,
 		HandleIOError:    handleIOErrorFn,
 	}
-	ds, err := NewDiskStorage(ctx, diskConfig)
+	ds, err := NewDiskStorage(ctx, testInspectConfig(diskConfig))
 	require.NoError(t, err)
 	require.NotNil(t, ds)
 	defer ds.ResetChunks(ctx)
@@ -312,7 +312,7 @@ func TestDiskStorage_CompactChunkFile2(t *testing.T) {
 		HandleIOError:    handleIOErrorFn,
 	}
 	diskConfig.WaitPendingReqIntervalSec = 1
-	ds, err := NewDiskStorage(ctx, diskConfig)
+	ds, err := NewDiskStorage(ctx, testInspectConfig(diskConfig))
 	require.NoError(t, err)
 	require.NotNil(t, ds)
 	defer ds.ResetChunks(ctx)
@@ -412,7 +412,7 @@ func TestExecCompact(t *testing.T) {
 		NotifyCompacting: cmClient.SetCompactChunk,
 		HandleIOError:    handleIOErrorFn,
 	}
-	ds, err := NewDiskStorage(ctx, diskConfig)
+	ds, err := NewDiskStorage(ctx, testInspectConfig(diskConfig))
 	require.NoError(t, err)
 	require.NotNil(t, ds)
 	defer ds.ResetChunks(ctx)
@@ -477,7 +477,7 @@ func TestCleanChunk(t *testing.T) {
 		NotifyCompacting: setChunkCompactFn,
 		HandleIOError:    handleIOErrorFn,
 	}
-	ds, err := NewDiskStorage(ctx, diskConfig)
+	ds, err := NewDiskStorage(ctx, testInspectConfig(diskConfig))
 	require.NoError(t, err)
 	require.NotNil(t, ds)
 
@@ -536,7 +536,7 @@ func TestCheckChunkFile(t *testing.T) {
 		NotifyCompacting: setChunkCompactFn,
 		HandleIOError:    handleIOErrorFn,
 	}
-	ds, err := NewDiskStorage(ctx, diskConfig)
+	ds, err := NewDiskStorage(ctx, testInspectConfig(diskConfig))
 	require.NoError(t, err)
 	require.NotNil(t, ds)
 	defer ds.ResetChunks(ctx)
@@ -590,7 +590,7 @@ func TestDiskstorage_Finalizer(t *testing.T) {
 		NotifyCompacting: setChunkCompactFn,
 		HandleIOError:    handleIOErrorFn,
 	}
-	ds, err := NewDiskStorage(ctx, diskConfig)
+	ds, err := NewDiskStorage(ctx, testInspectConfig(diskConfig))
 	require.NoError(t, err)
 	require.NotNil(t, ds)
 
@@ -655,7 +655,7 @@ func TestDiskStorageWrapper_CreateChunk(t *testing.T) {
 		NotifyCompacting: setChunkCompactFn,
 		HandleIOError:    handleIOErrorFn,
 	}
-	ds, err := NewDiskStorage(ctx, diskConfig)
+	ds, err := NewDiskStorage(ctx, testInspectConfig(diskConfig))
 	require.NoError(t, err)
 	require.NotNil(t, ds)
 
@@ -687,7 +687,7 @@ func TestDiskStorageWrapper_CreateChunkOversold(t *testing.T) {
 		HandleIOError:    handleIOErrorFn,
 		GetGlobalConfig:  getGlobalConfigFn,
 	}
-	ds, err := NewDiskStorage(ctx, diskConfig)
+	ds, err := NewDiskStorage(ctx, testInspectConfig(diskConfig))
 	require.NoError(t, err)
 	require.NotNil(t, ds)
 
@@ -722,7 +722,7 @@ func TestDiskStorage_ReleaseChunk(t *testing.T) {
 		NotifyCompacting: setChunkCompactFn,
 		HandleIOError:    handleIOErrorFn,
 	}
-	ds, err := NewDiskStorage(ctx, diskConfig)
+	ds, err := NewDiskStorage(ctx, testInspectConfig(diskConfig))
 	require.NoError(t, err)
 	require.NotNil(t, ds)
 
@@ -741,6 +741,45 @@ func TestDiskStorage_ReleaseChunk(t *testing.T) {
 
 	ds.status = proto.DiskStatusRepairing
 	err = ds.ReleaseChunk(ctx, vuid, true)
+	require.Error(t, err)
+}
+
+func TestDiskStorage_RealCleanChunkKeepsInspectState(t *testing.T) {
+	testDir, err := os.MkdirTemp(os.TempDir(), "TestRealCleanChunkKeepsInspectState")
+	require.NoError(t, err)
+	defer os.RemoveAll(testDir)
+
+	ctx := context.Background()
+
+	diskpath := filepath.Join(testDir, "DiskPath")
+	require.NoError(t, os.MkdirAll(diskpath, 0o755))
+
+	diskConfig := core.Config{
+		BaseConfig: core.BaseConfig{
+			Path:       diskpath,
+			AutoFormat: true,
+		},
+		AllocDiskID:      getDiskIDFn,
+		NotifyCompacting: setChunkCompactFn,
+		HandleIOError:    handleIOErrorFn,
+	}
+	ds, err := NewDiskStorage(ctx, testInspectConfig(diskConfig))
+	require.NoError(t, err)
+	require.NotNil(t, ds)
+
+	vuid := proto.Vuid(1005)
+	cs, err := ds.CreateChunk(ctx, vuid, core.DefaultChunkSize)
+	require.NoError(t, err)
+	require.NotNil(t, cs)
+
+	require.NoError(t, ds.inspectState().StoreInspectChunkState(ctx, core.InspectChunkState{Vuid: vuid}))
+	require.NoError(t, ds.realCleanChunk(ctx, cs.ID()))
+
+	got, err := ds.inspectState().LoadInspectChunkState(ctx, vuid)
+	require.NoError(t, err)
+	require.Equal(t, vuid, got.Vuid)
+
+	_, err = ds.SuperBlock.ReadChunk(ctx, cs.ID())
 	require.Error(t, err)
 }
 
@@ -767,7 +806,7 @@ func TestDiskStorage_UpdateChunkStatus2(t *testing.T) {
 		NotifyCompacting: setChunkCompactFn,
 		HandleIOError:    handleIOErrorFn,
 	}
-	ds, err := NewDiskStorage(ctx, diskConfig)
+	ds, err := NewDiskStorage(ctx, testInspectConfig(diskConfig))
 	require.NoError(t, err)
 	require.NotNil(t, ds)
 
@@ -898,7 +937,7 @@ func TestDiskUpdateDiskMeta(t *testing.T) {
 			NodeID: proto.NodeID(1), // Old version: NodeID is 1
 		},
 	}
-	ds, err := NewDiskStorage(ctx, diskConfig)
+	ds, err := NewDiskStorage(ctx, testInspectConfig(diskConfig))
 	require.NoError(t, err)
 	require.NotNil(t, ds)
 
@@ -921,7 +960,7 @@ func TestDiskUpdateDiskMeta(t *testing.T) {
 	expectedNodeID := proto.NodeID(12345)
 	diskConfig.NodeID = expectedNodeID
 
-	ds, err = NewDiskStorage(ctx, diskConfig)
+	ds, err = NewDiskStorage(ctx, testInspectConfig(diskConfig))
 	require.NoError(t, err)
 	require.NotNil(t, ds)
 	defer ds.ResetChunks(ctx)
@@ -966,7 +1005,7 @@ func TestRegisterDiskWithNodeID(t *testing.T) {
 		},
 	}
 
-	ds, err := NewDiskStorage(ctx, diskConfig)
+	ds, err := NewDiskStorage(ctx, testInspectConfig(diskConfig))
 	require.NoError(t, err)
 	require.NotNil(t, ds)
 	defer ds.ResetChunks(ctx)
@@ -980,4 +1019,189 @@ func TestRegisterDiskWithNodeID(t *testing.T) {
 	dm, err := ds.SuperBlock.LoadDiskInfo(ctx)
 	require.NoError(t, err)
 	require.Equal(t, expectedNodeID, dm.NodeID)
+}
+
+func TestPrepareCloseIsIdempotent(t *testing.T) {
+	ctx := context.Background()
+	ds := &DiskStorage{
+		closeCh: make(chan struct{}),
+		Chunks:  make(map[proto.Vuid]core.ChunkAPI),
+	}
+
+	require.NotPanics(t, func() {
+		ds.PrepareClose(ctx)
+		ds.PrepareClose(ctx)
+	})
+	require.True(t, ds.IsClosing())
+}
+
+func TestDiskStorage_InspectStateWithSuperBlock(t *testing.T) {
+	ctx := context.Background()
+	var err error
+	ds := newTestInspectDisk(t)
+
+	err = ds.inspectState().StoreInspectDiskState(ctx, core.InspectDiskState{DiskID: proto.InvalidDiskID})
+	require.ErrorIs(t, err, bloberr.ErrInvalidParam)
+
+	_, err = ds.inspectState().LoadInspectChunkState(ctx, proto.InvalidVuid)
+	require.ErrorIs(t, err, bloberr.ErrInvalidParam)
+
+	err = ds.inspectState().StoreInspectChunkState(ctx, core.InspectChunkState{Vuid: proto.InvalidVuid})
+	require.ErrorIs(t, err, bloberr.ErrInvalidParam)
+
+	err = ds.inspectState().DeleteChunkState(ctx, proto.InvalidVuid)
+	require.ErrorIs(t, err, bloberr.ErrInvalidParam)
+
+	diskSt := core.InspectDiskState{
+		DiskID:       proto.DiskID(11),
+		CycleStartAt: 12345,
+		CycleID:      7,
+	}
+	require.NoError(t, ds.inspectState().StoreInspectDiskState(ctx, diskSt))
+
+	gotDiskSt, err := ds.inspectState().LoadInspectDiskState(ctx)
+	require.NoError(t, err)
+	require.Equal(t, diskSt, gotDiskSt)
+
+	chunkSt := core.InspectChunkState{
+		Vuid:         proto.Vuid(1001),
+		Cursor:       proto.BlobID(100),
+		CycleMaxBid:  proto.BlobID(1000),
+		CycleCnt:     500,
+		CycleScanned: 100,
+		BadBids:      map[proto.BlobID]struct{}{7: {}, 8: {}},
+	}
+	require.NoError(t, ds.inspectState().StoreInspectChunkState(ctx, chunkSt))
+
+	gotChunkSt, err := ds.inspectState().LoadInspectChunkState(ctx, proto.Vuid(1001))
+	require.NoError(t, err)
+	require.Equal(t, chunkSt, gotChunkSt)
+
+	var gotRange []proto.Vuid
+	require.NoError(t, ds.inspectState().RangeInspectChunkState(ctx, func(st *core.InspectChunkState) bool {
+		gotRange = append(gotRange, st.Vuid)
+		return true
+	}))
+	require.Equal(t, []proto.Vuid{proto.Vuid(1001)}, gotRange)
+
+	require.NoError(t, ds.inspectState().DeleteChunkState(ctx, proto.Vuid(1001)))
+	gotChunkSt, err = ds.inspectState().LoadInspectChunkState(ctx, proto.Vuid(1001))
+	require.NoError(t, err)
+	require.Equal(t, core.InspectChunkState{Vuid: proto.Vuid(1001), CycleCnt: -1}, gotChunkSt)
+}
+
+func TestDiskStorage_InspectStateCRUD(t *testing.T) {
+	testDir, err := os.MkdirTemp(os.TempDir(), "TestDiskStorage_InspectStateCRUD")
+	require.NoError(t, err)
+	defer os.RemoveAll(testDir)
+
+	ctx := context.Background()
+	diskpath := filepath.Join(testDir, "DiskPath")
+	require.NoError(t, os.MkdirAll(diskpath, 0o755))
+
+	diskConfig := core.Config{
+		BaseConfig: core.BaseConfig{
+			Path:       diskpath,
+			AutoFormat: true,
+		},
+		AllocDiskID:      getDiskIDFn,
+		NotifyCompacting: setChunkCompactFn,
+		HandleIOError:    handleIOErrorFn,
+	}
+	dsw, err := NewDiskStorage(ctx, testInspectConfig(diskConfig))
+	require.NoError(t, err)
+	require.NotNil(t, dsw)
+	defer dsw.ResetChunks(ctx)
+
+	vuid := proto.Vuid(1001)
+
+	got, err := dsw.inspectState().LoadInspectChunkState(ctx, vuid)
+	require.NoError(t, err)
+	require.Equal(t, core.InspectChunkState{Vuid: vuid, CycleCnt: -1}, got)
+
+	st := core.InspectChunkState{Vuid: vuid, CycleCnt: 500, BadBids: map[proto.BlobID]struct{}{7: {}}}
+	require.NoError(t, dsw.inspectState().StoreInspectChunkState(ctx, st))
+
+	got, err = dsw.inspectState().LoadInspectChunkState(ctx, vuid)
+	require.NoError(t, err)
+	require.Equal(t, st.CycleCnt, got.CycleCnt)
+	require.Equal(t, st.BadBids, got.BadBids)
+
+	require.NoError(t, dsw.inspectState().DeleteChunkState(ctx, vuid))
+	got, err = dsw.inspectState().LoadInspectChunkState(ctx, vuid)
+	require.NoError(t, err)
+	require.Equal(t, core.InspectChunkState{Vuid: vuid, CycleCnt: -1}, got)
+
+	diskID := proto.DiskID(11)
+	dst := core.InspectDiskState{DiskID: diskID, CycleStartAt: 999}
+	require.NoError(t, dsw.inspectState().StoreInspectDiskState(ctx, dst))
+	gotDisk, err := dsw.inspectState().LoadInspectDiskState(ctx)
+	require.NoError(t, err)
+	require.Equal(t, dst.CycleStartAt, gotDisk.CycleStartAt)
+
+	vuids := []proto.Vuid{101, 102, 103}
+	for _, v := range vuids {
+		require.NoError(t, dsw.inspectState().StoreInspectChunkState(ctx, core.InspectChunkState{Vuid: v}))
+	}
+	seen := map[proto.Vuid]bool{}
+	require.NoError(t, dsw.inspectState().RangeInspectChunkState(ctx, func(st *core.InspectChunkState) bool {
+		seen[st.Vuid] = true
+		return true
+	}))
+	for _, v := range vuids {
+		require.True(t, seen[v])
+	}
+}
+
+func TestGcOrphanInspectState(t *testing.T) {
+	testDir, err := os.MkdirTemp(os.TempDir(), "TestGcOrphanInspectState")
+	require.NoError(t, err)
+	defer os.RemoveAll(testDir)
+
+	ctx := context.Background()
+	diskpath := filepath.Join(testDir, "DiskPath")
+	require.NoError(t, os.MkdirAll(diskpath, 0o755))
+
+	diskConfig := core.Config{
+		BaseConfig: core.BaseConfig{
+			Path:       diskpath,
+			AutoFormat: true,
+		},
+		AllocDiskID:      getDiskIDFn,
+		NotifyCompacting: setChunkCompactFn,
+		HandleIOError:    handleIOErrorFn,
+	}
+	dsw, err := NewDiskStorage(ctx, testInspectConfig(diskConfig))
+	require.NoError(t, err)
+	require.NotNil(t, dsw)
+	defer dsw.ResetChunks(ctx)
+
+	liveVuid := proto.Vuid(3001)
+	cs, err := dsw.CreateChunk(ctx, liveVuid, core.DefaultChunkSize)
+	require.NoError(t, err)
+	require.NotNil(t, cs)
+
+	// simulate a live chunk's persisted inspect state (should be kept)
+	require.NoError(t, dsw.SuperBlock.UpsertInspectChunkState(ctx, core.InspectChunkState{Vuid: liveVuid}))
+
+	// simulate an orphaned inspect state for a vuid that no longer has a live chunk
+	// binding; gcOrphanInspectState should remove it on startup.
+	orphanVuid := proto.Vuid(3002)
+	require.NoError(t, dsw.SuperBlock.UpsertInspectChunkState(ctx, core.InspectChunkState{Vuid: orphanVuid}))
+
+	// sanity: both keys present before gc
+	_, err = dsw.SuperBlock.ReadInspectChunkState(ctx, liveVuid)
+	require.NoError(t, err)
+	_, err = dsw.SuperBlock.ReadInspectChunkState(ctx, orphanVuid)
+	require.NoError(t, err)
+
+	dsw.gcOrphanInspectState(ctx)
+
+	// live vuid's state must survive
+	_, err = dsw.SuperBlock.ReadInspectChunkState(ctx, liveVuid)
+	require.NoError(t, err)
+
+	// orphan vuid's state must be removed
+	_, err = dsw.SuperBlock.ReadInspectChunkState(ctx, orphanVuid)
+	require.Error(t, err)
 }

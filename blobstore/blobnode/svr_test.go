@@ -1533,13 +1533,16 @@ func TestService_OnlyBlobnode_OpenOldDisk(t *testing.T) {
 func TestService_DataInspect(t *testing.T) {
 	ctr := gomock.NewController(t)
 	ds1 := NewMockDiskAPI(ctr)
+	ds2 := NewMockDiskAPI(ctr)
+	vuid, err := proto.NewVuid(1001, 1, 1)
+	require.NoError(t, err)
 	svr := &Service{
-		Disks: map[proto.DiskID]core.DiskAPI{2: ds1},
+		Disks: map[proto.DiskID]core.DiskAPI{2: ds1, 3: ds2},
 	}
 	testServer := httptest.NewServer(NewHandler(svr))
 
 	{
-		ds1.EXPECT().ID().Return(proto.DiskID(2))
+		ds1.EXPECT().ID().Return(proto.DiskID(2)).AnyTimes()
 		ds1.EXPECT().DiskInfo().Return(cmapi.BlobNodeDiskInfo{
 			DiskInfo: cmapi.DiskInfo{
 				ClusterID: 1,
@@ -1559,16 +1562,13 @@ func TestService_DataInspect(t *testing.T) {
 	{
 		// get inspect stats
 		getter := mocks.NewMockAccessor(ctr)
-		getter.EXPECT().GetConfig(any, any).AnyTimes().Return("", nil)
+		getter.EXPECT().GetConfig(gomock.Any(), gomock.Any()).AnyTimes().Return("", nil)
 		ts, err := taskswitch.NewSwitchMgr(getter).AddSwitch(proto.TaskSwitchDataInspect.String())
 		require.NoError(t, err)
 		svr.inspectMgr = &DataInspectMgr{
-			// progress:   map[proto.DiskID]int{101: 85, 202: 95},
 			taskSwitch: ts,
 			conf:       DataInspectConf{RateLimit: 4096},
 		}
-		svr.inspectMgr.progress.Store(proto.DiskID(101), 88)
-		svr.inspectMgr.progress.Store(proto.DiskID(202), 99)
 
 		totalUrl := testServer.URL + "/inspect/stat"
 		resp, err := HTTPRequest(http.MethodGet, totalUrl)
@@ -1581,7 +1581,145 @@ func TestService_DataInspect(t *testing.T) {
 		var data DataInspectStat
 		err = json.Unmarshal(body, &data)
 		require.NoError(t, err)
+		require.Equal(t, 4096, data.RateLimit)
 		log.Infof("inspect stat: %+v\n", data)
+	}
+
+	{
+		getter := mocks.NewMockAccessor(ctr)
+		getter.EXPECT().GetConfig(gomock.Any(), gomock.Any()).AnyTimes().Return("", nil)
+		ts, err := taskswitch.NewSwitchMgr(getter).AddSwitch(proto.TaskSwitchDataInspect.String())
+		require.NoError(t, err)
+		svr.inspectMgr = &DataInspectMgr{
+			taskSwitch: ts,
+			conf:       DataInspectConf{RateLimit: 4096},
+		}
+
+		expectedDiskSt := InspectDiskState{
+			DiskID:       2,
+			CycleStartAt: 123456789,
+			CycleID:      7,
+		}
+		ds1.EXPECT().IsClosing().Return(false).Times(1)
+		ds1.EXPECT().LoadInspectDiskState(gomock.Any()).Return(expectedDiskSt, nil).Times(1)
+
+		totalUrl := testServer.URL + "/inspect/stat/diskid/2"
+		resp, err := HTTPRequest(http.MethodGet, totalUrl)
+		require.Nil(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		var data map[proto.DiskID]InspectDiskState
+		err = json.Unmarshal(body, &data)
+		require.NoError(t, err)
+		require.Equal(t, map[proto.DiskID]InspectDiskState{2: expectedDiskSt}, data)
+	}
+
+	{
+		expectedDiskStates := map[proto.DiskID]InspectDiskState{
+			2: {DiskID: 2, CycleStartAt: 123456789, CycleID: 7},
+			3: {DiskID: 3, CycleStartAt: 987654321, CycleID: 8},
+		}
+		ds2.EXPECT().ID().Return(proto.DiskID(3)).AnyTimes()
+		ds1.EXPECT().IsClosing().Return(false).Times(1)
+		ds1.EXPECT().LoadInspectDiskState(gomock.Any()).Return(expectedDiskStates[2], nil).Times(1)
+		ds2.EXPECT().IsClosing().Return(false).Times(1)
+		ds2.EXPECT().LoadInspectDiskState(gomock.Any()).Return(expectedDiskStates[3], nil).Times(1)
+
+		totalUrl := testServer.URL + "/inspect/stat/diskid/0"
+		resp, err := HTTPRequest(http.MethodGet, totalUrl)
+		require.Nil(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		var data map[proto.DiskID]InspectDiskState
+		err = json.Unmarshal(body, &data)
+		require.NoError(t, err)
+		require.Equal(t, expectedDiskStates, data)
+	}
+
+	{
+		expectedChunkSt := InspectChunkState{
+			Vuid:         vuid,
+			Cursor:       456,
+			CycleMaxBid:  456,
+			CycleCnt:     8,
+			CycleScanned: 6,
+			BadBids:      badBidSet(88),
+		}
+		ds1.EXPECT().IsClosing().Return(false).Times(1)
+		ds1.EXPECT().LoadInspectChunkState(gomock.Any(), vuid).Return(expectedChunkSt, nil).Times(1)
+
+		totalUrl := testServer.URL + "/inspect/stat/diskid/2/vuid/" + vuid.ToString()
+		resp, err := HTTPRequest(http.MethodGet, totalUrl)
+		require.Nil(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		var data map[proto.Vuid]InspectChunkStateInfo
+		err = json.Unmarshal(body, &data)
+		require.NoError(t, err)
+		require.Len(t, data, 1)
+		info, exist := data[vuid]
+		require.True(t, exist)
+		require.Equal(t, vuid, info.Vuid)
+		require.Equal(t, expectedChunkSt.Cursor, info.Cursor)
+		require.Equal(t, expectedChunkSt.CycleMaxBid, info.CycleMaxBid)
+		require.True(t, info.Counted)
+		require.Equal(t, expectedChunkSt.CycleCnt, info.CycleCnt)
+		require.Equal(t, expectedChunkSt.CycleScanned, info.CycleScanned)
+		require.Equal(t, []proto.BlobID{88}, info.BadBids)
+	}
+
+	{
+		st1 := InspectChunkState{
+			Vuid:         proto.Vuid(1003),
+			Cursor:       200,
+			CycleMaxBid:  300,
+			CycleID:      9,
+			CycleCnt:     12,
+			CycleScanned: 5,
+			BadBids:      badBidSet(9),
+		}
+		st2 := InspectChunkState{
+			Vuid:         proto.Vuid(1002),
+			Cursor:       301,
+			CycleMaxBid:  301,
+			CycleID:      9,
+			CycleCnt:     13,
+			CycleScanned: 6,
+			BadBids:      badBidSet(8),
+		}
+		ds1.EXPECT().IsClosing().Return(false).Times(1)
+		ds1.EXPECT().RangeInspectChunkState(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, fn func(st *core.InspectChunkState) bool) error {
+				fn(&st1)
+				fn(&st2)
+				return nil
+			},
+		)
+		totalUrl := testServer.URL + "/inspect/stat/diskid/2/vuid/0"
+		resp, err := HTTPRequest(http.MethodGet, totalUrl)
+		require.Nil(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		var data map[proto.Vuid]InspectChunkStateInfo
+		err = json.Unmarshal(body, &data)
+		require.NoError(t, err)
+		require.Len(t, data, 2)
+		require.Equal(t, st2.Cursor, data[proto.Vuid(1002)].Cursor)
+		require.Equal(t, []proto.BlobID{8}, data[proto.Vuid(1002)].BadBids)
+		require.Equal(t, st1.Cursor, data[proto.Vuid(1003)].Cursor)
+		require.Equal(t, []proto.BlobID{9}, data[proto.Vuid(1003)].BadBids)
 	}
 }
 

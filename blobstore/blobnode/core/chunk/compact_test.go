@@ -90,6 +90,33 @@ func (mock *diskMock) GetMetaPath() (path string) {
 	return mock.metaPath
 }
 
+func (mock *diskMock) InspectState() core.InspectStateStore {
+	return mock
+}
+
+func (mock *diskMock) LoadInspectDiskState(ctx context.Context) (st core.InspectDiskState, err error) {
+	return st, nil
+}
+
+func (mock *diskMock) LoadInspectChunkState(ctx context.Context, vuid proto.Vuid) (st core.InspectChunkState, err error) {
+	return st, nil
+}
+
+func (mock *diskMock) RangeInspectChunkState(ctx context.Context, fn func(st *core.InspectChunkState) bool) error {
+	return nil
+}
+
+func (mock *diskMock) StoreInspectDiskState(ctx context.Context, st core.InspectDiskState) error {
+	return nil
+}
+
+func (mock *diskMock) StoreInspectChunkState(ctx context.Context, st core.InspectChunkState) error {
+	return nil
+}
+
+func (mock *diskMock) FlushInspectState(ctx context.Context) {
+}
+
 func (mock *diskMock) SetStatus(status proto.DiskStatus) {
 	mock.status = status
 }

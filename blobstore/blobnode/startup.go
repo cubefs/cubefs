@@ -231,6 +231,9 @@ func (s *Service) waitRepairAndClose(ctx context.Context, disk core.DiskAPI) {
 	delete(s.Disks, disk.ID())
 	s.lock.Unlock()
 
+	// clean inspect metrics when disk dropped
+	s.inspectMgr.cleanDiskInspectMetric(disk, diskID)
+
 	disk.PrepareClose(ctx)
 
 	span.Infof("diskID:%d will gc close", diskID)
@@ -268,6 +271,14 @@ func (s *Service) handleDiskDrop(ctx context.Context, ds core.DiskAPI) {
 		s.lock.Lock()
 		delete(s.Disks, diskID)
 		s.lock.Unlock()
+
+		// 4. clean up Prometheus metrics for this disk: the dropped disk will be
+		// replaced, so the old disk_id label series must be cleared.
+		// Blobnode service always wires inspectMgr before disk cleanup runs.
+		s.inspectMgr.cleanDiskInspectMetric(ds, diskID)
+
+		// 5. even chunks clean, we still need to PrepareClose for loopOut break out
+		ds.PrepareClose(ctx)
 
 		span.Debugf("diskID:%d dropped, end check clean", diskID)
 	}()

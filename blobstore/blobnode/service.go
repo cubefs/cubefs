@@ -150,5 +150,8 @@ func NewHandler(service *Service) *rpc.Router {
 	r.Handle(http.MethodGet, "/inspect/stat", service.GetInspectStat, rpc.OptArgsQuery())
 	r.Handle(http.MethodPost, "/inspect/cleanmetric", service.CleanInspectMetric, rpc.OptArgsQuery())
 
+	r.Handle(http.MethodGet, "/inspect/stat/diskid/:diskid", service.GetInspectDiskState, rpc.OptArgsURI())
+	r.Handle(http.MethodGet, "/inspect/stat/diskid/:diskid/vuid/:vuid", service.GetInspectChunkState, rpc.OptArgsURI())
+
 	return r
 }
