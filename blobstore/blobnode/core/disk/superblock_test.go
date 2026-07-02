@@ -27,6 +27,7 @@ import (
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core/storage"
+	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
@@ -318,4 +319,151 @@ func TestCleanChunkSpace(t *testing.T) {
 
 	err = s.CleanChunkSpace(ctx, chunkid)
 	require.Nil(t, err)
+}
+
+// ---------------------------------------------------------------------------
+// DataInspectMgr persisted inspect state (inspect_disk_state/, inspect_state/)
+// ---------------------------------------------------------------------------
+
+func TestSuperBlock_InspectState_InvalidArgs(t *testing.T) {
+	sb := newTestSuperBlock(t)
+	ctx := context.Background()
+	var err error
+
+	err = sb.UpsertInspectDiskState(ctx, core.InspectDiskState{DiskID: proto.InvalidDiskID})
+	require.ErrorIs(t, err, bloberr.ErrInvalidParam)
+
+	_, err = sb.ReadInspectChunkState(ctx, proto.InvalidVuid)
+	require.ErrorIs(t, err, bloberr.ErrInvalidParam)
+
+	err = sb.UpsertInspectChunkState(ctx, core.InspectChunkState{Vuid: proto.InvalidVuid})
+	require.ErrorIs(t, err, bloberr.ErrInvalidParam)
+
+	err = sb.DeleteInspectChunkState(ctx, proto.InvalidVuid)
+	require.ErrorIs(t, err, bloberr.ErrInvalidParam)
+}
+
+// newTestSuperBlock builds a SuperBlock backed by a real (temp-dir) RocksDB meta handler,
+// so inspect-state CRUD/Range semantics are exercised against the same storage engine used
+// in production, not a fake.
+func newTestSuperBlock(t *testing.T) *SuperBlock {
+	t.Helper()
+	testDir, err := os.MkdirTemp(os.TempDir(), "superblock_test")
+	require.NoError(t, err)
+	t.Cleanup(func() { os.RemoveAll(testDir) })
+
+	dir := filepath.Join(testDir, "meta")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+
+	sb, err := NewSuperBlock(dir, &core.Config{})
+	require.NoError(t, err)
+	t.Cleanup(func() { sb.Close(context.Background()) }) //nolint:errcheck
+
+	return sb
+}
+
+func TestSuperBlock_InspectChunkStateCRUD(t *testing.T) {
+	sb := newTestSuperBlock(t)
+	ctx := context.Background()
+
+	vuid := proto.Vuid(1001)
+
+	// not found initially
+	_, err := sb.ReadInspectChunkState(ctx, vuid)
+	require.Error(t, err)
+
+	st := core.InspectChunkState{
+		Vuid:         vuid,
+		Cursor:       proto.BlobID(100),
+		CycleMaxBid:  proto.BlobID(1000),
+		CycleCnt:     500,
+		CycleScanned: 100,
+		BadBids:      map[proto.BlobID]struct{}{7: {}, 8: {}},
+	}
+	require.NoError(t, sb.UpsertInspectChunkState(ctx, st))
+
+	got, err := sb.ReadInspectChunkState(ctx, vuid)
+	require.NoError(t, err)
+	require.Equal(t, st.Vuid, got.Vuid)
+	require.Equal(t, st.Cursor, got.Cursor)
+	require.Equal(t, st.CycleMaxBid, got.CycleMaxBid)
+	require.Equal(t, st.CycleCnt, got.CycleCnt)
+	require.Equal(t, st.CycleScanned, got.CycleScanned)
+	require.Equal(t, st.BadBids, got.BadBids)
+
+	// update
+	got.Cursor = got.CycleMaxBid
+	require.NoError(t, sb.UpsertInspectChunkState(ctx, got))
+	got2, err := sb.ReadInspectChunkState(ctx, vuid)
+	require.NoError(t, err)
+	require.False(t, got2.NeedCount())
+	require.Equal(t, got2.CycleMaxBid, got2.Cursor)
+
+	// delete
+	require.NoError(t, sb.DeleteInspectChunkState(ctx, vuid))
+	_, err = sb.ReadInspectChunkState(ctx, vuid)
+	require.Error(t, err)
+}
+
+func TestSuperBlock_InspectDiskStateCRUD(t *testing.T) {
+	sb := newTestSuperBlock(t)
+	ctx := context.Background()
+	diskID := proto.DiskID(11)
+
+	_, err := sb.ReadInspectDiskState(ctx)
+	require.Error(t, err)
+
+	st := core.InspectDiskState{DiskID: diskID, CycleStartAt: 999, CycleID: 1}
+	require.NoError(t, sb.UpsertInspectDiskState(ctx, st))
+
+	got, err := sb.ReadInspectDiskState(ctx)
+	require.NoError(t, err)
+	require.Equal(t, st.DiskID, got.DiskID)
+	require.Equal(t, st.CycleStartAt, got.CycleStartAt)
+	require.Equal(t, st.CycleID, got.CycleID)
+
+	_, err = sb.db.Get(ctx, GenInspectDiskStateKey())
+	require.NoError(t, err)
+}
+
+func TestSuperBlock_RangeInspectChunkState(t *testing.T) {
+	sb := newTestSuperBlock(t)
+	ctx := context.Background()
+
+	vuids := []proto.Vuid{101, 102, 103}
+	for _, v := range vuids {
+		require.NoError(t, sb.UpsertInspectChunkState(ctx, core.InspectChunkState{Vuid: v, CycleCnt: int64(v)}))
+	}
+	// a disk-level key with a different prefix must not be picked up by chunk Range
+	require.NoError(t, sb.UpsertInspectDiskState(ctx, core.InspectDiskState{DiskID: 1, CycleStartAt: 1}))
+
+	seen := map[proto.Vuid]bool{}
+	require.NoError(t, sb.RangeInspectChunkState(ctx, func(st *core.InspectChunkState) bool {
+		seen[st.Vuid] = true
+		return true
+	}))
+	require.Len(t, seen, len(vuids))
+	for _, v := range vuids {
+		require.True(t, seen[v])
+	}
+
+	// early stop
+	count := 0
+	err := sb.RangeInspectChunkState(ctx, func(st *core.InspectChunkState) bool {
+		count++
+		return false
+	})
+	require.ErrorIs(t, err, errInspectChunkStateRange)
+	require.Equal(t, 1, count)
+
+	// Value-only mutate during Range
+	require.NoError(t, sb.RangeInspectChunkState(ctx, func(st *core.InspectChunkState) bool {
+		st.CycleCnt = 0
+		require.NoError(t, sb.UpsertInspectChunkState(ctx, *st))
+		return true
+	}))
+	require.NoError(t, sb.RangeInspectChunkState(ctx, func(st *core.InspectChunkState) bool {
+		require.Equal(t, int64(0), st.CycleCnt)
+		return true
+	}))
 }

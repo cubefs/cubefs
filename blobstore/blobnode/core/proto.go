@@ -61,6 +61,30 @@ type DiskStats struct {
 	TotalDiskSize int64 `json:"total_disk_size"` // total actual disk size
 }
 
+// InspectDiskState and InspectChunkState are persisted by core/disk.SuperBlock
+// via the shared kv meta store. They live in core so DiskAPI, the disk engine,
+// and service-layer query APIs can share them without an import cycle.
+type InspectDiskState struct {
+	DiskID       proto.DiskID `json:"disk_id"`
+	CycleStartAt int64        `json:"cycle_start_at"` // UnixNano; 0 = not initialized (first cycle)
+	CycleID      uint64       `json:"cycle_id"`       // per-disk inspect cycle
+}
+
+// InspectChunkState is the per-chunk persistent inspect progress, keyed by vuid.
+type InspectChunkState struct {
+	Vuid proto.Vuid `json:"vuid"`
+
+	CycleID uint64 `json:"cycle_id"` // inspect cycle this state belongs to
+
+	Cursor       proto.BlobID `json:"cursor"`        // next ListShards start point; InValidBlobID means scan from the beginning
+	CycleMaxBid  proto.BlobID `json:"cycle_max_bid"` // highest bid recorded by count-only mode; 0 means has not been counted yet
+	CycleScanned int64        `json:"cycle_scanned"` // number of shards scanned so far in this cycle, used for window tuning only
+	CycleCnt     int64        `json:"cycle_cnt"`     // shard count snapshot; -1 until count-only has run, >= 0 means counted
+
+	// bad-bid memory, preserved across cycle resets
+	BadBids map[proto.BlobID]struct{} `json:"bad_bids"` // bid set
+}
+
 type StorageStat struct {
 	FileSize   int64              `json:"file_size"`
 	PhySize    int64              `json:"phy_size"`
@@ -169,6 +193,10 @@ type DiskAPI interface {
 	GetIoQos() (ioQos *qos.QosMgr)
 	GetDataPath() (path string)
 	GetMetaPath() (path string)
+
+	// InspectState returns the per-disk inspect progress store
+	InspectState() InspectStateStore
+
 	SetStatus(status proto.DiskStatus)
 	LoadDiskInfo(ctx context.Context) (dm DiskMeta, err error)
 	UpdateDiskStatus(ctx context.Context, status proto.DiskStatus) (err error)

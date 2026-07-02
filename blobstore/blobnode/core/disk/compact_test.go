@@ -129,7 +129,7 @@ func TestCompactChunkInternal(t *testing.T) {
 	}
 	diskConfig.WaitPendingReqIntervalSec = 1
 
-	ds, err := NewDiskStorage(ctx, diskConfig)
+	ds, err := NewDiskStorage(ctx, testInspectConfig(diskConfig))
 	require.NoError(t, err)
 	require.NotNil(t, ds)
 	defer ds.ResetChunks(ctx)
@@ -193,7 +193,7 @@ func TestExecCompactChunk(t *testing.T) {
 		NotifyCompacting: setChunkCompactFn,
 		HandleIOError:    handleIOErrorFn,
 	}
-	ds, err := NewDiskStorage(ctx, diskConfig)
+	ds, err := NewDiskStorage(ctx, testInspectConfig(diskConfig))
 	require.NoError(t, err)
 	require.NotNil(t, ds)
 	defer ds.ResetChunks(ctx)

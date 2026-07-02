@@ -4,10 +4,23 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 )
 
 var (
+	// readBadShardVec counts bad shards discovered during foreground user reads (Get/Put)
+	// It is just read counts, not unique bad shard counts
+	readBadShardVec = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "blobstore",
+			Subsystem: "blobnode",
+			Name:      "read_bad_shard",
+			Help:      "Number of bad shards discovered during foreground user reads",
+		},
+		[]string{"cluster_id", "disk_id"},
+	)
+
 	diskHealthMetric = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: "blobstore",
@@ -30,6 +43,7 @@ var (
 )
 
 func init() {
+	prometheus.MustRegister(readBadShardVec)
 	prometheus.MustRegister(diskHealthMetric)
 	prometheus.MustRegister(networkMetric)
 }
@@ -65,4 +79,11 @@ func (s *Service) reportPutTraffic(ioType bnapi.IOType, size int64) {
 	node := s.Conf.HostInfo
 	networkMetric.WithLabelValues(node.ClusterID.ToString(), node.IDC, node.Host, node.NodeID.ToString(),
 		"put", ioType.String()).Add(float64(size))
+}
+
+func reportReadBadShard(info clustermgr.BlobNodeDiskInfo) {
+	readBadShardVec.WithLabelValues(
+		info.ClusterID.ToString(),
+		info.DiskID.ToString(),
+	).Inc()
 }
