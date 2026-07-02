@@ -31,13 +31,6 @@ const (
 	DefaultBufferSize = 1024
 )
 
-// Buffer pool for memory optimization
-var bufferPool = sync.Pool{
-	New: func() interface{} {
-		return bytes.NewBuffer(make([]byte, 0, DefaultBufferSize))
-	},
-}
-
 // Helper functions for binary encoding/decoding
 func encodeUint64(buffer *bytes.Buffer, val uint64, tmp []byte) error {
 	n := binary.PutUvarint(tmp, val)
@@ -73,11 +66,7 @@ func (m *Part) Equal(o *Part) bool {
 }
 
 func (m Part) Bytes() ([]byte, error) {
-	buffer := bufferPool.Get().(*bytes.Buffer)
-	defer func() {
-		buffer.Reset()
-		bufferPool.Put(buffer)
-	}()
+	buffer := bytes.NewBuffer(nil)
 
 	tmp := make([]byte, MaxVarintLen64)
 
@@ -232,11 +221,7 @@ func (m Parts) Search(id uint16) (part *Part, found bool) {
 }
 
 func (m Parts) Bytes() ([]byte, error) {
-	buffer := bufferPool.Get().(*bytes.Buffer)
-	defer func() {
-		buffer.Reset()
-		bufferPool.Put(buffer)
-	}()
+	buffer := bytes.NewBuffer(nil)
 
 	tmp := make([]byte, MaxVarintLen64)
 
@@ -290,11 +275,7 @@ func NewMultipartExtend() MultipartExtend {
 }
 
 func (me MultipartExtend) Bytes() ([]byte, error) {
-	buffer := bufferPool.Get().(*bytes.Buffer)
-	defer func() {
-		buffer.Reset()
-		bufferPool.Put(buffer)
-	}()
+	buffer := bytes.NewBuffer(nil)
 
 	tmp := make([]byte, MaxVarintLen64)
 
@@ -401,12 +382,7 @@ func (m *Multipart) Parts() []*Part {
 }
 
 func (m *Multipart) Bytes() ([]byte, error) {
-	buffer := bufferPool.Get().(*bytes.Buffer)
-	defer func() {
-		buffer.Reset()
-		bufferPool.Put(buffer)
-	}()
-
+	buffer := bytes.NewBuffer(nil)
 	tmp := make([]byte, MaxVarintLen64)
 
 	// Marshal id
