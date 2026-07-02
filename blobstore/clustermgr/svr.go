@@ -19,6 +19,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	httpproxy "net/http/httputil"
 	"net/url"
@@ -74,6 +75,8 @@ const (
 	MaxBidCount              = 100000
 	DefaultChunkSize         = 17179869184
 	DefaultVolumeReserveSize = 10485760
+	// sizeRatioSumEpsilon is the tolerance for validating enabled code mode size ratio sum.
+	sizeRatioSumEpsilon = 1e-9
 )
 
 const (
@@ -502,7 +505,7 @@ func (c *Config) checkAndFix() (err error) {
 		if sortedPolicies[0].MinSize != 0 {
 			return errors.New("min size range must be started with 0")
 		}
-		if sizeRatioSum != 1 {
+		if math.Abs(sizeRatioSum-1) >= sizeRatioSumEpsilon {
 			return errors.New("The sum of size ratio must be 1")
 		}
 	} else {
