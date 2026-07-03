@@ -223,6 +223,7 @@ func (d *dashboardMgr) Simulate(nodes []string) clustermgr.ClusterDashboard {
 	safety := buildVolumeSafety(d.volumes, unsafeDiskSet)
 	d.volMu.RUnlock()
 
+	volume.Usage = buildUsage(volume)
 	dashboard.Volume = volume
 	dashboard.VolumeSafety = safety
 	dashboard.Score = dashboard.Score.Max(volume.Score, safety.Score)
@@ -300,6 +301,7 @@ func (d *dashboardMgr) fresh(ctx context.Context, force bool) {
 	safety := buildVolumeSafety(d.volumes, unsafeDiskSet)
 	d.volMu.Unlock()
 
+	volume.Usage = buildUsage(volume)
 	score := scope.Score.Max(disk.Score, service.Score, volume.Score, safety.Score)
 	snapshot := clustermgr.ClusterDashboard{
 		Score:        score,
@@ -751,6 +753,36 @@ func buildVolumeSafety(
 		DataLossVolumes: dataLoss,
 		UnsafeDetails:   details,
 	}
+}
+
+func buildUsage(v clustermgr.VolumeStat) clustermgr.UsageStat {
+	stat := make(clustermgr.UsageStat, len(v.ByScore)+1)
+	var allLogic, allPhys int64
+	for codeName, byScore := range v.ByScore {
+		tactic := codemode.CodeModeName(codeName).GetCodeMode().Tactic()
+		total := tactic.N + tactic.M + tactic.L
+		if total == 0 {
+			continue
+		}
+		var phys int64
+		for _, e := range byScore {
+			phys += e.UsedBytes
+		}
+		logic := phys / int64(total) * int64(tactic.N)
+		rate := float64(0)
+		if phys > 0 {
+			rate = float64(logic) / float64(phys)
+		}
+		stat[codeName] = clustermgr.UsageEntry{Logic: logic, Physical: phys, Rate: rate}
+		allLogic += logic
+		allPhys += phys
+	}
+	allRate := float64(0)
+	if allPhys > 0 {
+		allRate = float64(allLogic) / float64(allPhys)
+	}
+	stat["ALL"] = clustermgr.UsageEntry{Logic: allLogic, Physical: allPhys, Rate: allRate}
+	return stat
 }
 
 func hostIP(host string) string {
