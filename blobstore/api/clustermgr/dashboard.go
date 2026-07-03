@@ -160,6 +160,7 @@ type TopDiskLoad struct {
 type VolumeStat struct {
 	Score              DashboardScore   `json:"score"`
 	Status             VolumeStatusStat `json:"status"`
+	Usage              UsageStat        `json:"usage"`
 	ByScore            VolumeScoreStat  `json:"by_score"`
 	ByFree             VolumeFreeStat   `json:"by_free"`
 	AllocatableByScore VolumeScoreStat  `json:"allocatable_by_score"`
@@ -167,6 +168,15 @@ type VolumeStat struct {
 	DiskLoadThreshold  int              `json:"disk_load_threshold"`
 	TopDiskLoad        []TopDiskLoad    `json:"top_disk_load"`
 }
+
+// UsageEntry Logic = Physical / (N+M+L) * N, stripping parity and local shard overhead.
+type UsageEntry struct {
+	Logic    int64   `json:"logic"`
+	Physical int64   `json:"physical"`
+	Rate     float64 `json:"rate"` // Logic / Physical, 0 if Physical == 0
+}
+
+type UsageStat map[string]UsageEntry
 
 // CalcScore derives VolumeStat.Score from the maximum disk load observed in
 // TopDiskLoad relative to diskLoadThreshold (AllocatableDiskLoadThreshold).
