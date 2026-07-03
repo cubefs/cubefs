@@ -76,6 +76,27 @@ func TestSdkBlobstore_New(t *testing.T) {
 	require.Contains(t, err.Error(), "cluster")
 }
 
+func TestSdkHandler_MemPoolStatus(t *testing.T) {
+	hd := newSdkHandler(t)
+	var _ SDK = hd
+
+	status := hd.MemPoolStatus()
+	require.Equal(t, hd.memPool.Status(), status)
+
+	buf, err := hd.memPool.Alloc(1 << 12)
+	require.NoError(t, err)
+	defer hd.memPool.Put(buf)
+
+	status = hd.MemPoolStatus()
+	var running int
+	for _, item := range status {
+		if item.Size == 1<<12 {
+			running = item.Running
+		}
+	}
+	require.Equal(t, 1, running)
+}
+
 func TestSdkHandler_Delete(t *testing.T) {
 	ctx := context.Background()
 	hd := newSdkHandler(t)

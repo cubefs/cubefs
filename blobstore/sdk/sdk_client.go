@@ -78,7 +78,12 @@ type sdkHandler struct {
 	memPool *resourcepool.MemPool
 }
 
-func New(conf *Config) (acapi.Client, error) {
+type SDK interface {
+	acapi.Client
+	MemPoolStatus() resourcepool.Status
+}
+
+func New(conf *Config) (SDK, error) {
 	fixConfig(conf)
 	// add region magic checksum to the secret keys
 	security.InitWithRegionMagic(conf.StreamConfig.ClusterConfig.RegionMagic)
@@ -107,6 +112,10 @@ func New(conf *Config) (acapi.Client, error) {
 		limiter: stream.NewLimiter(conf.Limit),
 		closer:  cl,
 	}, nil
+}
+
+func (s *sdkHandler) MemPoolStatus() resourcepool.Status {
+	return s.memPool.Status()
 }
 
 func (s *sdkHandler) Get(ctx context.Context, args *acapi.GetArgs) (io.ReadCloser, error) {
