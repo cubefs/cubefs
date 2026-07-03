@@ -115,13 +115,13 @@ func (s *shardSM) Apply(ctx context.Context, pd []raft.ProposalData, index uint6
 				traceLog: _span.TrackLog(),
 				blob:     blob,
 			}
-			metaOpUnits = append(metaOpUnits, mou)
 		case raftOpUpdateBlob:
 			mou, err := s.applyUpdateBlob(c, pd[i].Data)
 			if err != nil {
 				return nil, err
 			}
 			metaOpUnits = append(metaOpUnits, mou)
+			rets[i] = applyRet{traceLog: _span.TrackLog()}
 		case raftOpDeleteBlob, raftOpDeleteItem:
 			mou, err := s.applyDeleteRaw(c, pd[i].Data)
 			if err != nil {
@@ -354,7 +354,9 @@ func (s *shardSM) ApplySnapshot(ctx context.Context, header raft.RaftSnapshotHea
 	if err := metaStats.Unmarshal(raw); err != nil {
 		return errors.Info(err, "unmarshal meta stats from snapshot failed")
 	}
-	s.metaStats.set(metaStats)
+	if err := s.metaStats.load(metaStats); err != nil {
+		return errors.Info(err, "load meta stats from snapshot failed")
+	}
 
 	span.Debugf("shard [%d] apply snapshot success, apply index:%d", s.suid, snap.Index())
 	return nil
@@ -442,10 +444,10 @@ func (s *shardSM) applyInsertItem(ctx context.Context, data []byte) (*metaOpUnit
 	if err != nil && !errors.Is(err, kvstore.ErrNotFound) {
 		return nil, errors.Info(err, "get raw kv failed")
 	}
-	// already insert, just return
 	if err == nil {
+		valueSize := vg.Size()
 		vg.Close()
-		return nil, nil
+		return s.newInsertMetaOpUnit(key, valueSize)
 	}
 
 	start = time.Now()
@@ -454,23 +456,7 @@ func (s *shardSM) applyInsertItem(ctx context.Context, data []byte) (*metaOpUnit
 	if err != nil {
 		return nil, errors.Info(err, "kv store set failed")
 	}
-
-	// setup metaOpUnit
-	sd := (*shard)(s)
-	metaDataType, spaceID := sd.getMetaDataTypeAndSpaceIDByKey(key)
-	hashValues, err := sd.getHashValues(key)
-	if err != nil {
-		return nil, err
-	}
-	return &metaOpUnit{
-		op:           metaOpInsert,
-		dataType:     metaDataType,
-		spaceID:      spaceID,
-		keySize:      len(key),
-		oldValueSize: 0,
-		newValueSize: len(kvh.Value()),
-		hashValues:   hashValues,
-	}, err
+	return s.newInsertMetaOpUnit(key, len(kvh.Value()))
 }
 
 func (s *shardSM) applyInsertBlob(ctx context.Context, data []byte) (proto.Blob, *metaOpUnit, error) {
@@ -496,40 +482,43 @@ func (s *shardSM) applyInsertBlob(ctx context.Context, data []byte) (proto.Blob,
 	}
 
 	b := proto.Blob{}
-
-	// already insert, return old blob
+	value := kvh.Value()
 	if err == nil {
-		if err = b.Unmarshal(vg.Value()); err != nil {
+		value = vg.Value()
+		if err = b.Unmarshal(value); err != nil {
 			return proto.Blob{}, nil, err
 		}
-		return b, nil, nil
+		mou, err := s.newInsertMetaOpUnit(key, len(value))
+		return b, mou, err
 	}
 
 	start = time.Now()
-	err = kvStore.SetRaw(ctx, dataCF, key, kvh.Value(), nil)
+	err = kvStore.SetRaw(ctx, dataCF, key, value, nil)
 	span.AppendTrackLog(setRaw, start, err, trace.OptSpanDurationUs())
 	if err != nil {
 		return proto.Blob{}, nil, errors.Info(err, "kv store set failed")
 	}
-
-	if err = b.Unmarshal(kvh.Value()); err != nil {
+	if err = b.Unmarshal(value); err != nil {
 		return proto.Blob{}, nil, err
 	}
+	mou, err := s.newInsertMetaOpUnit(key, len(value))
+	return b, mou, err
+}
 
-	// setup metaOpUnit
+func (s *shardSM) newInsertMetaOpUnit(key []byte, valueSize int) (*metaOpUnit, error) {
 	sd := (*shard)(s)
-	metaDataType, spaceID := (*shard)(s).getMetaDataTypeAndSpaceIDByKey(key)
+	metaDataType, spaceID := sd.getMetaDataTypeAndSpaceIDByKey(key)
 	hashValues, err := sd.getHashValues(key)
 	if err != nil {
-		return proto.Blob{}, nil, err
+		return nil, err
 	}
-	return b, &metaOpUnit{
+	return &metaOpUnit{
 		op:           metaOpInsert,
 		dataType:     metaDataType,
 		spaceID:      spaceID,
 		keySize:      len(key),
 		oldValueSize: 0,
-		newValueSize: len(kvh.Value()),
+		newValueSize: valueSize,
 		hashValues:   hashValues,
 	}, nil
 }
@@ -663,7 +652,6 @@ func (s *shardSM) applyWriteBatchRaw(ctx context.Context, data []byte) ([]*metaO
 			return nil, err
 		}
 		if vg != nil {
-			defer vg.Close()
 			mou.oldValueSize = vg.Size()
 		}
 		switch br.Type() {
@@ -676,6 +664,9 @@ func (s *shardSM) applyWriteBatchRaw(ctx context.Context, data []byte) ([]*metaO
 			mou.op = metaOpDelete
 		default:
 			span.Errorf("unexpected write batch type: %d", br.Type())
+		}
+		if vg != nil {
+			vg.Close()
 		}
 		metaOpUnits = append(metaOpUnits, mou)
 	}

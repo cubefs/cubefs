@@ -44,34 +44,43 @@ func newShardMetaStatsRecorder(cfg MetaStatsConfig) *shardMetaStatsRecorder {
 		r[i] = statistic.NewDualTDigest(cfg.TDigestCompression)
 	}
 	return &shardMetaStatsRecorder{
-		v: atomic.Value{},
-		r: r,
+		cfg: cfg,
+		v:   atomic.Value{},
+		r:   r,
 	}
 }
 
 // load load the stats from storage
 func (m *shardMetaStatsRecorder) load(stats snproto.ShardMetaStats) error {
-	m.v.Store(stats)
-	if len(stats.PositiveTdigests) != len(m.r) ||
-		len(stats.PositiveTdigests) != len(stats.NegativeTdigests) {
+	if len(stats.PositiveTdigests) != len(stats.NegativeTdigests) {
 		return errors.New("tdigests snapshot count mismatch")
 	}
-	for i := range m.r {
-		m.r[i] = statistic.NewDualTDigestFromSnapshot(
-			m.cfg.TDigestCompression,
-			stats.PositiveTdigests[i],
-			stats.NegativeTdigests[i],
-		)
+	if len(stats.PositiveTdigests) != len(m.r) {
+		// Reinitialize when range count changes (e.g. upgrade from older versions).
+		log.Warnf("tdigests snapshot count %d != range count %d, reinitialize tdigests",
+			len(stats.PositiveTdigests), len(m.r))
+		for i := range m.r {
+			m.r[i] = statistic.NewDualTDigest(m.cfg.TDigestCompression)
+		}
+	} else {
+		for i := range m.r {
+			m.r[i] = statistic.NewDualTDigestFromSnapshot(
+				m.cfg.TDigestCompression,
+				stats.PositiveTdigests[i],
+				stats.NegativeTdigests[i],
+			)
+		}
 	}
+	m.set(stats)
 	return nil
 }
 
 // set save newest stats
 func (m *shardMetaStatsRecorder) set(stats snproto.ShardMetaStats) {
-	if stats.PositiveTdigests == nil {
+	if len(stats.PositiveTdigests) != len(m.r) {
 		stats.PositiveTdigests = make([]statistic.TDigestSnapshot, len(m.r))
 	}
-	if stats.NegativeTdigests == nil {
+	if len(stats.NegativeTdigests) != len(m.r) {
 		stats.NegativeTdigests = make([]statistic.TDigestSnapshot, len(m.r))
 	}
 
@@ -131,10 +140,17 @@ func (s *shard) updateMetaStatsByMetaOpUnit(ctx context.Context, metaOpUnits []*
 
 // handleInsertOp handles insert operation for all data types
 func (s *shard) handleInsertOp(stats *snproto.ShardMetaStats, mou *metaOpUnit) {
-	for _, hashValue := range mou.hashValues {
-		rd := rand.Float64()
-		if hashValue > 0 && rd < s.metaStats.cfg.RequestSampleRatio {
-			s.metaStats.r[hashValue].Add(hashValue)
+	spaceStats := s.getOrCreateSpaceStats(stats, mou.spaceID)
+	if spaceStats == nil {
+		return
+	}
+	hashValues := mou.hashValues
+	if n := len(s.metaStats.r); len(hashValues) > n {
+		hashValues = hashValues[:n]
+	}
+	for i, hashValue := range hashValues {
+		if hashValue > 0 && rand.Float64() < s.metaStats.cfg.RequestSampleRatio {
+			s.metaStats.r[i].Add(hashValue)
 		}
 	}
 
@@ -142,20 +158,12 @@ func (s *shard) handleInsertOp(stats *snproto.ShardMetaStats, mou *metaOpUnit) {
 
 	switch mou.dataType {
 	case metaDataTypeItem:
-		spaceStats := s.getOrCreateSpaceStats(stats, mou.spaceID)
-		if spaceStats == nil {
-			return
-		}
 		stats.ItemCount++
 		spaceStats.ItemCount++
 		stats.ItemSize += d
 		spaceStats.ItemSize += d
 		stats.SpaceMetaStats[mou.spaceID] = *spaceStats
 	case metaDataTypeBlob:
-		spaceStats := s.getOrCreateSpaceStats(stats, mou.spaceID)
-		if spaceStats == nil {
-			return
-		}
 		stats.BlobCount++
 		spaceStats.BlobCount++
 		stats.BlobSize += d
@@ -168,31 +176,31 @@ func (s *shard) handleInsertOp(stats *snproto.ShardMetaStats, mou *metaOpUnit) {
 
 // handleUpdateOp handles update operation for all data types
 func (s *shard) handleUpdateOp(stats *snproto.ShardMetaStats, mou *metaOpUnit) {
+	spaceStats := s.getOrCreateSpaceStats(stats, mou.spaceID)
+	if spaceStats == nil {
+		return
+	}
 	d := int64(mou.newValueSize - mou.oldValueSize)
 
 	switch mou.dataType {
 	case metaDataTypeItem:
-		spaceStats := s.getOrCreateSpaceStats(stats, mou.spaceID)
-		if spaceStats == nil {
-			return
-		}
-
 		if d > 0 {
 			spaceStats.ItemSize += uint64(d)
+			stats.ItemSize += uint64(d)
 		} else {
-			spaceStats.ItemSize -= uint64(-d)
+			delta := uint64(-d)
+			spaceStats.ItemSize = safeSubtract(spaceStats.ItemSize, delta)
+			stats.ItemSize = safeSubtract(stats.ItemSize, delta)
 		}
 		stats.SpaceMetaStats[mou.spaceID] = *spaceStats
 	case metaDataTypeBlob:
-		spaceStats := s.getOrCreateSpaceStats(stats, mou.spaceID)
-		if spaceStats == nil {
-			return
-		}
-
 		if d > 0 {
 			spaceStats.BlobSize += uint64(d)
+			stats.BlobSize += uint64(d)
 		} else {
-			spaceStats.BlobSize -= uint64(-d)
+			delta := uint64(-d)
+			spaceStats.BlobSize = safeSubtract(spaceStats.BlobSize, delta)
+			stats.BlobSize = safeSubtract(stats.BlobSize, delta)
 		}
 		stats.SpaceMetaStats[mou.spaceID] = *spaceStats
 	default:
@@ -202,20 +210,23 @@ func (s *shard) handleUpdateOp(stats *snproto.ShardMetaStats, mou *metaOpUnit) {
 
 // handleDeleteOp handles delete operation for all data types
 func (s *shard) handleDeleteOp(stats *snproto.ShardMetaStats, mou *metaOpUnit) {
-	rd := rand.Float64()
-	for _, hashValue := range mou.hashValues {
-		if hashValue > 0 && rd < s.metaStats.cfg.RequestSampleRatio {
-			s.metaStats.r[hashValue].Remove(hashValue)
+	spaceStats := s.getOrCreateSpaceStats(stats, mou.spaceID)
+	if spaceStats == nil {
+		return
+	}
+
+	hashValues := mou.hashValues
+	if n := len(s.metaStats.r); len(hashValues) > n {
+		hashValues = hashValues[:n]
+	}
+	for i, hashValue := range hashValues {
+		if hashValue > 0 && rand.Float64() < s.metaStats.cfg.RequestSampleRatio {
+			s.metaStats.r[i].Remove(hashValue)
 		}
 	}
 	d := uint64(mou.keySize + mou.oldValueSize)
 	switch mou.dataType {
 	case metaDataTypeItem:
-		spaceStats := s.getOrCreateSpaceStats(stats, mou.spaceID)
-		if spaceStats == nil {
-			return
-		}
-
 		if stats.ItemCount > 0 {
 			stats.ItemCount--
 		}
@@ -227,11 +238,6 @@ func (s *shard) handleDeleteOp(stats *snproto.ShardMetaStats, mou *metaOpUnit) {
 		spaceStats.ItemSize = safeSubtract(spaceStats.ItemSize, d)
 		stats.SpaceMetaStats[mou.spaceID] = *spaceStats
 	case metaDataTypeBlob:
-		spaceStats := s.getOrCreateSpaceStats(stats, mou.spaceID)
-		if spaceStats == nil {
-			return
-		}
-
 		if stats.BlobCount > 0 {
 			stats.BlobCount--
 		}
