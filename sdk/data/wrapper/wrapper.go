@@ -704,15 +704,15 @@ func (w *Wrapper) WarningMsg() string {
 }
 
 func (w *Wrapper) updateDataNodeStatus() (err error) {
-	var cv *proto.ClusterView
-	cv, err = w.mc.AdminAPI().GetCluster(false)
+	var dataNodes []proto.NodeView
+	dataNodes, err = w.mc.AdminAPI().GetClusterDataNodes()
 	if err != nil {
-		log.LogErrorf("updateDataNodeStatus: get cluster fail: err(%v)", err)
+		log.LogErrorf("updateDataNodeStatus: get data nodes fail: err(%v)", err)
 		return
 	}
 
-	newHostsStatus := make(map[string]bool)
-	for _, node := range cv.DataNodes {
+	newHostsStatus := make(map[string]bool, len(dataNodes))
+	for _, node := range dataNodes {
 		newHostsStatus[node.Addr] = node.Status
 	}
 	log.LogInfof("updateDataNodeStatus: update %d hosts status", len(newHostsStatus))
