@@ -862,7 +862,7 @@ func (v *VolumeMgr) loop() {
 
 				curVolCount := allocatableVolCounts[modeConfig.mode]
 				healthyCount := healthyAllocatableVolCounts[modeConfig.mode]
-				minVolCount := v.createVolumeCount(ctx_, modeConfig, curVolCount, healthyCount)
+				minVolCount := util.Max(v.createVolumeCount(ctx_, modeConfig, curVolCount, healthyCount), 1)
 				for i := curVolCount; i < minVolCount; i++ {
 					select {
 					case <-ctx.Done():

@@ -366,6 +366,69 @@ func Test_NewVolumeMgr(t *testing.T) {
 	mockVolumeMgr.configMgr.Delete(context.Background(), "key1")
 }
 
+func TestVolumeMgrLoop_EnabledCodeModeCreatesAtLeastOneVolume(t *testing.T) {
+	volumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
+
+	ctr := gomock.NewController(t)
+	raftServer := mocks.NewMockRaftServer(ctr)
+	scopeMgr := mock.NewMockScopeMgrAPI(ctr)
+	diskMgr := cluster.NewMockBlobNodeManagerAPI(ctr)
+
+	mode := codemode.Replica3
+	modeConfig := codeModeConf{
+		mode:   mode,
+		tactic: mode.Tactic(),
+		enable: true,
+	}
+	for codeMode, config := range volumeMgr.codeMode {
+		config.enable = false
+		volumeMgr.codeMode[codeMode] = config
+	}
+	volumeMgr.codeMode[mode] = modeConfig
+	volumeMgr.raftServer = raftServer
+	volumeMgr.scopeMgr = scopeMgr
+	volumeMgr.diskMgr = diskMgr
+
+	raftServer.EXPECT().IsLeader().AnyTimes().Return(true)
+	raftServer.EXPECT().Status().AnyTimes().Return(raftserver.Status{Id: 1})
+	scopeMgr.EXPECT().Alloc(gomock.Any(), vidScopeName, 1).Times(1).
+		Return(uint64(31), uint64(31), nil)
+	diskMgr.EXPECT().Stat(gomock.Any(), proto.DiskTypeHDD).
+		Return(&clustermgr.SpaceStatInfo{})
+	diskMgr.EXPECT().HasEnoughSpace(gomock.Any(), mode).Return(true)
+	diskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, policy cluster.AllocPolicy) ([]proto.DiskID, []proto.Vuid, error) {
+			require.Equal(t, mode, policy.CodeMode)
+			diskIDs := make([]proto.DiskID, len(policy.Vuids))
+			for i := range diskIDs {
+				diskIDs[i] = proto.DiskID(i + 1)
+			}
+			return diskIDs, policy.Vuids, nil
+		})
+	diskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().
+		DoAndReturn(mockGetDiskInfo)
+
+	created := make(chan struct{})
+	proposeCount := 0
+	raftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).Times(2).
+		DoAndReturn(func(context.Context, []byte) error {
+			proposeCount++
+			if proposeCount == 2 {
+				close(created)
+			}
+			return nil
+		})
+
+	go volumeMgr.loop()
+
+	select {
+	case <-created:
+	case <-time.After(3 * time.Second):
+		t.Fatal("enabled code mode did not create the initial volume")
+	}
+}
+
 func TestVolumeMgr_ListVolumeInfo(t *testing.T) {
 	mockVolumeMgr, clean := initMockVolumeMgr(t)
 	defer clean()
