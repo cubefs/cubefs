@@ -340,7 +340,7 @@ func TestAccessStreamPutWithClusterIDAndCodeMode(t *testing.T) {
 	{
 		size := 1 << 22
 		_, err := streamer.Put(ctx(), newReader(size), int64(size), nil, proto.ClusterID(0), codemode.EC16P20L2)
-		require.Error(t, err)
+		require.EqualError(t, errcode.ErrIllegalArguments, err.Error())
 	}
 	{
 		size := 1 << 22
@@ -351,6 +351,21 @@ func TestAccessStreamPutWithClusterIDAndCodeMode(t *testing.T) {
 		size := 1 << 22
 		_, err := streamer.Put(ctx(), newReader(size), int64(size), nil, proto.ClusterID(2), codemode.EC15P12)
 		require.Error(t, err)
+	}
+	{
+		size := 1 << 22
+		_, err := streamer.Put(ctx(), newReader(size), int64(size), nil, proto.ClusterID(1), codemode.EC15P12)
+		require.EqualError(t, errcode.ErrIllegalArguments, err.Error())
+	}
+	{
+		size := 1 << 22
+		_, err := streamer.Put(ctx(), newReader(size), int64(size), nil, proto.ClusterID(0), codemode.EC15P12)
+		require.EqualError(t, errcode.ErrIllegalArguments, err.Error())
+	}
+	{
+		size := 1 << 22
+		_, err := streamer.Put(ctx(), newReader(size), int64(size), nil, proto.ClusterID(0), codemode.CodeMode(0xff))
+		require.EqualError(t, errcode.ErrIllegalArguments, err.Error())
 	}
 	{
 		size := 1 << 20
@@ -375,6 +390,12 @@ func TestAccessStreamPutWithClusterIDAndCodeMode(t *testing.T) {
 		require.Equal(t, codemode.EC6P6, loc.CodeMode)
 		require.Equal(t, 1, len(loc.Slices))
 		require.Equal(t, uint32(1), loc.Slices[0].Count)
+	}
+	{
+		size := 1
+		loc, err := streamer.Put(ctx(), newReader(size), int64(size), nil, proto.ClusterID(0), codemode.EC6P6)
+		require.NoError(t, err)
+		require.Equal(t, codemode.EC6P6, loc.CodeMode)
 	}
 }
 
