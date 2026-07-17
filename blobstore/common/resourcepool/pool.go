@@ -18,6 +18,7 @@ package resourcepool
 // see sync/pool.go: runtime_registerPoolCleanup(poolCleanup)
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"sync/atomic"
@@ -26,12 +27,17 @@ import (
 // ErrPoolLimit pool elements exceed its capacity
 var ErrPoolLimit = errors.New("resource pool limit")
 
+// ErrPoolClosed pool is closed while waiting for a resource
+var ErrPoolClosed = errors.New("resource pool closed")
+
 // Pool resource pool support for sync.pool and capacity limit
 // release resource if no used anymore
 // no limit if capacity is negative
 type Pool interface {
-	// Get return nil and error if exceed pool's capacity
-	Get() (interface{}, error)
+	// Get return nil and error if exceed pool's capacity.
+	// Implementations may block when wait-on-limit is enabled until a resource
+	// is available, the pool is closed, or ctx is done.
+	Get(ctx context.Context) (interface{}, error)
 	Put(x interface{})
 	Cap() int
 	Len() int
@@ -55,7 +61,7 @@ func NewPool(newFunc func() interface{}, capacity int) Pool {
 	}
 }
 
-func (p *pool) Get() (interface{}, error) {
+func (p *pool) Get(ctx context.Context) (interface{}, error) {
 	current := atomic.AddInt32(&p.current, 1)
 	if p.capacity >= 0 && current > p.capacity {
 		atomic.AddInt32(&p.current, -1)

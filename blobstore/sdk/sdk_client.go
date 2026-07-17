@@ -707,7 +707,7 @@ func (s *sdkHandler) putPartsBatch(ctx context.Context, parts []blobPart) error 
 	return nil
 }
 
-func (s *sdkHandler) readerPipeline(span trace.Span, reqBody io.Reader,
+func (s *sdkHandler) readerPipeline(ctx context.Context, span trace.Span, reqBody io.Reader,
 	closeCh <-chan struct{}, size, blobSize int,
 ) <-chan []byte {
 	ch := make(chan []byte, s.conf.PartConcurrence-1)
@@ -718,9 +718,14 @@ func (s *sdkHandler) readerPipeline(span trace.Span, reqBody io.Reader,
 				toread = size
 			}
 
-			buf, _ := s.memPool.Alloc(toread)
+			buf, err := s.memPool.Alloc(ctx, toread)
+			if err != nil {
+				span.Error("alloc buffer from mempool", err)
+				close(ch)
+				return
+			}
 			buf = buf[:toread]
-			_, err := io.ReadFull(reqBody, buf)
+			_, err = io.ReadFull(reqBody, buf)
 			if err != nil {
 				span.Error("read buffer from request", err)
 				s.memPool.Put(buf)
@@ -802,7 +807,7 @@ func (s *sdkHandler) putParts(ctx context.Context, args *acapi.PutArgs) (proto.L
 
 	// buffer pipeline
 	closeCh := make(chan struct{})
-	bufferPipe := s.readerPipeline(span, reqBody, closeCh, int(loc.Size_), int(loc.SliceSize))
+	bufferPipe := s.readerPipeline(ctx, span, reqBody, closeCh, int(loc.Size_), int(loc.SliceSize))
 	defer func() {
 		close(closeCh)
 		// waiting pipeline close if has error
@@ -998,7 +1003,7 @@ func (s *sdkHandler) putBlobs(ctx context.Context, args *acapi.PutBlobArgs) (pro
 		args.Body = io.TeeReader(args.Body, hasherMap.ToWriter())
 	}
 
-	buf, err := s.memPool.Alloc(int(loc.SliceSize))
+	buf, err := s.memPool.Alloc(ctx, int(loc.SliceSize))
 	if err != nil {
 		return failLoc, nil, err
 	}

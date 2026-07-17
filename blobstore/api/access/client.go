@@ -248,14 +248,14 @@ func lazyInitSingletonMemPool() {
 				1 << 22: -1,
 				1 << 23: -1,
 				1 << 24: -1,
-			})
+			}, false)
 		}
 	})
 }
 
 // ResetMemoryPool is thread unsafe, call it on init.
-func ResetMemoryPool(sizeClasses map[int]int) {
-	memPool = resourcepool.NewMemPool(sizeClasses)
+func ResetMemoryPool(sizeClasses map[int]int, waitOnLimit bool) {
+	memPool = resourcepool.NewMemPool(sizeClasses, waitOnLimit)
 }
 
 // New returns an access API
@@ -489,7 +489,7 @@ func (c *client) putPartsBatch(ctx context.Context, parts []blobPart) error {
 	return nil
 }
 
-func (c *client) readerPipeline(span trace.Span, reqBody io.Reader,
+func (c *client) readerPipeline(ctx context.Context, span trace.Span, reqBody io.Reader,
 	closeCh <-chan struct{}, size, blobSize int,
 ) <-chan []byte {
 	ch := make(chan []byte, c.config.PartConcurrence-1)
@@ -500,9 +500,14 @@ func (c *client) readerPipeline(span trace.Span, reqBody io.Reader,
 				toread = size
 			}
 
-			buf, _ := memPool.Alloc(toread)
+			buf, err := memPool.Alloc(ctx, toread)
+			if err != nil {
+				span.Error("alloc buffer from mempool", err)
+				close(ch)
+				return
+			}
 			buf = buf[:toread]
-			_, err := io.ReadFull(reqBody, buf)
+			_, err = io.ReadFull(reqBody, buf)
 			if err != nil {
 				span.Error("read buffer from request", err)
 				memPool.Put(buf)
@@ -585,7 +590,7 @@ func (c *client) putParts(ctx context.Context, args *PutArgs) (proto.Location, H
 
 	// buffer pipeline
 	closeCh := make(chan struct{})
-	bufferPipe := c.readerPipeline(span, reqBody, closeCh, int(loc.Size_), int(loc.SliceSize))
+	bufferPipe := c.readerPipeline(ctx, span, reqBody, closeCh, int(loc.Size_), int(loc.SliceSize))
 	defer func() {
 		close(closeCh)
 		// waiting pipeline close if has error

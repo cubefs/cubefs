@@ -952,9 +952,9 @@ func (r *ShardRecover) allocBuf(ctx context.Context, vunitIdxs []uint8) error {
 		if r.chunksShardsBuf[idx] == nil {
 			switch r.taskType {
 			case proto.TaskTypeShardRepair:
-				buf, err = workutils.TaskBufPool.GetRepairBuf()
+				buf, err = workutils.TaskBufPool.GetRepairBuf(ctx)
 			case proto.TaskTypeDiskRepair, proto.TaskTypeBalance, proto.TaskTypeManualMigrate, proto.TaskTypeDiskDrop:
-				buf, err = workutils.TaskBufPool.GetMigrateBuf()
+				buf, err = workutils.TaskBufPool.GetMigrateBuf(ctx)
 			default:
 				err = errors.New("unknown type")
 			}

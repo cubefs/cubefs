@@ -15,6 +15,7 @@
 package resourcepool
 
 import (
+	"context"
 	"errors"
 	"sort"
 )
@@ -47,12 +48,12 @@ type PoolStatus struct {
 	Idle     int `json:"idle"`
 }
 
-// NewMemPool returns a MemPool within chan pool
-func NewMemPool(sizeClasses map[int]int) *MemPool {
+// NewMemPool returns a MemPool within chan pool.
+func NewMemPool(sizeClasses map[int]int, waitOnLimit bool) *MemPool {
 	return NewMemPoolWith(sizeClasses, func(size, capacity int) Pool {
 		return NewChanPool(func() []byte {
 			return make([]byte, size)
-		}, capacity)
+		}, capacity, waitOnLimit)
 	})
 }
 
@@ -78,10 +79,10 @@ func NewMemPoolWith(sizeClasses map[int]int, newPool func(size, capacity int) Po
 }
 
 // Get return a suitable buffer
-func (p *MemPool) Get(size int) ([]byte, error) {
+func (p *MemPool) Get(ctx context.Context, size int) ([]byte, error) {
 	for idx, ps := range p.poolSize {
 		if size <= ps {
-			buf, err := p.pool[idx].Get()
+			buf, err := p.pool[idx].Get(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -94,8 +95,8 @@ func (p *MemPool) Get(size int) ([]byte, error) {
 }
 
 // Alloc return a buffer, make a new if oversize
-func (p *MemPool) Alloc(size int) ([]byte, error) {
-	buf, err := p.Get(size)
+func (p *MemPool) Alloc(ctx context.Context, size int) ([]byte, error) {
+	buf, err := p.Get(ctx, size)
 	if err == ErrNoSuitableSizeClass {
 		return make([]byte, size), nil
 	}
@@ -103,10 +104,21 @@ func (p *MemPool) Alloc(size int) ([]byte, error) {
 	return buf, err
 }
 
-// Put adds x to the pool, appropriately resize
+// Put adds x to the pool, appropriately resize.
+// Buffers larger than the max size class (e.g. from Alloc oversize) are
+// discarded for GC and do not touch pool Len/concurrence.
 func (p *MemPool) Put(b []byte) error {
 	sizeClass := cap(b)
 	b = b[0:sizeClass]
+	if len(p.poolSize) == 0 {
+		return ErrNoSuitableSizeClass
+	}
+	maxClass := p.poolSize[len(p.poolSize)-1]
+	if sizeClass > maxClass {
+		// oversized buffers are discarded for GC
+		return nil
+	}
+
 	for ii := len(p.poolSize) - 1; ii >= 0; ii-- {
 		if sizeClass >= p.poolSize[ii] {
 			b = b[0:p.poolSize[ii]]

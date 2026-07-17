@@ -321,7 +321,7 @@ var storageAPIPutShard = func(ctx context.Context, host string, args *blobnode.P
 		time.Sleep(slow)
 	}
 
-	buffer, _ := memPool.Alloc(int(args.Size))
+	buffer, _ := memPool.Alloc(context.Background(), int(args.Size))
 	defer memPool.Put(buffer)
 
 	buffer = buffer[:int(args.Size)]
@@ -483,7 +483,7 @@ func initMockData() {
 }
 
 func initPool() {
-	memPool = resourcepool.NewMemPool(getDefaultMempoolSize())
+	memPool = resourcepool.NewMemPool(getDefaultMempoolSize(), false)
 }
 
 func initEncoder() {

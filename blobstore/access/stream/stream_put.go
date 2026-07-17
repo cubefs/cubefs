@@ -128,7 +128,7 @@ func (h *Handler) Put(ctx context.Context,
 		// new an empty ec buffer for per blob
 		var err error
 		st := time.Now()
-		buffer, err = ec.NewBuffer(bsize, tactic, h.memPool)
+		buffer, err = ec.NewBuffer(ctx, bsize, tactic, h.memPool)
 		putTime.IncA(time.Since(st))
 		if err != nil {
 			return nil, err

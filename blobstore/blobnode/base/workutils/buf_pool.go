@@ -15,6 +15,8 @@
 package workutils
 
 import (
+	"context"
+
 	"github.com/cubefs/cubefs/blobstore/common/resourcepool"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 )
@@ -54,7 +56,7 @@ func NewBufPool(cfg *BufConfig) *BufPool {
 		cfg.RepairBufSize:  cfg.RepairBufCapacity,
 		cfg.MigrateBufSize: cfg.MigrateBufCapacity,
 	}
-	bufPool := resourcepool.NewMemPool(sizeClasses)
+	bufPool := resourcepool.NewMemPool(sizeClasses, false)
 	return &BufPool{
 		bufPool:        bufPool,
 		migrateBufSize: cfg.MigrateBufSize,
@@ -62,16 +64,16 @@ func NewBufPool(cfg *BufConfig) *BufPool {
 	}
 }
 
-func (b *BufPool) GetMigrateBuf() ([]byte, error) {
-	return b.bufPool.Alloc(b.migrateBufSize)
+func (b *BufPool) GetMigrateBuf(ctx context.Context) ([]byte, error) {
+	return b.bufPool.Alloc(ctx, b.migrateBufSize)
 }
 
 func (b *BufPool) GetMigrateBufSize() int {
 	return b.migrateBufSize
 }
 
-func (b *BufPool) GetRepairBuf() ([]byte, error) {
-	return b.bufPool.Alloc(b.repairBufSize)
+func (b *BufPool) GetRepairBuf(ctx context.Context) ([]byte, error) {
+	return b.bufPool.Alloc(ctx, b.repairBufSize)
 }
 
 func (b *BufPool) Put(buf []byte) error {

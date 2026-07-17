@@ -52,7 +52,7 @@ func (h *Handler) PutAt(ctx context.Context, rc io.Reader,
 
 	readSize := int(size)
 	st := time.Now()
-	buffer, err := ec.NewBuffer(readSize, volume.CodeMode.Tactic(), h.memPool)
+	buffer, err := ec.NewBuffer(ctx, readSize, volume.CodeMode.Tactic(), h.memPool)
 	if err != nil {
 		return err
 	}

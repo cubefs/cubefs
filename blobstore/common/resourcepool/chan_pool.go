@@ -15,6 +15,7 @@
 package resourcepool
 
 import (
+	"context"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -49,13 +50,15 @@ type chPool struct {
 	newBuffer   func() []byte
 	capacity    int
 	concurrence int32
+	waitOnLimit bool
 
 	closeCh   chan struct{}
 	closeOnce sync.Once
 }
 
-// NewChanPool return Pool with capacity, no limit if capacity is negative
-func NewChanPool(newFunc func() []byte, capacity int) Pool {
+// NewChanPool return Pool with capacity.
+// A negative capacity uses a default capacity based on maxMemorySize and buffer size.
+func NewChanPool(newFunc func() []byte, capacity int, waitOnLimit bool) Pool {
 	chCap := capacity
 	if chCap < 0 {
 		buf := newFunc()
@@ -66,10 +69,11 @@ func NewChanPool(newFunc func() []byte, capacity int) Pool {
 	}
 
 	pool := &chPool{
-		chBuffer:  make(chan []byte, chCap),
-		newBuffer: newFunc,
-		capacity:  capacity,
-		closeCh:   make(chan struct{}),
+		chBuffer:    make(chan []byte, chCap),
+		newBuffer:   newFunc,
+		capacity:    chCap,
+		waitOnLimit: waitOnLimit,
+		closeCh:     make(chan struct{}),
 	}
 	runtime.SetFinalizer(pool, func(p *chPool) {
 		p.closeOnce.Do(func() {
@@ -137,13 +141,25 @@ func (p *chPool) loopRelease() {
 	}
 }
 
-func (p *chPool) Get() (interface{}, error) {
-	atomic.AddInt32(&p.concurrence, 1)
+func (p *chPool) Get(ctx context.Context) (interface{}, error) {
+	current := atomic.AddInt32(&p.concurrence, 1)
 
 	select {
 	case buf := <-p.chBuffer:
 		return buf, nil
 	default:
+		if p.waitOnLimit && p.capacity > 0 && current > int32(p.capacity) {
+			select {
+			case buf := <-p.chBuffer:
+				return buf, nil
+			case <-p.closeCh:
+				atomic.AddInt32(&p.concurrence, -1)
+				return nil, ErrPoolClosed
+			case <-ctx.Done():
+				atomic.AddInt32(&p.concurrence, -1)
+				return nil, ctx.Err()
+			}
+		}
 		return p.newBuffer(), nil
 	}
 }

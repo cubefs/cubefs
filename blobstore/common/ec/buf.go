@@ -15,6 +15,8 @@
 package ec
 
 import (
+	"context"
+
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/resourcepool"
 	"github.com/cubefs/cubefs/blobstore/util/log"
@@ -64,7 +66,7 @@ func isOutOfRange(dataSize, from, to int) bool {
 		to < 0 || to > dataSize
 }
 
-func newBuffer(dataSize, from, to int, tactic codemode.Tactic, pool *resourcepool.MemPool, hasParity bool) (*Buffer, error) {
+func newBuffer(ctx context.Context, dataSize, from, to int, tactic codemode.Tactic, pool *resourcepool.MemPool, hasParity bool) (*Buffer, error) {
 	if isOutOfRange(dataSize, from, to) {
 		return nil, ErrShortData
 	}
@@ -96,10 +98,10 @@ func newBuffer(dataSize, from, to int, tactic codemode.Tactic, pool *resourcepoo
 			size = to - from
 		}
 
-		buf, err = pool.Get(size)
+		buf, err = pool.Get(ctx, size)
 		if err == resourcepool.ErrNoSuitableSizeClass {
 			log.Warn(err, "for", size, "try to alloc bytes")
-			buf, err = pool.Alloc(size)
+			buf, err = pool.Alloc(ctx, size)
 		}
 		if err != nil {
 			return nil, err
@@ -132,19 +134,19 @@ func newBuffer(dataSize, from, to int, tactic codemode.Tactic, pool *resourcepoo
 	}, nil
 }
 
-// NewBuffer new ec buffer with data size and ec mode
-func NewBuffer(dataSize int, tactic codemode.Tactic, pool *resourcepool.MemPool) (*Buffer, error) {
-	return newBuffer(dataSize, 0, dataSize, tactic, pool, true)
+// NewBuffer new ec buffer with data size and ec mode.
+func NewBuffer(ctx context.Context, dataSize int, tactic codemode.Tactic, pool *resourcepool.MemPool) (*Buffer, error) {
+	return newBuffer(ctx, dataSize, 0, dataSize, tactic, pool, true)
 }
 
 // NewRangeBuffer ranged buffer with least data size
-func NewRangeBuffer(dataSize, from, to int, tactic codemode.Tactic, pool *resourcepool.MemPool) (*Buffer, error) {
-	return newBuffer(dataSize, from, to, tactic, pool, false)
+func NewRangeBuffer(ctx context.Context, dataSize, from, to int, tactic codemode.Tactic, pool *resourcepool.MemPool) (*Buffer, error) {
+	return newBuffer(ctx, dataSize, from, to, tactic, pool, false)
 }
 
 // GetBufferSizes calculate ec buffer sizes
 func GetBufferSizes(dataSize int, tactic codemode.Tactic) (BufferSizes, error) {
-	buf, err := NewBuffer(dataSize, tactic, nil)
+	buf, err := NewBuffer(context.Background(), dataSize, tactic, nil)
 	if err != nil {
 		return BufferSizes{}, err
 	}
@@ -152,7 +154,7 @@ func GetBufferSizes(dataSize int, tactic codemode.Tactic) (BufferSizes, error) {
 }
 
 // Resize re-calculate ec buffer, alloc a new buffer if oversize
-func (b *Buffer) Resize(dataSize int) error {
+func (b *Buffer) Resize(ctx context.Context, dataSize int) error {
 	if dataSize == b.BufferSizes.DataSize {
 		return nil
 	}
@@ -174,7 +176,7 @@ func (b *Buffer) Resize(dataSize int) error {
 		return nil
 	}
 
-	newb, err := NewBuffer(dataSize, b.tactic, b.pool)
+	newb, err := NewBuffer(ctx, dataSize, b.tactic, b.pool)
 	if err != nil {
 		return err
 	}

@@ -216,7 +216,15 @@ func (h *Handler) Get(ctx context.Context, w io.Writer, location proto.Location,
 					st := time.Now()
 					shards := make([][]byte, tactic.N+tactic.M)
 					for ii := range shards {
-						buf, _ := h.memPool.Alloc(blob.ShardSize)
+						buf, allocErr := h.memPool.Alloc(ctx, blob.ShardSize)
+						if allocErr != nil {
+							spanpipe.Error("alloc shard buffer", blob.ID(), allocErr)
+							for _, allocated := range shards[:ii] {
+								h.memPool.Put(allocated)
+							}
+							ch <- pipeBuffer{err: allocErr}
+							return
+						}
 						shards[ii] = buf
 					}
 					getTime.IncA(time.Since(st))
@@ -565,7 +573,7 @@ func (h *Handler) readOneShard(ctx context.Context, serviceController controller
 	}
 	defer body.Close()
 
-	buf, err := h.memPool.Alloc(blob.ShardSize)
+	buf, err := h.memPool.Alloc(ctx, blob.ShardSize)
 	if err != nil {
 		span.Warn(err)
 		return shardResult
@@ -610,7 +618,7 @@ func (h *Handler) getDataShardOnly(ctx context.Context, getTime *timeReadWrite,
 	tactic := blobVolume.CodeMode.Tactic()
 
 	from, to := int(blob.Offset), int(blob.Offset+blob.ReadSize)
-	buffer, err := ec.NewRangeBuffer(int(blob.BlobSize), from, to, tactic, h.memPool)
+	buffer, err := ec.NewRangeBuffer(ctx, int(blob.BlobSize), from, to, tactic, h.memPool)
 	if err != nil {
 		return err
 	}

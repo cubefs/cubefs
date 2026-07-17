@@ -15,11 +15,12 @@
 package resourcepool_test
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
-	"runtime"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -35,44 +36,45 @@ const (
 func TestMemPoolBase(t *testing.T) {
 	classes := map[int]int{kb: 2, mb: 1}
 
-	pool := rp.NewMemPool(classes)
+	pool := rp.NewMemPool(classes, false)
 	require.NotNil(t, pool)
 
-	bufm, err := pool.Get(mb)
+	bufm, err := pool.Get(context.Background(), mb)
 	require.NoError(t, err)
 	require.Equal(t, mb, len(bufm))
 	require.Equal(t, mb, cap(bufm))
 
-	_, err = pool.Get(mb)
+	err = pool.Put(bufm)
 	require.NoError(t, err)
-	// require.ErrorIs(t, err, rp.ErrPoolLimit)
 
-	bufk, err := pool.Get(kb)
+	bufk, err := pool.Get(context.Background(), kb)
 	require.NoError(t, err)
 	require.Equal(t, kb, len(bufk))
 	require.Equal(t, kb, cap(bufk))
 
-	bufk2, err := pool.Get(kb / 2)
+	bufk2, err := pool.Get(context.Background(), kb/2)
 	require.NoError(t, err)
 	require.Equal(t, kb/2, len(bufk2))
 	require.Equal(t, kb, cap(bufk2))
 
-	err = pool.Put(bufm)
+	err = pool.Put(bufk2)
+	require.NoError(t, err)
+	err = pool.Put(bufk)
 	require.NoError(t, err)
 
-	bufmx, err := pool.Get(mb)
+	bufmx, err := pool.Get(context.Background(), mb)
 	require.NoError(t, err)
 	require.Equal(t, bufm, bufmx)
 }
 
 func TestMemPoolEmpty(t *testing.T) {
-	pool := rp.NewMemPool(nil)
+	pool := rp.NewMemPool(nil, false)
 	require.NotNil(t, pool)
 
-	_, err := pool.Get(kb)
+	_, err := pool.Get(context.Background(), kb)
 	require.ErrorIs(t, err, rp.ErrNoSuitableSizeClass)
 
-	buf, err := pool.Alloc(kb)
+	buf, err := pool.Alloc(context.Background(), kb)
 	require.NoError(t, err)
 	require.Equal(t, kb, len(buf))
 	require.Equal(t, kb, cap(buf))
@@ -81,41 +83,70 @@ func TestMemPoolEmpty(t *testing.T) {
 	require.ErrorIs(t, err, rp.ErrNoSuitableSizeClass)
 }
 
-func TestMemPoolChanAlloc(t *testing.T) {
+func TestMemPoolGetWaitAtCapacity(t *testing.T) {
 	classes := map[int]int{mb: 1}
-	pool := rp.NewMemPool(classes)
+	pool := rp.NewMemPool(classes, true)
 	require.NotNil(t, pool)
 
-	bufm, err := pool.Get(mb)
+	buf, err := pool.Get(context.Background(), mb)
+	require.NoError(t, err)
+
+	done := make(chan struct{})
+	go func() {
+		_, err := pool.Get(context.Background(), mb)
+		require.NoError(t, err)
+		close(done)
+	}()
+	time.Sleep(50 * time.Millisecond)
+
+	require.NoError(t, pool.Put(buf))
+	<-done
+}
+
+func TestMemPoolChanAlloc(t *testing.T) {
+	classes := map[int]int{mb: 1}
+	pool := rp.NewMemPool(classes, false)
+	require.NotNil(t, pool)
+
+	bufm, err := pool.Get(context.Background(), mb)
 	require.NoError(t, err)
 	require.Equal(t, mb, len(bufm))
 	require.Equal(t, mb, cap(bufm))
 
-	_, err = pool.Get(mb)
+	err = pool.Put(bufm)
 	require.NoError(t, err)
 
-	// if matched size class, return ErrPoolLimit
-	_, err = pool.Alloc(mb)
+	bufm2, err := pool.Get(context.Background(), mb)
 	require.NoError(t, err)
+	require.Equal(t, bufm, bufm2)
+
+	err = pool.Put(bufm2)
+	require.NoError(t, err)
+	require.Equal(t, 0, pool.Status()[0].Running)
 
 	// if oversize, make new buffer
-	bufm4, err := pool.Alloc(mb4)
+	bufm4, err := pool.Alloc(context.Background(), mb4)
 	require.NoError(t, err)
 	require.Equal(t, mb4, len(bufm4))
 	require.Equal(t, mb4, cap(bufm4))
+	require.Equal(t, 0, pool.Status()[0].Running)
 
-	// put oversize buffer to top class
+	// oversize is released to GC, concurrence unchanged
+	idleBefore := pool.Status()[0].Idle
 	err = pool.Put(bufm4)
 	require.NoError(t, err)
+	require.Equal(t, 0, pool.Status()[0].Running)
+	require.Equal(t, idleBefore, pool.Status()[0].Idle)
 
-	// maybe get the oversize buffer
-	bufm, err = pool.Get(mb)
+	bufm, err = pool.Get(context.Background(), mb)
 	require.NoError(t, err)
 	require.Equal(t, mb, len(bufm))
-	require.True(t, mb4 == cap(bufm) || mb == cap(bufm))
+	require.Equal(t, mb, cap(bufm))
+	require.Equal(t, 1, pool.Status()[0].Running)
 
 	err = pool.Put(bufm)
 	require.NoError(t, err)
+	require.Equal(t, 0, pool.Status()[0].Running)
 }
 
 func TestMemPoolSyncAlloc(t *testing.T) {
@@ -127,54 +158,53 @@ func TestMemPoolSyncAlloc(t *testing.T) {
 	})
 	require.NotNil(t, pool)
 
-	bufm, err := pool.Get(mb)
+	bufm, err := pool.Get(context.Background(), mb)
 	require.NoError(t, err)
 	require.Equal(t, mb, len(bufm))
 	require.Equal(t, mb, cap(bufm))
 
-	_, err = pool.Get(mb)
+	_, err = pool.Get(context.Background(), mb)
 	require.ErrorIs(t, err, rp.ErrPoolLimit)
 
 	// if matched size class, return ErrPoolLimit
-	_, err = pool.Alloc(mb)
+	_, err = pool.Alloc(context.Background(), mb)
 	require.ErrorIs(t, err, rp.ErrPoolLimit)
 
 	// if oversize, make new buffer
-	bufm4, err := pool.Alloc(mb4)
+	bufm4, err := pool.Alloc(context.Background(), mb4)
 	require.NoError(t, err)
 	require.Equal(t, mb4, len(bufm4))
 	require.Equal(t, mb4, cap(bufm4))
+	require.Equal(t, 1, pool.Status()[0].Running)
 
-	// put oversize buffer to top class
+	// oversize is released to GC, does not free the held slot
 	err = pool.Put(bufm4)
 	require.NoError(t, err)
+	require.Equal(t, 1, pool.Status()[0].Running)
 
-	// maybe get the oversize buffer
-	bufm, err = pool.Get(mb)
-	require.NoError(t, err)
-	require.Equal(t, mb, len(bufm))
-	require.True(t, mb4 == cap(bufm) || mb == cap(bufm))
+	_, err = pool.Get(context.Background(), mb)
+	require.ErrorIs(t, err, rp.ErrPoolLimit)
 
 	err = pool.Put(bufm)
 	require.NoError(t, err)
+	require.Equal(t, 0, pool.Status()[0].Running)
 
-	// bufm4 released by gc after twice runtime.GC()
-	// see sync/pool.go: runtime_registerPoolCleanup(poolCleanup)
-	runtime.GC()
-	runtime.GC()
-	bufm, err = pool.Get(mb)
+	bufm, err = pool.Get(context.Background(), mb)
 	require.NoError(t, err)
 	require.Equal(t, mb, len(bufm))
 	require.Equal(t, mb, cap(bufm))
+
+	err = pool.Put(bufm)
+	require.NoError(t, err)
 }
 
 func TestMemPoolPutGet(t *testing.T) {
 	classes := map[int]int{mb: 1}
 
-	pool := rp.NewMemPool(classes)
+	pool := rp.NewMemPool(classes, false)
 	require.NotNil(t, pool)
 
-	bufm, err := pool.Get(mb)
+	bufm, err := pool.Get(context.Background(), mb)
 	require.NoError(t, err)
 	require.Equal(t, mb, len(bufm))
 	require.Equal(t, mb, cap(bufm))
@@ -186,12 +216,16 @@ func TestMemPoolPutGet(t *testing.T) {
 	err = pool.Put(bufm)
 	require.NoError(t, err)
 
-	bufmx, err := pool.Get(mb)
+	bufmx, err := pool.Get(context.Background(), mb)
 	require.NoError(t, err)
 	require.Equal(t, bufm, bufmx)
 
+	err = pool.Put(bufmx)
+	require.NoError(t, err)
+	require.Equal(t, 0, pool.Status()[0].Running)
+
 	// if oversize, make new buffer
-	bufm4, err := pool.Alloc(mb4)
+	bufm4, err := pool.Alloc(context.Background(), mb4)
 	require.NoError(t, err)
 	require.Equal(t, mb4, len(bufm4))
 	require.Equal(t, mb4, cap(bufm4))
@@ -199,21 +233,17 @@ func TestMemPoolPutGet(t *testing.T) {
 	rand.Read(bufm4)
 	require.NotEqual(t, zero, bufm4[:mb])
 
-	// put oversize buffer to top class
+	idleBefore := pool.Status()[0].Idle
 	err = pool.Put(bufm4)
 	require.NoError(t, err)
+	require.Equal(t, 0, pool.Status()[0].Running)
+	require.Equal(t, idleBefore, pool.Status()[0].Idle)
 
-	// maybe get the oversize buffer
-	bufm, err = pool.Get(mb)
+	bufm, err = pool.Get(context.Background(), mb)
 	require.NoError(t, err)
 	require.Equal(t, mb, len(bufm))
-	if cap(bufm) == mb4 {
-		require.Equal(t, bufm4[:mb], bufm)
-	} else if cap(bufm) == mb {
-		require.Equal(t, zero, bufm)
-	} else {
-		require.Fail(t, "cant be there")
-	}
+	require.Equal(t, mb, cap(bufm))
+	require.Equal(t, bufmx, bufm)
 }
 
 func TestMemPoolZero(t *testing.T) {
@@ -234,7 +264,7 @@ func TestMemPoolZero(t *testing.T) {
 	}
 
 	for _, cs := range cases {
-		pool := rp.NewMemPool(nil)
+		pool := rp.NewMemPool(nil, false)
 		require.NotNil(t, pool)
 
 		buf := buffer[cs.from:cs.to]
@@ -250,20 +280,20 @@ func TestMemPoolZero(t *testing.T) {
 
 func TestMemPoolStatus(t *testing.T) {
 	{
-		pool := rp.NewMemPool(nil)
+		pool := rp.NewMemPool(nil, false)
 		require.NotNil(t, pool)
 		t.Logf("status empty: %+v", pool.Status())
 	}
 	{
 		classes := map[int]int{kb: 2, mb: 1}
 
-		pool := rp.NewMemPool(classes)
+		pool := rp.NewMemPool(classes, false)
 		require.NotNil(t, pool)
 		t.Logf("status init: %+v", pool.Status())
 
-		_, err := pool.Get(mb)
+		_, err := pool.Get(context.Background(), mb)
 		require.NoError(t, err)
-		bufk, err := pool.Get(kb)
+		bufk, err := pool.Get(context.Background(), kb)
 		require.NoError(t, err)
 		t.Logf("status running: %+v", pool.Status())
 
@@ -282,7 +312,7 @@ func BenchmarkMempool(b *testing.B) {
 		1 << 20: -1,
 		1 << 21: -1,
 		1 << 22: -1,
-	})
+	}, false)
 
 	for _, size := range []int{
 		1 << 10,
@@ -296,7 +326,7 @@ func BenchmarkMempool(b *testing.B) {
 		b.Run(humman(size), func(b *testing.B) {
 			b.ResetTimer()
 			for ii := 0; ii <= b.N; ii++ {
-				if buf, err := mp.Get(size); err == nil {
+				if buf, err := mp.Get(context.Background(), size); err == nil {
 					_ = mp.Put(buf)
 				}
 			}

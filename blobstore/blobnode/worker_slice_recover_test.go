@@ -49,7 +49,7 @@ func TestShardsBuf(t *testing.T) {
 		}
 		bidInfos = append(bidInfos, &ele)
 	}
-	buf, _ := taskBufPool.GetMigrateBuf()
+	buf, _ := taskBufPool.GetMigrateBuf(context.Background())
 	shardsBuf := NewShardsBuf(buf)
 	err := shardsBuf.PlanningDataLayout(bidInfos)
 	require.NoError(t, err)

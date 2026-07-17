@@ -166,6 +166,8 @@ type StreamConfig struct {
 	repairRoundrobin              int64 `json:"-"`
 
 	MemPoolSizeClasses map[int]int `json:"mem_pool_size_classes"`
+	// MemPoolWaitOnLimit enables capacity backpressure for write EC buffers.
+	MemPoolWaitOnLimit bool `json:"mem_pool_wait_on_limit"`
 
 	// CodeModesPutQuorums
 	// just for one AZ is down, cant write quorum in all AZs
@@ -310,7 +312,7 @@ func NewStreamHandler(cfg *StreamConfig, stopCh <-chan struct{}) (h StreamHandle
 	}
 
 	handler := &Handler{
-		memPool:           resourcepool.NewMemPool(cfg.MemPoolSizeClasses),
+		memPool:           resourcepool.NewMemPool(cfg.MemPoolSizeClasses, cfg.MemPoolWaitOnLimit),
 		clusterController: clusterController,
 
 		blobnodeClient:  blobnode.New(&cfg.BlobnodeConfig),

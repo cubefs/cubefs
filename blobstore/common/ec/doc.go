@@ -33,9 +33,9 @@
 // )
 //
 //	func xxx() {
-//	    pool := resourcepool.NewMemPool(nil)
+//	    pool := resourcepool.NewMemPool(nil, false)
 //	    codeModeInfo := codemode.GetTactic(codemode.EC15p12)
-//	    buffer, err := NewBuffer(1024, codeModeInfo, pool)
+//	    buffer, err := NewBuffer(ctx, 1024, codeModeInfo, pool)
 //	    if err != nil {
 //	        // ...
 //	    }
@@ -51,7 +51,7 @@
 //	    shards := ec.Split(buffer.ECDataBuf)
 //	    // ...
 //
-//	    buffer.Resize(10240)
+//	    buffer.Resize(ctx, 10240)
 //	    // ...
 //	}
 package ec

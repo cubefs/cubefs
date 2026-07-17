@@ -35,21 +35,21 @@ func TestPoolBase(t *testing.T) {
 	require.Equal(t, 0, p.Len())
 	require.Equal(t, 2, p.Idle())
 
-	_, err := p.Get()
+	_, err := p.Get(context.Background())
 	require.NoError(t, err)
-	_, err = p.Get()
+	_, err = p.Get(context.Background())
 	require.NoError(t, err)
 
 	require.Equal(t, 2, p.Len())
 	require.Equal(t, 0, p.Idle())
 
-	_, err = p.Get()
+	_, err = p.Get(context.Background())
 	require.Equal(t, rp.ErrPoolLimit, err)
-	_, err = p.Get()
+	_, err = p.Get(context.Background())
 	require.Equal(t, rp.ErrPoolLimit, err)
 
 	p.Put(1)
-	_, err = p.Get()
+	_, err = p.Get(context.Background())
 	require.NoError(t, err)
 }
 
@@ -62,7 +62,7 @@ func TestPoolNoLimit(t *testing.T) {
 		require.Equal(t, 0, p.Len())
 		require.Equal(t, 0, p.Idle())
 
-		_, err := p.Get()
+		_, err := p.Get(context.Background())
 		require.ErrorIs(t, err, rp.ErrPoolLimit)
 	}
 	{
@@ -76,7 +76,7 @@ func TestPoolNoLimit(t *testing.T) {
 		tasks := make([]func() error, 0, 10000)
 		for range [10000]struct{}{} {
 			tasks = append(tasks, func() error {
-				_, err := p.Get()
+				_, err := p.Get(context.Background())
 				return err
 			})
 		}
@@ -116,7 +116,7 @@ func benchmarkPoolGetPut(b *testing.B, newPool func(zize, capacity int) rp.Pool)
 			pool := newPool(cs.size, -1)
 			b.ResetTimer()
 			for ii := 0; ii <= b.N; ii++ {
-				if val, err := pool.Get(); err == nil {
+				if val, err := pool.Get(context.Background()); err == nil {
 					pool.Put(val)
 				}
 			}
@@ -127,7 +127,7 @@ func benchmarkPoolGetPut(b *testing.B, newPool func(zize, capacity int) rp.Pool)
 			pool := newPool(cs.size, 1000000)
 			b.ResetTimer()
 			for ii := 0; ii <= b.N; ii++ {
-				if val, err := pool.Get(); err == nil {
+				if val, err := pool.Get(context.Background()); err == nil {
 					pool.Put(val)
 				}
 			}

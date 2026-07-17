@@ -42,7 +42,7 @@ func newSdkHandler(t *testing.T) *sdkHandler {
 			1 << 22: -1,
 			1 << 23: -1,
 			1 << 24: -1,
-		}),
+		}, false),
 	}
 
 	h := mocks.NewMockStreamHandler(ctr)
@@ -83,7 +83,7 @@ func TestSdkHandler_MemPoolStatus(t *testing.T) {
 	status := hd.MemPoolStatus()
 	require.Equal(t, hd.memPool.Status(), status)
 
-	buf, err := hd.memPool.Alloc(1 << 12)
+	buf, err := hd.memPool.Alloc(context.Background(), 1<<12)
 	require.NoError(t, err)
 	defer hd.memPool.Put(buf)
 
