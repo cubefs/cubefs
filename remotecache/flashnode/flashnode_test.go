@@ -103,13 +103,20 @@ func newFlashnode() *FlashNode {
 }
 
 func TestFlashNode(t *testing.T) {
+	t.Setenv(cachengine.EnvDockerTmpfs, "on")
+	cachePath := t.TempDir()
+
 	t.Run("New", testNew)
-	t.Run("Config", testConfig)
+	if !t.Run("Config", func(t *testing.T) {
+		testConfig(t, cachePath)
+	}) {
+		return
+	}
 	t.Run("MissCache", testShouldCache)
 	t.Run("TCP", testTCP)
 	t.Run("HTTP", testHTTP)
 	t.Run("ManualScan", testManualScanner)
-	t.Run("Shotdown", testShutdown)
+	t.Run("Shutdown", testShutdown)
 }
 
 func testNew(t *testing.T) {
@@ -117,7 +124,7 @@ func testNew(t *testing.T) {
 	f.register()
 }
 
-func testConfig(t *testing.T) {
+func testConfig(t *testing.T, cachePath string) {
 	flashServer = newFlashnode()
 	httpServer = &http.Server{
 		Addr:    fmt.Sprintf("127.0.0.1:%d", flashHTTP),
@@ -133,7 +140,7 @@ func testConfig(t *testing.T) {
 		{`"readRps":0,`, `"readRps":-1,"cachePercent":0.001,`},
 		{``, `"cachePercent":0.9,`, `"cachePercent":0.001,`},
 		{`"cachePercent":0.2,`, `"cacheTotal":1024,`},
-		{fmt.Sprintf("\"diskDataPath\":[\"%s\"],", "/cfs/tmpfs:0"), `"diskDataPath":[],`},
+		{fmt.Sprintf("\"diskDataPath\":[\"%s:0\"],", cachePath), `"diskDataPath":[],`},
 		{`"disableTmpfs": true,`},
 		{`"reservedSpace":1,`},
 		{fmt.Sprintf("\"masterAddr\":[\"%s\"],", masterAddr), `"masterAddr":[],`},
