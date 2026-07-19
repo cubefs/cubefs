@@ -693,6 +693,8 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		txTree         = NewBtree()
 		txRbInodeTree  = NewBtree()
 		txRbDentryTree = NewBtree()
+		freeList       = newFreeList()
+		freeHybridList = newFreeList()
 		uniqChecker    = newUniqChecker()
 		verList        []*proto.VolVersionInfo
 	)
@@ -748,6 +750,8 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 			mp.txProcessor.txManager.txTree = txTree
 			mp.txProcessor.txResource.txRbInodeTree = txRbInodeTree
 			mp.txProcessor.txResource.txRbDentryTree = txRbDentryTree
+			mp.freeList.replace(freeList)
+			mp.freeHybridList.replace(freeHybridList)
 			mp.uniqChecker = uniqChecker
 			mp.multiVersionList.VerList = make([]*proto.VolVersionInfo, len(verList))
 			copy(mp.multiVersionList.VerList, verList)
@@ -860,6 +864,7 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 				cursor = ino.Inode
 			}
 			inodeTree.ReplaceOrInsert(ino, true)
+			checkAndInsertFreeLists(ino, freeList, freeHybridList)
 			log.LogDebugf("ApplySnapshot: create inode: partitonID(%v) inode[%v].", mp.config.PartitionId, ino)
 		case opFSMCreateDentry:
 			dentry := &Dentry{}
