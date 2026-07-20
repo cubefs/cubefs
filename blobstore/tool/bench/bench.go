@@ -17,6 +17,7 @@ import (
 	"io"
 	"log"
 	"math"
+	"net/http"
 	"os"
 	"sort"
 	"strconv"
@@ -27,6 +28,8 @@ import (
 
 	"github.com/dustin/go-humanize"
 
+	"github.com/cubefs/cubefs/blobstore/common/profile"
+	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	bk "github.com/cubefs/cubefs/blobstore/tool/bench/backend"
 	"github.com/cubefs/cubefs/blobstore/tool/bench/db"
 )
@@ -41,6 +44,7 @@ var (
 	size                                    int64
 	objectData                              []byte
 	dbDir                                   string
+	pprofAddr                               string
 )
 
 var (
@@ -59,6 +63,7 @@ func init() {
 	flagSet.StringVar(&objSize, "s", "1Mi", "Size of objects in bytes with postfix Ki, Mi, and Gi")
 	flagSet.StringVar(&database, "db", "", "Database mode. 'rocksdb' or 'memory'")
 	flagSet.StringVar(&dbDir, "r", "", "RocksDB direcotry. Only for blobstore backend")
+	flagSet.StringVar(&pprofAddr, "pprof", "", "Pprof listen address, e.g. 127.0.0.1:6060 (empty to disable)")
 
 	flagSet.Int64Var(&maxObjCnt, "n", -1, "Maximum number of objects <-1 for unlimited>")
 	flagSet.Int64Var(&maxErrCnt, "e", 3, "Maximum number of errors allowed <-1 for unlimited>")
@@ -158,6 +163,21 @@ func printParams() {
 	log.Printf("loops=%d", loops)
 	log.Printf("interval=%f", interval)
 	log.Printf("dbDir=%s", dbDir)
+	log.Printf("pprofAddr=%s", pprofAddr)
+}
+
+func startPprofServer(addr string) {
+	ph := profile.NewProfileHandler("")
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: rpc.MiddlewareHandlerWith(rpc.New(), ph),
+	}
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Printf("pprof server exit: %v", err)
+		}
+	}()
+	log.Printf("pprof: http://%s/debug/pprof/ (goroutine: /debug/pprof/goroutine?debug=2)", addr)
 }
 
 type OutputStats struct {
@@ -638,6 +658,9 @@ func main() {
 	log.Printf("BlobStore Benchmark")
 
 	printParams()
+	if pprofAddr != "" {
+		startPprofServer(pprofAddr)
+	}
 
 	// init storage
 	var err error
