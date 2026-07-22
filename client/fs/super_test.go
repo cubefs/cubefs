@@ -453,3 +453,149 @@ func TestNewSuper_AheadReadFollowerRead_Mock(t *testing.T) {
 		require.NotNil(t, s.mw)
 	}
 }
+
+func TestNewSuper_ClientPoolIDAndMetaRegionValidation(t *testing.T) {
+	const (
+		defaultPoolID     = uint8(1)
+		validPoolID       = uint8(2)
+		invalidPoolID     = uint8(9)
+		defaultMetaRegion = "default-region"
+		validMetaRegion   = "region-a"
+		invalidMetaRegion = "unknown-region"
+	)
+
+	tests := []struct {
+		name           string
+		poolID         uint8
+		metaRegion     string
+		wantPoolID     uint8
+		wantMetaRegion string
+	}{
+		{
+			name:           "valid overrides default",
+			poolID:         validPoolID,
+			metaRegion:     validMetaRegion,
+			wantPoolID:     validPoolID,
+			wantMetaRegion: validMetaRegion,
+		},
+		{
+			name:           "invalid keeps default",
+			poolID:         invalidPoolID,
+			metaRegion:     invalidMetaRegion,
+			wantPoolID:     defaultPoolID,
+			wantMetaRegion: defaultMetaRegion,
+		},
+		{
+			name:           "unset keeps default",
+			wantPoolID:     defaultPoolID,
+			wantMetaRegion: defaultMetaRegion,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			patches := newSuperMountOptionPatches(t, defaultPoolID, defaultMetaRegion)
+			defer patches.Reset()
+
+			opt := newTestMountOptions()
+			opt.PoolId = tt.poolID
+			opt.MetaRegion = tt.metaRegion
+
+			s, err := NewSuper(opt)
+			require.NoError(t, err)
+			require.NotNil(t, s)
+			defer close(s.closeC)
+
+			require.Equal(t, tt.wantPoolID, s.mw.GetClientPoolId())
+			require.Equal(t, tt.wantMetaRegion, metaWrapperDefaultRegion(s.mw))
+		})
+	}
+}
+
+func newSuperMountOptionPatches(t *testing.T, defaultPoolID uint8, defaultMetaRegion string) *gomonkey.Patches {
+	t.Helper()
+
+	patches := gomonkey.ApplyFunc(meta.NewMetaWrapper, func(param *meta.MetaConfig) (*meta.MetaWrapper, error) {
+		mw := &meta.MetaWrapper{}
+		setMetaWrapperMasterClient(mw, master.NewMasterClient([]string{"127.0.0.1"}, false))
+		setMetaWrapperUint8Field(mw, "defaultPoolId", defaultPoolID)
+		setMetaWrapperStringField(mw, "defaultMetaRegion", defaultMetaRegion)
+		return mw, nil
+	})
+
+	patches.ApplyMethod(reflect.TypeOf(&master.AdminAPI{}), "GetVolumeSimpleInfo", func(_ *master.AdminAPI, name string) (*proto.SimpleVolView, error) {
+		return &proto.SimpleVolView{
+			Pools: map[uint8]*proto.StoragePoolInfo{
+				defaultPoolID: {Id: defaultPoolID},
+				2:             {Id: 2},
+			},
+			AllowedRegions: []string{defaultMetaRegion, "region-a"},
+		}, nil
+	})
+	patches.ApplyMethod(reflect.TypeOf(&master.AdminAPI{}), "GetClusterInfo", func(_ *master.AdminAPI) (*proto.ClusterInfo, error) {
+		return &proto.ClusterInfo{}, nil
+	})
+	patches.ApplyMethod(reflect.TypeOf(&master.AdminAPI{}), "ListStoragePools", func(_ *master.AdminAPI) ([]*proto.StoragePoolInfo, error) {
+		return []*proto.StoragePoolInfo{}, nil
+	})
+	patches.ApplyMethod(reflect.TypeOf(&meta.MetaWrapper{}), "GetRootIno", func(_ *meta.MetaWrapper, subdir string) (uint64, error) {
+		return proto.RootIno, nil
+	})
+	patches.ApplyFunc(stream.NewExtentClient, func(config *stream.ExtentConfig) (*stream.ExtentClient, error) {
+		ec := &stream.ExtentClient{}
+		setExtentClientMultiVerMgr(ec)
+		return ec, nil
+	})
+
+	return patches
+}
+
+func newTestMountOptions() *proto.MountOptions {
+	return &proto.MountOptions{
+		Master:                "127.0.0.1",
+		Volname:               "test-vol",
+		Owner:                 "test-owner",
+		MountPoint:            "/tmp/mnt",
+		Logpath:               "/tmp/log",
+		MetaCacheAcceleration: true,
+		StopWarmMeta:          true,
+		EnablePosixACL:        true,
+		MinReadAheadSize:      1024,
+	}
+}
+
+func setMetaWrapperMasterClient(mw *meta.MetaWrapper, mc *master.MasterClient) {
+	val := reflect.ValueOf(mw).Elem()
+	mcField := val.FieldByName("mc")
+	ptr := unsafe.Pointer(mcField.UnsafeAddr())
+	reflect.NewAt(mcField.Type(), ptr).Elem().Set(reflect.ValueOf(mc))
+}
+
+func setMetaWrapperUint8Field(mw *meta.MetaWrapper, name string, value uint8) {
+	val := reflect.ValueOf(mw).Elem()
+	field := val.FieldByName(name)
+	ptr := unsafe.Pointer(field.UnsafeAddr())
+	reflect.NewAt(field.Type(), ptr).Elem().SetUint(uint64(value))
+}
+
+func setMetaWrapperStringField(mw *meta.MetaWrapper, name, value string) {
+	val := reflect.ValueOf(mw).Elem()
+	field := val.FieldByName(name)
+	ptr := unsafe.Pointer(field.UnsafeAddr())
+	reflect.NewAt(field.Type(), ptr).Elem().SetString(value)
+}
+
+func metaWrapperDefaultRegion(mw *meta.MetaWrapper) string {
+	val := reflect.ValueOf(mw).Elem()
+	field := val.FieldByName("defaultMetaRegion")
+	ptr := unsafe.Pointer(field.UnsafeAddr())
+	return reflect.NewAt(field.Type(), ptr).Elem().String()
+}
+
+func setExtentClientMultiVerMgr(ec *stream.ExtentClient) {
+	val := reflect.ValueOf(ec).Elem()
+	field := val.FieldByName("multiVerMgr")
+	ptr := unsafe.Pointer(field.UnsafeAddr())
+	reflect.NewAt(field.Type(), ptr).Elem().Set(reflect.ValueOf(&stream.MultiVerMgr{}))
+}

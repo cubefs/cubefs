@@ -112,9 +112,6 @@ type Super struct {
 	poolCacheLock sync.RWMutex
 	poolCacheTime time.Time
 
-	// client specified pool ID for new inodes (0 means use volume default)
-	clientPoolId uint8
-
 	dirDirtyCache     map[uint64]bool
 	dirDirtyCount     map[uint64]int
 	dirDirtyCacheLock sync.Mutex
@@ -179,16 +176,16 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 			for poolId := range volInfo.Pools {
 				if poolId == opt.PoolId {
 					poolValid = true
+					s.mw.SetClientPoolId(opt.PoolId)
+					log.LogInfof("NewSuper: client poolId %d validated and set", opt.PoolId)
 					break
 				}
 			}
 		}
+
 		if !poolValid {
-			return nil, fmt.Errorf("poolId %d is not in volume's allowed pools", opt.PoolId)
+			log.LogWarnf("NewSuper: poolId %d is not in volume's allowed pools, use volume default pool", opt.PoolId)
 		}
-		s.clientPoolId = opt.PoolId
-		s.mw.SetClientPoolId(opt.PoolId)
-		log.LogInfof("NewSuper: client poolId %d validated and set", opt.PoolId)
 	}
 
 	// Set client specified meta region
@@ -203,8 +200,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 			}
 		}
 		if !found {
-			log.LogErrorf("NewSuper: client metaRegion %v not in volume allowed regions %v", opt.MetaRegion, volInfo.AllowedRegions)
-			return nil, errors.New(fmt.Sprintf("client metaRegion %v not in volume allowed regions %v", opt.MetaRegion, volInfo.AllowedRegions))
+			log.LogWarnf("NewSuper: client metaRegion %v not in volume allowed regions, use volume default region", opt.MetaRegion)
 		}
 	}
 
