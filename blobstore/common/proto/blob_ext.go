@@ -210,6 +210,11 @@ func DecodeLocation(buf []byte) (Location, int, error) {
 	if val, nn = next(); nn <= 0 {
 		return loc, n, fmt.Errorf("bytes length blobs %d", nn)
 	}
+	// Each slice contains at least three one-byte uvarints.
+	// Avoid panic and excessive allocation on malformed input.
+	if val > 1024 || val > uint64(len(buf)/3) {
+		return loc, n, fmt.Errorf("bytes length blobs %d invalid, buffer %d", nn, len(buf))
+	}
 	length := int(val)
 
 	if length > 0 {

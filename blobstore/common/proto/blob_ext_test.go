@@ -15,6 +15,7 @@
 package proto
 
 import (
+	"encoding/binary"
 	"math"
 	mrand "math/rand"
 	"testing"
@@ -140,6 +141,28 @@ func TestLocationDecodeError(t *testing.T) {
 		require.Error(t, err)
 		t.Log(err)
 	}
+}
+
+func TestLocationDecodeInvalidSlicesLength(t *testing.T) {
+	buf := (&Location{}).Encode()
+	buf = buf[:len(buf)-1] // remove the encoded zero slices length
+
+	var encoded [binary.MaxVarintLen64]byte
+	n := binary.PutUvarint(encoded[:], math.MaxUint64)
+	buf = append(buf, encoded[:n]...)
+
+	require.NotPanics(t, func() {
+		_, _, err := DecodeLocation(buf)
+		require.Error(t, err)
+	})
+
+	buf = (&Location{}).Encode()
+	buf = buf[:len(buf)-1]
+	n = binary.PutUvarint(encoded[:], 1024+1)
+	buf = append(buf, encoded[:n]...)
+	buf = append(buf, make([]byte, (1024+1)*3)...)
+	_, _, err := DecodeLocation(buf)
+	require.Error(t, err)
 }
 
 func TestLocationSpread(t *testing.T) {
