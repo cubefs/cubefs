@@ -26,6 +26,7 @@ import (
 
 	"github.com/desertbit/grumble"
 
+	"github.com/cubefs/cubefs/blobstore/blobnode/base/flow"
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"github.com/cubefs/cubefs/blobstore/common/iostat"
 )
@@ -155,6 +156,10 @@ func scanVDevices(dir string, filters []string) ([]*vdevice, error) {
 			}
 		}
 		if !pass {
+			continue
+		}
+
+		if !strings.HasSuffix(name, flow.IOStatFileSuffix) {
 			continue
 		}
 
