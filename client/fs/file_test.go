@@ -13,15 +13,42 @@ import (
 	"errors"
 	"os"
 	"reflect"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"unsafe"
 
+	"github.com/brahma-adshonor/gohook"
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data/stream"
+	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/stretchr/testify/require"
 )
+
+// Package-level mocks: gohook replacement must not close over stack locals (Go 1.21 ABI).
+var (
+	metaIgetCalls   int32
+	metaIgetMode    int32 // 0=ENOENT, 1=nil info, 2=present, 3=rpc err
+	metaIgetWantIno uint64
+)
+
+func mockInodeGetLL(_ *meta.MetaWrapper, ino uint64, _ bool) (*proto.InodeInfo, error) {
+	atomic.AddInt32(&metaIgetCalls, 1)
+	if metaIgetWantIno != 0 && ino != metaIgetWantIno {
+		return nil, errors.New("unexpected ino")
+	}
+	switch atomic.LoadInt32(&metaIgetMode) {
+	case 1:
+		return nil, nil
+	case 2:
+		return &proto.InodeInfo{Inode: ino}, nil
+	case 3:
+		return nil, errors.New("meta rpc timeout")
+	default:
+		return nil, syscall.ENOENT
+	}
+}
 
 func superForFileTest(t *testing.T) *Super {
 	t.Helper()
@@ -455,4 +482,56 @@ func flagName(flag uint32) string {
 	default:
 		return "unknown"
 	}
+}
+
+func TestIsReadEio_ExtentNotFound(t *testing.T) {
+	require.False(t, isReadEio(stream.ExtentNotFoundError))
+	require.False(t, isReadEio(errors.New("wrap: ExtentNotFoundError")))
+	require.False(t, isReadEio(syscall.ENOENT))
+	require.False(t, isReadEio(syscall.ENOTSUP))
+	require.True(t, isReadEio(errors.New("unexpected read failure")))
+	require.True(t, isReadEio(syscall.EIO))
+}
+
+func TestMetaInodeMissing(t *testing.T) {
+	const ino uint64 = 22021436
+	mw := &meta.MetaWrapper{}
+	f := &File{
+		super: &Super{mw: mw},
+		info:  &proto.InodeInfo{Inode: ino},
+	}
+
+	err := gohook.HookMethod(mw, "InodeGet_ll", mockInodeGetLL, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = gohook.UnHookMethod(mw, "InodeGet_ll") })
+
+	metaIgetWantIno = ino
+
+	t.Run("enoent", func(t *testing.T) {
+		atomic.StoreInt32(&metaIgetCalls, 0)
+		atomic.StoreInt32(&metaIgetMode, 0)
+		require.True(t, f.metaInodeMissing())
+		require.Equal(t, int32(1), atomic.LoadInt32(&metaIgetCalls))
+	})
+
+	t.Run("nil_info", func(t *testing.T) {
+		atomic.StoreInt32(&metaIgetCalls, 0)
+		atomic.StoreInt32(&metaIgetMode, 1)
+		require.True(t, f.metaInodeMissing())
+		require.Equal(t, int32(1), atomic.LoadInt32(&metaIgetCalls))
+	})
+
+	t.Run("inode_present", func(t *testing.T) {
+		atomic.StoreInt32(&metaIgetCalls, 0)
+		atomic.StoreInt32(&metaIgetMode, 2)
+		require.False(t, f.metaInodeMissing())
+		require.Equal(t, int32(1), atomic.LoadInt32(&metaIgetCalls))
+	})
+
+	t.Run("meta_rpc_fail_treated_present", func(t *testing.T) {
+		atomic.StoreInt32(&metaIgetCalls, 0)
+		atomic.StoreInt32(&metaIgetMode, 3)
+		require.False(t, f.metaInodeMissing())
+		require.Equal(t, int32(1), atomic.LoadInt32(&metaIgetCalls))
+	})
 }

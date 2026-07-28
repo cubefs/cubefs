@@ -16,6 +16,7 @@ package fs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"path"
@@ -83,7 +84,9 @@ func isWriteEio(err error) bool {
 }
 
 func isReadEio(err error) bool {
-	if err == syscall.EOPNOTSUPP || err == syscall.ENOTSUP || strings.Contains(err.Error(), "ExtentNotFoundError") || strings.Contains(err.Error(), syscall.ENOENT.Error()) {
+	if err == syscall.EOPNOTSUPP || err == syscall.ENOTSUP ||
+		strings.Contains(err.Error(), "ExtentNotFoundError") ||
+		strings.Contains(err.Error(), syscall.ENOENT.Error()) {
 		return false
 	}
 
@@ -447,10 +450,15 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 		msg := fmt.Sprintf("Read: ino(%v) req(%v) err(%v) size(%v)", f.info.Inode, req, err, size)
 		f.super.handleError("Read", msg)
 		errMetric := exporter.NewCounter("fileReadFailed")
-		if !isReadEio(err) {
+
+		f.super.ic.Delete(f.info.Inode)
+
+		if !isReadEio(err) || f.metaInodeMissing() {
 			errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "NOTSUP"})
+			log.LogDebugf("Read error NOTSUP: ino(%v) req(%v) size(%v) err(%v)", f.info.Inode, req, size, err)
 		} else {
 			errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "EIO"})
+			log.LogDebugf("Read error EIO: ino(%v) req(%v) size(%v) err(%v)", f.info.Inode, req, size, err)
 		}
 		return ParseError(err)
 	}
@@ -583,11 +591,15 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		msg := fmt.Sprintf("Write: ino(%v) offset(%v) len(%v) err(%v)", ino, req.Offset, reqlen, err)
 		f.super.handleError("Write", msg)
 		errMetric := exporter.NewCounter("fileWriteFailed")
-		if !isWriteEio(err) {
+
+		if !isWriteEio(err) || f.metaInodeMissing() {
 			errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "NOTSUP"})
+			log.LogDebugf("Write error NOTSUP: ino(%v) req(%v) size(%v) err(%v)", f.info.Inode, req, size, err)
 		} else {
 			errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "EIO"})
+			log.LogDebugf("Write error EIO: ino(%v) req(%v) size(%v) err(%v)", f.info.Inode, req, size, err)
 		}
+
 		if err == syscall.EOPNOTSUPP {
 			return fuse.ENOTSUP
 		}
@@ -1008,4 +1020,20 @@ func (f *File) filterFilesSuffix(filterFiles string) bool {
 		}
 	}
 	return false
+}
+
+// metaInodeMissing queries metanode directly (bypass icache) to see if the inode is gone.
+// Meta RPC failures are treated as "still present" so real data-loss cases still report metrics.
+func (f *File) metaInodeMissing() (notExist bool) {
+	info, err := f.super.mw.InodeGet_ll(f.info.Inode, false)
+	// defer args are evaluated at register time; use a closure so notExist/err are final values.
+	defer func() {
+		log.LogDebugf("TRACE metaInodeMissing: verify inode on meta, ino(%v) info(%v) notExist(%v) err(%v)", f.info.Inode, info, notExist, err)
+	}()
+
+	if err != nil {
+		log.LogWarnf("metaInodeMissing: verify inode on meta failed, ino(%v) err(%v)", f.info.Inode, err)
+		return errors.Is(err, syscall.ENOENT)
+	}
+	return info == nil
 }
