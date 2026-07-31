@@ -40,7 +40,7 @@ type VuidMeta struct {
 	Ctime       int64                  `json:"ctime"` // nsec
 	Mtime       int64                  `json:"mtime"` // nsec
 	Compacting  bool                   `json:"compacting"`
-	Status      clustermgr.ChunkStatus `json:"status"` // normal、release
+	Status      clustermgr.ChunkStatus `json:"status"` // normal, release
 	Reason      string                 `json:"reason"`
 }
 

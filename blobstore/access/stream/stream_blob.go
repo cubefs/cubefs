@@ -515,7 +515,7 @@ func (h *Handler) punishAndUpdate(ctx context.Context, args *punishArgs) (bool, 
 	default:
 	}
 
-	// err:dial tcp 127.0.0.1:9100: connect: connection refused  ； code:500
+	// err:dial tcp 127.0.0.1:9100: connect: connection refused - code:500
 	if errorConnectionRefused(args.err) {
 		span.Warnf("shardnode connection refused/timeout, args:%+v, err:%+v", *args, args.err)
 		h.groupRun.Do("shardnode-leader-"+args.DiskID.ToString(), func() (interface{}, error) {

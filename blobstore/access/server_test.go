@@ -432,7 +432,7 @@ func TestAccessServiceDelete(t *testing.T) {
 	cli := newClient()
 
 	url := fmt.Sprintf("%s/delete", host)
-	deleteRequest := func(args interface{}) (code int, ret access.DeleteResp, err error) {
+	deleteRequest := func(args any) (code int, ret access.DeleteResp, err error) {
 		resp, err := cli.Post(ctx, url, args)
 		if err != nil {
 			return
@@ -632,7 +632,7 @@ func TestAccessServicePutHashResponse(t *testing.T) {
 	}
 
 	for _, method := range []string{http.MethodPut, http.MethodPost} {
-		// Put with no hash algorithm – HashSumMap should be empty.
+		// Put with no hash algorithm, HashSumMap should be empty.
 		{
 			body := bytes.NewReader(make([]byte, 1024))
 			req, _ := http.NewRequest(method, url(1024, 0), body)
@@ -641,7 +641,7 @@ func TestAccessServicePutHashResponse(t *testing.T) {
 			require.NoError(t, err)
 			require.Empty(t, resp.HashSumMap)
 		}
-		// Put with CRC32 only – response should contain exactly that key.
+		// Put with CRC32 only, response should contain exactly that key.
 		{
 			body := bytes.NewReader(make([]byte, 1024))
 			req, _ := http.NewRequest(method, url(1024, access.HashAlgCRC32), body)
@@ -651,7 +651,7 @@ func TestAccessServicePutHashResponse(t *testing.T) {
 			require.Contains(t, resp.HashSumMap, access.HashAlgCRC32)
 			require.NotContains(t, resp.HashSumMap, access.HashAlgMD5)
 		}
-		// Put with CRC32|MD5|SHA1 – response should contain all three keys.
+		// Put with CRC32|MD5|SHA1, response should contain all three keys.
 		{
 			hashes := access.HashAlgCRC32 | access.HashAlgMD5 | access.HashAlgSHA1
 			body := bytes.NewReader(make([]byte, 1024))
