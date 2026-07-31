@@ -31,7 +31,7 @@ type ChunkInfo struct {
 	Used       uint64       `json:"used"`   // user data size
 	Free       uint64       `json:"free"`   // ChunkSize - Used
 	Size       uint64       `json:"size"`   // Chunk File Size (logic size)
-	Status     ChunkStatus  `json:"status"` // normal、readOnly
+	Status     ChunkStatus  `json:"status"` // normal, readonly
 	Compacting bool         `json:"compacting"`
 }
 

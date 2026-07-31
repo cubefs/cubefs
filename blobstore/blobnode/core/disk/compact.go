@@ -253,7 +253,7 @@ func (ds *DiskStorage) destroyRedundant(ctx context.Context, ncs core.ChunkAPI) 
 	// keep new chunkstorage meta
 	ncsMeta := ncs.VuidMeta()
 
-	// wait old stg all request done；
+	// wait old stg all request done
 	for {
 		time.Sleep(time.Duration(ds.Conf.WaitPendingReqIntervalSec) * time.Second)
 		if !ncs.HasPendingRequest() {

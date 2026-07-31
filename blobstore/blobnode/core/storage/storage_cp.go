@@ -121,7 +121,7 @@ func (stg *replicateStorage) forward(ctx context.Context, b *core.Shard) (waiter
 		span.Debugf("write bid:%v done on cpStg", shard.Bid)
 	}()
 
-	// Note：important
+	// Note: important
 	b.Body = io.TeeReader(b.Body, pw)
 
 	// if there is an error, the overall error occurs, and close the pipeline.

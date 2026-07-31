@@ -1286,7 +1286,7 @@ func TestStartBlobnodeService_LostMountPoint(t *testing.T) {
 	})
 	defer patchesMP.Reset()
 
-	// cm return disk list: pathBroken， Broken; pathUnknown, not found
+	// cm return disk list: pathBroken, Broken; pathUnknown, not found
 	diskBrokenInfo1 := &cmapi.BlobNodeDiskInfo{
 		DiskInfo:          cmapi.DiskInfo{Path: pathData1, Status: proto.DiskStatusBroken},
 		DiskHeartBeatInfo: cmapi.DiskHeartBeatInfo{DiskID: proto.DiskID(1000)},
@@ -1338,7 +1338,7 @@ func TestStartBlobnodeService_LostMountPoint(t *testing.T) {
 	)
 	defer patchesClean.Reset()
 
-	// do start：3 unmount disk，pathBroken is broken in cm -> online++；pathUnknown not in cm -> lost++
+	// do start：3 unmount disk, pathBroken is broken in cm -> online++；pathUnknown not in cm -> lost++
 	err = startBlobnodeService(ctx, svr, conf)
 	require.NoError(t, err)
 	require.Equal(t, int32(1), atomic.LoadInt32(&lostCount))

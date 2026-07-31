@@ -1020,7 +1020,7 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 
 	span.Infof("datapath: %v, metapath:%v", diskDataPath, diskMetaPath)
 
-	// load superblock，create or open
+	// load superblock, create or open
 	sb, err := NewSuperBlock(diskMetaPath, &conf)
 	if err != nil {
 		return nil, err

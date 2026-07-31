@@ -43,7 +43,7 @@ const (
 	msgStateDoing
 )
 
-// 100 years is long enough。
+// 100 years is long enough
 const neverTimeout = time.Duration(100*365*24) * time.Hour
 
 // Queue task queue
@@ -77,7 +77,7 @@ type msgEx struct {
 	msg      interface{}
 }
 
-// Push push message to queue id is uniquely identifies。
+// Push push message to queue id is uniquely identifies
 func (q *Queue) Push(id string, msg interface{}) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -119,7 +119,7 @@ func (q *Queue) Update(id string, msg interface{}) error {
 	return nil
 }
 
-// Pop  fetch a msg from queue。
+// Pop  fetch a msg from queue
 func (q *Queue) Pop() (string, interface{}, bool) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -162,7 +162,7 @@ func (q *Queue) Get(id string) (interface{}, error) {
 	return elem.Value.(*msgEx).msg, nil
 }
 
-// Requeue :msg while get again after delay。
+// Requeue :msg while get again after delay
 func (q *Queue) Requeue(id string, delay time.Duration) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -177,11 +177,11 @@ func (q *Queue) Requeue(id string, delay time.Duration) error {
 	m := elem.Value.(*msgEx)
 	if m.state == msgStateTodo {
 		// msg pop and new queue and reload msg, the pop msg state will chang to msgStateTodo
-		// if msg in todo queue then return success。
+		// if msg in todo queue then return success
 		return nil
 	}
 
-	// msg in doing queue。
+	// msg in doing queue
 	m.deadline = time.Now().Add(delay)
 	return nil
 }
@@ -228,7 +228,7 @@ type WorkerTask interface {
 type TaskQueue struct {
 	mu         sync.Mutex
 	queue      *Queue
-	retryDelay time.Duration // punish a period of time to avoid frequent failure retry。
+	retryDelay time.Duration // punish a period of time to avoid frequent failure retry
 }
 
 // NewTaskQueue returns task queue
@@ -249,7 +249,7 @@ func (q *TaskQueue) PushTask(taskID string, task interface{}) {
 	}
 }
 
-// PopTask return args： taskID, task, flag of task exist
+// PopTask return args: taskID, task, flag of task exist
 func (q *TaskQueue) PopTask() (string, interface{}, bool) {
 	q.mu.Lock()
 	defer q.mu.Unlock()

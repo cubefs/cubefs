@@ -59,7 +59,7 @@ func NewMockDisk(tb testing.TB, diskID proto.DiskID) (*MockDisk, func(), error) 
 	cfg.StoreConfig.KVOption.ColumnFamily = append(cfg.StoreConfig.KVOption.ColumnFamily, lockCF, dataCF, writeCF)
 	cfg.StoreConfig.RaftOption.ColumnFamily = append(cfg.StoreConfig.RaftOption.ColumnFamily, raftWalCF)
 
-	// mock raft transport：for raft manager to resolve node address
+	// mock raft transport: for raft manager to resolve node address
 	tp := mocks.NewMockTransport(C(tb))
 	cfg.Transport = tp
 
