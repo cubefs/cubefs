@@ -211,6 +211,7 @@ Starting from version v3.3.0, concurrent disk repair is supported.
 * message_punish_threshold, Punishment threshold, if the corresponding number of failed attempts to consume a message exceeds this value, a punishment will be imposed for a period of time to avoid excessive retries within a short period. The default value is 3.
 * message_punish_time_m, punishment time, default 10 minutes
 * orphan_shard_log, record information of orphan data repair failures, directory needs to be configured, chunkbits is the log file rotation size, default is 29 (2^29 bytes)
+* enable_az_split_shard_repair, whether to split shard repair tasks by AZ, default is false. When enabled, if bad shards span multiple AZs and local repair is possible, each AZ's bad indices are dispatched concurrently to a worker in that same AZ, eliminating cross-AZ traffic for local-stripe repair; otherwise the original single-worker path is used
 ```json
 {
   "task_pool_size": 10,
@@ -219,7 +220,8 @@ Starting from version v3.3.0, concurrent disk repair is supported.
   "orphan_shard_log": {
     "dir": "/home/service/scheduler/_package/orphan_shard_log",
     "chunkbits": 29
-  }
+  },
+  "enable_az_split_shard_repair": false
 } 
 ```
 

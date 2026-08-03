@@ -779,6 +779,616 @@ func TestRepairShardWithIDC(t *testing.T) {
 	})
 }
 
+// azIndexOf returns the AZ number (0-based) for a given vunit index,
+// computed from the codemode's EC layout.
+func azIndexOf(mode codemode.CodeMode, idx int) int {
+	layout := mode.T().GetECLayoutByAZ()
+	for az, indices := range layout {
+		for _, i := range indices {
+			if i == idx {
+				return az
+			}
+		}
+	}
+	return -1
+}
+
+// setupAZTopology builds a mock cluster topology where each vunit's disk
+// has an IDC assigned based on the codemode's AZ layout.
+func setupAZTopology(t *testing.T, ctr *gomock.Controller, vol *client.VolumeInfoSimple, mode codemode.CodeMode) *MockClusterTopology {
+	t.Helper()
+	topology := NewMockClusterTopology(ctr)
+	topology.EXPECT().GetVolume(any).AnyTimes().Return(&client.VolumeInfoSimple{}, nil)
+	topology.EXPECT().UpdateVolume(any).AnyTimes().Return(&client.VolumeInfoSimple{}, nil)
+	for i := range vol.VunitLocations {
+		host := fmt.Sprintf("http://host-%d:9600", i)
+		vol.VunitLocations[i].Host = host
+		diskInfo := &client.DiskInfoSimple{
+			Host: host,
+			Idc:  fmt.Sprintf("az%d", azIndexOf(mode, i)),
+		}
+		topology.EXPECT().GetDisk(vol.VunitLocations[i].DiskID).Return(diskInfo, true).AnyTimes()
+	}
+	return topology
+}
+
+func TestLocalRepairable(t *testing.T) {
+	// L=0 codemodes → always false
+	require.False(t, localRepairable([]uint8{0}, codemode.EC3P3))
+	require.False(t, localRepairable([]uint8{0, 1}, codemode.EC6P6))
+	require.False(t, localRepairable([]uint8{0}, codemode.EC15P12))
+
+	// EC6P10L2: N=6, M=10, L=2, AZCount=2, threshold=L/AZCount=1
+	// AZ0: [0,1,2, 6,7,8,9,10, 16], AZ1: [3,4,5, 11,12,13,14,15, 17]
+	require.True(t, localRepairable([]uint8{0}, codemode.EC6P10L2))           // 1 bad in AZ0 ≤ 1
+	require.True(t, localRepairable([]uint8{0, 3}, codemode.EC6P10L2))        // 1 each AZ ≤ 1
+	require.True(t, localRepairable([]uint8{16, 17}, codemode.EC6P10L2))      // 1 each AZ (L shards) ≤ 1
+	require.False(t, localRepairable([]uint8{0, 1}, codemode.EC6P10L2))       // 2 bad in AZ0 > 1
+	require.False(t, localRepairable([]uint8{0, 1, 3, 4}, codemode.EC6P10L2)) // 2 each AZ > 1
+
+	// EC6P3L3: N=6, M=3, L=3, AZCount=3, threshold=L/AZCount=1
+	// AZ0: [0,1, 6, 9], AZ1: [2,3, 7, 10], AZ2: [4,5, 8, 11]
+	require.True(t, localRepairable([]uint8{0, 2, 4}, codemode.EC6P3L3)) // 1 each AZ ≤ 1
+	require.False(t, localRepairable([]uint8{0, 1}, codemode.EC6P3L3))   // 2 bad in AZ0 > 1
+
+	// empty badIdxs → true (no AZ exceeds threshold)
+	require.True(t, localRepairable([]uint8{}, codemode.EC6P10L2))
+}
+
+func TestGroupBadIdxsByAZ(t *testing.T) {
+	mgr := newShardRepairMgr(t)
+
+	t.Run("should group by IDC", func(t *testing.T) {
+		idcByVunitIdx := []string{"az0", "az0", "az1", "az1"}
+		msg := &proto.ShardRepairMsg{BadIdx: []uint8{0, 1, 2, 3}}
+		groups := mgr.groupBadIdxsByAZ(msg, idcByVunitIdx)
+		require.Len(t, groups, 2)
+		require.ElementsMatch(t, []uint8{0, 1}, groups["az0"])
+		require.ElementsMatch(t, []uint8{2, 3}, groups["az1"])
+	})
+
+	t.Run("should group unknown IDC under empty string", func(t *testing.T) {
+		idcByVunitIdx := []string{"az0", "", "az1"}
+		msg := &proto.ShardRepairMsg{BadIdx: []uint8{0, 1, 2}}
+		groups := mgr.groupBadIdxsByAZ(msg, idcByVunitIdx)
+		require.Len(t, groups, 3)
+		require.ElementsMatch(t, []uint8{0}, groups["az0"])
+		require.ElementsMatch(t, []uint8{1}, groups[""])
+		require.ElementsMatch(t, []uint8{2}, groups["az1"])
+	})
+
+	t.Run("should handle out of range index", func(t *testing.T) {
+		idcByVunitIdx := []string{"az0"}
+		msg := &proto.ShardRepairMsg{BadIdx: []uint8{0, 99}}
+		groups := mgr.groupBadIdxsByAZ(msg, idcByVunitIdx)
+		require.ElementsMatch(t, []uint8{0}, groups["az0"])
+		require.ElementsMatch(t, []uint8{99}, groups[""])
+	})
+
+	t.Run("should return empty map for empty badIdxs", func(t *testing.T) {
+		idcByVunitIdx := []string{"az0", "az1"}
+		msg := &proto.ShardRepairMsg{BadIdx: []uint8{}}
+		groups := mgr.groupBadIdxsByAZ(msg, idcByVunitIdx)
+		require.Empty(t, groups)
+	})
+}
+
+func TestRepairShardAZSplit(t *testing.T) {
+	t.Run("should split when multi-AZ bad shards and local repairable", func(t *testing.T) {
+		ctr := gomock.NewController(t)
+		mgr := newShardRepairMgr(t)
+		mgr.cfg.EnableAZSplitShardRepair = true
+
+		mode := codemode.EC6P10L2 // N=6, M=10, L=2, AZCount=2, threshold=1
+		vol := MockGenVolInfo(1, mode, proto.VolumeStatusActive)
+		mgr.clusterTopology = setupAZTopology(t, ctr, vol, mode)
+
+		// per-AZ selectors
+		mockAz0 := mocks.NewMockSelector(ctr)
+		mockAz0.EXPECT().GetRandomN(1).Return([]string{"az0-worker:9600"}).Times(1)
+		mgr.blobnodeSelector.selectors["az0"] = mockAz0
+
+		mockAz1 := mocks.NewMockSelector(ctr)
+		mockAz1.EXPECT().GetRandomN(1).Return([]string{"az1-worker:9600"}).Times(1)
+		mgr.blobnodeSelector.selectors["az1"] = mockAz1
+
+		// capture RepairShard calls
+		var mu sync.Mutex
+		var capturedHosts []string
+		var capturedBadIdxs [][]uint8
+		blobnode := NewMockBlobnodeAPI(ctr)
+		blobnode.EXPECT().RepairShard(any, any, any).DoAndReturn(
+			func(_ context.Context, host string, task proto.ShardRepairTask) error {
+				mu.Lock()
+				capturedHosts = append(capturedHosts, host)
+				capturedBadIdxs = append(capturedBadIdxs, task.BadIdxs)
+				mu.Unlock()
+				return nil
+			},
+		).Times(2)
+		mgr.blobnodeCli = blobnode
+
+		// BadIdx 0 (AZ0) and 3 (AZ1): each AZ has 1 ≤ threshold 1
+		doneVol, err := mgr.repairShard(context.Background(), vol,
+			&proto.ShardRepairMsg{Bid: 1, Vid: 1, BadIdx: []uint8{0, 3}})
+		require.NoError(t, err)
+		require.NotNil(t, doneVol)
+
+		// verify 2 calls, each to the correct AZ worker with correct BadIdxs
+		require.Len(t, capturedHosts, 2)
+		badIdxsByHost := make(map[string][]uint8)
+		for i, host := range capturedHosts {
+			badIdxsByHost[host] = capturedBadIdxs[i]
+		}
+		require.ElementsMatch(t, []uint8{0}, badIdxsByHost["az0-worker:9600"])
+		require.ElementsMatch(t, []uint8{3}, badIdxsByHost["az1-worker:9600"])
+	})
+
+	t.Run("should NOT split when switch is off even if all conditions met", func(t *testing.T) {
+		ctr := gomock.NewController(t)
+		mgr := newShardRepairMgr(t)
+		// EnableAZSplitShardRepair defaults to false
+
+		mode := codemode.EC6P10L2 // N=6, M=10, L=2, AZCount=2, threshold=1
+		vol := MockGenVolInfo(1, mode, proto.VolumeStatusActive)
+		mgr.clusterTopology = setupAZTopology(t, ctr, vol, mode)
+
+		// single-worker path uses resolveRepairIDC → first bad idx's IDC (az0)
+		mockAz0 := mocks.NewMockSelector(ctr)
+		mockAz0.EXPECT().GetRandomN(1).Return([]string{"az0-worker:9600"}).Times(1)
+		mgr.blobnodeSelector.selectors["az0"] = mockAz0
+
+		blobnode := NewMockBlobnodeAPI(ctr)
+		// only 1 call: all bad shards sent to a single worker
+		blobnode.EXPECT().RepairShard(any, any, any).Return(nil).Times(1)
+		mgr.blobnodeCli = blobnode
+
+		// same BadIdx as the split case {0,3}, but switch is off → single path
+		doneVol, err := mgr.repairShard(context.Background(), vol,
+			&proto.ShardRepairMsg{Bid: 1, Vid: 1, BadIdx: []uint8{0, 3}})
+		require.NoError(t, err)
+		require.NotNil(t, doneVol)
+	})
+
+	t.Run("should NOT split when single AZ bad shards", func(t *testing.T) {
+		ctr := gomock.NewController(t)
+		mgr := newShardRepairMgr(t)
+
+		mode := codemode.EC6P10L2
+		vol := MockGenVolInfo(1, mode, proto.VolumeStatusActive)
+		mgr.clusterTopology = setupAZTopology(t, ctr, vol, mode)
+
+		mockAz0 := mocks.NewMockSelector(ctr)
+		mockAz0.EXPECT().GetRandomN(1).Return([]string{"az0-worker:9600"}).Times(1)
+		mgr.blobnodeSelector.selectors["az0"] = mockAz0
+
+		blobnode := NewMockBlobnodeAPI(ctr)
+		blobnode.EXPECT().RepairShard(any, any, any).Return(nil).Times(1)
+		mgr.blobnodeCli = blobnode
+
+		// BadIdx 0 only: single AZ → no split
+		doneVol, err := mgr.repairShard(context.Background(), vol,
+			&proto.ShardRepairMsg{Bid: 1, Vid: 1, BadIdx: []uint8{0}})
+		require.NoError(t, err)
+		require.NotNil(t, doneVol)
+	})
+
+	t.Run("should NOT split when localRepairable is false", func(t *testing.T) {
+		ctr := gomock.NewController(t)
+		mgr := newShardRepairMgr(t)
+
+		mode := codemode.EC6P10L2 // threshold=1
+		vol := MockGenVolInfo(1, mode, proto.VolumeStatusActive)
+		mgr.clusterTopology = setupAZTopology(t, ctr, vol, mode)
+
+		// global selector (original path uses resolveRepairIDC → az0 → fallback or direct)
+		mockGlobal := mocks.NewMockSelector(ctr)
+		mockGlobal.EXPECT().GetRandomN(1).Return([]string{"global-worker:9600"}).AnyTimes()
+		mgr.blobnodeSelector.selectors[""] = mockGlobal
+		mockAz0 := mocks.NewMockSelector(ctr)
+		mockAz0.EXPECT().GetRandomN(1).Return([]string{"az0-worker:9600"}).AnyTimes()
+		mgr.blobnodeSelector.selectors["az0"] = mockAz0
+
+		blobnode := NewMockBlobnodeAPI(ctr)
+		blobnode.EXPECT().RepairShard(any, any, any).Return(nil).Times(1)
+		mgr.blobnodeCli = blobnode
+
+		// BadIdx 0,1 (AZ0) + 3 (AZ1): AZ0 has 2 > threshold 1 → localRepairable=false → no split
+		doneVol, err := mgr.repairShard(context.Background(), vol,
+			&proto.ShardRepairMsg{Bid: 1, Vid: 1, BadIdx: []uint8{0, 1, 3}})
+		require.NoError(t, err)
+		require.NotNil(t, doneVol)
+	})
+
+	t.Run("should NOT split when some IDC unknown", func(t *testing.T) {
+		ctr := gomock.NewController(t)
+		mgr := newShardRepairMgr(t)
+
+		mode := codemode.EC6P10L2
+		vol := MockGenVolInfo(1, mode, proto.VolumeStatusActive)
+
+		// topology: AZ0 for idx 0, but empty IDC for idx 3
+		newTopology := NewMockClusterTopology(ctr)
+		newTopology.EXPECT().GetVolume(any).AnyTimes().Return(&client.VolumeInfoSimple{}, nil)
+		newTopology.EXPECT().UpdateVolume(any).AnyTimes().Return(&client.VolumeInfoSimple{}, nil)
+		for i := range vol.VunitLocations {
+			host := fmt.Sprintf("http://host-%d:9600", i)
+			vol.VunitLocations[i].Host = host
+			diskInfo := &client.DiskInfoSimple{Host: host}
+			if i == 0 {
+				diskInfo.Idc = "az0"
+			}
+			// idx 3 and all others have empty IDC
+			newTopology.EXPECT().GetDisk(vol.VunitLocations[i].DiskID).Return(diskInfo, true).AnyTimes()
+		}
+		mgr.clusterTopology = newTopology
+
+		mockAz0 := mocks.NewMockSelector(ctr)
+		mockAz0.EXPECT().GetRandomN(1).Return([]string{"az0-worker:9600"}).AnyTimes()
+		mgr.blobnodeSelector.selectors["az0"] = mockAz0
+		mockGlobal := mocks.NewMockSelector(ctr)
+		mockGlobal.EXPECT().GetRandomN(1).Return([]string{"global-worker:9600"}).AnyTimes()
+		mgr.blobnodeSelector.selectors[""] = mockGlobal
+
+		blobnode := NewMockBlobnodeAPI(ctr)
+		blobnode.EXPECT().RepairShard(any, any, any).Return(nil).Times(1)
+		mgr.blobnodeCli = blobnode
+
+		// BadIdx 0 (az0) and 3 (unknown IDC): azBadIdxs has "" key → no split
+		doneVol, err := mgr.repairShard(context.Background(), vol,
+			&proto.ShardRepairMsg{Bid: 1, Vid: 1, BadIdx: []uint8{0, 3}})
+		require.NoError(t, err)
+		require.NotNil(t, doneVol)
+	})
+
+	t.Run("should NOT split when L=0 codemode", func(t *testing.T) {
+		ctr := gomock.NewController(t)
+		mgr := newShardRepairMgr(t)
+
+		// EC3P3: L=0 → localRepairable=false → no split
+		vol := MockGenVolInfo(1, codemode.EC3P3, proto.VolumeStatusActive)
+		mgr.clusterTopology = setupAZTopology(t, ctr, vol, codemode.EC3P3)
+
+		mockGlobal := mocks.NewMockSelector(ctr)
+		mockGlobal.EXPECT().GetRandomN(1).Return([]string{"global-worker:9600"}).AnyTimes()
+		mgr.blobnodeSelector.selectors[""] = mockGlobal
+
+		blobnode := NewMockBlobnodeAPI(ctr)
+		blobnode.EXPECT().RepairShard(any, any, any).Return(nil).Times(1)
+		mgr.blobnodeCli = blobnode
+
+		doneVol, err := mgr.repairShard(context.Background(), vol,
+			&proto.ShardRepairMsg{Bid: 1, Vid: 1, BadIdx: []uint8{0, 1}})
+		require.NoError(t, err)
+		require.NotNil(t, doneVol)
+	})
+
+	t.Run("partial failure returns error", func(t *testing.T) {
+		ctr := gomock.NewController(t)
+		mgr := newShardRepairMgr(t)
+		mgr.cfg.EnableAZSplitShardRepair = true
+
+		mode := codemode.EC6P10L2
+		vol := MockGenVolInfo(1, mode, proto.VolumeStatusActive)
+		mgr.clusterTopology = setupAZTopology(t, ctr, vol, mode)
+
+		mockAz0 := mocks.NewMockSelector(ctr)
+		mockAz0.EXPECT().GetRandomN(1).Return([]string{"az0-worker:9600"}).AnyTimes()
+		mgr.blobnodeSelector.selectors["az0"] = mockAz0
+
+		mockAz1 := mocks.NewMockSelector(ctr)
+		mockAz1.EXPECT().GetRandomN(1).Return([]string{"az1-worker:9600"}).AnyTimes()
+		mgr.blobnodeSelector.selectors["az1"] = mockAz1
+
+		blobnode := NewMockBlobnodeAPI(ctr)
+		// one succeeds, one fails — order is non-deterministic so use AnyTimes
+		blobnode.EXPECT().RepairShard(any, any, any).Return(nil).Times(1)
+		blobnode.EXPECT().RepairShard(any, any, any).Return(errors.New("repair failed")).Times(1)
+		mgr.blobnodeCli = blobnode
+
+		doneVol, err := mgr.repairShard(context.Background(), vol,
+			&proto.ShardRepairMsg{Bid: 1, Vid: 1, BadIdx: []uint8{0, 3}})
+		require.Error(t, err)
+		require.NotNil(t, doneVol)
+	})
+
+	t.Run("worker unavailable returns ErrBlobnodeServiceUnavailable", func(t *testing.T) {
+		ctr := gomock.NewController(t)
+		mgr := newShardRepairMgr(t)
+		mgr.cfg.EnableAZSplitShardRepair = true
+
+		mode := codemode.EC6P10L2
+		vol := MockGenVolInfo(1, mode, proto.VolumeStatusActive)
+		mgr.clusterTopology = setupAZTopology(t, ctr, vol, mode)
+
+		// az0: per-AZ and global both return nil → worker unavailable
+		mockAz0 := mocks.NewMockSelector(ctr)
+		mockAz0.EXPECT().GetRandomN(1).Return(nil).AnyTimes()
+		mgr.blobnodeSelector.selectors["az0"] = mockAz0
+
+		mockGlobal := mocks.NewMockSelector(ctr)
+		mockGlobal.EXPECT().GetRandomN(1).Return(nil).AnyTimes()
+		mgr.blobnodeSelector.selectors[""] = mockGlobal
+
+		mockAz1 := mocks.NewMockSelector(ctr)
+		mockAz1.EXPECT().GetRandomN(1).Return([]string{"az1-worker:9600"}).AnyTimes()
+		mgr.blobnodeSelector.selectors["az1"] = mockAz1
+
+		// az1 may succeed but az0 fails → overall error
+		blobnode := NewMockBlobnodeAPI(ctr)
+		blobnode.EXPECT().RepairShard(any, any, any).Return(nil).AnyTimes()
+		mgr.blobnodeCli = blobnode
+
+		doneVol, err := mgr.repairShard(context.Background(), vol,
+			&proto.ShardRepairMsg{Bid: 1, Vid: 1, BadIdx: []uint8{0, 3}})
+		require.ErrorIs(t, err, ErrBlobnodeServiceUnavailable)
+		require.NotNil(t, doneVol)
+	})
+
+	t.Run("should split across 3 AZs with EC6P3L3", func(t *testing.T) {
+		ctr := gomock.NewController(t)
+		mgr := newShardRepairMgr(t)
+		mgr.cfg.EnableAZSplitShardRepair = true
+
+		// EC6P3L3: N=6, M=3, L=3, AZCount=3, threshold=L/AZCount=1
+		// AZ0: [0,1, 6, 9], AZ1: [2,3, 7, 10], AZ2: [4,5, 8, 11]
+		mode := codemode.EC6P3L3
+		vol := MockGenVolInfo(1, mode, proto.VolumeStatusActive)
+		mgr.clusterTopology = setupAZTopology(t, ctr, vol, mode)
+
+		mockAz0 := mocks.NewMockSelector(ctr)
+		mockAz0.EXPECT().GetRandomN(1).Return([]string{"az0-worker:9600"}).Times(1)
+		mgr.blobnodeSelector.selectors["az0"] = mockAz0
+
+		mockAz1 := mocks.NewMockSelector(ctr)
+		mockAz1.EXPECT().GetRandomN(1).Return([]string{"az1-worker:9600"}).Times(1)
+		mgr.blobnodeSelector.selectors["az1"] = mockAz1
+
+		mockAz2 := mocks.NewMockSelector(ctr)
+		mockAz2.EXPECT().GetRandomN(1).Return([]string{"az2-worker:9600"}).Times(1)
+		mgr.blobnodeSelector.selectors["az2"] = mockAz2
+
+		var mu sync.Mutex
+		capturedHosts := make(map[string][]uint8)
+		blobnode := NewMockBlobnodeAPI(ctr)
+		blobnode.EXPECT().RepairShard(any, any, any).DoAndReturn(
+			func(_ context.Context, host string, task proto.ShardRepairTask) error {
+				mu.Lock()
+				capturedHosts[host] = task.BadIdxs
+				mu.Unlock()
+				return nil
+			},
+		).Times(3)
+		mgr.blobnodeCli = blobnode
+
+		// BadIdx 0 (AZ0), 2 (AZ1), 4 (AZ2): each AZ has 1 ≤ threshold 1
+		doneVol, err := mgr.repairShard(context.Background(), vol,
+			&proto.ShardRepairMsg{Bid: 1, Vid: 1, BadIdx: []uint8{0, 2, 4}})
+		require.NoError(t, err)
+		require.NotNil(t, doneVol)
+
+		// verify 3 calls, each to the correct AZ worker with correct BadIdxs
+		require.Len(t, capturedHosts, 3)
+		require.ElementsMatch(t, []uint8{0}, capturedHosts["az0-worker:9600"])
+		require.ElementsMatch(t, []uint8{2}, capturedHosts["az1-worker:9600"])
+		require.ElementsMatch(t, []uint8{4}, capturedHosts["az2-worker:9600"])
+	})
+}
+
+func TestRepairShardByAZ(t *testing.T) {
+	t.Run("should succeed when all AZs succeed", func(t *testing.T) {
+		ctr := gomock.NewController(t)
+		mgr := newShardRepairMgr(t)
+
+		vol := MockGenVolInfo(1, codemode.EC6P10L2, proto.VolumeStatusActive)
+
+		mockAz0 := mocks.NewMockSelector(ctr)
+		mockAz0.EXPECT().GetRandomN(1).Return([]string{"az0-worker:9600"})
+		mgr.blobnodeSelector.selectors["az0"] = mockAz0
+
+		mockAz1 := mocks.NewMockSelector(ctr)
+		mockAz1.EXPECT().GetRandomN(1).Return([]string{"az1-worker:9600"})
+		mgr.blobnodeSelector.selectors["az1"] = mockAz1
+
+		blobnode := NewMockBlobnodeAPI(ctr)
+		blobnode.EXPECT().RepairShard(any, any, any).Return(nil).Times(2)
+		mgr.blobnodeCli = blobnode
+
+		azBadIdxs := map[string][]uint8{
+			"az0": {0},
+			"az1": {3},
+		}
+		doneVol, err := mgr.repairShardByAZ(context.Background(), vol,
+			&proto.ShardRepairMsg{Bid: 1, Vid: 1}, azBadIdxs)
+		require.NoError(t, err)
+		require.NotNil(t, doneVol)
+	})
+
+	t.Run("should return error when one AZ fails", func(t *testing.T) {
+		ctr := gomock.NewController(t)
+		mgr := newShardRepairMgr(t)
+
+		vol := MockGenVolInfo(1, codemode.EC6P10L2, proto.VolumeStatusActive)
+
+		mockAz0 := mocks.NewMockSelector(ctr)
+		mockAz0.EXPECT().GetRandomN(1).Return([]string{"az0-worker:9600"}).AnyTimes()
+		mgr.blobnodeSelector.selectors["az0"] = mockAz0
+
+		mockAz1 := mocks.NewMockSelector(ctr)
+		mockAz1.EXPECT().GetRandomN(1).Return([]string{"az1-worker:9600"}).AnyTimes()
+		mgr.blobnodeSelector.selectors["az1"] = mockAz1
+
+		blobnode := NewMockBlobnodeAPI(ctr)
+		blobnode.EXPECT().RepairShard(any, any, any).Return(nil).Times(1)
+		blobnode.EXPECT().RepairShard(any, any, any).Return(errors.New("repair failed")).Times(1)
+		mgr.blobnodeCli = blobnode
+
+		azBadIdxs := map[string][]uint8{
+			"az0": {0},
+			"az1": {3},
+		}
+		doneVol, err := mgr.repairShardByAZ(context.Background(), vol,
+			&proto.ShardRepairMsg{Bid: 1, Vid: 1}, azBadIdxs)
+		require.Error(t, err)
+		require.NotNil(t, doneVol)
+	})
+
+	t.Run("should return ErrBlobnodeServiceUnavailable when worker unavailable", func(t *testing.T) {
+		ctr := gomock.NewController(t)
+		mgr := newShardRepairMgr(t)
+
+		vol := MockGenVolInfo(1, codemode.EC6P10L2, proto.VolumeStatusActive)
+
+		// az0: per-AZ and global both return nil
+		mockAz0 := mocks.NewMockSelector(ctr)
+		mockAz0.EXPECT().GetRandomN(1).Return(nil).AnyTimes()
+		mgr.blobnodeSelector.selectors["az0"] = mockAz0
+
+		mockGlobal := mocks.NewMockSelector(ctr)
+		mockGlobal.EXPECT().GetRandomN(1).Return(nil).AnyTimes()
+		mgr.blobnodeSelector.selectors[""] = mockGlobal
+
+		mockAz1 := mocks.NewMockSelector(ctr)
+		mockAz1.EXPECT().GetRandomN(1).Return([]string{"az1-worker:9600"}).AnyTimes()
+		mgr.blobnodeSelector.selectors["az1"] = mockAz1
+
+		blobnode := NewMockBlobnodeAPI(ctr)
+		blobnode.EXPECT().RepairShard(any, any, any).Return(nil).AnyTimes()
+		mgr.blobnodeCli = blobnode
+
+		azBadIdxs := map[string][]uint8{
+			"az0": {0},
+			"az1": {3},
+		}
+		doneVol, err := mgr.repairShardByAZ(context.Background(), vol,
+			&proto.ShardRepairMsg{Bid: 1, Vid: 1}, azBadIdxs)
+		require.ErrorIs(t, err, ErrBlobnodeServiceUnavailable)
+		require.NotNil(t, doneVol)
+	})
+
+	t.Run("should handle orphan shard error in subtask", func(t *testing.T) {
+		ctr := gomock.NewController(t)
+		mgr := newShardRepairMgr(t)
+
+		vol := MockGenVolInfo(1, codemode.EC6P10L2, proto.VolumeStatusActive)
+
+		mockAz0 := mocks.NewMockSelector(ctr)
+		mockAz0.EXPECT().GetRandomN(1).Return([]string{"az0-worker:9600"}).AnyTimes()
+		mgr.blobnodeSelector.selectors["az0"] = mockAz0
+
+		mockAz1 := mocks.NewMockSelector(ctr)
+		mockAz1.EXPECT().GetRandomN(1).Return([]string{"az1-worker:9600"}).AnyTimes()
+		mgr.blobnodeSelector.selectors["az1"] = mockAz1
+
+		blobnode := NewMockBlobnodeAPI(ctr)
+		blobnode.EXPECT().RepairShard(any, any, any).Return(nil).Times(1)
+		blobnode.EXPECT().RepairShard(any, any, any).Return(errcode.ErrOrphanShard).Times(1)
+		mgr.blobnodeCli = blobnode
+
+		// override orphanShardLogger to verify saveOrphanShard is called exactly once
+		orphanLog := mocks.NewMockRecordLogEncoder(ctr)
+		orphanLog.EXPECT().Encode(any).Times(1).Return(nil)
+		mgr.orphanShardLogger = orphanLog
+
+		azBadIdxs := map[string][]uint8{
+			"az0": {0},
+			"az1": {3},
+		}
+		doneVol, err := mgr.repairShardByAZ(context.Background(), vol,
+			&proto.ShardRepairMsg{Bid: 1, Vid: 1}, azBadIdxs)
+		require.Error(t, err)
+		require.NotNil(t, doneVol)
+	})
+
+	t.Run("should log orphan shard once when multiple AZs detect it", func(t *testing.T) {
+		ctr := gomock.NewController(t)
+		mgr := newShardRepairMgr(t)
+
+		vol := MockGenVolInfo(1, codemode.EC6P10L2, proto.VolumeStatusActive)
+
+		mockAz0 := mocks.NewMockSelector(ctr)
+		mockAz0.EXPECT().GetRandomN(1).Return([]string{"az0-worker:9600"}).AnyTimes()
+		mgr.blobnodeSelector.selectors["az0"] = mockAz0
+
+		mockAz1 := mocks.NewMockSelector(ctr)
+		mockAz1.EXPECT().GetRandomN(1).Return([]string{"az1-worker:9600"}).AnyTimes()
+		mgr.blobnodeSelector.selectors["az1"] = mockAz1
+
+		// both AZs return orphan shard error
+		blobnode := NewMockBlobnodeAPI(ctr)
+		blobnode.EXPECT().RepairShard(any, any, any).Return(errcode.ErrOrphanShard).Times(2)
+		mgr.blobnodeCli = blobnode
+
+		// saveOrphanShard must be called exactly once, not twice
+		orphanLog := mocks.NewMockRecordLogEncoder(ctr)
+		orphanLog.EXPECT().Encode(any).Times(1).Return(nil)
+		mgr.orphanShardLogger = orphanLog
+
+		azBadIdxs := map[string][]uint8{
+			"az0": {0},
+			"az1": {3},
+		}
+		doneVol, err := mgr.repairShardByAZ(context.Background(), vol,
+			&proto.ShardRepairMsg{Bid: 1, Vid: 1}, azBadIdxs)
+		require.Error(t, err)
+		require.NotNil(t, doneVol)
+	})
+
+	t.Run("should pass full Sources and AZ-specific BadIdxs", func(t *testing.T) {
+		ctr := gomock.NewController(t)
+		mgr := newShardRepairMgr(t)
+
+		vol := MockGenVolInfo(1, codemode.EC6P10L2, proto.VolumeStatusActive)
+		for i := range vol.VunitLocations {
+			vol.VunitLocations[i].Host = fmt.Sprintf("http://host-%d:9600", i)
+		}
+
+		mockAz0 := mocks.NewMockSelector(ctr)
+		mockAz0.EXPECT().GetRandomN(1).Return([]string{"az0-worker:9600"})
+		mgr.blobnodeSelector.selectors["az0"] = mockAz0
+
+		mockAz1 := mocks.NewMockSelector(ctr)
+		mockAz1.EXPECT().GetRandomN(1).Return([]string{"az1-worker:9600"})
+		mgr.blobnodeSelector.selectors["az1"] = mockAz1
+
+		var mu sync.Mutex
+		var capturedTasks []proto.ShardRepairTask
+		blobnode := NewMockBlobnodeAPI(ctr)
+		blobnode.EXPECT().RepairShard(any, any, any).DoAndReturn(
+			func(_ context.Context, _ string, task proto.ShardRepairTask) error {
+				mu.Lock()
+				capturedTasks = append(capturedTasks, task)
+				mu.Unlock()
+				return nil
+			},
+		).Times(2)
+		mgr.blobnodeCli = blobnode
+
+		azBadIdxs := map[string][]uint8{
+			"az0": {0, 1},
+			"az1": {3, 4},
+		}
+		_, err := mgr.repairShardByAZ(context.Background(), vol,
+			&proto.ShardRepairMsg{Bid: 1, Vid: 1, Reason: "test"}, azBadIdxs)
+		require.NoError(t, err)
+
+		require.Len(t, capturedTasks, 2)
+		// each task must have full Sources (for global fallback) and correct BadIdxs
+		for _, task := range capturedTasks {
+			require.Equal(t, vol.VunitLocations, task.Sources)
+			require.Equal(t, proto.BlobID(1), task.Bid)
+			require.Equal(t, codemode.EC6P10L2, task.CodeMode)
+			require.Equal(t, "test", task.Reason)
+		}
+		// verify BadIdxs are AZ-specific
+		allBadIdxs := make([]uint8, 0, 4)
+		for _, task := range capturedTasks {
+			allBadIdxs = append(allBadIdxs, task.BadIdxs...)
+		}
+		require.ElementsMatch(t, []uint8{0, 1, 3, 4}, allBadIdxs)
+	})
+}
+
 func BenchmarkPickWorkerHostParallel(b *testing.B) {
 	az0Sel := selector.MakeSelector(60*1000, func() ([]string, error) {
 		return []string{"az0-worker:9600"}, nil
