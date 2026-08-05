@@ -526,6 +526,11 @@ func (s *raftServer) raftStart() {
 				ap.snapFinishCh = make(chan struct{})
 			}
 
+			err := s.store.Save(rd.HardState, rd.Entries)
+			if err != nil {
+				log.Panicf("save raft entries error: %v", err)
+			}
+
 			select {
 			case s.applyc <- ap:
 			case <-s.stopc:
@@ -538,11 +543,6 @@ func (s *raftServer) raftStart() {
 				log.Debugf("waiting apply snapshot finish...")
 				<-ap.snapFinishCh
 				log.Debugf("apply snapshot finish...")
-			}
-
-			err := s.store.Save(rd.HardState, rd.Entries)
-			if err != nil {
-				log.Panicf("save raft entries error: %v", err)
 			}
 
 			s.n.Advance()

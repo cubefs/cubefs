@@ -194,6 +194,28 @@ func TestRaftServer(t *testing.T) {
 		<-leaderC[i]
 	}
 
+	// follower must have persisted raft log before responding to leader,
+	// so restarting a follower can recover the proposed data from wal.
+	log.Info("====================test restart follower========================")
+	followerIdx := -1
+	for i := 0; i < 3; i++ {
+		if !rss[i].IsLeader() {
+			followerIdx = i
+			break
+		}
+	}
+	require.True(t, followerIdx >= 0)
+	rss[followerIdx].Stop()
+	cfgs[followerIdx].Applied = 0
+	rss[followerIdx], err = NewRaftServer(cfgs[followerIdx])
+	require.Nil(t, err)
+	{
+		entry := <-applyc[followerIdx]
+		require.Equal(t, len(entry.datas), 1)
+		require.True(t, bytes.Equal([]byte("dfakliuerooioitirw"), entry.datas[0]))
+	}
+	<-leaderC[followerIdx]
+
 	// test remove leader
 	log.Info("====================test remove leader========================")
 	for i := 0; i < 3; i++ {
