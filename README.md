@@ -96,4 +96,10 @@ The master branch may be in an unstable or even broken state during development.
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=cubefs/cubefs&type=Date)](https://star-history.com/#cubefs/cubefs&Date)
+<a href="https://www.star-history.com/?type=date&repos=cubefs%2Fcubefs">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=cubefs/cubefs&type=date&theme=dark&legend=top-left&sealed_token=xgnMZkPaPb9Fn_mq7WzFXGcNYAP4QQqg8PSxcyCHBwPkipwEAxHEW2KtMRoNtYHplKNVpQA2WNsYBbRmo8Mw1_zFb99H-f9FnO8ybwMGZNodW0Wr_hlpcQ" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=cubefs/cubefs&type=date&legend=top-left&sealed_token=xgnMZkPaPb9Fn_mq7WzFXGcNYAP4QQqg8PSxcyCHBwPkipwEAxHEW2KtMRoNtYHplKNVpQA2WNsYBbRmo8Mw1_zFb99H-f9FnO8ybwMGZNodW0Wr_hlpcQ" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=cubefs/cubefs&type=date&legend=top-left&sealed_token=xgnMZkPaPb9Fn_mq7WzFXGcNYAP4QQqg8PSxcyCHBwPkipwEAxHEW2KtMRoNtYHplKNVpQA2WNsYBbRmo8Mw1_zFb99H-f9FnO8ybwMGZNodW0Wr_hlpcQ" />
+ </picture>
+</a>
