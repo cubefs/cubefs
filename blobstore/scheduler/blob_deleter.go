@@ -365,14 +365,20 @@ func (mgr *BlobDeleteMgr) Consume(msgs []*sarama.ConsumerMessage, consumerPause 
 	defer mgr.maybeSlowDownConsume(delItems, consumerPause)
 	defer mgr.recordAllResult(delItems)
 
-	pool := mgr.getTaskPool(msgs[0].Topic)
-
 	span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "BlobDeleteConsume", tracePrefix)
 	span.Infof("start delete msgs len[%d], topic[%s], partition[%d], offset[%d]", len(msgs), msgs[0].Topic, msgs[0].Partition, msgs[0].Offset)
+
+	pool := mgr.getTaskPool(msgs[0].Topic)
 	wg := sync.WaitGroup{}
 	wg.Add(len(delItems))
 	for i := range delItems {
 		idx := i
+		if !mgr.waitProtectOrPunish(ctx, &delItems[idx], consumerPause) {
+			delItems[idx].status = DeleteStatusUndo
+			delItems[idx].ctx = ctx
+			wg.Done()
+			continue
+		}
 		pool.Run(func() {
 			mgr.handleOneMsg(ctx, &delItems[idx], consumerPause)
 			wg.Done()
@@ -382,6 +388,44 @@ func (mgr *BlobDeleteMgr) Consume(msgs []*sarama.ConsumerMessage, consumerPause 
 	wg.Wait()
 	for _, v := range delItems {
 		if v.status == DeleteStatusUndo {
+			return false
+		}
+	}
+	return true
+}
+
+// waitProtectOrPunish sleeps until message leaves protect window or punish period.
+func (mgr *BlobDeleteMgr) waitProtectOrPunish(ctx context.Context, item *delBlobRet, consumerPause base.ConsumerPause) bool {
+	span := trace.SpanFromContextSafe(ctx)
+	msg := item.delMsg
+
+	select {
+	case <-consumerPause.Done():
+		return false
+	default:
+	}
+
+	if msg.Retry >= mgr.cfg.MessagePunishThreshold {
+		delta := time.Since(time.Unix(msg.FailTime, 0))
+		if msg.FailTime == 0 {
+			delta = 0
+		}
+		if delta < mgr.punishTime {
+			toSleep := mgr.punishTime - delta
+			span.Warnf("punish message: vid[%d], bid[%d], until[%+v], sleep[%+v], retry[%d]",
+				msg.Vid, msg.Bid, time.Now().Add(toSleep), toSleep, msg.Retry)
+			if ok := sleep(toSleep, consumerPause); !ok {
+				return false
+			}
+		}
+	}
+
+	if mgr.safeDelayTime > 0 &&
+		time.Now().UTC().Sub(time.Unix(msg.Time, 0)) < mgr.safeDelayTime {
+		toSleep := mgr.delayDuration(msg.Time)
+		span.Debugf("blob is protected: vid[%d], bid[%d], until[%+v], sleep[%+v]",
+			msg.Vid, msg.Bid, time.Unix(msg.Time, 0).Add(mgr.safeDelayTime), toSleep)
+		if ok := sleep(toSleep, consumerPause); !ok {
 			return false
 		}
 	}
@@ -495,32 +539,6 @@ func (mgr *BlobDeleteMgr) consume(item *delBlobRet, consumerPause base.ConsumerP
 	}
 	span := trace.SpanFromContextSafe(item.ctx)
 
-	// if message retry times is greater than MessagePunishThreshold while sleep MessagePunishTimeM minutes
-	if item.delMsg.Retry >= mgr.cfg.MessagePunishThreshold {
-		delta := time.Since(time.Unix(item.delMsg.FailTime, 0))
-		if item.delMsg.FailTime == 0 {
-			delta = 0
-		}
-		if delta < mgr.punishTime {
-			toSleep := mgr.punishTime - delta
-			span.Warnf("punish message for a while: until[%+v], sleep[%+v], retry[%d]",
-				time.Now().Add(toSleep), toSleep, item.delMsg.Retry)
-			if ok := sleep(toSleep, consumerPause); !ok {
-				item.status = DeleteStatusUndo
-				return
-			}
-		}
-	}
-	now := time.Now().UTC()
-	if mgr.safeDelayTime > 0 && now.Sub(time.Unix(item.delMsg.Time, 0)) < mgr.safeDelayTime {
-		sleepDuration := mgr.delayDuration(item.delMsg.Time)
-		span.Debugf("blob is protected: until[%+v], sleep[%+v]", time.Unix(item.delMsg.Time, 0).Add(mgr.safeDelayTime), sleepDuration)
-		ok := sleep(sleepDuration, consumerPause)
-		if !ok {
-			item.status = DeleteStatusUndo
-			return
-		}
-	}
 	if mgr.hasBrokenDisk(item.delMsg.Vid) {
 		span.Debugf("the volume has broken disk and delete later: vid[%d], bid[%d]", item.delMsg.Vid, item.delMsg.Bid)
 		// try to update volume
