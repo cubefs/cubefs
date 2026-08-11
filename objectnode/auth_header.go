@@ -233,7 +233,15 @@ func (auth *HeaderAuth) buildSignatureChunk(secretKey string) string {
 
 	signature := calculateSignature(signingKey, auth.stringToSign)
 
-	auth.request.Body = NewSignChunkedReader(auth.request.Body, signingKey, scope, cred.Date, signature)
+	// Per-chunk signing (https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-streaming.html)
+	// uses the full ISO8601 request timestamp ("20060102T150405Z") in each chunk's
+	// string-to-sign, not the short credential-scope date ("20060102") -- every AWS SDK
+	// builds it this way (confirmed directly against aws-sdk-java-v2's
+	// SigV4ChunkExtensionProvider#getStringToSign, which uses credentialScope.getDatetime(),
+	// the full timestamp). Passing cred.Date here instead of cred.TimeStamp made every
+	// chunk signature verification fail unconditionally for any client that actually uses
+	// chunked/streaming SigV4 uploads, independent of SDK version.
+	auth.request.Body = NewSignChunkedReader(auth.request.Body, signingKey, scope, cred.TimeStamp, signature)
 
 	return signature
 }
