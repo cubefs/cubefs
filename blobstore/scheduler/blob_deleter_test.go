@@ -175,6 +175,10 @@ func swapBlobnode(mgr *BlobDeleteMgr, cli client.BlobnodeAPI) func() {
 
 func consumeRet(mgr *BlobDeleteMgr, ctx context.Context, msg *proto.DeleteMsg, stop closer.Closer) delBlobRet {
 	ret := delBlobRet{delMsg: msg, ctx: ctx}
+	if !mgr.waitProtectOrPunish(ctx, &ret, stop) {
+		ret.status = DeleteStatusUndo
+		return ret
+	}
 	mgr.consume(&ret, stop)
 	return ret
 }
@@ -235,6 +239,41 @@ func TestBlobDeleteConsumeKafka(t *testing.T) {
 		mgr.safeDelayTime = time.Hour
 		defer func() { mgr.safeDelayTime = oldDelay }()
 		require.False(t, mgr.Consume([]*sarama.ConsumerMessage{deleteKafkaMsg(msg)}, cancel))
+	})
+
+	t.Run("already_paused_returns_false", func(t *testing.T) {
+		restore := swapTopology(mgr, mockDeleteTopology(t, ctr, deleteTopoOpts{}))
+		defer restore()
+		pause := closer.New()
+		pause.Close()
+		oldDelay := mgr.safeDelayTime
+		mgr.safeDelayTime = 0
+		defer func() { mgr.safeDelayTime = oldDelay }()
+		require.False(t, mgr.Consume([]*sarama.ConsumerMessage{deleteKafkaMsg(defaultDeleteMsg())}, pause))
+	})
+
+	t.Run("batch_cancel_skips_remaining_delete", func(t *testing.T) {
+		restoreTopo := swapTopology(mgr, mockDeleteTopology(t, ctr, deleteTopoOpts{}))
+		defer restoreTopo()
+		blobnode := NewMockBlobnodeAPI(ctr)
+		// wait cancelled before dispatch: remaining msgs must not delete.
+		restoreCli := swapBlobnode(mgr, blobnode)
+		defer restoreCli()
+
+		cancel := closer.New()
+		go func() {
+			time.Sleep(10 * time.Millisecond)
+			cancel.Close()
+		}()
+		oldDelay := mgr.safeDelayTime
+		mgr.safeDelayTime = time.Hour
+		defer func() { mgr.safeDelayTime = oldDelay }()
+
+		msgs := []*sarama.ConsumerMessage{
+			deleteKafkaMsg(&proto.DeleteMsg{Bid: 1, Vid: 1, ReqId: "protected", Time: time.Now().Unix()}),
+			deleteKafkaMsg(&proto.DeleteMsg{Bid: 2, Vid: 1, ReqId: "ready", Time: 0}),
+		}
+		require.False(t, mgr.Consume(msgs, cancel))
 	})
 
 	t.Run("overload_triggers_slowdown", func(t *testing.T) {
