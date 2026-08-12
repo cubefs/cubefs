@@ -78,6 +78,9 @@ module.exports = [
             'feature/trash.md',
             'feature/autofs.md',
             "feature/hybridcloud.md",
+            'feature/region.md',
+            'feature/storage-pool.md',
+            'feature/tag-migration.md',
             'feature/aheadread.md',
         ]
     },
