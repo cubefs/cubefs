@@ -27,6 +27,7 @@ func TestParseSize(t *testing.T) {
 	str2 := "1024kb"
 	str3 := "1024KB"
 	str4 := "0PB"
+	str5 := "18014398509482112KB"
 
 	size1, err := strutil.ParseSize(str1)
 	require.NoError(t, err)
@@ -43,6 +44,9 @@ func TestParseSize(t *testing.T) {
 	size4, err := strutil.ParseSize(str4)
 	require.NoError(t, err)
 	require.EqualValues(t, 0, size4)
+
+	_, err = strutil.ParseSize(str5)
+	require.Error(t, err)
 }
 
 func TestFormatSize(t *testing.T) {

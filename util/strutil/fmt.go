@@ -31,6 +31,7 @@ var suffixs = map[string]uint64{
 }
 
 func ParseSize(sizeStr string) (size uint64, err error) {
+	original := sizeStr
 	sizeStr = strings.ToLower(sizeStr)
 	base := uint64(1)
 	for suffix, v := range suffixs {
@@ -42,6 +43,10 @@ func ParseSize(sizeStr string) (size uint64, err error) {
 	}
 	size, err = strconv.ParseUint(sizeStr, 10, 64)
 	if err != nil {
+		return
+	}
+	if size > ^uint64(0)/base {
+		err = fmt.Errorf("size %q overflows uint64", original)
 		return
 	}
 	size *= base
