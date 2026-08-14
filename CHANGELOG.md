@@ -1,3 +1,38 @@
+## Release v3.6.0 - 2026/08/14
+
+### **UPGRAGDE NOTICE**
+
+If you are using a CubeFS version earlier than v3.5.0, please refer to the UPGRADE NOTICE in version v3.5.0 for detailed upgrade steps and upgrade to v3.5.0 first.
+
+Upgrade nodes in this order: master → metanode → datanode → flashnode → objectnode → lcnode → cli → client.
+
+_Upgrade lcnode and flashnode when needed._
+
+Before enabling MetaPartition learner-based decommissioning (`enableMpDecommissionByLearner`), upgrade all MetaNodes first.
+
+Clients should use versions later than 3.2.0. Older versions need to be upgraded promptly; otherwise, there will be a risk of compromising stability.
+
+### **Main Feature**
++ Tag-based MP and DP migration: Added tag-aware migration and decommissioning for MetaPartitions and DataPartitions; added per-tag concurrency limits and improved target-node selection, scheduling, and recovery control. (#4072, @RyanWYR, @aaronwu2010)
++ Multi-Region metadata support: Added Region management for metadata nodes and volumes, including default Regions, allowed Region sets, and MetaPartition Region policies; added Region-aware placement validation, online policy updates, CLI operations, persistence, and monitoring metrics. (#4071, @Victor1319)
++ Multiple data storage pools: Improved DataPartition placement and accounting across multiple storage pools; added pool-aware writable DataPartition metrics and strengthened storage-mode, storage-type, and topology validation. (#4076, @Victor1319)
++ Raft learners and learner-based MP decommissioning: Added Raft learner support to MetaPartition recovery and decommissioning workflows; improved learner selection, apply-progress validation, membership checks, and recovery scheduling to reduce service impact during replica replacement. (#4073, @Victor1319)
++ MP metadata alignment and self-healing: Added metadata alignment checks and automatic MetaPartition repair capabilities; improved recovery diagnostics, apply-progress gating, snapshot handling, and cross-version compatibility. (#4074, @zhumingze1108)
++ MetaNode proximity reads: Added Meta NearRead and follower-read support to route metadata reads to nearby, low-latency replicas; added follower-read leases and dirty-inode tracking to preserve read-your-writes consistency after metadata updates. (#4075, @Victor1319)
++ RocksDB experimental store mode: Added experimental RocksDB storage mode for MetaPartitions, with volume-level `defaultStoreMode` and per-replica `memory` / `rocksdb` selection; improved RocksDB disk selection, unavailable reporting on disk failure, and learner or follower placement that mixes memory and RocksDB store modes. (#4083, @aaronwu2010)
+
+### **Enhance**
++ Optimized client read-ahead, retry backoff, batched directory reads, and inode/cache maintenance. (#4077, @clinx, @bboyCH4, @leonrayang)
++ Improved extent migration with lease validation, inode generation updates, retry budgets, and clearer error classification. (#4081, @zhumingze1108)
++ Improved FlashNode cache-key generation, capacity accounting, prewarm status handling, heartbeat processing, and management messages. (#4082, @clinx, @bboyCH4)
++ Improved DataPartition decommission token scheduling, cancellation cleanup, progress handling, and automatic bad-disk decommissioning. (#4079, @shuqiang-zheng)
+
+### **Bugfix**
+* Fixed stale client read-ahead data, cache-block double release, ticker leaks, and incomplete node-cache cleanup. (#4077, @bboyCH4, @clinx)
+* Fixed DataNode available-space underflow and delayed repair of new replicas with insufficient tiny extents. (#4078, @shuqiang-zheng, @RyanWYR)
+* Fixed DataPartition decommission token scheduling, cancellation cleanup, incorrect disk marking, and stalled bad-disk decommissioning. (#4078, @shuqiang-zheng)
+
+
 ## Release v3.5.3 - 2025/12/31
 
 ### **UPGRAGDE NOTICE**
