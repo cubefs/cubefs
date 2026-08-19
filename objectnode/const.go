@@ -68,6 +68,7 @@ const (
 	XAmzCopySourceIfModifiedSince   = "x-amz-copy-source-if-modified-since"
 	XAmzCopySourceIfUnmodifiedSince = "x-amz-copy-source-if-unmodified-since"
 	XAmzDecodedContentLength        = "x-amz-decoded-content-length"
+	XAmzChecksumCRC32               = "x-amz-checksum-crc32"
 	XAmzTagging                     = "x-amz-tagging"
 	XAmzMetaPrefix                  = "x-amz-meta-"
 	XAmzMpPartsCount                = "x-amz-mp-parts-count"
