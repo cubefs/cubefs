@@ -775,6 +775,8 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 		return
 	}
 
+	SetAuditFields(r, AuditFields{Size: fsFileInfo.Size, ETag: fsFileInfo.ETag})
+
 	completeResult := CompleteMultipartResult{
 		Bucket: param.Bucket(),
 		Key:    param.Object(),
