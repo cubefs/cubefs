@@ -15,6 +15,7 @@
 package fs
 
 import (
+	"os"
 	"syscall"
 	"time"
 
@@ -80,10 +81,22 @@ func ParseError(err error) fuse.Errno {
 
 // ParseType returns the dentry type.
 func ParseType(t uint32) fuse.DirentType {
-	if proto.IsDir(t) {
+	switch proto.OsModeType(t) {
+	case 0:
+		return fuse.DT_File
+	case os.ModeDir:
 		return fuse.DT_Dir
-	} else if proto.IsSymlink(t) {
+	case os.ModeSymlink:
 		return fuse.DT_Link
+	case os.ModeNamedPipe:
+		return fuse.DT_FIFO
+	case os.ModeSocket:
+		return fuse.DT_Socket
+	case os.ModeDevice:
+		return fuse.DT_Block
+	case os.ModeDevice | os.ModeCharDevice:
+		return fuse.DT_Char
+	default:
+		return fuse.DT_Unknown
 	}
-	return fuse.DT_File
 }
