@@ -727,7 +727,7 @@ func (mp *metaPartition) fsmEvictInode(ino *Inode) (resp *InodeResponse) {
 	}
 	if proto.IsDir(i.Type) {
 		if i.IsEmptyDirAndNoSnapshot() {
-			i.SetDeleteMark()
+			mp.inodeTree.Delete(i)
 		}
 		return
 	}
