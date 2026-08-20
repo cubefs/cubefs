@@ -1002,6 +1002,11 @@ func (s *ExtentStore) Close() {
 		}
 	}
 
+	if s.metadataFp != nil {
+		s.metadataFp.Sync()
+		s.metadataFp.Close()
+	}
+
 	s.stopMutex.Lock()
 	defer s.stopMutex.Unlock()
 	s.setClosed(true)
