@@ -166,7 +166,19 @@ func (s *raft) handleSnapshot(req *snapshotRequest) {
 
 	// validate snapshot
 	if req.header.Term < s.raftFsm.term {
+		// NOTE: should set error to close connection and let leader know his snapshot is rejected,
+		// otherwise leader will believe the snapshot is accepted and send append messages with higher index,
+		// which will cause follower to reject those messages.
 		err = fmt.Errorf("raft %v [term: %d] ignored a snapshot message with lower term from %v [term: %d]", s.raftFsm.id, s.raftFsm.term, req.header.From, req.header.Term)
+		if logger.IsEnableWarn() {
+			logger.Warn("raft %v [commit: %d] ignored snapshot [index: %d, term: %d] from %v.", s.raftFsm.id, s.raftFsm.raftLog.committed, req.header.SnapshotMeta.Index, req.header.SnapshotMeta.Term, req.header.From)
+		}
+		nmsg := proto.GetMessage()
+		nmsg.Type = proto.RespMsgAppend
+		nmsg.To = req.header.From
+		nmsg.Index = s.raftFsm.raftLog.committed
+		nmsg.Commit = s.raftFsm.raftLog.committed
+		s.raftFsm.send(nmsg)
 		return
 	}
 	if req.header.Term > s.raftFsm.term || s.raftFsm.state != stateFollower {
@@ -174,6 +186,10 @@ func (s *raft) handleSnapshot(req *snapshotRequest) {
 		s.maybeChange(true)
 	}
 	if !s.raftFsm.checkSnapshot(req.header.SnapshotMeta) {
+		// NOTE: should set error to close connection and let leader know his snapshot is rejected,
+		// otherwise leader will believe the snapshot is accepted and send append messages with higher index,
+		// which will cause follower to reject those messages.
+		err = fmt.Errorf("raft %v [term: %d] ignored a snapshot message with old snapshot index from %v [snapshot index: %d]", s.raftFsm.id, s.raftFsm.term, req.header.From, req.header.SnapshotMeta.Index)
 		logger.Warn("raft %v [commit: %d] ignored snapshot [index: %d, term: %d].", s.raftFsm.id, s.raftFsm.raftLog.committed, req.header.SnapshotMeta.Index, req.header.SnapshotMeta.Term)
 		nmsg := proto.GetMessage()
 		nmsg.Type = proto.RespMsgAppend
