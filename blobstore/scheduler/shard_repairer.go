@@ -26,6 +26,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/singleflight"
 
+	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/counter"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/kafka"
@@ -72,6 +73,14 @@ type ShardRepairConfig struct {
 
 	TaskPoolSize   int              `json:"task_pool_size"`
 	OrphanShardLog recordlog.Config `json:"orphan_shard_log"`
+
+	// EnableAZSplitShardRepair enables splitting shard repair tasks by AZ.
+	// When enabled (and bad shards span >1 AZ with all IDCs known and
+	// local-repairable), each AZ's bad indices are dispatched concurrently
+	// to a worker in that same AZ, eliminating cross-AZ traffic for
+	// local-stripe repair.
+	// Default false: all bad shards go to a single worker (original behavior).
+	EnableAZSplitShardRepair bool `json:"enable_az_split_shard_repair"`
 }
 
 func (cfg *ShardRepairConfig) topics() []string {
@@ -411,6 +420,30 @@ func (mgr *ShardRepairMgr) repairShard(ctx context.Context, volInfo *client.Volu
 		}
 	}
 
+	// decide whether to split by AZ: only split when the switch is on,
+	// bad shards span multiple AZs, all have known IDC, and local
+	// repair is possible.
+	// localRepairable is checked first because it is near-free for L=0
+	// codemodes (the common single-AZ case), avoiding the map allocation
+	// in groupBadIdxsByAZ when splitting is impossible anyway.
+	if mgr.cfg.EnableAZSplitShardRepair &&
+		localRepairable(repairMsg.BadIdx, volInfo.CodeMode) {
+		azBadIdxs := mgr.groupBadIdxsByAZ(repairMsg, idcByVunitIdx)
+		if len(azBadIdxs) > 1 && azBadIdxs[""] == nil {
+			span.Infof("split repair by AZ: azBadIdxs[%+v]", azBadIdxs)
+			return mgr.repairShardByAZ(ctx, volInfo, repairMsg, azBadIdxs)
+		}
+	}
+
+	return mgr.repairShardSingle(ctx, volInfo, repairMsg, idcByVunitIdx)
+}
+
+// repairShardSingle dispatches a single repair task to one worker.
+// This is the original (pre-split) behavior.
+func (mgr *ShardRepairMgr) repairShardSingle(
+	ctx context.Context, volInfo *client.VolumeInfoSimple,
+	repairMsg *proto.ShardRepairMsg, idcByVunitIdx []string,
+) (*client.VolumeInfoSimple, error) {
 	workerHost := mgr.blobnodeSelector.get(ctx, mgr.resolveRepairIDC(ctx, repairMsg, idcByVunitIdx))
 	if workerHost == "" {
 		return volInfo, ErrBlobnodeServiceUnavailable
@@ -434,6 +467,157 @@ func (mgr *ShardRepairMgr) repairShard(ctx context.Context, volInfo *client.Volu
 	}
 
 	return volInfo, err
+}
+
+// azRepairStatus holds the result of a single AZ's repair subtask,
+// sent over a buffered channel for aggregation by the caller.
+// Modeled after shardPutStatus in stream_put.go.
+type azRepairStatus struct {
+	idc      string
+	err      error
+	orphan   bool
+	noWorker bool
+}
+
+// repairShardByAZ dispatches per-AZ repair subtasks concurrently.
+// Each AZ's bad indices are sent to a worker in that same AZ,
+// ensuring local stripe reads/writes stay within the AZ.
+//
+// Idempotency: on partial failure, retry is safe because blobnode's
+// hasRepaired + getRepairShards skip already-fixed shards.
+func (mgr *ShardRepairMgr) repairShardByAZ(
+	ctx context.Context, volInfo *client.VolumeInfoSimple,
+	repairMsg *proto.ShardRepairMsg, azBadIdxs map[string][]uint8,
+) (*client.VolumeInfoSimple, error) {
+	span := trace.SpanFromContextSafe(ctx)
+
+	// buffered channel: each goroutine sends exactly one status, no blocking.
+	statusCh := make(chan azRepairStatus, len(azBadIdxs))
+
+	for idc, badIdxs := range azBadIdxs {
+		idc := idc
+		badIdxs := badIdxs
+
+		go func() {
+			status := azRepairStatus{idc: idc}
+			// defer send guarantees the status is always delivered,
+			// even if the logic below panics, so the main goroutine
+			// collecting from statusCh never blocks forever.
+			defer func() { statusCh <- status }()
+
+			workerHost := mgr.blobnodeSelector.get(ctx, idc)
+			if workerHost == "" {
+				span.Warnf("no blobnode in idc[%s], AZ-split subtask failed", idc)
+				status.err = ErrBlobnodeServiceUnavailable
+				status.noWorker = true
+				return
+			}
+
+			task := proto.ShardRepairTask{
+				Bid:      repairMsg.Bid,
+				CodeMode: volInfo.CodeMode,
+				Sources:  volInfo.VunitLocations, // full list: blobnode needs it for global fallback
+				BadIdxs:  badIdxs,                // only this AZ's bad indices
+				Reason:   repairMsg.Reason,
+			}
+
+			err := mgr.blobnodeCli.RepairShard(ctx, workerHost, task)
+			if err != nil {
+				status.orphan = isOrphanShard(err)
+				span.Warnf("AZ-split repair failed: idc[%s], badIdxs[%+v], err[%+v]",
+					idc, badIdxs, err)
+			}
+			status.err = err
+		}()
+	}
+
+	// collect results from all AZs, then aggregate in the main goroutine.
+	results := make([]azRepairStatus, 0, len(azBadIdxs))
+	for range azBadIdxs {
+		results = append(results, <-statusCh)
+	}
+
+	var (
+		firstErr       error
+		successCnt     int
+		failedAZs      []string
+		orphanDetected bool
+	)
+	for _, r := range results {
+		if r.err != nil {
+			if firstErr == nil {
+				firstErr = r.err
+			}
+			label := r.idc
+			if r.noWorker {
+				label += "(no-worker)"
+			}
+			failedAZs = append(failedAZs, label)
+			if r.orphan {
+				orphanDetected = true
+			}
+			continue
+		}
+		successCnt++
+	}
+
+	// log orphan shard once, regardless of how many AZs detected it
+	if orphanDetected {
+		mgr.saveOrphanShard(ctx, repairMsg)
+	}
+
+	if firstErr != nil {
+		span.Warnf("AZ-split repair partial failure: success[%d/%d], failedAZs[%v], err[%+v]",
+			successCnt, len(azBadIdxs), failedAZs, firstErr)
+		return volInfo, firstErr
+	}
+
+	span.Infof("AZ-split repair success: all %d AZs repaired", successCnt)
+	return volInfo, nil
+}
+
+// groupBadIdxsByAZ groups bad indices by their disk's IDC.
+// Bad indices with unknown IDC (empty string) are grouped under "".
+func (mgr *ShardRepairMgr) groupBadIdxsByAZ(
+	repairMsg *proto.ShardRepairMsg, idcByVunitIdx []string,
+) map[string][]uint8 {
+	azBadIdxs := make(map[string][]uint8)
+	for _, badIdx := range repairMsg.BadIdx {
+		idx := int(badIdx)
+		var idc string
+		if idx < len(idcByVunitIdx) {
+			idc = idcByVunitIdx[idx]
+		}
+		azBadIdxs[idc] = append(azBadIdxs[idc], badIdx)
+	}
+	return azBadIdxs
+}
+
+// localRepairable checks whether bad shards can be repaired via local stripe.
+// This is a scheduler-side copy of blobnode's localRepairable to decide
+// whether to split the repair task by AZ. The explicit `t.L == 0` early
+// return is an optimization; the blobnode version achieves the same result
+// implicitly because LocalStripe returns nil when L == 0. The two versions
+// are behaviorally equivalent for all inputs reachable via the canSplit guard.
+func localRepairable(badIdxs []uint8, mode codemode.CodeMode) bool {
+	t := mode.T()
+	if t.L == 0 {
+		return false
+	}
+	localMap := make(map[int]int)
+	for _, idx := range badIdxs {
+		stripeIdxs, _, _ := t.LocalStripe(int(idx))
+		if len(stripeIdxs) == 0 {
+			return false
+		}
+		localMap[stripeIdxs[0]]++
+	}
+	for _, v := range localMap {
+		if v > t.L/t.AZCount {
+			return false
+		}
+	}
+	return true
 }
 
 func (mgr *ShardRepairMgr) saveOrphanShard(ctx context.Context, repairMsg *proto.ShardRepairMsg) {
@@ -527,11 +711,16 @@ func (mgr *ShardRepairMgr) send2FailQueue(ctx context.Context, msg *proto.ShardR
 // Iterating all BadIdx is strictly better than using only BadIdx[0]:
 //   - If BadIdx[0] maps to a disk whose topology info is stale/missing but another
 //     BadIdx has a valid disk, the repair can still target the correct AZ.
-//   - If the bad shards span multiple AZs, local repair is impossible anyway,
-//     so the returned AZ (whichever is found first) does not matter — the
-//     blobnode's own localRepairable() will fall back to global repair.
+//   - If the bad shards span multiple AZs and each AZ's bad count <= L/AZCount,
+//     local repair is still possible. The returned AZ determines which AZ's
+//     local stripe avoids cross-AZ traffic; other AZs' stripes will still
+//     incur cross-AZ reads/writes (see section 15 of shard-repair.md).
+//   - Only when a single AZ's bad count > L/AZCount does localRepairable()
+//     return false, causing blobnode to fall back to global repair — in that
+//     case the returned AZ truly does not matter.
 //
-// In all cases, the worst outcome is an unnecessary cross-AZ request; correctness is preserved.
+// In all cases, correctness is preserved; the worst outcome is unnecessary
+// cross-AZ traffic, never data loss.
 func (mgr *ShardRepairMgr) resolveRepairIDC(ctx context.Context, repairMsg *proto.ShardRepairMsg, idcByVunitIdx []string) string {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("resolveRepairIDC: repairMsg[%+v], idcByVunitIdx[%+v]", repairMsg, idcByVunitIdx)

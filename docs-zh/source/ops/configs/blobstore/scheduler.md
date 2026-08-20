@@ -209,6 +209,7 @@ v3.3.0版本开始支持并发修复磁盘。
 * message_punish_threshold，惩罚阈值，如果对应消费失败次数超过该值，则会惩罚一段时间，避免短时间内大量重试，默认3次
 * message_punish_time_m，惩罚时间，默认10分钟
 * orphan_shard_log，记录修补失败的孤本信息，dir需要配置，chunkbits为日志文件轮转大小，默认29（2^29字节）
+* enable_az_split_shard_repair，是否按AZ拆分分片修复任务，默认false。开启后，当坏分片分布在不同AZ且满足本地修复条件时，各AZ的坏分片将并发分发给本AZ内的worker，消除本地条带修复的跨AZ流量；不满足条件时仍走原单worker路径
 ```json
 {
   "task_pool_size": 10,
@@ -217,7 +218,8 @@ v3.3.0版本开始支持并发修复磁盘。
   "orphan_shard_log": {
     "dir": "/home/service/scheduler/_package/orphan_shard_log",
     "chunkbits": 29
-  }
+  },
+  "enable_az_split_shard_repair": false
 } 
 ```
 
