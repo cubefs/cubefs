@@ -15,8 +15,11 @@
 package objectnode
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -244,4 +247,54 @@ func TestHeaderAuthV4SignatureMatch(t *testing.T) {
 	ha, err = NewHeaderAuth(request)
 	require.NoError(t, err)
 	require.True(t, ha.SignatureMatch(secretKey, wildcards))
+}
+
+// TestHeaderAuthV4ChunkedBodySignatureMatch is a regression test for
+// buildSignatureChunk wiring NewSignChunkedReader up with the wrong signing
+// datetime (it passed the short credential-scope date, e.g. "20130524",
+// instead of the full ISO8601 request timestamp, e.g. "20130524T000000Z",
+// that https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-streaming.html
+// -- and every AWS SDK -- actually uses for each chunk's string-to-sign).
+// That bug made SignatureMatch itself still return true (it only governs
+// the seed/outer request signature), but every subsequent read of the
+// wrapped chunked body would fail with "signature of chunk does not match",
+// so this test must actually read the body through, not just check
+// SignatureMatch's return value like TestHeaderAuthV4SignatureMatch does.
+//
+// Uses the same official AWS chunked-upload example
+// (examplebucket/chunkObject.txt) as TestHeaderAuthV4SignatureMatch's
+// "Chunked PUT Object" case and TestSignChunkedReader.
+func TestHeaderAuthV4ChunkedBodySignatureMatch(t *testing.T) {
+	secretKey := "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+	wildcards, err := NewWildcards([]string{"s3.amazonaws.com"})
+	require.NoError(t, err)
+
+	body := bytes.NewBuffer(nil)
+	body.WriteString("10000;chunk-signature=ad80c730a21e5b8d04586a2213dd63b9a0e99e0e2307b0ade35a65485a288648\r\n")
+	body.WriteString(strings.Repeat("a", 65536))
+	body.WriteString("\r\n")
+	body.WriteString("400;chunk-signature=0055627c9e194cb4542bae2aa5492e3c1575bbb81b612b7d234b86a503ef5497\r\n")
+	body.WriteString(strings.Repeat("a", 1024))
+	body.WriteString("\r\n")
+	body.WriteString("0;chunk-signature=b6c6ea8a5354eaf15b3cb7646744f4275b71ea724fed81ceb9323e279d449df9\r\n")
+	body.WriteString("\r\n")
+
+	request := httptest.NewRequest("PUT", "http://s3.amazonaws.com/examplebucket/chunkObject.txt", body)
+	request.Header.Set(Authorization, "AWS4-HMAC-SHA256 Credential=AKIAIOSFODNN7EXAMPLE/20130524/us-east-1/s3/aws4_request,SignedHeaders=content-encoding;content-length;host;x-amz-content-sha256;x-amz-date;x-amz-decoded-content-length;x-amz-storage-class,Signature=4f232c4386841ef735655705268965c44a0e4690baa4adea153f7db9fa80a0a9")
+	request.Header.Set(Host, "s3.amazonaws.com")
+	request.Header.Set(ContentEncoding, "aws-chunked")
+	request.Header.Set(ContentLength, "66824")
+	request.Header.Set(XAmzDecodedContentLength, "66560")
+	request.Header.Set(XAmzDate, "20130524T000000Z")
+	request.Header.Set(XAmzStorageClass, "REDUCED_REDUNDANCY")
+	request.Header.Set(XAmzContentSha256, "STREAMING-AWS4-HMAC-SHA256-PAYLOAD")
+
+	ha, err := NewHeaderAuth(request)
+	require.NoError(t, err)
+	require.True(t, ha.SignatureMatch(secretKey, wildcards))
+
+	decoded, err := io.ReadAll(request.Body)
+	require.NoError(t, err, "reading the chunked body must not fail with \"signature of chunk does not match\"")
+	require.Equal(t, 66560, len(decoded))
+	require.Equal(t, strings.Repeat("a", 66560), string(decoded))
 }
