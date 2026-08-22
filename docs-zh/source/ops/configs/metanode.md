@@ -19,6 +19,7 @@
 | totalMem            | string       | 最大可用内存，此值需高于 master 配置中 metaNodeReservedMem 的值，单位：字节 | 是  |
 | memRatio            | string       | 最大可用内存占主机总内存的比例。若填写该项，则计算出的值将会覆盖 `totalMem` 配置项    | 否  |
 | localIP             | string       | 本机ip地址，如果不填写该选项，则使用和 master 通信的 ip 地址                | 否  |
+| advertisedAddr      | string       | 对外广告地址，用于节点注册到 master 时使用的地址。如果不配置，则使用 localIP | 否  |
 | bindIp              | bool         | 是否仅在本机 ip 上监听连接，默认 `false`                          | 否  |
 | zoneName            | string       | 指定区域，默认分配至 `default` 区域                            | 否  |
 | deleteBatchCount    | int64        | 一次性批量删除多少 inode 节点，默认 `500`                         | 否  |
