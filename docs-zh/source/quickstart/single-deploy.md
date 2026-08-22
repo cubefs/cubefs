@@ -27,6 +27,22 @@ sh ./shell/deploy_client.sh /home/data
 sh ./shell/deploy_object.sh /home/data
 ```
 
+::: tip 提示
+
+如果使用c++ 17及以上版本，make时出现
+```bash
+error: ‘uint64_t’ does not name a type
+```
+可以尝试在执行make命令之前执行
+```bash
+export CXXFLAGS="-include cstdint"
+```
+如果make时出现缺少autoreconf，请安装autoconf，automake和libtool
+```
+sudo apt install autoconf automake libtool
+```
+:::
+
 + 机器要求
   + 需 root 权限
   + 能使用 `ifconfig`
