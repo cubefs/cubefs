@@ -69,11 +69,18 @@ case $(uname -s | tr 'A-Z' 'a-z') in
         ;;
     *)
         echo "Current platform $(uname -s) not support";
-        exit1;
+        exit 1;
         ;;
 esac
 
-CPUTYPE=${CPUTYPE} | tr 'A-Z' 'a-z'
+# Detect host architecture for native builds
+HOST_ARCH=$(uname -m)
+case "${HOST_ARCH}" in
+    x86_64|amd64)   GOARCH_DEFAULT="amd64" ;;
+    aarch64|arm64)  GOARCH_DEFAULT="arm64" ;;
+    *)              GOARCH_DEFAULT="amd64" ;;
+esac
+export GOARCH_DEFAULT
 
 build_zlib() {
     ZLIB_VER=1.2.13
