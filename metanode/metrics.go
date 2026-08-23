@@ -56,9 +56,7 @@ func (m *MetaNode) startStat() {
 	go m.collectPartitionMetrics()
 }
 
-func (m *MetaNode) updatePartitionMetrics() {
-	m.metrics.MetricMetaPartitionInodeCount.Reset()
-	m.metrics.MetricMetaPartitionDentryCount.Reset()
+func (m *MetaNode) updatePartitionMetrics(delVols, allVols map[string]struct{}) {
 	volInodeCount := make(map[string]int)
 	volDentryCount := make(map[string]int)
 
@@ -75,6 +73,8 @@ func (m *MetaNode) updatePartitionMetrics() {
 			continue
 		}
 		volName := mp.config.VolName
+		delete(delVols, volName)
+		allVols[volName] = struct{}{}
 		if _, exists := volInodeCount[volName]; !exists {
 			volInodeCount[volName] = 0
 			volDentryCount[volName] = 0
@@ -88,17 +88,24 @@ func (m *MetaNode) updatePartitionMetrics() {
 		m.metrics.MetricMetaPartitionInodeCount.SetWithLabelValues(float64(inodeCount), volName)
 		m.metrics.MetricMetaPartitionDentryCount.SetWithLabelValues(float64(dentryCount), volName)
 	}
+	m.clearExpiredMetrics(delVols)
+	for k, v := range allVols {
+		delVols[k] = v
+		delete(allVols, k)
+	}
 }
 
 func (m *MetaNode) collectPartitionMetrics() {
 	ticker := time.NewTicker(StatPeriod)
 	fileStatTicker := time.NewTicker(fileStatsCheckPeriod)
+	delVols := make(map[string]struct{})
+	allVols := make(map[string]struct{})
 	for {
 		select {
 		case <-m.metrics.metricStopCh:
 			return
 		case <-ticker.C:
-			m.updatePartitionMetrics()
+			m.updatePartitionMetrics(delVols, allVols)
 			m.metrics.MetricConnectionCount.Set(float64(m.connectionCnt))
 		case <-fileStatTicker.C:
 			m.updateFileStatsMetrics()
@@ -146,4 +153,12 @@ func (m *MetaNode) updateFileStatsMetrics() {
 
 func (m *MetaNode) stopStat() {
 	m.metrics.metricStopCh <- struct{}{}
+}
+
+func (m *MetaNode) clearExpiredMetrics(delVols map[string]struct{}) {
+	for vol := range delVols {
+		m.metrics.MetricMetaPartitionInodeCount.DeleteLabelValues(vol)
+		m.metrics.MetricMetaPartitionDentryCount.DeleteLabelValues(vol)
+		delete(delVols, vol)
+	}
 }
