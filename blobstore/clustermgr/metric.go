@@ -17,6 +17,7 @@ package clustermgr
 import (
 	"context"
 	"strconv"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -85,9 +86,9 @@ var (
 			Namespace: "blobstore",
 			Subsystem: "clusterMgr",
 			Name:      "dashboard",
-			Help:      "cluster dashboard raw counts per item",
+			Help:      "cluster dashboard counts; value label carries detail",
 		},
-		[]string{"region", "cluster", "item"},
+		[]string{"region", "cluster", "item", "value"},
 	)
 )
 
@@ -100,7 +101,7 @@ func init() {
 	prometheus.MustRegister(dashboardMetric)
 }
 
-func (s *Service) report(ctx context.Context) {
+func (s *Service) report(_ context.Context) {
 	isLeader := strconv.FormatBool(s.raftNode.IsLeader())
 	stat := s.raftNode.Status()
 	raftStatMetric.Reset()
@@ -140,7 +141,10 @@ func (s *Service) reportDashboard(d clustermgr.ClusterDashboard) {
 	cluster := s.ClusterID.ToString()
 
 	set := func(item string, val int) {
-		dashboardMetric.WithLabelValues(region, cluster, item).Set(float64(val))
+		dashboardMetric.WithLabelValues(region, cluster, item, "").Set(float64(val))
+	}
+	setValue := func(item, value string, val int) {
+		dashboardMetric.WithLabelValues(region, cluster, item, value).Set(float64(val))
 	}
 
 	dashboardMetric.Reset()
@@ -149,7 +153,20 @@ func (s *Service) reportDashboard(d clustermgr.ClusterDashboard) {
 	set("disk_repairing", d.Disk.SumIDC(proto.DiskStatusRepairing.String()))
 
 	set("service_offline", len(d.Service.OfflineNodes))
+	now := time.Now().Unix()
+	for _, n := range d.Service.OfflineNodes {
+		elapsed := now - n.ExpireAt
+		offlineHours := int((elapsed + int64(time.Hour/time.Second) - 1) / int64(time.Hour/time.Second))
+		setValue("service_offline", n.Name+"-"+n.Idc+"-"+n.Host, offlineHours)
+	}
 	set("service_expired_disk", d.Service.ExpiredDisks)
+	for host, diskIDs := range d.Service.ExpiredByNode {
+		if len(diskIDs) > 1 {
+			setValue("service_expired_disk", host, len(diskIDs))
+		} else if len(diskIDs) == 1 {
+			setValue("service_expired_disk", host+"-"+diskIDs[0].ToString(), 1)
+		}
+	}
 
 	set("volume_active", d.Volume.Status.ActiveTotal)
 	set("volume_idle", d.Volume.Status.IdleTotal)
