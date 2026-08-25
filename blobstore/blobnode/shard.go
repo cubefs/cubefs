@@ -432,6 +432,12 @@ func (s *Service) ShardMarkdelete(c *rpc.Context) {
 		return
 	}
 
+	if err := cs.AllowModify(); err != nil {
+		span.Warnf("chunk %s can not delete: %v", cs.ID().String(), err)
+		c.RespondError(err)
+		return
+	}
+
 	ctx = bnapi.SetIoType(ctx, bnapi.DeleteIO)
 	qosLmt, exist := ds.GetIoQos().GetQueueQos(ctx)
 	if !exist {
