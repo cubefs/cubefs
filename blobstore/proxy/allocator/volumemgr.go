@@ -292,6 +292,14 @@ type VolumeMgr interface {
 	Close()
 }
 
+// Get the cache of bidMgr
+func (v *volumeMgr) getBidMgrCache() (current, backup uint64) {
+	if mgr, ok := v.BidMgr.(*bidMgr); ok {
+		return mgr.getBidCacheCount()
+	}
+	return 0, 0
+}
+
 func (v *volumeMgr) Close() {
 	span, _ := trace.StartSpanFromContextWithTraceID(context.Background(), "", "volumeMgrClose")
 	close(v.closeCh)

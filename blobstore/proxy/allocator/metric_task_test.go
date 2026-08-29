@@ -21,6 +21,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMetricReport(t *testing.T) {
@@ -48,4 +49,31 @@ func TestMetricReport(t *testing.T) {
 	}
 	vm.modeInfos[codemode.CodeMode(2)] = modeInfo
 	vm.metricReport(ctx)
+}
+
+// Test the reporting of bid cache metrics in the metricReport function
+func TestMetricReportWithBidCache(t *testing.T) {
+	ctx := context.Background()
+
+	vm := &volumeMgr{
+		modeInfos: make(map[codemode.CodeMode]*modeInfo),
+	}
+
+	vm.modeInfos[codemode.CodeMode(2)] = &modeInfo{
+		current: &volumes{},
+		backup:  &volumes{},
+	}
+
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Errorf("metricReport panicked: %v", r)
+			}
+		}()
+		vm.metricReport(ctx)
+	}()
+
+	current, backup := vm.getBidMgrCache()
+	require.Equal(t, uint64(0), current)
+	require.Equal(t, uint64(0), backup)
 }
