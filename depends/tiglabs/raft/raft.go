@@ -20,6 +20,7 @@ import (
 	"runtime"
 	"sync"
 	"sync/atomic"
+	"time"
 	"unsafe"
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/logger"
@@ -168,6 +169,10 @@ func newRaft(config *Config, raftConfig *RaftConfig) (*raft, error) {
 	if logger.IsEnableDebug() {
 		logger.Debug("newRaft:%d, peers: %v", raft.config.NodeID, raftConfig.Peers)
 	}
+
+	// Wire the drain hook so becomeLeader can wait for applyc to be drained before
+	// recoverCommit. Set after construction, before starting the goroutines.
+	r.drainApplyc = raft.drainApplyc
 
 	util.RunWorker(raft.runApply, raft.handlePanic)
 	util.RunWorker(raft.run, raft.handlePanic)
@@ -755,6 +760,29 @@ func (s *raft) resetApply() {
 			}
 			pool.returnApply(apply)
 		default:
+			return
+		}
+	}
+}
+
+// drainApplyc waits until runApply has drained applyc so that curApplied catches
+// up with raftLog.applied.
+//
+// Prerequisite: the caller (run goroutine) is NOT in the readyc branch after this
+// returns, so it will not push new entries into applyc via apply(). Consequently,
+// when becomeLeader's recoverCommit runs synchronously afterwards, applyc is empty
+// and runApply is blocked on <-applyc; it cannot invoke sm.Apply concurrently with
+// recoverCommit. This prevents the ordering bug where a larger-index log is applied
+// before a smaller-index one.
+//
+// Under normal operation applyc has no backlog and drainApplyc returns after a single
+// condition check. It only waits when a follower with applyc backlog transitions to
+// leader (election).
+func (s *raft) drainApplyc() {
+	for s.curApplied.Get() < s.raftFsm.raftLog.applied {
+		select {
+		case <-time.After(time.Millisecond):
+		case <-s.stopc:
 			return
 		}
 	}

@@ -29,6 +29,12 @@ func (r *raftFsm) becomeLeader() {
 	if r.state == stateFollower {
 		panic(AppPanicError(fmt.Sprintf("[raft->becomeLeader][%v] invalid transition [follower -> leader].", r.id)))
 	}
+	// Wait until the async apply goroutine has drained applyc before recoverCommit,
+	// so recoverCommit does not apply logs concurrently with it. drainApplyc is nil
+	// during construction (applyc not started yet), in which case no drain is needed.
+	if r.drainApplyc != nil {
+		r.drainApplyc()
+	}
 	r.recoverCommit()
 	lasti := r.raftLog.lastIndex()
 	r.step = stepLeader
