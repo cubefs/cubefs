@@ -158,8 +158,8 @@ func TestListInspectDiskStatesSkipsClosing(t *testing.T) {
 	}, states)
 }
 
-// TestListInspectChunkStates verifies listInspectChunkStates returns a map keyed
-// by vuid, consistent with /qos/stat/diskid/*.
+// TestListInspectChunkStates verifies listInspectChunkStates returns the full
+// inspect state of every chunk, keyed by vuid.
 func TestListInspectChunkStates(t *testing.T) {
 	ctr := gomock.NewController(t)
 	ctx := context.Background()
@@ -172,7 +172,7 @@ func TestListInspectChunkStates(t *testing.T) {
 		CycleID:      9,
 		CycleCnt:     12,
 		CycleScanned: 5,
-		BadBids:      map[proto.BlobID]struct{}{9: {}},
+		BadBids:      map[proto.BlobID]core.BadBidMeta{9: {}},
 	}
 	st2 := core.InspectChunkState{
 		Vuid:         proto.Vuid(1002),
@@ -181,7 +181,7 @@ func TestListInspectChunkStates(t *testing.T) {
 		CycleID:      9,
 		CycleCnt:     13,
 		CycleScanned: 6,
-		BadBids:      map[proto.BlobID]struct{}{8: {}},
+		BadBids:      map[proto.BlobID]core.BadBidMeta{8: {}},
 	}
 	ds.EXPECT().RangeInspectChunkState(any, any).DoAndReturn(
 		func(_ context.Context, fn func(st *core.InspectChunkState) bool) error {
@@ -193,9 +193,9 @@ func TestListInspectChunkStates(t *testing.T) {
 
 	states, err := (&Service{}).listInspectChunkStates(ctx, ds)
 	require.NoError(t, err)
-	require.Equal(t, map[proto.Vuid]InspectChunkStateInfo{
-		1002: {Vuid: proto.Vuid(1002), Cursor: 301, CycleMaxBid: 301, Counted: true, CycleID: 9, CycleCnt: 13, CycleScanned: 6, BadBids: []proto.BlobID{8}},
-		1003: {Vuid: proto.Vuid(1003), Cursor: 200, CycleMaxBid: 300, Counted: true, CycleID: 9, CycleCnt: 12, CycleScanned: 5, BadBids: []proto.BlobID{9}},
+	require.Equal(t, map[proto.Vuid]core.InspectChunkState{
+		1002: st2,
+		1003: st1,
 	}, states)
 }
 
@@ -245,16 +245,47 @@ func TestReportBadShard(t *testing.T) {
 
 	cs := NewMockChunkAPI(ctr)
 	ds := NewMockDiskAPI(ctr)
-	cs.EXPECT().Vuid().Return(proto.Vuid(1001)).AnyTimes()
+	vuid := proto.Vuid(1001)
+	info := clustermgr.BlobNodeDiskInfo{
+		DiskInfo:          clustermgr.DiskInfo{ClusterID: 9},
+		DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{DiskID: 11},
+	}
+	cs.EXPECT().Vuid().Return(vuid).AnyTimes()
 	cs.EXPECT().Disk().Return(ds).AnyTimes()
-	ds.EXPECT().DiskInfo().Return(clustermgr.BlobNodeDiskInfo{DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{DiskID: 11}}).AnyTimes()
+	cs.EXPECT().Status().Return(clustermgr.ChunkStatusNormal).AnyTimes()
+	ds.EXPECT().DiskInfo().Return(info).AnyTimes()
+	ds.EXPECT().GetChunkStorage(vuid).Return(cs, true).AnyTimes()
 
 	// deleted shard errors are ignored
 	mgr.reportBadShard(ctx, cs, 1, os.ErrNotExist)
 
-	// normal error is recorded
+	// normal error is recorded, tracked in inspect state, and refreshes chunk gauge
 	mgr.recorder.(*mocks.MockRecordLogEncoder).EXPECT().Encode(any).Times(1)
+	ds.EXPECT().AddBadBid(any, vuid, proto.BlobID(2), any).Return(true, nil).Times(1)
+	ds.EXPECT().LoadInspectChunkState(any, vuid).Return(
+		core.InspectChunkState{
+			Vuid:    vuid,
+			BadBids: map[proto.BlobID]core.BadBidMeta{2: {FoundAt: 123, Reason: errMock.Error()}},
+		}, nil,
+	).Times(1)
 	mgr.reportBadShard(ctx, cs, 2, errMock)
+	require.Equal(t, float64(0), testGaugeValue(dataInspectBadShardByDiskVec, []string{"9", "11"}))
+	require.Equal(t, float64(1), testGaugeValue(dataInspectBadShardByChunkVec, []string{"9", "11", "1001"}))
+
+	// duplicate/limit cases still refresh chunk gauge as long as AddBadBid itself succeeds
+	mgr.recorder.(*mocks.MockRecordLogEncoder).EXPECT().Encode(any).Times(1)
+	ds.EXPECT().AddBadBid(any, vuid, proto.BlobID(3), any).Return(false, nil).Times(1)
+	ds.EXPECT().LoadInspectChunkState(any, vuid).Return(
+		core.InspectChunkState{
+			Vuid: vuid,
+			BadBids: map[proto.BlobID]core.BadBidMeta{
+				2: {FoundAt: 123, Reason: errMock.Error()},
+				3: {FoundAt: 456, Reason: errMock.Error()},
+			},
+		}, nil,
+	).Times(1)
+	mgr.reportBadShard(ctx, cs, 3, errMock)
+	require.Equal(t, float64(2), testGaugeValue(dataInspectBadShardByChunkVec, []string{"9", "11", "1001"}))
 }
 
 func testCounterValue(vec *prometheus.CounterVec, labels []string) float64 {
@@ -263,10 +294,60 @@ func testCounterValue(vec *prometheus.CounterVec, labels []string) float64 {
 	return m.GetCounter().GetValue()
 }
 
-func badBidSet(bids ...proto.BlobID) map[proto.BlobID]struct{} {
-	set := make(map[proto.BlobID]struct{}, len(bids))
+func TestSetCycleDays(t *testing.T) {
+	mgr := &DataInspectMgr{conf: DataInspectConf{CycleDays: 90}}
+	require.Equal(t, 90, mgr.inspectCycleDays())
+
+	// runtime update takes effect immediately
+	mgr.SetCycleDays(30)
+	require.Equal(t, 30, mgr.inspectCycleDays())
+	require.Equal(t, 30, mgr.conf.CycleDays)
+
+	// the minimum positive value is accepted
+	mgr.SetCycleDays(1)
+	require.Equal(t, 1, mgr.inspectCycleDays())
+
+	// values above the old 365-day cap are accepted
+	mgr.SetCycleDays(1000)
+	require.Equal(t, 1000, mgr.inspectCycleDays())
+}
+
+func TestNewDataInspectMgrCycleDaysValidation(t *testing.T) {
+	svr := &Service{ctx: context.Background(), closeCh: make(chan struct{})}
+
+	newMgr := func(conf DataInspectConf) (*DataInspectMgr, error) {
+		ctr := gomock.NewController(t)
+		getter := mocks.NewMockAccessor(ctr)
+		getter.EXPECT().GetConfig(any, any).AnyTimes().Return("", nil)
+		switchMgr := taskswitch.NewSwitchMgr(getter)
+		return NewDataInspectMgr(svr, conf, switchMgr)
+	}
+
+	// invalid values are config errors and abort startup
+	// note: 0 means unset and falls back to the default, so only negative
+	// values are rejected; there is no upper bound on cycle days.
+	for _, days := range []int{-1, -100} {
+		_, err := newMgr(DataInspectConf{CycleDays: days})
+		require.Error(t, err)
+	}
+
+	// zero means unset and falls back to the default
+	mgr, err := newMgr(DataInspectConf{CycleDays: 0})
+	require.NoError(t, err)
+	require.Equal(t, core.DefaultInspectCycleDays, mgr.conf.CycleDays)
+
+	// in-range values pass through, including values above the old 365-day cap
+	for _, days := range []int{1, 365, 1000} {
+		mgr, err = newMgr(DataInspectConf{CycleDays: days})
+		require.NoError(t, err)
+		require.Equal(t, days, mgr.conf.CycleDays)
+	}
+}
+
+func badBidSet(bids ...proto.BlobID) map[proto.BlobID]core.BadBidMeta {
+	set := make(map[proto.BlobID]core.BadBidMeta, len(bids))
 	for _, bid := range bids {
-		set[bid] = struct{}{}
+		set[bid] = core.BadBidMeta{}
 	}
 	return set
 }

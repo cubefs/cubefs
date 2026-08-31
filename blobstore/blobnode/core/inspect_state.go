@@ -26,6 +26,10 @@ const (
 	CycleDayDuration            = 24 * time.Hour
 	DefaultInspectBatchReadSize = 16 << 20 // 16 MB
 	DefaultInspectCycleDays     = 90
+
+	// MaxInspectBadBids bounds the per-chunk bad-bid map so a pathological disk
+	// cannot grow the persisted inspect state without limit.
+	MaxInspectBadBids = 1000
 )
 
 // ErrInspectStopped is the shared control-stop sentinel of the data-inspect flow,
@@ -44,6 +48,8 @@ type InspectStateStore interface {
 	StoreInspectDiskState(ctx context.Context, st InspectDiskState) error
 	StoreInspectChunkState(ctx context.Context, st InspectChunkState) error
 	FlushInspectState(ctx context.Context)
+	AddBadBid(ctx context.Context, vuid proto.Vuid, bid proto.BlobID, meta BadBidMeta) (added bool, err error)
+	DeleteBadBid(ctx context.Context, vuid proto.Vuid, bid proto.BlobID) (cleared bool, err error)
 }
 
 // CycleExpired reports whether the current inspect cycle has passed its hard

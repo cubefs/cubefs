@@ -179,6 +179,19 @@ func TestMergeBadBids(t *testing.T) {
 	ctx := context.Background()
 	mgr := &DataInspectMgr{}
 
+	// newMergeMocks builds the minimal ds/cs stubs; each test adds its own
+	// AddBadBid/DeleteBadBid expectations to verify exact store calls.
+	newMergeMocks := func(t *testing.T) (*MockDiskAPI, *MockChunkAPI) {
+		t.Helper()
+		ctr := gomock.NewController(t)
+		ds := NewMockDiskAPI(ctr)
+		cs := NewMockChunkAPI(ctr)
+		ds.EXPECT().ID().Return(proto.DiskID(11)).AnyTimes()
+		cs.EXPECT().Disk().Return(ds).AnyTimes()
+		cs.EXPECT().Vuid().Return(proto.Vuid(1001)).AnyTimes()
+		return ds, cs
+	}
+
 	badShards := func(bids ...proto.BlobID) []bnapi.BadShard {
 		bads := make([]bnapi.BadShard, 0, len(bids))
 		for _, b := range bids {
@@ -187,47 +200,44 @@ func TestMergeBadBids(t *testing.T) {
 		return bads
 	}
 
-	t.Run("empty inspected no change", func(t *testing.T) {
-		st := &core.InspectChunkState{BadBids: badBidSet(1, 2)}
-		mgr.mergeBadBids(ctx, nil, st, nil, nil)
-		require.Equal(t, badBidSet(1, 2), st.BadBids)
+	t.Run("empty inspected early-returns, no store calls", func(t *testing.T) {
+		// inspected==nil triggers the early-return guard; cs is nil and never accessed.
+		mgr.mergeBadBids(ctx, nil, nil, nil)
 	})
 
-	t.Run("healthy inspected clears, new bad added, existing bad kept", func(t *testing.T) {
-		st := &core.InspectChunkState{BadBids: badBidSet(1, 2)}
-		mgr.mergeBadBids(ctx, nil, st, nopPage(1, 3, 4), badShards(5))
-		require.Equal(t, badBidSet(2, 5), st.BadBids)
+	t.Run("healthy inspected bids deleted from store, new bad bid added", func(t *testing.T) {
+		ds, cs := newMergeMocks(t)
+		// bids 1,3,4 are healthy → DeleteBadBid; bid 5 is new bad → AddBadBid
+		ds.EXPECT().DeleteBadBid(any, proto.Vuid(1001), proto.BlobID(1)).Return(true, nil).Times(1)
+		ds.EXPECT().DeleteBadBid(any, proto.Vuid(1001), proto.BlobID(3)).Return(true, nil).Times(1)
+		ds.EXPECT().DeleteBadBid(any, proto.Vuid(1001), proto.BlobID(4)).Return(true, nil).Times(1)
+		ds.EXPECT().AddBadBid(any, proto.Vuid(1001), proto.BlobID(5), any).Return(true, nil).Times(1)
+		mgr.mergeBadBids(ctx, cs, nopPage(1, 3, 4), badShards(5))
 	})
 
-	t.Run("bad bid re-detected stays", func(t *testing.T) {
-		st := &core.InspectChunkState{BadBids: badBidSet(1, 2)}
-		mgr.mergeBadBids(ctx, nil, st, nopPage(1, 2), badShards(1))
-		require.Equal(t, badBidSet(1), st.BadBids)
+	t.Run("bad bid re-detected: AddBadBid called, healthy partner deleted", func(t *testing.T) {
+		ds, cs := newMergeMocks(t)
+		// bid 1 is in both inspected and bads → NOT deleted, AddBadBid called
+		// bid 2 is inspected and healthy → DeleteBadBid called
+		ds.EXPECT().DeleteBadBid(any, proto.Vuid(1001), proto.BlobID(2)).Return(true, nil).Times(1)
+		ds.EXPECT().AddBadBid(any, proto.Vuid(1001), proto.BlobID(1), any).Return(true, nil).Times(1)
+		mgr.mergeBadBids(ctx, cs, nopPage(1, 2), badShards(1))
 	})
 
-	t.Run("nil bad bids initialized", func(t *testing.T) {
-		st := &core.InspectChunkState{}
-		mgr.mergeBadBids(ctx, nil, st, nopPage(1), badShards(7))
-		require.Equal(t, badBidSet(7), st.BadBids)
+	t.Run("new bad bid added to store", func(t *testing.T) {
+		ds, cs := newMergeMocks(t)
+		ds.EXPECT().DeleteBadBid(any, proto.Vuid(1001), proto.BlobID(1)).Return(true, nil).Times(1)
+		ds.EXPECT().AddBadBid(any, proto.Vuid(1001), proto.BlobID(7), any).Return(true, nil).Times(1)
+		mgr.mergeBadBids(ctx, cs, nopPage(1), badShards(7))
 	})
 
-	t.Run("bad bids beyond limit dropped", func(t *testing.T) {
-		ctr := gomock.NewController(t)
-		ds := NewMockDiskAPI(ctr)
-		cs := NewMockChunkAPI(ctr)
-		ds.EXPECT().ID().Return(proto.DiskID(11)).AnyTimes()
-		cs.EXPECT().Disk().Return(ds).AnyTimes()
-		cs.EXPECT().Vuid().Return(proto.Vuid(1001)).AnyTimes()
-
-		seeded := make(map[proto.BlobID]struct{}, maxInspectBadBids)
-		for i := 1; i <= maxInspectBadBids; i++ {
-			seeded[proto.BlobID(i)] = struct{}{}
-		}
-		st := &core.InspectChunkState{BadBids: seeded}
-		mgr.mergeBadBids(ctx, cs, st, nil, badShards(proto.BlobID(maxInspectBadBids+1)))
-		require.Len(t, st.BadBids, maxInspectBadBids)
-		_, exist := st.BadBids[proto.BlobID(maxInspectBadBids+1)]
-		require.False(t, exist)
+	t.Run("bad bids beyond limit silently dropped by store", func(t *testing.T) {
+		ds, cs := newMergeMocks(t)
+		// AddBadBid returns false (limit reached): mergeBadBids must not panic.
+		ds.EXPECT().DeleteBadBid(any, proto.Vuid(1001), proto.BlobID(1)).Return(true, nil).Times(1)
+		ds.EXPECT().AddBadBid(any, proto.Vuid(1001), proto.BlobID(core.MaxInspectBadBids+1), any).
+			Return(false, nil).Times(1)
+		mgr.mergeBadBids(ctx, cs, nopPage(1), badShards(proto.BlobID(core.MaxInspectBadBids+1)))
 	})
 }
 
@@ -356,17 +366,20 @@ func TestReconcileBadBids(t *testing.T) {
 
 	t.Run("deleted shard cleared", func(t *testing.T) {
 		cs.EXPECT().ReadShardMeta(any, proto.BlobID(1)).Return(nil, os.ErrNotExist).Times(1)
+		ds.EXPECT().DeleteBadBid(any, proto.Vuid(1001), proto.BlobID(1)).Return(true, nil).Times(1)
 		st := &core.InspectChunkState{Vuid: proto.Vuid(1001), BadBids: badBidSet(1)}
-		require.NoError(t, mgr.reconcileBadBids(ctx, ds, cs, st))
-		require.Empty(t, st.BadBids)
+		cleared, err := mgr.reconcileBadBids(ctx, ds, cs, st, true)
+		require.NoError(t, err)
+		require.Equal(t, 1, cleared)
 	})
-
 	t.Run("recovered shard cleared", func(t *testing.T) {
 		cs.EXPECT().ReadShardMeta(any, proto.BlobID(2)).Return(&core.ShardMeta{Size: 100, Crc: 1}, nil).Times(1)
 		cs.EXPECT().Read(any, any).Return(int64(100), nil).Times(1)
+		ds.EXPECT().DeleteBadBid(any, proto.Vuid(1001), proto.BlobID(2)).Return(true, nil).Times(1)
 		st := &core.InspectChunkState{Vuid: proto.Vuid(1001), BadBids: badBidSet(2)}
-		require.NoError(t, mgr.reconcileBadBids(ctx, ds, cs, st))
-		require.Empty(t, st.BadBids)
+		cleared, err := mgr.reconcileBadBids(ctx, ds, cs, st, true)
+		require.NoError(t, err)
+		require.Equal(t, 1, cleared)
 	})
 
 	t.Run("still corrupted kept", func(t *testing.T) {
@@ -374,15 +387,19 @@ func TestReconcileBadBids(t *testing.T) {
 		cs.EXPECT().ReadShardMeta(any, proto.BlobID(3)).Return(&core.ShardMeta{Size: 100, Crc: 1}, nil).Times(2)
 		cs.EXPECT().Read(any, any).Return(int64(0), errMock).Times(1)
 		st := &core.InspectChunkState{Vuid: proto.Vuid(1001), BadBids: badBidSet(3)}
-		require.NoError(t, mgr.reconcileBadBids(ctx, ds, cs, st))
-		require.Equal(t, badBidSet(3), st.BadBids)
+		cleared, err := mgr.reconcileBadBids(ctx, ds, cs, st, true)
+		require.NoError(t, err)
+		require.Zero(t, cleared)
+		require.Equal(t, badBidSet(3), st.BadBids) // st is read-only; bid still tracked
 	})
 
 	t.Run("meta error kept", func(t *testing.T) {
 		cs.EXPECT().ReadShardMeta(any, proto.BlobID(4)).Return(nil, errMock).Times(1)
 		st := &core.InspectChunkState{Vuid: proto.Vuid(1001), BadBids: badBidSet(4)}
-		require.NoError(t, mgr.reconcileBadBids(ctx, ds, cs, st))
-		require.Equal(t, badBidSet(4), st.BadBids)
+		cleared, err := mgr.reconcileBadBids(ctx, ds, cs, st, true)
+		require.NoError(t, err)
+		require.Zero(t, cleared)
+		require.Equal(t, badBidSet(4), st.BadBids) // st is read-only; bid still tracked
 	})
 
 	t.Run("visits bids in ascending order", func(t *testing.T) {
@@ -393,18 +410,124 @@ func TestReconcileBadBids(t *testing.T) {
 				return nil, os.ErrNotExist
 			},
 		).Times(3)
+		ds.EXPECT().DeleteBadBid(any, proto.Vuid(1001), any).Return(true, nil).Times(3)
 		st := &core.InspectChunkState{Vuid: proto.Vuid(1001), BadBids: badBidSet(5, 1, 3)}
-		require.NoError(t, mgr.reconcileBadBids(ctx, ds, cs, st))
+		cleared, err := mgr.reconcileBadBids(ctx, ds, cs, st, true)
+		require.NoError(t, err)
+		require.Equal(t, 3, cleared)
 		require.Equal(t, []proto.BlobID{1, 3, 5}, got)
-		require.Empty(t, st.BadBids)
 	})
+}
+
+// TestReconcileBadBidsCheckSwitch verifies the startup reconcile pass runs even
+// when the inspect switch is off (checkSwitch=false), while the schedule-round
+// path still honors it (checkSwitch=true).
+func TestReconcileBadBidsCheckSwitch(t *testing.T) {
+	ctr := gomock.NewController(t)
+	ctx := context.Background()
+	ds := NewMockDiskAPI(ctr)
+	cs := NewMockChunkAPI(ctr)
+
+	ds.EXPECT().ID().Return(proto.DiskID(11)).AnyTimes()
+	ds.EXPECT().IsClosing().Return(false).AnyTimes()
+	ds.EXPECT().IsWritable().Return(true).AnyTimes()
+	cs.EXPECT().Vuid().Return(proto.Vuid(1001)).AnyTimes()
+
+	t.Run("switch off without switch check still reconciles", func(t *testing.T) {
+		mgr := newScheduleTestMgr()
+		mgr.taskSwitch.Disable()
+
+		cs.EXPECT().ReadShardMeta(any, proto.BlobID(1)).Return(nil, os.ErrNotExist).Times(1)
+		ds.EXPECT().DeleteBadBid(any, proto.Vuid(1001), proto.BlobID(1)).Return(true, nil).Times(1)
+		st := &core.InspectChunkState{Vuid: proto.Vuid(1001), BadBids: badBidSet(1)}
+		cleared, err := mgr.reconcileBadBids(ctx, ds, cs, st, false)
+		require.NoError(t, err)
+		require.Equal(t, 1, cleared)
+	})
+
+	t.Run("switch off with switch check returns stopped", func(t *testing.T) {
+		mgr := newScheduleTestMgr()
+		mgr.taskSwitch.Disable()
+
+		st := &core.InspectChunkState{Vuid: proto.Vuid(1001), BadBids: badBidSet(1)}
+		_, err := mgr.reconcileBadBids(ctx, ds, cs, st, true)
+		require.ErrorIs(t, err, core.ErrInspectStopped)
+		require.Equal(t, badBidSet(1), st.BadBids) // st is read-only; unchanged on early stop
+	})
+}
+
+// TestReconcileBadBidsAtStartup verifies the startup pass re-checks persisted
+// bad bids even when the inspect switch is off, persists the cleaned state, and
+// flushes it so the stale records do not survive a later restart.
+func TestReconcileBadBidsAtStartup(t *testing.T) {
+	ctr := gomock.NewController(t)
+	ctx := context.Background()
+
+	ds := NewMockDiskAPI(ctr)
+	cs := NewMockChunkAPI(ctr)
+
+	st := &core.InspectChunkState{
+		Vuid:    proto.Vuid(1001),
+		BadBids: map[proto.BlobID]core.BadBidMeta{1: {FoundAt: 123, Reason: "bad shard"}},
+	}
+	// First range: collect vuids with bad bids; second range: refreshDiskBadShardMetrics
+	// (by which point DeleteBadBid has cleared the bid from st.BadBids).
+	ds.EXPECT().RangeInspectChunkState(any, any).DoAndReturn(
+		func(_ context.Context, fn func(*core.InspectChunkState) bool) error {
+			fn(st)
+			return nil
+		},
+	).Times(2)
+	// reconcileDiskBadBids now loads state per vuid rather than snapshotting all.
+	ds.EXPECT().LoadInspectChunkState(any, proto.Vuid(1001)).Return(*st, nil).Times(1)
+	// DeleteBadBid simulates the store clearing the bid so the final assertion
+	// and the second range pass both see empty BadBids.
+	ds.EXPECT().DeleteBadBid(any, proto.Vuid(1001), proto.BlobID(1)).DoAndReturn(
+		func(_ context.Context, _ proto.Vuid, bid proto.BlobID) (bool, error) {
+			delete(st.BadBids, bid)
+			return true, nil
+		},
+	).Times(1)
+	ds.EXPECT().FlushInspectState(any).Times(1)
+
+	ds.EXPECT().ID().Return(proto.DiskID(11)).AnyTimes()
+	ds.EXPECT().GetChunkStorage(proto.Vuid(1001)).Return(cs, true).AnyTimes()
+	ds.EXPECT().DiskInfo().Return(clustermgr.BlobNodeDiskInfo{
+		DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{DiskID: 11},
+	}).AnyTimes()
+	ds.EXPECT().IsClosing().Return(false).AnyTimes()
+	ds.EXPECT().IsWritable().Return(true).AnyTimes()
+	cs.EXPECT().Status().Return(clustermgr.ChunkStatusNormal).AnyTimes()
+	cs.EXPECT().Vuid().Return(proto.Vuid(1001)).AnyTimes()
+	cs.EXPECT().ReadShardMeta(any, proto.BlobID(1)).Return(nil, os.ErrNotExist).Times(1)
+
+	mgr := newScheduleTestMgr()
+	mgr.taskSwitch.Disable() // startup pass must ignore the inspect switch
+	mgr.svr.Disks = map[proto.DiskID]core.DiskAPI{11: ds}
+
+	mgr.reconcileBadBidsAtStartup(ctx)
+
+	require.Empty(t, st.BadBids)
+	require.False(t, mgr.isStartupReconciling())
+}
+
+// TestInspectSkipsDuringStartupReconcile verifies inspect rounds are gated while
+// the startup bad-bid reconcile is running, so the two flows cannot overwrite
+// each other's persisted chunk state.
+func TestInspectSkipsDuringStartupReconcile(t *testing.T) {
+	mgr := newScheduleTestMgr()
+	mgr.setStartupReconciling(true)
+	defer mgr.setStartupReconciling(false)
+
+	// the round is skipped entirely before any disk is touched
+	mgr.runInspectRound(context.Background())
 }
 
 func expiredDiskState(cycleID uint64) core.InspectDiskState {
 	return core.InspectDiskState{
 		DiskID:       proto.DiskID(11),
 		CycleID:      cycleID,
-		CycleStartAt: time.Now().Add(-91 * 24 * time.Hour).UnixNano(),
+		CycleStartAt: time.Now().Add(-91 * core.CycleDayDuration).UnixNano(),
 	}
 }
 
@@ -454,7 +577,7 @@ func TestCheckAndFinishExpiredCycle_NotExpired(t *testing.T) {
 	diskSt := core.InspectDiskState{
 		DiskID:       proto.DiskID(11),
 		CycleID:      1,
-		CycleStartAt: time.Now().Add(-time.Hour).UnixNano(),
+		CycleStartAt: time.Now().Add(-core.CycleDayDuration).UnixNano(),
 	}
 	// no StoreInspectDiskState / chunk state access expected
 	require.NoError(t, mgr.checkAndFinishExpiredCycle(ctx, ds, chunks, &diskSt))
@@ -471,7 +594,7 @@ func TestCheckAndFinishExpiredCycle_ForceScanAndAdvance(t *testing.T) {
 	// stale chunk state from cycle 0 is lazily reset to the current cycle
 	ds.EXPECT().LoadInspectChunkState(any, proto.Vuid(1001)).Return(
 		core.InspectChunkState{Vuid: proto.Vuid(1001), CycleID: 0, CycleCnt: 250, CycleMaxBid: 250}, nil,
-	).Times(1)
+	).Times(2) // once by inspectChunk, once by updateBadShardByChunk after the store
 	ds.EXPECT().StoreInspectChunkState(any, any).DoAndReturn(
 		func(_ context.Context, got core.InspectChunkState) error {
 			require.Equal(t, uint64(1), got.CycleID)
@@ -531,7 +654,7 @@ func TestCheckAndFinishExpiredCycle_ControlStopKeepsCycle(t *testing.T) {
 	require.Equal(t, uint64(1), diskSt.CycleID)
 }
 
-func TestLogRoundSummFiltersStaleAndReleasedState(t *testing.T) {
+func TestLogRoundSummSkipsReleasedState(t *testing.T) {
 	ctr := gomock.NewController(t)
 	ctx := context.Background()
 	mgr := newScheduleTestMgr()
@@ -572,8 +695,98 @@ func TestLogRoundSummFiltersStaleAndReleasedState(t *testing.T) {
 	span := trace.SpanFromContextSafe(ctx)
 	mgr.logRoundSumm(ctx, span, ds, diskSt, 40)
 
-	// only current-cycle alive states contribute: vuid 1001 (1 bad) + vuid 1004 (1 bad)
-	require.Equal(t, float64(2), testGaugeValue(dataInspectBadShardByDiskVec, []string{"9", "77"}))
+	// bad bids survive cycle resets: every alive chunk contributes regardless
+	// of cycle (1001: 1 + 1002: 2 + 1004: 1); released 1003 is skipped
+	require.Equal(t, float64(4), testGaugeValue(dataInspectBadShardByDiskVec, []string{"9", "77"}))
+}
+
+// TestRefreshDiskBadShardMetrics verifies refreshDiskBadShardMetrics repopulates
+// the per-chunk and per-disk gauges from the in-memory inspect state, skipping
+// released chunks. It is used by the startup bad-bid reconcile to publish the
+// corrected values once the stale records have been cleaned.
+func TestRefreshDiskBadShardMetrics(t *testing.T) {
+	ctr := gomock.NewController(t)
+	ctx := context.Background()
+	mgr := newScheduleTestMgr()
+	ds := NewMockDiskAPI(ctr)
+	aliveCS := NewMockChunkAPI(ctr)
+	releasedCS := NewMockChunkAPI(ctr)
+
+	states := []*core.InspectChunkState{
+		{Vuid: 1001, CycleID: 2, BadBids: badBidSet(1, 2)},        // current cycle, alive
+		{Vuid: 1002, CycleID: 1, BadBids: badBidSet(3, 4, 5)},     // stale cycle, alive (bad bids survive cycles)
+		{Vuid: 1003, CycleID: 2, BadBids: badBidSet(6)},           // current cycle, released, skipped
+		{Vuid: 1004, CycleID: 2, BadBids: badBidSet(7, 8, 9, 10)}, // current cycle, alive
+	}
+
+	ds.EXPECT().ID().Return(proto.DiskID(11)).AnyTimes()
+	ds.EXPECT().IsClosing().Return(false).AnyTimes()
+	ds.EXPECT().RangeInspectChunkState(any, any).DoAndReturn(
+		func(_ context.Context, fn func(*core.InspectChunkState) bool) error {
+			for _, st := range states {
+				fn(st)
+			}
+			return nil
+		},
+	).Times(1)
+	ds.EXPECT().GetChunkStorage(any).DoAndReturn(func(vuid proto.Vuid) (core.ChunkAPI, bool) {
+		if vuid == proto.Vuid(1003) {
+			return releasedCS, true
+		}
+		return aliveCS, true
+	}).AnyTimes()
+	aliveCS.EXPECT().Status().Return(clustermgr.ChunkStatusNormal).AnyTimes()
+	releasedCS.EXPECT().Status().Return(clustermgr.ChunkStatusRelease).AnyTimes()
+	ds.EXPECT().DiskInfo().Return(clustermgr.BlobNodeDiskInfo{
+		DiskInfo:          clustermgr.DiskInfo{ClusterID: 9},
+		DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{DiskID: 77},
+	}).AnyTimes()
+
+	mgr.refreshDiskBadShardMetrics(ctx, ds)
+
+	// all alive states contribute regardless of cycle: 1001 (2) + 1002 (3) + 1004 (4)
+	require.Equal(t, float64(9), testGaugeValue(dataInspectBadShardByDiskVec, []string{"9", "77"}))
+	require.Equal(t, float64(2), testGaugeValue(dataInspectBadShardByChunkVec, []string{"9", "77", "1001"}))
+	require.Equal(t, float64(3), testGaugeValue(dataInspectBadShardByChunkVec, []string{"9", "77", "1002"}))
+	require.Equal(t, float64(4), testGaugeValue(dataInspectBadShardByChunkVec, []string{"9", "77", "1004"}))
+}
+
+func TestOnBadBidRepaired(t *testing.T) {
+	ctr := gomock.NewController(t)
+	ctx := context.Background()
+	mgr := newScheduleTestMgr()
+	ds := NewMockDiskAPI(ctr)
+	cs := NewMockChunkAPI(ctr)
+
+	vuid := proto.Vuid(1001)
+	cs.EXPECT().Vuid().Return(vuid).AnyTimes()
+	ds.EXPECT().ID().Return(proto.DiskID(88)).AnyTimes()
+	ds.EXPECT().DiskInfo().Return(clustermgr.BlobNodeDiskInfo{
+		DiskInfo:          clustermgr.DiskInfo{ClusterID: 9},
+		DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{DiskID: 88},
+	}).AnyTimes()
+
+	t.Run("untracked bid is a no-op", func(t *testing.T) {
+		ds.EXPECT().DeleteBadBid(any, vuid, proto.BlobID(100)).Return(false, nil).Times(1)
+		// no gauge refresh: an unexpected RangeInspectChunkState call fails the test
+		mgr.onBadBidRepaired(ctx, ds, cs, proto.BlobID(100))
+		require.Equal(t, float64(0), testGaugeValue(dataInspectBadShardByDiskVec, []string{"9", "88"}))
+	})
+
+	t.Run("tracked bid is deleted and gauges refresh", func(t *testing.T) {
+		ds.EXPECT().DeleteBadBid(any, vuid, proto.BlobID(7)).Return(true, nil).Times(1)
+		// only this chunk's gauge is refreshed; the store still holds the other bid
+		ds.EXPECT().LoadInspectChunkState(any, vuid).Return(
+			core.InspectChunkState{Vuid: vuid, BadBids: badBidSet(8)}, nil,
+		).Times(1)
+		cs.EXPECT().Disk().Return(ds).AnyTimes()
+
+		mgr.onBadBidRepaired(ctx, ds, cs, proto.BlobID(7))
+
+		require.Equal(t, float64(1), testGaugeValue(dataInspectBadShardByChunkVec, []string{"9", "88", "1001"}))
+		// the disk-level gauge is recalibrated by logRoundSumm, not here
+		require.Equal(t, float64(0), testGaugeValue(dataInspectBadShardByDiskVec, []string{"9", "88"}))
+	})
 }
 
 func TestInspectScanWindowUpdatesCursorOnInterrupt(t *testing.T) {
@@ -688,4 +901,28 @@ func TestGetLimiterLazyCreate(t *testing.T) {
 		require.NotNil(t, lmt)
 		require.Equal(t, 2*defaultInspectRate, lmt.Burst())
 	})
+}
+
+func TestInspectCycleDaysLiveEffect(t *testing.T) {
+	mgr := &DataInspectMgr{conf: DataInspectConf{CycleDays: 90}}
+
+	// hard deadline: a 91-day-old cycle is expired at 90 days and is no longer
+	// expired after a runtime increase, without touching persisted state.
+	diskSt := core.InspectDiskState{CycleStartAt: time.Now().Add(-91 * core.CycleDayDuration).UnixNano()}
+	require.True(t, diskSt.CycleExpired(mgr.inspectCycleDays()))
+	mgr.SetCycleDays(180)
+	require.False(t, diskSt.CycleExpired(mgr.inspectCycleDays()))
+
+	// soft target: shrinking the cycle immediately widens the per-round window,
+	// so an in-flight cycle catches up instead of waiting for the old deadline.
+	st := core.InspectChunkState{CycleCnt: 1000, CycleScanned: 0}
+	diskSt = core.InspectDiskState{CycleStartAt: time.Now().Add(-30 * core.CycleDayDuration).UnixNano()}
+
+	mgr.SetCycleDays(90)
+	window90 := mgr.calcScanShardsPerRound(st, diskSt)
+	mgr.SetCycleDays(30)
+	window30 := mgr.calcScanShardsPerRound(st, diskSt)
+	// 30 days elapsed already passed the 30d*95% soft target: scan all remaining.
+	require.Equal(t, 1000, window30)
+	require.Less(t, window90, window30)
 }

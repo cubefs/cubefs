@@ -82,7 +82,13 @@ type InspectChunkState struct {
 	CycleCnt     int64        `json:"cycle_cnt"`     // shard count snapshot; -1 until count-only has run, >= 0 means counted
 
 	// bad-bid memory, preserved across cycle resets
-	BadBids map[proto.BlobID]struct{} `json:"bad_bids"` // bid set
+	BadBids map[proto.BlobID]BadBidMeta `json:"bad_bids,omitempty"` // bid -> metadata
+}
+
+// BadBidMeta is the per-bid metadata kept in InspectChunkState.BadBids.
+type BadBidMeta struct {
+	FoundAt int64  `json:"found_at"`         // UnixNano, the first time the bid was flagged bad
+	Reason  string `json:"reason,omitempty"` // error text captured
 }
 
 type StorageStat struct {

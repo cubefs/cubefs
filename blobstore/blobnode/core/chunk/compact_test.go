@@ -114,6 +114,14 @@ func (mock *diskMock) StoreInspectChunkState(ctx context.Context, st core.Inspec
 	return nil
 }
 
+func (mock *diskMock) AddBadBid(ctx context.Context, vuid proto.Vuid, bid proto.BlobID, meta core.BadBidMeta) (bool, error) {
+	return false, nil
+}
+
+func (mock *diskMock) DeleteBadBid(ctx context.Context, vuid proto.Vuid, bid proto.BlobID) (bool, error) {
+	return false, nil
+}
+
 func (mock *diskMock) FlushInspectState(ctx context.Context) {
 }
 

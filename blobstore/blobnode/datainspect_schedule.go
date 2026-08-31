@@ -34,8 +34,6 @@ const (
 
 	maxScanShardsPerRound = 10_000 // ceiling window per round, avoids IO spikes when catching up
 	cycleTargetFraction   = 0.95   // finish scanning within 95% of the cycle, leaving slack before the hard deadline
-
-	maxInspectBadBids = 1000
 )
 
 var errServiceClosed = errors.New("service is closed")
@@ -94,7 +92,7 @@ func (mgr *DataInspectMgr) checkAndFinishExpiredCycle(ctx context.Context,
 		return nil
 	}
 
-	if !diskSt.CycleExpired(mgr.conf.CycleDays) {
+	if !diskSt.CycleExpired(mgr.inspectCycleDays()) {
 		// this cycle not expired, do inspect step-by-step
 		return nil
 	}
@@ -168,7 +166,7 @@ func (mgr *DataInspectMgr) checkAndFinishExpiredCycle(ctx context.Context,
 			continue
 		}
 
-		mgr.updateBadShardByChunk(cs, &st)
+		mgr.updateBadShardByChunk(ctx, cs)
 		span.Infof("inspect disk:%d vuid:%d %s force-scan done", ds.ID(), chunk.Vuid, cs.ID())
 	}
 
@@ -236,11 +234,15 @@ func (mgr *DataInspectMgr) inspectChunk(ctx context.Context, ds core.DiskAPI, di
 		span.Errorf("inspect disk:%d vuid:%d persist chunk inspect_state failed: %+v", ds.ID(), chunk.Vuid, err)
 		return
 	}
-	mgr.updateBadShardByChunk(cs, &st)
+	mgr.updateBadShardByChunk(ctx, cs)
 	return
 }
 
-func (mgr *DataInspectMgr) updateBadShardByChunk(cs core.ChunkAPI, st *core.InspectChunkState) {
+func (mgr *DataInspectMgr) updateBadShardByChunk(ctx context.Context, cs core.ChunkAPI) {
+	st, err := cs.Disk().InspectState().LoadInspectChunkState(ctx, cs.Vuid())
+	if err != nil {
+		return
+	}
 	info := cs.Disk().DiskInfo()
 	dataInspectBadShardByChunkVec.WithLabelValues(dataInspectChunkLabelValues(info, cs.Vuid())...).
 		Set(float64(len(st.BadBids)))
@@ -305,7 +307,7 @@ func (mgr *DataInspectMgr) inspectScanWindow(ctx context.Context,
 
 		if len(shards) > 0 {
 			inspected, bads, ioErr := mgr.inspectShardsPage(ctx, cs, shards, nil)
-			mgr.mergeBadBids(ctx, cs, st, inspected, bads)
+			mgr.mergeBadBids(ctx, cs, inspected, bads)
 			mgr.reportBatchBadShards(ctx, cs, bads)
 			mgr.trySendCrcRepair(ctx, cs, bads)
 			// EIO should stop the inspect immediately; prior pages already updated st.Cursor.
@@ -326,7 +328,7 @@ func (mgr *DataInspectMgr) inspectScanWindow(ctx context.Context,
 		// Keep Cursor at CycleMaxBid so completion can be derived from Counted + Cursor.
 		if next >= st.CycleMaxBid || next == proto.InValidBlobID {
 			st.Cursor = st.CycleMaxBid
-			if err := mgr.reconcileBadBids(ctx, ds, cs, st); err != nil {
+			if _, err := mgr.reconcileBadBids(ctx, ds, cs, st, true); err != nil {
 				return done, err
 			}
 			span.Infof("inspect disk:%d vuid:%d %s scan done", ds.ID(), cs.Vuid(), cs.ID())
@@ -347,7 +349,7 @@ func (mgr *DataInspectMgr) inspectScanWindow(ctx context.Context,
 // to finish the chunk before the hard deadline. Stragglers are force-scanned by
 // checkAndFinishExpiredCycle when the cycle expires.
 func (mgr *DataInspectMgr) calcScanShardsPerRound(st core.InspectChunkState, diskSt core.InspectDiskState) int {
-	cycleDuration := time.Duration(mgr.conf.CycleDays) * core.CycleDayDuration
+	cycleDuration := time.Duration(mgr.inspectCycleDays()) * core.CycleDayDuration
 	targetDuration := time.Duration(float64(cycleDuration) * cycleTargetFraction)
 	elapsed := diskSt.CycleElapsed()
 
@@ -382,17 +384,20 @@ func clampScanWindow(window int, remainingShards int64) int {
 	return window
 }
 
-// mergeBadBids incrementally updates BadBids using only the shards actually
-// covered by this round's scan: confirmed-healthy bids are removed, newly found bad bids
-// are recorded as a set. Historical bad bids outside this round's scan range, or bids
-// since deleted, are left untouched here and are fully reconciled once per cycle by
-// reconcileBadBids.
+// mergeBadBids incrementally updates the shared inspect-state store using only
+// the shards covered by this round's scan: confirmed-healthy bids are removed
+// from the store via DeleteBadBid, newly found bad bids are added via AddBadBid.
+// Historical bad bids outside this round's scan range, or bids since deleted,
+// are left untouched here.
 func (mgr *DataInspectMgr) mergeBadBids(
-	ctx context.Context, cs core.ChunkAPI, st *core.InspectChunkState, inspected []*bnapi.ShardInfo, bads []bnapi.BadShard,
+	ctx context.Context, cs core.ChunkAPI, inspected []*bnapi.ShardInfo, bads []bnapi.BadShard,
 ) {
 	if len(inspected) == 0 {
 		return
 	}
+
+	is := cs.Disk().InspectState()
+	span := trace.SpanFromContextSafe(ctx)
 
 	badSet := make(map[proto.BlobID]struct{}, len(bads))
 	for _, b := range bads {
@@ -404,33 +409,33 @@ func (mgr *DataInspectMgr) mergeBadBids(
 			continue
 		}
 		// if bad shard becomes ok, will delete it from inspect_state
-		delete(st.BadBids, s.Bid)
+		is.DeleteBadBid(ctx, cs.Vuid(), s.Bid) //nolint:errcheck
 	}
 
-	span := trace.SpanFromContextSafe(ctx)
 	for _, b := range bads {
-		if _, exist := st.BadBids[b.Bid]; exist {
-			continue
+		meta := core.BadBidMeta{FoundAt: time.Now().UnixNano()}
+		if b.Err != nil {
+			meta.Reason = b.Err.Error()
 		}
-		if len(st.BadBids) >= maxInspectBadBids {
-			span.Errorf("inspect disk:%d vuid:%d bad bids reach limit %d, drop bid:%d",
-				cs.Disk().ID(), cs.Vuid(), maxInspectBadBids, b.Bid)
-			continue
+		if _, err := is.AddBadBid(ctx, cs.Vuid(), b.Bid, meta); err != nil {
+			span.Errorf("inspect disk:%d vuid:%d bid:%d add bad bid to store failed: %+v",
+				cs.Disk().ID(), cs.Vuid(), b.Bid, err)
 		}
-		if st.BadBids == nil {
-			st.BadBids = make(map[proto.BlobID]struct{})
-		}
-		st.BadBids[b.Bid] = struct{}{}
 	}
 }
 
-// reconcileBadBids performs a full re-check of every historical bad bid once a chunk's
-// scan cycle completes, so bids that were deleted or repaired outside this cycle's scan
-// coverage don't linger forever in BadBids.
-// Bids are visited in ascending order so meta/data IO follows typical on-disk layout.
-func (mgr *DataInspectMgr) reconcileBadBids(ctx context.Context, ds core.DiskAPI, cs core.ChunkAPI, st *core.InspectChunkState) error {
+// reconcileBadBids performs a full reCheck of all historical bad bids, so bids
+// that were deleted or repaired outside this cycle's scan coverage don't linger
+// forever in BadBids. The checkSwitch controls whether the inspect task switch is
+// consulted:  the startup one-shot pass passes false so it still cleans stale
+// persisted records even when the inspect switch is off.
+// st.BadBids is used read-only as the iteration source; cleared bids are removed
+// from the store via DeleteBadBid. Returns the number of cleared bids.
+func (mgr *DataInspectMgr) reconcileBadBids(ctx context.Context,
+	ds core.DiskAPI, cs core.ChunkAPI, st *core.InspectChunkState, checkSwitch bool,
+) (cleared int, err error) {
 	if len(st.BadBids) == 0 {
-		return nil
+		return 0, nil
 	}
 	span := trace.SpanFromContextSafe(ctx)
 
@@ -441,15 +446,19 @@ func (mgr *DataInspectMgr) reconcileBadBids(ctx context.Context, ds core.DiskAPI
 	sort.Slice(bids, func(i, j int) bool { return bids[i] < bids[j] })
 
 	for _, bid := range bids {
-		if mgr.inspectShouldStop(ds) {
-			return core.ErrInspectStopped
+		if ds.IsClosing() || !ds.IsWritable() {
+			return cleared, core.ErrInspectStopped
+		}
+		if checkSwitch && !mgr.getSwitch() {
+			return cleared, core.ErrInspectStopped
 		}
 
 		// BadBids only contains bids, so need to readShardMeta first to construct shardInfo
 		sm, err := cs.ReadShardMeta(ctx, bid)
 		if base.IsShardDeleted(err) {
 			span.Infof("inspect disk:%d vuid:%d reconcile bid:%d shard deleted, clear inspect_state", ds.ID(), cs.Vuid(), bid)
-			delete(st.BadBids, bid) // shard deleted, clear the record
+			ds.InspectState().DeleteBadBid(ctx, cs.Vuid(), bid) //nolint:errcheck
+			cleared++
 			continue
 		}
 		if err != nil {
@@ -460,24 +469,29 @@ func (mgr *DataInspectMgr) reconcileBadBids(ctx context.Context, ds core.DiskAPI
 		si := &bnapi.ShardInfo{Bid: bid, Vuid: cs.Vuid(), Size: int64(sm.Size), Crc: sm.Crc}
 		if err := mgr.inspectShard(ctx, cs, si); err == nil {
 			span.Infof("inspect disk:%d vuid:%d reconcile bid:%d data recovered, clear inspect_state", ds.ID(), cs.Vuid(), bid)
-			delete(st.BadBids, bid) // data recovered, clear the record
+			ds.InspectState().DeleteBadBid(ctx, cs.Vuid(), bid) //nolint:errcheck
+			cleared++
 		}
 		// still corrupted: keep the record
 	}
 
-	return nil
+	return cleared, nil
 }
 
-func (mgr *DataInspectMgr) logRoundSumm(ctx context.Context, span trace.Span, ds core.DiskAPI, diskSt core.InspectDiskState, roundScanned int64) {
+func (mgr *DataInspectMgr) logRoundSumm(ctx context.Context,
+	span trace.Span, ds core.DiskAPI, diskSt core.InspectDiskState, roundScanned int64,
+) {
 	var totalShards, totalScanned, totalBadBids int64
 	if err := ds.InspectState().RangeInspectChunkState(ctx, func(st *core.InspectChunkState) bool {
-		// only count states belonging to the current inspect cycle
-		if st.CycleID != diskSt.CycleID {
-			return true
-		}
 		// skip chunks that have been released or are no longer alive on this disk
 		cs, ok := ds.GetChunkStorage(st.Vuid)
 		if !ok || cs.Status() == clustermgr.ChunkStatusRelease {
+			return true
+		}
+		// bad bids survive cycle resets, so count them for every alive chunk;
+		// the progress stats below are only meaningful for the current cycle
+		totalBadBids += int64(len(st.BadBids))
+		if st.CycleID != diskSt.CycleID {
 			return true
 		}
 		// skip chunks that have not finished count-only in this cycle
@@ -485,7 +499,6 @@ func (mgr *DataInspectMgr) logRoundSumm(ctx context.Context, span trace.Span, ds
 			totalShards += st.CycleCnt
 			totalScanned += st.CycleScanned
 		}
-		totalBadBids += int64(len(st.BadBids))
 		return true
 	}); err != nil {
 		span.Warnf("inspect disk:%d round summ iterate inspect state failed: %+v", ds.ID(), err)
@@ -502,8 +515,9 @@ func (mgr *DataInspectMgr) logRoundSumm(ctx context.Context, span trace.Span, ds
 
 	var timeElapsedPct float64
 	var targetProgressPct float64
-	if diskSt.CycleStartAt > 0 && mgr.conf.CycleDays > 0 {
-		cycleDuration := time.Duration(mgr.conf.CycleDays) * core.CycleDayDuration
+	cycleDays := mgr.inspectCycleDays()
+	if diskSt.CycleStartAt > 0 && cycleDays > 0 {
+		cycleDuration := time.Duration(cycleDays) * core.CycleDayDuration
 		timeElapsed := diskSt.CycleElapsed()
 		timeElapsedPct = float64(timeElapsed) / float64(cycleDuration) * 100
 		targetProgressPct = timeElapsedPct / cycleTargetFraction

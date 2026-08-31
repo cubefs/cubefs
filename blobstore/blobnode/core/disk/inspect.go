@@ -62,9 +62,9 @@ func copyChunkState(st *core.InspectChunkState) *core.InspectChunkState {
 	}
 	cp := *st
 	if st.BadBids != nil {
-		cp.BadBids = make(map[proto.BlobID]struct{}, len(st.BadBids))
-		for bid := range st.BadBids {
-			cp.BadBids[bid] = struct{}{}
+		cp.BadBids = make(map[proto.BlobID]core.BadBidMeta, len(st.BadBids))
+		for bid, meta := range st.BadBids {
+			cp.BadBids[bid] = meta
 		}
 	}
 	return &cp
@@ -151,9 +151,69 @@ func (st *inspectStateStore) StoreInspectChunkState(ctx context.Context, state c
 	}
 	st.mu.Lock()
 	defer st.mu.Unlock()
+	// BadBids are managed exclusively through AddBadBid/DeleteBadBid so that
+	// fine-grained concurrent updates (e.g. from reportBadShard or onBadBidRepaired)
+	// are never silently overwritten by a bulk store call that carries a stale
+	// snapshot. Carry forward whatever the store currently holds when the entry
+	// already exists; a brand-new entry keeps the caller-provided BadBids.
+	if existing, ok := st.chunks[state.Vuid]; ok && existing != nil {
+		state.BadBids = existing.BadBids // copyChunkState below will deep-copy
+	}
 	st.chunks[state.Vuid] = copyChunkState(&state)
 	st.chunkDirty[state.Vuid] = struct{}{}
 	return nil
+}
+
+// AddBadBid records a bad bid in the chunk's inspect state. The existing records
+// are left untouched (FoundAt/Reason are not refreshed).
+func (st *inspectStateStore) AddBadBid(ctx context.Context, vuid proto.Vuid, bid proto.BlobID, meta core.BadBidMeta) (bool, error) {
+	span := trace.SpanFromContextSafe(ctx)
+	if !vuid.IsValid() {
+		return false, bloberr.ErrInvalidParam
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	cs, exist := st.chunks[vuid]
+	if !exist {
+		// chunk not inspected yet: initialize the zero state so the record
+		// survives until the next inspect round initializes the chunk.
+		cs = &core.InspectChunkState{Vuid: vuid, CycleCnt: -1}
+		st.chunks[vuid] = cs
+	}
+	if _, ok := cs.BadBids[bid]; ok {
+		return false, nil
+	}
+	if len(cs.BadBids) >= core.MaxInspectBadBids {
+		span.Warnf("inspect vuid:%d bad bids reach limit %d, drop bid:%d",
+			vuid, core.MaxInspectBadBids, bid)
+		return false, nil
+	}
+	if cs.BadBids == nil {
+		cs.BadBids = make(map[proto.BlobID]core.BadBidMeta)
+	}
+	cs.BadBids[bid] = meta
+	// mark to trigger flush the state to rocksdb
+	st.chunkDirty[vuid] = struct{}{}
+	return true, nil
+}
+
+func (st *inspectStateStore) DeleteBadBid(ctx context.Context, vuid proto.Vuid, bid proto.BlobID) (bool, error) {
+	if !vuid.IsValid() {
+		return false, bloberr.ErrInvalidParam
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	cs, exist := st.chunks[vuid]
+	if !exist {
+		return false, nil
+	}
+	if _, ok := cs.BadBids[bid]; !ok {
+		return false, nil
+	}
+	delete(cs.BadBids, bid)
+	// mark to trigger flush the state to rocksdb
+	st.chunkDirty[vuid] = struct{}{}
+	return true, nil
 }
 
 func (st *inspectStateStore) DeleteChunkState(ctx context.Context, vuid proto.Vuid) error {

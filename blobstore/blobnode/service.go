@@ -147,6 +147,7 @@ func NewHandler(service *Service) *rpc.Router {
 	r.Handle(http.MethodPost, "/shard/repair", service.WorkerService.ShardRepair, rpc.OptArgsBody())
 	r.Handle(http.MethodGet, "/worker/stats", service.WorkerService.WorkerStats)
 	r.Handle(http.MethodPost, "/inspect/rate/:rate", service.SetInspectRate, rpc.OptArgsURI())
+	r.Handle(http.MethodPost, "/inspect/cycle/:days", service.SetInspectCycle, rpc.OptArgsURI())
 	r.Handle(http.MethodGet, "/inspect/stat", service.GetInspectStat, rpc.OptArgsQuery())
 	r.Handle(http.MethodPost, "/inspect/cleanmetric", service.CleanInspectMetric, rpc.OptArgsQuery())
 

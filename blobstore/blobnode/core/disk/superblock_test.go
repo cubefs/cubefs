@@ -378,7 +378,7 @@ func TestSuperBlock_InspectChunkStateCRUD(t *testing.T) {
 		CycleMaxBid:  proto.BlobID(1000),
 		CycleCnt:     500,
 		CycleScanned: 100,
-		BadBids:      map[proto.BlobID]struct{}{7: {}, 8: {}},
+		BadBids:      map[proto.BlobID]core.BadBidMeta{7: {}, 8: {}},
 	}
 	require.NoError(t, sb.UpsertInspectChunkState(ctx, st))
 

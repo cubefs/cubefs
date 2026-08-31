@@ -65,6 +65,10 @@ type InspectRateArgs struct {
 	Rate int `json:"rate"`
 }
 
+type InspectCycleArgs struct {
+	Days int `json:"days"`
+}
+
 type InspectCleanMetricArgs struct {
 	DiskID proto.DiskID `json:"diskid"`
 }
