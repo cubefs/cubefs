@@ -71,7 +71,7 @@ func TestInspectStateStore_LoadFlushRoundTrip(t *testing.T) {
 		CycleMaxBid:  proto.BlobID(1000),
 		CycleCnt:     500,
 		CycleScanned: 100,
-		BadBids:      map[proto.BlobID]struct{}{7: {}, 8: {}},
+		BadBids:      map[proto.BlobID]core.BadBidMeta{7: {}, 8: {}},
 	}
 	require.NoError(t, st.StoreInspectChunkState(ctx, chunkSt))
 
@@ -112,6 +112,100 @@ func TestInspectStateStore_DeletePersistsOnFlush(t *testing.T) {
 
 	_, err = st.superBlock.ReadInspectChunkState(ctx, vuid)
 	require.Error(t, err)
+}
+
+func TestInspectStateStore_DeleteBadBid(t *testing.T) {
+	ctx := context.Background()
+	st := newTestInspectStateStore(t)
+
+	vuid := proto.Vuid(1001)
+	chunkSt := core.InspectChunkState{
+		Vuid:    vuid,
+		BadBids: map[proto.BlobID]core.BadBidMeta{7: {}, 8: {}},
+	}
+	require.NoError(t, st.StoreInspectChunkState(ctx, chunkSt))
+
+	// tracked bid is deleted in place
+	cleared, err := st.DeleteBadBid(ctx, vuid, proto.BlobID(7))
+	require.NoError(t, err)
+	require.True(t, cleared)
+
+	got, err := st.LoadInspectChunkState(ctx, vuid)
+	require.NoError(t, err)
+	require.Equal(t, map[proto.BlobID]core.BadBidMeta{8: {}}, got.BadBids)
+
+	// deleting the same bid again reports false
+	cleared, err = st.DeleteBadBid(ctx, vuid, proto.BlobID(7))
+	require.NoError(t, err)
+	require.False(t, cleared)
+
+	// unknown chunk reports false
+	cleared, err = st.DeleteBadBid(ctx, proto.Vuid(9999), proto.BlobID(7))
+	require.NoError(t, err)
+	require.False(t, cleared)
+
+	// invalid vuid is rejected
+	_, err = st.DeleteBadBid(ctx, proto.InvalidVuid, proto.BlobID(7))
+	require.Error(t, err)
+
+	// deleted state is persisted on flush
+	st.FlushInspectState(ctx)
+	persisted, err := st.superBlock.ReadInspectChunkState(ctx, vuid)
+	require.NoError(t, err)
+	require.Equal(t, map[proto.BlobID]core.BadBidMeta{8: {}}, persisted.BadBids)
+}
+
+func TestInspectStateStore_AddBadBid(t *testing.T) {
+	ctx := context.Background()
+	st := newTestInspectStateStore(t)
+
+	vuid := proto.Vuid(1001)
+	require.NoError(t, st.StoreInspectChunkState(ctx, core.InspectChunkState{Vuid: vuid, CycleCnt: 3}))
+
+	// first discovery is recorded
+	added, err := st.AddBadBid(ctx, vuid, proto.BlobID(7), core.BadBidMeta{FoundAt: 100, Reason: "crc mismatch"})
+	require.NoError(t, err)
+	require.True(t, added)
+
+	// first discovery wins: an existing record is never refreshed
+	added, err = st.AddBadBid(ctx, vuid, proto.BlobID(7), core.BadBidMeta{FoundAt: 200, Reason: "io error"})
+	require.NoError(t, err)
+	require.False(t, added)
+
+	got, err := st.LoadInspectChunkState(ctx, vuid)
+	require.NoError(t, err)
+	require.Equal(t, map[proto.BlobID]core.BadBidMeta{7: {FoundAt: 100, Reason: "crc mismatch"}}, got.BadBids)
+
+	// unknown chunk initializes the zero state so the record survives
+	added, err = st.AddBadBid(ctx, proto.Vuid(1002), proto.BlobID(9), core.BadBidMeta{FoundAt: 300})
+	require.NoError(t, err)
+	require.True(t, added)
+	got, err = st.LoadInspectChunkState(ctx, proto.Vuid(1002))
+	require.NoError(t, err)
+	require.Equal(t, int64(-1), got.CycleCnt)
+	require.Equal(t, map[proto.BlobID]core.BadBidMeta{9: {FoundAt: 300}}, got.BadBids)
+
+	// invalid vuid is rejected
+	_, err = st.AddBadBid(ctx, proto.InvalidVuid, proto.BlobID(7), core.BadBidMeta{})
+	require.Error(t, err)
+
+	// per-chunk cap is enforced
+	cappedVuid := proto.Vuid(1003)
+	require.NoError(t, st.StoreInspectChunkState(ctx, core.InspectChunkState{Vuid: cappedVuid, CycleCnt: 1}))
+	for i := 1; i <= core.MaxInspectBadBids; i++ {
+		added, err = st.AddBadBid(ctx, cappedVuid, proto.BlobID(i), core.BadBidMeta{FoundAt: int64(i)})
+		require.NoError(t, err)
+		require.True(t, added)
+	}
+	added, err = st.AddBadBid(ctx, cappedVuid, proto.BlobID(core.MaxInspectBadBids+1), core.BadBidMeta{FoundAt: 1})
+	require.NoError(t, err)
+	require.False(t, added)
+
+	// added bids are persisted on flush
+	st.FlushInspectState(ctx)
+	persisted, err := st.superBlock.ReadInspectChunkState(ctx, vuid)
+	require.NoError(t, err)
+	require.Equal(t, map[proto.BlobID]core.BadBidMeta{7: {FoundAt: 100, Reason: "crc mismatch"}}, persisted.BadBids)
 }
 
 func TestInspectStateStore_ClosedSuperBlock(t *testing.T) {

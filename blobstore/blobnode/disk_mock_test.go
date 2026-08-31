@@ -305,6 +305,36 @@ func (m *MockDiskAPI) RangeInspectChunkState(arg0 context.Context, arg1 func(*co
 	return ret0
 }
 
+// DeleteBadBid mocks base method.
+func (m *MockDiskAPI) DeleteBadBid(arg0 context.Context, arg1 proto.Vuid, arg2 proto.BlobID) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteBadBid", arg0, arg1, arg2)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DeleteBadBid indicates an expected call of DeleteBadBid.
+func (mr *MockDiskAPIMockRecorder) DeleteBadBid(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteBadBid", reflect.TypeOf((*MockDiskAPI)(nil).DeleteBadBid), arg0, arg1, arg2)
+}
+
+// AddBadBid mocks base method.
+func (m *MockDiskAPI) AddBadBid(arg0 context.Context, arg1 proto.Vuid, arg2 proto.BlobID, arg3 core.BadBidMeta) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AddBadBid", arg0, arg1, arg2, arg3)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AddBadBid indicates an expected call of AddBadBid.
+func (mr *MockDiskAPIMockRecorder) AddBadBid(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddBadBid", reflect.TypeOf((*MockDiskAPI)(nil).AddBadBid), arg0, arg1, arg2, arg3)
+}
+
 // FlushInspectState mocks base method.
 func (m *MockDiskAPI) FlushInspectState(arg0 context.Context) {
 	m.ctrl.T.Helper()

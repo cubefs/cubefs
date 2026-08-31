@@ -1662,19 +1662,11 @@ func TestService_DataInspect(t *testing.T) {
 
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
-		var data map[proto.Vuid]InspectChunkStateInfo
+		var data map[proto.Vuid]InspectChunkState
 		err = json.Unmarshal(body, &data)
 		require.NoError(t, err)
 		require.Len(t, data, 1)
-		info, exist := data[vuid]
-		require.True(t, exist)
-		require.Equal(t, vuid, info.Vuid)
-		require.Equal(t, expectedChunkSt.Cursor, info.Cursor)
-		require.Equal(t, expectedChunkSt.CycleMaxBid, info.CycleMaxBid)
-		require.True(t, info.Counted)
-		require.Equal(t, expectedChunkSt.CycleCnt, info.CycleCnt)
-		require.Equal(t, expectedChunkSt.CycleScanned, info.CycleScanned)
-		require.Equal(t, []proto.BlobID{88}, info.BadBids)
+		require.Equal(t, expectedChunkSt, data[vuid])
 	}
 
 	{
@@ -1712,15 +1704,94 @@ func TestService_DataInspect(t *testing.T) {
 
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
-		var data map[proto.Vuid]InspectChunkStateInfo
+		var data map[proto.Vuid]InspectChunkState
 		err = json.Unmarshal(body, &data)
 		require.NoError(t, err)
 		require.Len(t, data, 2)
-		require.Equal(t, st2.Cursor, data[proto.Vuid(1002)].Cursor)
-		require.Equal(t, []proto.BlobID{8}, data[proto.Vuid(1002)].BadBids)
-		require.Equal(t, st1.Cursor, data[proto.Vuid(1003)].Cursor)
-		require.Equal(t, []proto.BlobID{9}, data[proto.Vuid(1003)].BadBids)
+		require.Equal(t, st2, data[proto.Vuid(1002)])
+		require.Equal(t, st1, data[proto.Vuid(1003)])
 	}
+}
+
+func TestService_SetInspectCycle(t *testing.T) {
+	ctr := gomock.NewController(t)
+	getter := mocks.NewMockAccessor(ctr)
+	getter.EXPECT().GetConfig(gomock.Any(), gomock.Any()).AnyTimes().Return("", nil)
+	ts, err := taskswitch.NewSwitchMgr(getter).AddSwitch(proto.TaskSwitchDataInspect.String())
+	require.NoError(t, err)
+
+	svr := &Service{
+		inspectMgr: &DataInspectMgr{
+			taskSwitch: ts,
+			conf:       DataInspectConf{CycleDays: 90},
+		},
+	}
+	router := NewHandler(svr)
+
+	do := func(method, path string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, path, nil)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		return rec
+	}
+
+	getStat := func(t *testing.T) DataInspectStat {
+		rec := do(http.MethodGet, "http://blobnode/inspect/stat")
+		require.Equal(t, http.StatusOK, rec.Code)
+		var stat DataInspectStat
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &stat))
+		return stat
+	}
+
+	require.Equal(t, 90, getStat(t).CycleDays)
+
+	// valid online update takes effect immediately
+	rec := do(http.MethodPost, "http://blobnode/inspect/cycle/30")
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 30, getStat(t).CycleDays)
+
+	// invalid value is rejected and the previous value is kept
+	rec = do(http.MethodPost, "http://blobnode/inspect/cycle/0")
+	require.Equal(t, int(bloberr.ErrInvalidParam), rec.Code)
+	require.Equal(t, 30, getStat(t).CycleDays)
+
+	// values above the old 365-day cap are accepted
+	rec = do(http.MethodPost, "http://blobnode/inspect/cycle/1000")
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 1000, getStat(t).CycleDays)
+}
+
+func TestService_SetInspectRate(t *testing.T) {
+	ctr := gomock.NewController(t)
+	getter := mocks.NewMockAccessor(ctr)
+	getter.EXPECT().GetConfig(gomock.Any(), gomock.Any()).AnyTimes().Return("", nil)
+	ts, err := taskswitch.NewSwitchMgr(getter).AddSwitch(proto.TaskSwitchDataInspect.String())
+	require.NoError(t, err)
+
+	svr := &Service{
+		inspectMgr: &DataInspectMgr{
+			taskSwitch: ts,
+			conf:       DataInspectConf{CycleDays: 90},
+		},
+	}
+	router := NewHandler(svr)
+
+	do := func(method, path string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, path, nil)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		return rec
+	}
+
+	// valid update takes effect immediately
+	rec := do(http.MethodPost, "http://blobnode/inspect/rate/1048576")
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 1048576, svr.inspectMgr.inspectRateLimit())
+
+	// below minRateLimit is rejected and keeps the previous value
+	rec = do(http.MethodPost, "http://blobnode/inspect/rate/1024")
+	require.Equal(t, int(bloberr.ErrInvalidParam), rec.Code)
+	require.Equal(t, 1048576, svr.inspectMgr.inspectRateLimit())
 }
 
 func TestService_Blobnode_registerNode(t *testing.T) {

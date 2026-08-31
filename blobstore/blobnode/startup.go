@@ -653,6 +653,10 @@ func startBlobnodeService(ctx context.Context, svr *Service, conf Config) (err e
 	}
 	wg.Wait()
 
+	// reconcile persisted bad bids once in background coroutine, gauges are
+	// refreshed per disk as each disk's reconcile finishes.
+	go svr.inspectMgr.reconcileBadBidsAtStartup(svr.ctx)
+
 	if err = setDefaultIOStat(conf.DiskConfig.IOStatFileDryRun); err != nil {
 		span.Errorf("Failed set default iostat file, err:%v", err)
 		return err

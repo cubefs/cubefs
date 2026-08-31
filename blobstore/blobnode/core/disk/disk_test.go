@@ -1069,7 +1069,7 @@ func TestDiskStorage_InspectStateWithSuperBlock(t *testing.T) {
 		CycleMaxBid:  proto.BlobID(1000),
 		CycleCnt:     500,
 		CycleScanned: 100,
-		BadBids:      map[proto.BlobID]struct{}{7: {}, 8: {}},
+		BadBids:      map[proto.BlobID]core.BadBidMeta{7: {}, 8: {}},
 	}
 	require.NoError(t, ds.inspectState().StoreInspectChunkState(ctx, chunkSt))
 
@@ -1119,7 +1119,7 @@ func TestDiskStorage_InspectStateCRUD(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, core.InspectChunkState{Vuid: vuid, CycleCnt: -1}, got)
 
-	st := core.InspectChunkState{Vuid: vuid, CycleCnt: 500, BadBids: map[proto.BlobID]struct{}{7: {}}}
+	st := core.InspectChunkState{Vuid: vuid, CycleCnt: 500, BadBids: map[proto.BlobID]core.BadBidMeta{7: {}}}
 	require.NoError(t, dsw.inspectState().StoreInspectChunkState(ctx, st))
 
 	got, err = dsw.inspectState().LoadInspectChunkState(ctx, vuid)

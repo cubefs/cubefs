@@ -17,6 +17,7 @@ package blobnode
 import (
 	"context"
 	"errors"
+	"fmt"
 	"hash"
 	"hash/crc32"
 	"io"
@@ -24,6 +25,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -43,7 +45,9 @@ import (
 	"golang.org/x/time/rate"
 )
 
-const minRateLimit = 64 * 1024 // 64 KB/s
+const (
+	minRateLimit = 64 * 1024 // 64 KB/s
+)
 
 type (
 	InspectDiskState  = core.InspectDiskState
@@ -100,9 +104,21 @@ type DataInspectMgr struct {
 
 	// proxy client to send crc repair msg, lazily built on first send
 	repairSender lazyRepairSender
+
+	// reconcilingStartup marks the one-shot startup bad-bid reconcile in-process.
+	// When set (1), inspect rounds are skipped so the two flows cannot overwrite.
+	reconcilingStartup int32
 }
 
 func NewDataInspectMgr(svr *Service, conf DataInspectConf, switchMgr *taskswitch.SwitchMgr) (*DataInspectMgr, error) {
+	if conf.CycleDays < 0 {
+		return nil, fmt.Errorf("cycle days value must be positive: %d", conf.CycleDays)
+	}
+	// zero means "unset" and falls back to the default
+	if conf.CycleDays == 0 {
+		conf.CycleDays = core.DefaultInspectCycleDays
+	}
+
 	taskSwitch, err := switchMgr.AddSwitch(proto.TaskSwitchDataInspect.String())
 	if err != nil {
 		return nil, err
@@ -120,9 +136,6 @@ func NewDataInspectMgr(svr *Service, conf DataInspectConf, switchMgr *taskswitch
 
 	if conf.BatchReadSize <= 0 {
 		conf.BatchReadSize = core.DefaultInspectBatchReadSize
-	}
-	if conf.CycleDays <= 0 {
-		conf.CycleDays = core.DefaultInspectCycleDays
 	}
 
 	mgr := &DataInspectMgr{
@@ -174,6 +187,11 @@ func (mgr *DataInspectMgr) loopDataInspect() {
 }
 
 func (mgr *DataInspectMgr) runInspectRound(ctx context.Context) {
+	// skip the round when startup bad-bid reconcile has not been finished
+	if mgr.isStartupReconciling() {
+		return
+	}
+
 	disks := mgr.svr.copyDiskStorages(ctx)
 	mgr.setLimiters(disks)
 
@@ -596,9 +614,147 @@ func (mgr *DataInspectMgr) cleanDiskInspectMetric(ds core.DiskAPI, diskID proto.
 	readBadShardVec.DeletePartialMatch(diskLabels)
 }
 
-// reportBadShard is called when a foreground user read (Get/Put) finds a bad shard.
+// refreshDiskBadShardMetrics repopulates the disk-level and per-chunk bad-shard
+// gauges of one disk from its current in-memory inspect state.
+func (mgr *DataInspectMgr) refreshDiskBadShardMetrics(ctx context.Context, ds core.DiskAPI) {
+	info := ds.DiskInfo()
+	var totalBadBids int64
+	ds.InspectState().RangeInspectChunkState(ctx, func(st *core.InspectChunkState) bool {
+		cs, ok := ds.GetChunkStorage(st.Vuid)
+		if !ok || cs.Status() == clustermgr.ChunkStatusRelease {
+			return true
+		}
+		badBids := int64(len(st.BadBids))
+		totalBadBids += badBids
+		dataInspectBadShardByChunkVec.WithLabelValues(dataInspectChunkLabelValues(info, st.Vuid)...).
+			Set(float64(badBids))
+		return true
+	})
+	dataInspectBadShardByDiskVec.WithLabelValues(dataInspectDiskLabelValues(info)...).Set(float64(totalBadBids))
+}
+
+// reconcileBadBidsAtStartup check persisted bad bids when service starts.
+// Bad bids may be fixed and deleted in memory but failed to persist. Disks are
+// reconciled in parallel and per-disk gauges are refreshed as each disk's
+// reconcile finishes.
+func (mgr *DataInspectMgr) reconcileBadBidsAtStartup(ctx context.Context) {
+	ctx = bnapi.SetIoType(ctx, bnapi.BackgroundIO)
+	// block inspect rounds until this one-shot pass finishes
+	mgr.setStartupReconciling(true)
+	defer mgr.setStartupReconciling(false)
+	span := trace.SpanFromContextSafe(ctx)
+
+	disks := mgr.svr.copyDiskStorages(ctx)
+	wg := &sync.WaitGroup{}
+	for _, ds := range disks {
+		if ds.IsClosing() {
+			continue
+		}
+		wg.Add(1)
+		go func(ds core.DiskAPI) {
+			defer wg.Done()
+			if err := mgr.reconcileDiskBadBids(ctx, ds); err != nil {
+				span.Warnf("inspect disk:%d startup badBids reconcile failed: %+v", ds.ID(), err)
+			}
+		}(ds)
+	}
+	wg.Wait()
+	span.Infof("startup bad-bid reconcile done, disks: %d", len(disks))
+}
+
+func (mgr *DataInspectMgr) setStartupReconciling(reconciling bool) {
+	if reconciling {
+		atomic.StoreInt32(&mgr.reconcilingStartup, 1)
+	} else {
+		atomic.StoreInt32(&mgr.reconcilingStartup, 0)
+	}
+}
+
+// isStartupReconciling reports whether the startup bad-bid reconcile is running
+func (mgr *DataInspectMgr) isStartupReconciling() bool {
+	return atomic.LoadInt32(&mgr.reconcilingStartup) == 1
+}
+
+// reconcileDiskBadBids check badBids of all live chunks for the disk, persists
+// the cleaned state, and then refresh the disk's badBids gauges. This does not
+// consult the inspect switch: this is the startup one-shot pass.
+func (mgr *DataInspectMgr) reconcileDiskBadBids(ctx context.Context, ds core.DiskAPI) error {
+	span := trace.SpanFromContextSafe(ctx)
+
+	// collect only the vuids that have bad bids to minimize lock hold time
+	var vuids []proto.Vuid
+	ds.InspectState().RangeInspectChunkState(ctx, func(st *core.InspectChunkState) bool {
+		if len(st.BadBids) > 0 {
+			vuids = append(vuids, st.Vuid)
+		}
+		return true
+	})
+
+	var total, remain int
+	for _, vuid := range vuids {
+		// skip chunks which are no longer alive on this disk
+		cs, ok := ds.GetChunkStorage(vuid)
+		if !ok || cs.Status() == clustermgr.ChunkStatusRelease {
+			continue
+		}
+
+		st, err := ds.InspectState().LoadInspectChunkState(ctx, vuid)
+		if err != nil {
+			span.Warnf("inspect disk:%d vuid:%d load inspect state failed: %+v", ds.ID(), vuid, err)
+			continue
+		}
+		if len(st.BadBids) == 0 {
+			continue
+		}
+
+		total += len(st.BadBids)
+		cleared, err := mgr.reconcileBadBids(ctx, ds, cs, &st, false)
+		if err != nil {
+			// may be the disk is closing or not writable
+			if errors.Is(err, core.ErrInspectStopped) {
+				span.Infof("inspect disk:%d startup bad-bid reconcile stopped", ds.ID())
+				break
+			}
+			span.Warnf("inspect disk:%d vuid:%d startup bad-bid reconcile failed: %+v", ds.ID(), vuid, err)
+			return err
+		}
+		remain += len(st.BadBids) - cleared
+	}
+
+	// persist the cleaned state so a later restart does not reload the stale
+	// records again, then rebuild the gauges from the reconciled state
+	ds.InspectState().FlushInspectState(ctx)
+	mgr.refreshDiskBadShardMetrics(ctx, ds)
+	span.Infof("inspect disk:%d startup bad-bid reconcile done, %d/%d", ds.ID(), remain, total)
+	return nil
+}
+
+// onBadBidRepaired deletes a tracked bad bid as soon as its shard has been
+// successfully rewritten (the crc-repair write-back goes through ShardPut with
+// the same bid), so the bad-shard gauges drop right after the repair instead of
+// waiting for the next inspect round or cycle. Regular puts never match this.
+// Only this chunk's gauge is refreshed here; the disk-level gauge is
+// recalibrated by logRoundSumm at the end of each inspect round for performance.
+func (mgr *DataInspectMgr) onBadBidRepaired(ctx context.Context, ds core.DiskAPI, cs core.ChunkAPI, bid proto.BlobID) {
+	span := trace.SpanFromContextSafe(ctx)
+
+	cleared, err := ds.InspectState().DeleteBadBid(ctx, cs.Vuid(), bid)
+	if err != nil {
+		span.Errorf("inspect disk:%d vuid:%d bid:%d delete bad bid after repair failed: %+v", ds.ID(), cs.Vuid(), bid, err)
+		return
+	}
+	if !cleared {
+		return
+	}
+
+	mgr.updateBadShardByChunk(ctx, cs)
+	span.Infof("inspect disk:%d vuid:%d bid:%d repaired, deleted bad bid from inspect_state", ds.ID(), cs.Vuid(), bid)
+}
+
+// reportBadShard is called when  user read (Get/Put) finds a bad shard.
 // It records the bad bid to the local log and increments readBadShardVec (user-read metric).
 func (mgr *DataInspectMgr) reportBadShard(ctx context.Context, cs core.ChunkAPI, blobID proto.BlobID, err error) {
+	span := trace.SpanFromContextSafe(ctx)
 	// don't report this error
 	if isInspectReportIgnoredError(err) {
 		return
@@ -609,6 +765,19 @@ func (mgr *DataInspectMgr) reportBadShard(ctx context.Context, cs core.ChunkAPI,
 	// Report with "add" and combine it with "record" for analysis and processing
 	diskInfo := cs.Disk().DiskInfo()
 	mgr.recordBadBids(ctx, diskInfo, cs.Vuid(), []string{blobID.ToString()}, err.Error())
+
+	// track the bid in inspect state so queries/metrics see it and
+	// reconcileBadBids re-checks it until repaired.
+	badBidMeta := core.BadBidMeta{
+		FoundAt: time.Now().UnixNano(),
+		Reason:  err.Error(),
+	}
+
+	if _, aerr := cs.Disk().InspectState().AddBadBid(ctx, cs.Vuid(), blobID, badBidMeta); aerr != nil {
+		span.Errorf("inspect disk:%d vuid:%d bid:%d add bad bid failed: %+v",
+			diskInfo.DiskID, cs.Vuid(), blobID, aerr)
+	}
+	mgr.updateBadShardByChunk(ctx, cs)
 
 	// crc-mismatch shard is handled by in-place repair, so it is not reported to the metric
 	// inspect will find this and send repair msg
@@ -747,7 +916,30 @@ func (mgr *DataInspectMgr) setAllDiskRateForce(newLimit int) {
 	}
 }
 
+func (mgr *DataInspectMgr) inspectCycleDays() int {
+	mgr.limitsMu.Lock()
+	defer mgr.limitsMu.Unlock()
+	return mgr.conf.CycleDays
+}
+
+// SetCycleDays updates the full-inspect cycle length (in days) at runtime.
+func (mgr *DataInspectMgr) SetCycleDays(days int) {
+	mgr.limitsMu.Lock()
+	defer mgr.limitsMu.Unlock()
+	mgr.conf.CycleDays = days
+}
+
+// dataInspectConf returns a copy of the mutable inspect config under the same lock
+// used by the runtime update APIs.
+func (mgr *DataInspectMgr) dataInspectConf() DataInspectConf {
+	mgr.limitsMu.Lock()
+	defer mgr.limitsMu.Unlock()
+	return mgr.conf
+}
+
 func (s *Service) SetInspectRate(c *rpc.Context) {
+	span := trace.SpanFromContextSafe(c.Request.Context())
+
 	args := new(bnapi.InspectRateArgs)
 	if err := c.ParseArgs(args); err != nil {
 		c.RespondError(err)
@@ -755,14 +947,35 @@ func (s *Service) SetInspectRate(c *rpc.Context) {
 	}
 
 	if args.Rate < minRateLimit {
-		c.RespondError(errors.New("rate value is too small"))
+		span.Errorf("rate value is too small: %d, min rate %d", args.Rate, minRateLimit)
+		c.RespondError(bloberr.ErrInvalidParam)
 		return
 	}
 
-	span := trace.SpanFromContextSafe(c.Request.Context())
 	span.Infof("set data inspect rate args: %+v", args)
 
 	s.inspectMgr.setAllDiskRateForce(args.Rate)
+	c.Respond()
+}
+
+func (s *Service) SetInspectCycle(c *rpc.Context) {
+	span := trace.SpanFromContextSafe(c.Request.Context())
+
+	args := new(bnapi.InspectCycleArgs)
+	if err := c.ParseArgs(args); err != nil {
+		c.RespondError(err)
+		return
+	}
+
+	if args.Days <= 0 {
+		span.Errorf("cycle days value must be positive: %d", args.Days)
+		c.RespondError(bloberr.ErrInvalidParam)
+		return
+	}
+
+	span.Infof("set data inspect cycle args: %+v", args)
+
+	s.inspectMgr.SetCycleDays(args.Days)
 	c.Respond()
 }
 
@@ -771,7 +984,7 @@ func (s *Service) GetInspectStat(c *rpc.Context) {
 	span := trace.SpanFromContextSafe(c.Request.Context())
 
 	stat := DataInspectStat{
-		DataInspectConf: s.inspectMgr.conf,
+		DataInspectConf: s.inspectMgr.dataInspectConf(),
 		Open:            s.inspectMgr.getSwitch(),
 	}
 	span.Infof("data inspect args: %+v", stat)
@@ -810,38 +1023,6 @@ func (s *Service) CleanInspectMetric(c *rpc.Context) {
 // query API
 // ---------------------------------------------------------------------------------------
 
-// InspectChunkStateInfo is the JSON view of one chunk's inspect state. The
-// inspect stat handlers always wrap it in a map keyed by vuid.
-type InspectChunkStateInfo struct {
-	Vuid         proto.Vuid     `json:"vuid"`
-	Cursor       proto.BlobID   `json:"cursor"`
-	CycleMaxBid  proto.BlobID   `json:"cycle_max_bid"`
-	Counted      bool           `json:"counted"`
-	CycleID      uint64         `json:"cycle_id"`
-	CycleCnt     int64          `json:"cycle_cnt"`
-	CycleScanned int64          `json:"cycle_scanned"`
-	BadBids      []proto.BlobID `json:"bad_bids"`
-}
-
-func inspectChunkStateInfo(st core.InspectChunkState) InspectChunkStateInfo {
-	bids := make([]proto.BlobID, 0, len(st.BadBids))
-	for bid := range st.BadBids {
-		bids = append(bids, bid)
-	}
-	sort.Slice(bids, func(i, j int) bool { return bids[i] < bids[j] })
-
-	return InspectChunkStateInfo{
-		Vuid:         st.Vuid,
-		Cursor:       st.Cursor,
-		CycleMaxBid:  st.CycleMaxBid,
-		Counted:      !st.NeedCount(),
-		CycleID:      st.CycleID,
-		CycleCnt:     st.CycleCnt,
-		CycleScanned: st.CycleScanned,
-		BadBids:      bids,
-	}
-}
-
 func (s *Service) listInspectDiskStates(ctx context.Context) (map[proto.DiskID]core.InspectDiskState, error) {
 	disks := s.copyDiskStorages(ctx)
 	sort.Slice(disks, func(i, j int) bool { return disks[i].ID() < disks[j].ID() })
@@ -861,10 +1042,11 @@ func (s *Service) listInspectDiskStates(ctx context.Context) (map[proto.DiskID]c
 	return states, nil
 }
 
-func (s *Service) listInspectChunkStates(ctx context.Context, ds core.DiskAPI) (map[proto.Vuid]InspectChunkStateInfo, error) {
-	states := make(map[proto.Vuid]InspectChunkStateInfo)
+// listInspectChunkStates returns the persisted inspect state of every chunk on the disk.
+func (s *Service) listInspectChunkStates(ctx context.Context, ds core.DiskAPI) (map[proto.Vuid]core.InspectChunkState, error) {
+	states := make(map[proto.Vuid]core.InspectChunkState)
 	if err := ds.InspectState().RangeInspectChunkState(ctx, func(st *core.InspectChunkState) bool {
-		states[st.Vuid] = inspectChunkStateInfo(*st)
+		states[st.Vuid] = *st
 		return true
 	}); err != nil {
 		return nil, err
@@ -872,8 +1054,9 @@ func (s *Service) listInspectChunkStates(ctx context.Context, ds core.DiskAPI) (
 	return states, nil
 }
 
-// GetInspectChunkState returns the persisted inspect progress for one chunk (vuid),
-// or all chunk states on the disk when vuid=0. The response is always a map keyed by vuid.
+// GetInspectChunkState returns the persisted inspect state of one chunk (vuid),
+// or of all chunks on the disk when vuid=0. The response is always a map keyed
+// by vuid.
 // 'localhost:${port}/inspect/stat/diskid/1/vuid/10001'
 // 'localhost:${port}/inspect/stat/diskid/1/vuid/0'
 func (s *Service) GetInspectChunkState(c *rpc.Context) {
@@ -900,7 +1083,7 @@ func (s *Service) GetInspectChunkState(c *rpc.Context) {
 		return
 	}
 
-	// vuid == 0 means return all inspect chunk states under this disk.
+	// vuid == 0 means return the inspect states of all chunks under this disk.
 	if args.Vuid == 0 {
 		states, err := s.listInspectChunkStates(c.Request.Context(), ds)
 		if err != nil {
@@ -921,8 +1104,7 @@ func (s *Service) GetInspectChunkState(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-	info := inspectChunkStateInfo(st)
-	c.RespondJSON(map[proto.Vuid]InspectChunkStateInfo{args.Vuid: info})
+	c.RespondJSON(map[proto.Vuid]core.InspectChunkState{args.Vuid: st})
 }
 
 // GetInspectDiskState returns the persisted disk-level inspect state for one disk,
