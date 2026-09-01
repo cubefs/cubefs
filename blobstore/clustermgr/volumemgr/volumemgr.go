@@ -60,6 +60,7 @@ const (
 	defaultShardNum                    = 16
 
 	defaultRouteItemTruncateIntervalNum = 1 << 14
+	defaultLoadVolumeUnitConcurrency    = 8
 )
 
 // notify queue key definition

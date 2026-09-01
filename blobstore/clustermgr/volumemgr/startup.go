@@ -18,6 +18,8 @@ import (
 	"context"
 	"math/rand"
 	"strconv"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
@@ -33,6 +35,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 	"github.com/cubefs/cubefs/blobstore/util/log"
+	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
 
 // VolumeMgrConfig defines volume manager configuration
@@ -60,6 +63,8 @@ type VolumeMgrConfig struct {
 	AllocatableSize uint64 `json:"allocatable_size"`
 	// the number of volume partitions that can be allocated
 	ShardNum int `json:"shard_num"`
+
+	LoadVolumeUnitConcurrency int `json:"load_volume_unit_concurrency"`
 
 	MinAllocableHealthVolumeCount int  `json:"min_allocable_health_vol_count"`
 	CheckHealthyVolumeIntervalS   int  `json:"check_healthy_volume_interval_s"`
@@ -119,6 +124,9 @@ func (c *VolumeMgrConfig) checkAndFix() {
 	}
 	if c.CheckHealthyVolumeIntervalS <= 0 {
 		c.CheckHealthyVolumeIntervalS = defaultCheckExpiredVolumeIntervalS
+	}
+	if c.LoadVolumeUnitConcurrency <= 0 {
+		c.LoadVolumeUnitConcurrency = defaultLoadVolumeUnitConcurrency
 	}
 }
 
@@ -223,28 +231,46 @@ func (v *VolumeMgr) Start() {
 }
 
 func (v *VolumeMgr) loadVolume(ctx context.Context) error {
+	span := trace.SpanFromContextSafe(ctx)
+	pool := taskpool.New(v.LoadVolumeUnitConcurrency, v.LoadVolumeUnitConcurrency)
+	defer pool.Close()
 	return v.volumeTbl.RangeVolumeRecord(func(volRecord *volumedb.VolumeRecord) error {
-		// volumeUnits use for internal
-		var volumeUnits []*volumeUnit
-
 		if _, ok := v.codeMode[volRecord.CodeMode]; !ok {
 			return errors.New("codeMode not exist in config")
 		}
 
-		for _, vuidPrefix := range volRecord.VuidPrefixs {
-			unitRecord, err := v.volumeTbl.GetVolumeUnit(vuidPrefix)
-			if err != nil {
-				log.Errorf("get volume unit error:%v", err)
-				return err
-			}
-			diskInfo, err := v.diskMgr.GetDiskInfo(ctx, unitRecord.DiskID)
-			if err != nil {
-				log.Errorf("get [diskid:%d]disk info error:%v", unitRecord.DiskID, err)
-				return err
-			}
-			vUnit := volumeUnitRecordToVolumeUnit(unitRecord)
-			vUnit.vuInfo.Host = diskInfo.Host
-			volumeUnits = append(volumeUnits, vUnit)
+		n := len(volRecord.VuidPrefixs)
+		volumeUnits := make([]*volumeUnit, n)
+		var (
+			wg       sync.WaitGroup
+			firstErr atomic.Value
+		)
+		wg.Add(len(volRecord.VuidPrefixs))
+		for i, vuidPrefix := range volRecord.VuidPrefixs {
+			i, vp := i, vuidPrefix
+			pool.Run(func() {
+				defer wg.Done()
+				unitRecord, err := v.volumeTbl.GetVolumeUnit(vp)
+				if err != nil {
+					span.Errorf("get volume unit error:%v", err)
+					firstErr.CompareAndSwap(nil, err)
+					return
+				}
+				diskInfo, err := v.diskMgr.GetDiskInfo(ctx, unitRecord.DiskID)
+				if err != nil {
+					span.Errorf("get [diskid:%d]disk info error:%v", unitRecord.DiskID, err)
+					firstErr.CompareAndSwap(nil, err)
+					return
+				}
+				vUnit := volumeUnitRecordToVolumeUnit(unitRecord)
+				vUnit.vuInfo.Host = diskInfo.Host
+				volumeUnits[i] = vUnit
+			})
+		}
+		wg.Wait()
+
+		if err, _ := firstErr.Load().(error); err != nil {
+			return errors.Newf("load volume unit failed, vid[%d]: %v", volRecord.Vid, err)
 		}
 
 		volInfo := volumeRecordToVolumeInfoBase(volRecord)

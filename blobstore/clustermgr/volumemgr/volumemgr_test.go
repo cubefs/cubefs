@@ -24,6 +24,7 @@ import (
 	"path"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -243,6 +244,201 @@ func generateToken(volumeRecords []*volumedb.VolumeRecord) (ret []*volumedb.Toke
 		}
 	}
 	return
+}
+
+func newLoadVolumeTestMgr(t *testing.T, volumeRecords []*volumedb.VolumeRecord,
+	unitRecords [][]*volumedb.VolumeUnitRecord, diskMgr cluster.BlobNodeManagerAPI,
+	concurrency int,
+) *VolumeMgr {
+	volumeDB, err := volumedb.Open(path.Join(t.TempDir(), "volumedb"))
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, volumeDB.Close())
+	})
+
+	volumeTable, err := volumedb.OpenVolumeTable(volumeDB.KVStore)
+	require.NoError(t, err)
+	require.NoError(t, volumeTable.PutVolumesAndUnitsAndRoutes(volumeRecords, unitRecords, nil))
+
+	codeModes := make(map[codemode.CodeMode]codeModeConf)
+	for _, record := range volumeRecords {
+		codeModes[record.CodeMode] = codeModeConf{mode: record.CodeMode, tactic: record.CodeMode.Tactic()}
+	}
+
+	oldNotifyQueue := defaultVolumeNotifyQueue
+	defaultVolumeNotifyQueue = &volumeNotifyQueue{waits: make(map[interface{}][]NotifyFunc)}
+	t.Cleanup(func() {
+		defaultVolumeNotifyQueue = oldNotifyQueue
+	})
+
+	return &VolumeMgr{
+		all:       newShardedVolumes(1),
+		volumeTbl: volumeTable,
+		codeMode:  codeModes,
+		diskMgr:   diskMgr,
+		stat:      newVolumeStat(1, 0, 0),
+		VolumeMgrConfig: VolumeMgrConfig{
+			LoadVolumeUnitConcurrency: concurrency,
+		},
+	}
+}
+
+func waitLoadVolumeSignal(t *testing.T, signal <-chan struct{}, name string) {
+	t.Helper()
+	select {
+	case <-signal:
+	case <-time.After(3 * time.Second):
+		t.Fatalf("timeout waiting for %s", name)
+	}
+}
+
+func TestVolumeMgrConfig_DefaultLoadVolumeUnitConcurrency(t *testing.T) {
+	conf := VolumeMgrConfig{}
+
+	conf.checkAndFix()
+
+	require.Equal(t, defaultLoadVolumeUnitConcurrency, conf.LoadVolumeUnitConcurrency)
+}
+
+func TestVolumeMgrLoadVolume_ConcurrentAndPreserveUnitOrder(t *testing.T) {
+	volumeRecords, unitRecords, _ := generateVolumeRecord(codemode.EC15P12, 1, 2)
+	volumeRecords[0].Status = proto.VolumeStatus(0)
+
+	ctr := gomock.NewController(t)
+	diskMgr := cluster.NewMockBlobNodeManagerAPI(ctr)
+	firstEntered := make(chan struct{}, 1)
+	penultimateEntered := make(chan struct{}, 1)
+	lastEntered := make(chan struct{}, 1)
+	releaseFirst := make(chan struct{})
+	releasePenultimate := make(chan struct{})
+	releaseLast := make(chan struct{})
+	var releaseFirstOnce, releasePenultimateOnce, releaseLastOnce sync.Once
+	releaseFirstTask := func() { releaseFirstOnce.Do(func() { close(releaseFirst) }) }
+	releasePenultimateTask := func() { releasePenultimateOnce.Do(func() { close(releasePenultimate) }) }
+	releaseLastTask := func() { releaseLastOnce.Do(func() { close(releaseLast) }) }
+	defer releaseFirstTask()
+	defer releasePenultimateTask()
+	defer releaseLastTask()
+
+	var inFlight, maxInFlight int32
+	diskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).Times(len(unitRecords[0])).DoAndReturn(
+		func(_ context.Context, diskID proto.DiskID) (*clustermgr.BlobNodeDiskInfo, error) {
+			current := atomic.AddInt32(&inFlight, 1)
+			defer atomic.AddInt32(&inFlight, -1)
+			for {
+				max := atomic.LoadInt32(&maxInFlight)
+				if current <= max || atomic.CompareAndSwapInt32(&maxInFlight, max, current) {
+					break
+				}
+			}
+
+			switch diskID {
+			case 1:
+				firstEntered <- struct{}{}
+				<-releaseFirst
+			case 26:
+				penultimateEntered <- struct{}{}
+				<-releasePenultimate
+			case 27:
+				lastEntered <- struct{}{}
+				<-releaseLast
+			}
+			return &clustermgr.BlobNodeDiskInfo{
+				DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{DiskID: diskID},
+				DiskInfo: clustermgr.DiskInfo{
+					Host: fmt.Sprintf("host-%d", diskID),
+				},
+			}, nil
+		},
+	)
+	diskMgr.EXPECT().IsDiskWritable(gomock.Any(), gomock.Any()).Times(len(unitRecords[0])).Return(true, nil)
+
+	mgr := newLoadVolumeTestMgr(t, volumeRecords, unitRecords, diskMgr, 2)
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- mgr.loadVolume(context.Background())
+	}()
+
+	waitLoadVolumeSignal(t, firstEntered, "first volume unit")
+	waitLoadVolumeSignal(t, penultimateEntered, "penultimate volume unit")
+	require.Equal(t, int32(2), atomic.LoadInt32(&maxInFlight))
+
+	releaseFirstTask()
+	waitLoadVolumeSignal(t, lastEntered, "last volume unit")
+	releasePenultimateTask()
+	releaseLastTask()
+	require.NoError(t, <-errCh)
+
+	loaded := mgr.all.getVol(volumeRecords[0].Vid)
+	require.NotNil(t, loaded)
+	require.Len(t, loaded.vUnits, len(volumeRecords[0].VuidPrefixs))
+	for i, vuidPrefix := range volumeRecords[0].VuidPrefixs {
+		require.Equal(t, vuidPrefix, loaded.vUnits[i].vuidPrefix)
+		require.Equal(t, fmt.Sprintf("host-%d", loaded.vUnits[i].vuInfo.DiskID), loaded.vUnits[i].vuInfo.Host)
+	}
+}
+
+func TestVolumeMgrLoadVolume_DiskInfoErrorWaitsAndDoesNotCommit(t *testing.T) {
+	volumeRecords, unitRecords, _ := generateVolumeRecord(codemode.Replica3, 1, 2)
+	volumeRecords[0].Status = proto.VolumeStatus(0)
+
+	ctr := gomock.NewController(t)
+	diskMgr := cluster.NewMockBlobNodeManagerAPI(ctr)
+	blocked := make(chan struct{}, 1)
+	failed := make(chan struct{}, 1)
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	releaseTask := func() { releaseOnce.Do(func() { close(release) }) }
+	defer releaseTask()
+
+	diskErr := errors.New("disk info unavailable")
+	diskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
+		func(_ context.Context, diskID proto.DiskID) (*clustermgr.BlobNodeDiskInfo, error) {
+			if diskID == 1 {
+				blocked <- struct{}{}
+				<-release
+			}
+			if diskID == 2 {
+				failed <- struct{}{}
+				return nil, diskErr
+			}
+			return mockGetDiskInfo(context.Background(), diskID)
+		},
+	)
+
+	mgr := newLoadVolumeTestMgr(t, volumeRecords, unitRecords, diskMgr, 2)
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- mgr.loadVolume(context.Background())
+	}()
+
+	waitLoadVolumeSignal(t, blocked, "blocked volume unit")
+	waitLoadVolumeSignal(t, failed, "failed volume unit")
+	select {
+	case err := <-errCh:
+		t.Fatalf("loadVolume returned before all tasks completed: %v", err)
+	default:
+	}
+
+	releaseTask()
+	err := <-errCh
+	require.ErrorContains(t, err, "vid[1]")
+	require.ErrorContains(t, err, diskErr.Error())
+	require.Nil(t, mgr.all.getVol(volumeRecords[0].Vid))
+}
+
+func TestVolumeMgrLoadVolume_MissingUnitDoesNotCommit(t *testing.T) {
+	volumeRecords, _, _ := generateVolumeRecord(codemode.Replica3, 1, 2)
+	volumeRecords[0].Status = proto.VolumeStatus(0)
+
+	ctr := gomock.NewController(t)
+	diskMgr := cluster.NewMockBlobNodeManagerAPI(ctr)
+	mgr := newLoadVolumeTestMgr(t, volumeRecords, [][]*volumedb.VolumeUnitRecord{{}}, diskMgr, 2)
+
+	err := mgr.loadVolume(context.Background())
+
+	require.ErrorContains(t, err, "vid[1]")
+	require.Nil(t, mgr.all.getVol(volumeRecords[0].Vid))
 }
 
 func Test_VolumeMgr(t *testing.T) {
