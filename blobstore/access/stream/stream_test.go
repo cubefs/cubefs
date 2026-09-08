@@ -25,6 +25,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/access/controller"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/resourcepool"
 )
 
 func newReader(size int) io.Reader {
@@ -50,6 +51,7 @@ func TestAccessStreamConfig(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, idcOther, cfg.IDC)
 	require.Equal(t, map[int]int{1024: 1}, cfg.MemPoolSizeClasses)
+	require.NotNil(t, cfg.ShardedMemPool)
 	require.Equal(t, defaultDiskPunishIntervalS, cfg.DiskPunishIntervalS)
 
 	cfg = StreamConfig{
@@ -75,6 +77,22 @@ func TestAccessStreamNew(t *testing.T) {
 
 	_, err := NewStreamHandler(&StreamConfig{IDC: "idc"}, nil)
 	require.NotNil(t, err)
+}
+
+func TestAccessStreamMemPoolReuse(t *testing.T) {
+	shared := resourcepool.NewMemPool(map[int]int{1024: 1}, false)
+	cfg := StreamConfig{
+		IDC:                idcOther,
+		ShardedMemPool:     shared,
+		MemPoolSizeClasses: map[int]int{2048: 1},
+		ClusterConfig: controller.ClusterConfig{
+			Clusters: []controller.Cluster{
+				{ClusterID: 1, Hosts: []string{"host1"}},
+			},
+		},
+	}
+	require.NoError(t, confCheck(&cfg))
+	require.Same(t, shared, cfg.ShardedMemPool)
 }
 
 func TestAccessStreamDelete(t *testing.T) {

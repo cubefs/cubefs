@@ -168,6 +168,9 @@ type StreamConfig struct {
 	MemPoolSizeClasses map[int]int `json:"mem_pool_size_classes"`
 	// MemPoolWaitOnLimit enables capacity backpressure for write EC buffers.
 	MemPoolWaitOnLimit bool `json:"mem_pool_wait_on_limit"`
+	// MemPool is filled in confCheck from MemPoolSizeClasses when nil.
+	// Set it to share one pool across same-process SDK/stream instances.
+	ShardedMemPool *resourcepool.MemPool `json:"-"`
 
 	// CodeModesPutQuorums
 	// just for one AZ is down, cant write quorum in all AZs
@@ -239,6 +242,9 @@ func confCheck(cfg *StreamConfig) error {
 
 	if len(cfg.MemPoolSizeClasses) == 0 {
 		cfg.MemPoolSizeClasses = getDefaultMempoolSize()
+	}
+	if cfg.ShardedMemPool == nil {
+		cfg.ShardedMemPool = resourcepool.NewMemPool(cfg.MemPoolSizeClasses, cfg.MemPoolWaitOnLimit)
 	}
 
 	for mode, quorum := range cfg.CodeModesPutQuorums {
@@ -312,7 +318,7 @@ func NewStreamHandler(cfg *StreamConfig, stopCh <-chan struct{}) (h StreamHandle
 	}
 
 	handler := &Handler{
-		memPool:           resourcepool.NewMemPool(cfg.MemPoolSizeClasses, cfg.MemPoolWaitOnLimit),
+		memPool:           cfg.ShardedMemPool,
 		clusterController: clusterController,
 
 		blobnodeClient:  blobnode.New(&cfg.BlobnodeConfig),
