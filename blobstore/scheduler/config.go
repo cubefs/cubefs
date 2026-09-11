@@ -47,6 +47,8 @@ const (
 	defaultInspectTimeoutMs    = 10000
 	defaultInspectDegradeBatch = uint32(10000)
 
+	defaultInspectCheckTaskTimeoutIntervalMs = 10000
+
 	defaultTaskPoolSize           = 10
 	defaultDeleteHourRangeTo      = 24
 	defaultMessagePunishThreshold = 3
@@ -271,6 +273,7 @@ func (c *Config) fixInspectConfig() {
 	c.VolumeInspect.ClusterID = c.ClusterID
 	defaulter.LessOrEqual(&c.VolumeInspect.DegradeStats.Batch, defaultInspectDegradeBatch)
 	defaulter.LessOrEqual(&c.VolumeInspect.TimeoutMs, defaultInspectTimeoutMs)
+	defaulter.LessOrEqual(&c.VolumeInspect.CheckTaskTimeoutIntervalMs, defaultInspectCheckTaskTimeoutIntervalMs)
 	defaulter.LessOrEqual(&c.VolumeInspect.ListVolStep, defaultListVolStep)
 	defaulter.LessOrEqual(&c.VolumeInspect.ListVolIntervalMs, defaultListVolIntervalMs)
 	defaulter.LessOrEqual(&c.VolumeInspect.InspectBatch, defaultInspectBatch)

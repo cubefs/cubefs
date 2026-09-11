@@ -70,7 +70,7 @@ func newInspector(t *testing.T) *VolumeInspectMgr {
 	getter := NewMockDiskGetter(ctr)
 	taskSwitch := mocks.NewMockSwitcher(ctr)
 	shardRepairSender := NewMockMqProxyAPI(ctr)
-	conf := &VolumeInspectMgrCfg{InspectIntervalS: defaultInspectIntervalS, TimeoutMs: 1}
+	conf := &VolumeInspectMgrCfg{InspectIntervalS: defaultInspectIntervalS, TimeoutMs: 1, CheckTaskTimeoutIntervalMs: 1}
 
 	return NewVolumeInspectMgr(clusterMgr, shardRepairSender, taskSwitch, conf, getter)
 }
