@@ -230,4 +230,5 @@ func Register(app *grumble.App) {
 			f.IntL("codemode", 0, "on special codemode")
 		},
 	})
+	addCmdStatus(accessCommand)
 }
