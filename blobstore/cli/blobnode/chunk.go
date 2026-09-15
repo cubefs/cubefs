@@ -21,6 +21,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/cli/common/cfmt"
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/rpc"
 
 	"github.com/desertbit/grumble"
 )
@@ -115,6 +116,32 @@ func addCmdChunk(cmd *grumble.Command) {
 				return err
 			}
 			fmt.Println("chunk create success.")
+			return nil
+		},
+	})
+
+	chunkCommand.AddCommand(&grumble.Command{
+		Name: "inspect",
+		Help: "inspect one chunk immediately",
+		Flags: func(f *grumble.Flags) {
+			blobnodeFlags(f)
+			f.UintL("diskid", 1, "disk id to inspect")
+			f.UintL("vuid", 1, "vuid")
+		},
+		Run: func(c *grumble.Context) error {
+			// inspect whole chunk may execute long time, so set client timeout to 0
+			// to explicitly avoid timeout
+			cli := blobnode.New(&blobnode.Config{Config: rpc.Config{ClientTimeoutMs: 0}})
+			host := c.Flags.String("host")
+			args := blobnode.ChunkInspectArgs{
+				DiskID: proto.DiskID(c.Flags.Uint("diskid")),
+				Vuid:   proto.Vuid(c.Flags.Uint("vuid")),
+			}
+			ret, err := cli.InspectChunk(common.CmdContext(), host, &args)
+			if err != nil {
+				return err
+			}
+			fmt.Println(common.Readable(ret))
 			return nil
 		},
 	})

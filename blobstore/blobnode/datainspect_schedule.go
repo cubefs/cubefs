@@ -282,7 +282,7 @@ func (mgr *DataInspectMgr) inspectCountOnly(ctx context.Context, ds core.DiskAPI
 // callers get the size from calcScanShardsPerRound and must not pass 0 for "skip").
 // window <= 0: scan through to the cycle snapshot bound / EOF (force-scan path).
 //
-// Count-only is the caller's responsibility when st.NeedCount(); this function only
+// Count-only is the caller's responsibility when the chunk still needs counting; this function only
 // walks shard pages. st.Cursor is advanced in memory after each fully successful page.
 // Returns the number of shards listed in this call.
 func (mgr *DataInspectMgr) inspectScanWindow(ctx context.Context,
