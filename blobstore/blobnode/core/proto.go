@@ -61,35 +61,14 @@ type DiskStats struct {
 	TotalDiskSize int64 `json:"total_disk_size"` // total actual disk size
 }
 
-// InspectDiskState and InspectChunkState are persisted by core/disk.SuperBlock
-// via the shared kv meta store. They live in core so DiskAPI, the disk engine,
-// and service-layer query APIs can share them without an import cycle.
-type InspectDiskState struct {
-	DiskID       proto.DiskID `json:"disk_id"`
-	CycleStartAt int64        `json:"cycle_start_at"` // UnixNano; 0 = not initialized (first cycle)
-	CycleID      uint64       `json:"cycle_id"`       // per-disk inspect cycle
-}
-
-// InspectChunkState is the per-chunk persistent inspect progress, keyed by vuid.
-type InspectChunkState struct {
-	Vuid proto.Vuid `json:"vuid"`
-
-	CycleID uint64 `json:"cycle_id"` // inspect cycle this state belongs to
-
-	Cursor       proto.BlobID `json:"cursor"`        // next ListShards start point; InValidBlobID means scan from the beginning
-	CycleMaxBid  proto.BlobID `json:"cycle_max_bid"` // highest bid recorded by count-only mode; 0 means has not been counted yet
-	CycleScanned int64        `json:"cycle_scanned"` // number of shards scanned so far in this cycle, used for window tuning only
-	CycleCnt     int64        `json:"cycle_cnt"`     // shard count snapshot; -1 until count-only has run, >= 0 means counted
-
-	// bad-bid memory, preserved across cycle resets
-	BadBids map[proto.BlobID]BadBidMeta `json:"bad_bids,omitempty"` // bid -> metadata
-}
-
-// BadBidMeta is the per-bid metadata kept in InspectChunkState.BadBids.
-type BadBidMeta struct {
-	FoundAt int64  `json:"found_at"`         // UnixNano, the first time the bid was flagged bad
-	Reason  string `json:"reason,omitempty"` // error text captured
-}
+type (
+	// InspectDiskState / InspectChunkState / BadBidMeta are defined in the blobnode
+	// API package so HTTP/CLI and the disk engine share one persisted layout.
+	// SuperBlock stores them via the shared kv meta store.
+	InspectDiskState  = bnapi.InspectDiskState
+	InspectChunkState = bnapi.InspectChunkState
+	BadBidMeta        = bnapi.BadBidMeta
+)
 
 type StorageStat struct {
 	FileSize   int64              `json:"file_size"`

@@ -52,23 +52,9 @@ const (
 type (
 	InspectDiskState  = core.InspectDiskState
 	InspectChunkState = core.InspectChunkState
+	DataInspectConf   = bnapi.DataInspectConf
+	DataInspectStat   = bnapi.DataInspectStat
 )
-
-type DataInspectConf struct {
-	IntervalSec   int   `json:"interval_sec"`    // wait switch interval
-	RateLimit     int   `json:"rate_limit"`      // max rate limit per second
-	BatchReadSize int64 `json:"batch_read_size"` // max data bytes per BatchRead call; default 16MB
-	CycleDays     int   `json:"cycle_days"`      // full inspect cycle length in days; default 90
-
-	Proxy proxy.LbConfig `json:"proxy"` // used to send crc repair messages.
-
-	Record recordlog.Config `json:"record"`
-}
-
-type DataInspectStat struct {
-	DataInspectConf
-	Open bool `json:"open"` // data_inspect enabled
-}
 
 // lazyRepairSender builds the proxy repair client on first use and caches it.
 type lazyRepairSender struct {

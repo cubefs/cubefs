@@ -150,10 +150,3 @@ type CompactChunkArgs struct {
 type DiskProbeArgs struct {
 	Path string `json:"path"`
 }
-
-type BadShard struct {
-	DiskID proto.DiskID
-	Vuid   proto.Vuid
-	Bid    proto.BlobID
-	Err    error
-}

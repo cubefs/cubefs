@@ -61,18 +61,6 @@ type ConfigReloadArgs struct {
 	Value string `json:"value"`
 }
 
-type InspectRateArgs struct {
-	Rate int `json:"rate"`
-}
-
-type InspectCycleArgs struct {
-	Days int `json:"days"`
-}
-
-type InspectCleanMetricArgs struct {
-	DiskID proto.DiskID `json:"diskid"`
-}
-
 // LimiterStat single limiter using counter
 type LimiterStat struct {
 	Running   int `json:"running"`
@@ -120,6 +108,9 @@ type StorageAPI interface {
 	Stat(ctx context.Context, host string) (infos []*clustermgr.BlobNodeDiskInfo, err error)
 	DiskInfo(ctx context.Context, host string, args *DiskStatArgs) (di *clustermgr.BlobNodeDiskInfo, err error)
 	QosStat(ctx context.Context, host string, args *QosStatArgs) (stat map[proto.DiskID]map[string]IoLimiterStats, err error)
+	GetInspectStat(ctx context.Context, host string) (stat *DataInspectStat, err error)
+	GetInspectDiskState(ctx context.Context, host string, args *DiskStatArgs) (stat map[proto.DiskID]InspectDiskState, err error)
+	GetInspectChunkState(ctx context.Context, host string, args *ChunkInspectArgs) (stat map[proto.Vuid]InspectChunkState, err error)
 
 	// chunks
 	CreateChunk(ctx context.Context, host string, args *CreateChunkArgs) (err error)
@@ -128,6 +119,7 @@ type StorageAPI interface {
 	SetChunkReadonly(ctx context.Context, host string, args *ChangeChunkStatusArgs) (err error)
 	SetChunkReadwrite(ctx context.Context, host string, args *ChangeChunkStatusArgs) (err error)
 	ListChunks(ctx context.Context, host string, args *ListChunkArgs) (cis []*clustermgr.ChunkInfo, err error)
+	InspectChunk(ctx context.Context, host string, args *ChunkInspectArgs) (ret []BadShard, err error)
 
 	// shard
 	GetShard(ctx context.Context, host string, args *GetShardArgs) (body io.ReadCloser, shardCrc uint32, err error)
