@@ -177,9 +177,12 @@ func TestPrepareMigrateTask(t *testing.T) {
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UnlockVolume(any, any, any).Return(nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().DeleteMigrateTask(any, any).Return(nil)
 		mgr.taskLogger.(*mocks.MockRecordLogEncoder).EXPECT().Encode(any).Return(nil)
+		require.True(t, mgr.IsMigratingDisk(proto.DiskID(4)))
 		err = mgr.prepareTask()
 		require.NoError(t, err)
-		base.VolTaskLockerInst().Unlock(context.Background(), 100)
+		// finish in advance must release the migrating disk slot
+		require.False(t, mgr.IsMigratingDisk(proto.DiskID(4)))
+		require.Equal(t, 0, mgr.GetMigratingDiskNum())
 	}
 	{
 		// source chunk has moved, volume NOT locked: skip UnlockVolume, finish task in advance directly
@@ -195,9 +198,11 @@ func TestPrepareMigrateTask(t *testing.T) {
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Return(volume, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().DeleteMigrateTask(any, any).Return(nil)
 		mgr.taskLogger.(*mocks.MockRecordLogEncoder).EXPECT().Encode(any).Return(nil)
+		require.True(t, mgr.IsMigratingDisk(proto.DiskID(4)))
 		err = mgr.prepareTask()
 		require.NoError(t, err)
-		base.VolTaskLockerInst().Unlock(context.Background(), 300)
+		require.False(t, mgr.IsMigratingDisk(proto.DiskID(4)))
+		require.Equal(t, 0, mgr.GetMigratingDiskNum())
 	}
 	{
 		// one task and finish in advance because  other migrate task is doing on this volume
@@ -211,17 +216,19 @@ func TestPrepareMigrateTask(t *testing.T) {
 		volume := MockMigrateVolInfoMap[100]
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Return(volume, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().LockVolume(any, any, any).Return(errMock)
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().DeleteMigrateTask(any, any).Return(nil)
-		mgr.taskLogger.(*mocks.MockRecordLogEncoder).EXPECT().Encode(any).Return(errMock)
 		err = mgr.prepareTask()
 		require.True(t, errors.Is(err, errMock))
 
 		// lock failed and call lockVolFailHandleFunc
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Return(volume, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().LockVolume(any, any, any).Return(errcode.ErrLockNotAllow)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().DeleteMigrateTask(any, any).Return(nil)
+		mgr.taskLogger.(*mocks.MockRecordLogEncoder).EXPECT().Encode(any).Return(nil)
+		require.True(t, mgr.IsMigratingDisk(proto.DiskID(4)))
 		err = mgr.prepareTask()
 		require.NoError(t, err)
-		base.VolTaskLockerInst().Unlock(context.Background(), 100)
+		require.False(t, mgr.IsMigratingDisk(proto.DiskID(4)))
+		require.Equal(t, 0, mgr.GetMigratingDiskNum())
 	}
 	{
 		// one task and normal finish
