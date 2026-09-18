@@ -817,6 +817,7 @@ func (mgr *MigrateMgr) finishTaskInAdvance(ctx context.Context, task *proto.Migr
 	mgr.finishTaskCallback(task.SourceDiskID)
 
 	base.VolTaskLockerInst().Unlock(ctx, uint32(task.SourceVuid.Vid()))
+	mgr.deleteMigratingVuid(task.SourceDiskID, task.SourceVuid)
 }
 
 func (mgr *MigrateMgr) handleUpdateVolMappingFail(ctx context.Context, task *proto.MigrateTask, err error) error {
