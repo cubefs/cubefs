@@ -159,6 +159,9 @@ type VolumeInspectMgrCfg struct {
 	// timeout of inspect
 	TimeoutMs int `json:"timeout_ms"`
 
+	// check task timeout interval of inspect
+	CheckTaskTimeoutIntervalMs int `json:"check_task_timeout_interval_ms"`
+
 	// Degrade stats
 	DegradeStats VolumeDegradeStatsCfg `json:"degrade_stats"`
 }
@@ -389,7 +392,7 @@ func (mgr *VolumeInspectMgr) waitCompleted(ctx context.Context) {
 	mgr.enableAcquire(true)
 	defer mgr.enableAcquire(false)
 
-	t := time.NewTicker(time.Duration(mgr.cfg.TimeoutMs) * time.Millisecond)
+	t := time.NewTicker(time.Duration(mgr.cfg.CheckTaskTimeoutIntervalMs) * time.Millisecond)
 	defer t.Stop()
 
 	for {

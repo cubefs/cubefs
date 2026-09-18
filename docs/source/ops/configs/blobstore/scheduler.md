@@ -186,7 +186,8 @@ Starting from version v3.3.0, concurrent disk repair is supported.
 * inspect_batch, batch inspection volume size, default is 1000
 * list_vol_step, the size of requesting clustermgr to list volumes, which can control the QPS of requesting clustermgr, default is 100
 * list_vol_interval_ms, time interval for requesting clustermgr to list volumes, default is 10ms
-* timeout_ms, time interval for checking whether a batch of inspection tasks is completed, default is 10000ms
+* timeout_ms, timeout interval for inspection task is timeout, default is 10000ms
+* check_task_timeout_interval_ms, time interval for checking whether a batch of inspection tasks is completed, default is 10000ms
 * degrade_stats, volume degrade stats
   * enable: enable volume degrade stats or not, default is false
   * batch: Batch size for statistics, defaults to 10000, ideally a multiple of inspect_batch
@@ -198,6 +199,7 @@ Starting from version v3.3.0, concurrent disk repair is supported.
     "list_vol_step": 20,
     "list_vol_interval_ms": 10,
     "timeout_ms": 10000,
+    "check_task_timeout_interval_ms": 10000,
     "degrade_stats": {
         "enable": true,
         "batch": 10000
