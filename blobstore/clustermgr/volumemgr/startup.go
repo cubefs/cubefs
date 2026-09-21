@@ -271,7 +271,7 @@ func (v *VolumeMgr) loadVolume(ctx context.Context) error {
 		// it will call change volume status event function
 		volume.setStatus(ctx, volRecord.Status)
 		// stat volume writable space
-		v.stat.addSize(volRecord.Vid, volRecord.Status, volRecord.Free)
+		v.stat.addSize(volRecord.Vid, volRecord.CodeMode, volRecord.Status, volRecord.Free)
 		return err
 	})
 }

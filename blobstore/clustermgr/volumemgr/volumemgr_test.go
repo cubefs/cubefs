@@ -1501,48 +1501,170 @@ func TestVolumeStat(t *testing.T) {
 	sliceNum := uint32(4)
 	freezeSize := uint64(100)
 	allocatableSize := uint64(500)
+	mode := codemode.EC15P12
+	modeOther := codemode.EC6P6
 
 	stat := newVolumeStat(sliceNum, freezeSize, allocatableSize)
 	require.NotNil(t, stat)
 	require.Equal(t, sliceNum, stat.num)
 	require.Equal(t, freezeSize, stat.freezeSizeThreshold)
 	require.Equal(t, allocatableSize, stat.allocatableSizeThreshold)
-	require.Equal(t, uint64(0), stat.getWriteSpace())
+	require.Equal(t, uint64(0), stat.getWriteSpace(mode))
+	require.Equal(t, uint64(0), stat.getWriteSpace(codemode.Replica3))
+	require.Equal(t, uint64(0), stat.getTotalWriteSpace())
 
-	// test addSize: new vid with idle status and freeSize > allocatableSizeThreshold
 	vid1 := proto.Vid(1)
 	freeSize1 := uint64(1000)
-	stat.addSize(vid1, proto.VolumeStatusIdle, freeSize1)
-	require.Equal(t, freeSize1-freezeSize, stat.getWriteSpace())
+	stat.addSize(vid1, mode, proto.VolumeStatusIdle, freeSize1)
+	require.Equal(t, freeSize1-freezeSize, stat.getWriteSpace(mode))
 
-	// test addSize: same vid with idle status, freeSize increase
 	newFreeSize1 := uint64(1200)
-	stat.addSize(vid1, proto.VolumeStatusIdle, newFreeSize1)
-	require.Equal(t, freeSize1-freezeSize+(newFreeSize1-freeSize1), stat.getWriteSpace())
+	stat.addSize(vid1, mode, proto.VolumeStatusIdle, newFreeSize1)
+	require.Equal(t, freeSize1-freezeSize+(newFreeSize1-freeSize1), stat.getWriteSpace(mode))
 
-	// test addSize: same vid with idle status, freeSize decrease
 	decreasedFreeSize := uint64(1100)
-	expectedSpace := stat.getWriteSpace() - (newFreeSize1 - decreasedFreeSize)
-	stat.addSize(vid1, proto.VolumeStatusIdle, decreasedFreeSize)
-	require.Equal(t, expectedSpace, stat.getWriteSpace())
+	expectedSpace := stat.getWriteSpace(mode) - (newFreeSize1 - decreasedFreeSize)
+	stat.addSize(vid1, mode, proto.VolumeStatusIdle, decreasedFreeSize)
+	require.Equal(t, expectedSpace, stat.getWriteSpace(mode))
 
-	// test addSize: vid becomes non-idle (remove from stats)
-	currentSpace := stat.getWriteSpace()
-	stat.addSize(vid1, proto.VolumeStatusActive, decreasedFreeSize)
-	require.Equal(t, currentSpace-(decreasedFreeSize-freezeSize), stat.getWriteSpace())
+	currentSpace := stat.getWriteSpace(mode)
+	stat.addSize(vid1, mode, proto.VolumeStatusActive, decreasedFreeSize)
+	require.Equal(t, currentSpace-(decreasedFreeSize-freezeSize), stat.getWriteSpace(mode))
 
-	// test addSize: new vid with freeSize <= allocatableSizeThreshold (should not add)
+	stat.addSize(vid1, mode, proto.VolumeStatusIdle, decreasedFreeSize)
+	require.Equal(t, currentSpace, stat.getWriteSpace(mode))
+
 	vid2 := proto.Vid(2)
 	smallFreeSize := uint64(400)
-	spaceBeforeAdd := stat.getWriteSpace()
-	stat.addSize(vid2, proto.VolumeStatusIdle, smallFreeSize)
-	require.Equal(t, spaceBeforeAdd, stat.getWriteSpace())
+	spaceBeforeAdd := stat.getWriteSpace(mode)
+	stat.addSize(vid2, mode, proto.VolumeStatusIdle, smallFreeSize)
+	require.Equal(t, spaceBeforeAdd, stat.getWriteSpace(mode))
 
-	// test addSize: new vid with non-idle status (should not add)
 	vid3 := proto.Vid(3)
-	spaceBeforeAdd = stat.getWriteSpace()
-	stat.addSize(vid3, proto.VolumeStatusActive, freeSize1)
-	require.Equal(t, spaceBeforeAdd, stat.getWriteSpace())
+	spaceBeforeAdd = stat.getWriteSpace(mode)
+	stat.addSize(vid3, mode, proto.VolumeStatusActive, freeSize1)
+	require.Equal(t, spaceBeforeAdd, stat.getWriteSpace(mode))
+
+	stat.addSize(proto.Vid(4), modeOther, proto.VolumeStatusIdle, freeSize1)
+	require.Equal(t, currentSpace, stat.getWriteSpace(mode))
+	require.Equal(t, freeSize1-freezeSize, stat.getWriteSpace(modeOther))
+	require.Equal(t, currentSpace+(freeSize1-freezeSize), stat.getTotalWriteSpace())
+
+	allocator := newVolumeAllocator(allocConfig{
+		codeModes: map[codemode.CodeMode]codeModeConf{
+			mode:      {mode: mode, tactic: mode.Tactic()},
+			modeOther: {mode: modeOther, tactic: modeOther.Tactic()},
+		},
+		shardNum: 1,
+	})
+	vm := &VolumeMgr{stat: stat, allocator: allocator}
+	require.Equal(t, stat.getTotalWriteSpace(), vm.Stat(context.Background()).WritableSpace)
+}
+
+func TestGetCreateVolumeCount_PerCodeModeGap(t *testing.T) {
+	const minWritable = uint64(128) << 40
+	freeze := uint64(2 << 20)
+	chunkSize := uint64(16 << 30)
+	mode15 := codeModeConf{mode: codemode.EC15P12, sizeRatio: 0.3, tactic: codemode.EC15P12.Tactic(), enable: true}
+	mode6 := codeModeConf{mode: codemode.EC6P6, sizeRatio: 0.7, tactic: codemode.EC6P6.Tactic(), enable: true}
+
+	stat := newVolumeStat(1, freeze, 1<<30)
+	writable15 := uint64(20) << 40
+	writable6 := uint64(120) << 40
+	stat.addSize(1, mode15.mode, proto.VolumeStatusIdle, writable15+freeze)
+	stat.addSize(2, mode6.mode, proto.VolumeStatusIdle, writable6+freeze)
+	require.Equal(t, writable15, stat.getWriteSpace(mode15.mode))
+	require.Equal(t, writable6, stat.getWriteSpace(mode6.mode))
+	require.Greater(t, stat.getTotalWriteSpace(), minWritable)
+
+	ctr := gomock.NewController(t)
+	mockDiskMgr := cluster.NewMockBlobNodeManagerAPI(ctr)
+	mockDiskMgr.EXPECT().Stat(gomock.Any(), proto.DiskTypeHDD).AnyTimes().Return(&clustermgr.SpaceStatInfo{TotalDisk: 10})
+
+	vm := &VolumeMgr{
+		stat:    stat,
+		diskMgr: mockDiskMgr,
+		codeMode: map[codemode.CodeMode]codeModeConf{
+			mode15.mode: mode15,
+			mode6.mode:  mode6,
+		},
+		VolumeMgrConfig: VolumeMgrConfig{
+			MinWritableVolumeSpace:  minWritable,
+			MinAllocableVolumeCount: 5,
+			ChunkSize:               chunkSize,
+			FreezeThreshold:         freeze,
+		},
+	}
+
+	ctx := context.Background()
+	curVolCount := 10
+	volCount15 := vm.getCreateVolumeCount(ctx, mode15, 0)
+	volCount6 := vm.getCreateVolumeCount(ctx, mode6, 0)
+	perVol15 := chunkSize*uint64(mode15.tactic.N) - freeze
+	gap15 := uint64(float64(minWritable)*mode15.sizeRatio) - writable15
+	supplement15 := int(gap15/perVol15) + 1
+
+	got15 := vm.getCreateVolumeCount(ctx, mode15, curVolCount)
+	got6 := vm.getCreateVolumeCount(ctx, mode6, curVolCount)
+	require.Equal(t, curVolCount+supplement15, got15)
+	require.Greater(t, got15, volCount15)
+	require.Equal(t, volCount6, got6)
+}
+
+func TestGetCreateVolumeCount_ZeroPerVolWritable(t *testing.T) {
+	modeConf := codeModeConf{mode: codemode.EC15P12, sizeRatio: 1, tactic: codemode.EC15P12.Tactic(), enable: true}
+	stat := newVolumeStat(1, 0, 1<<30)
+
+	ctr := gomock.NewController(t)
+	mockDiskMgr := cluster.NewMockBlobNodeManagerAPI(ctr)
+	mockDiskMgr.EXPECT().Stat(gomock.Any(), proto.DiskTypeHDD).AnyTimes().Return(&clustermgr.SpaceStatInfo{TotalDisk: 10})
+
+	vm := &VolumeMgr{
+		stat:    stat,
+		diskMgr: mockDiskMgr,
+		codeMode: map[codemode.CodeMode]codeModeConf{
+			modeConf.mode: modeConf,
+		},
+		VolumeMgrConfig: VolumeMgrConfig{
+			MinWritableVolumeSpace:  1 << 40,
+			MinAllocableVolumeCount: 5,
+			ChunkSize:               0,
+			FreezeThreshold:         0,
+		},
+	}
+
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	volCount := vm.getCreateVolumeCount(ctx, modeConf, 0)
+	require.Equal(t, volCount, vm.getCreateVolumeCount(ctx, modeConf, 99))
+}
+
+func TestGetCreateVolumeCount_RemainderGapRoundsUp(t *testing.T) {
+	modeConf := codeModeConf{mode: codemode.EC15P12, sizeRatio: 1, tactic: codemode.EC15P12.Tactic(), enable: true}
+	stat := newVolumeStat(1, 0, 0)
+	stat.addSize(1, modeConf.mode, proto.VolumeStatusIdle, 9000)
+
+	ctr := gomock.NewController(t)
+	mockDiskMgr := cluster.NewMockBlobNodeManagerAPI(ctr)
+	mockDiskMgr.EXPECT().Stat(gomock.Any(), proto.DiskTypeHDD).AnyTimes().Return(&clustermgr.SpaceStatInfo{TotalDisk: 10})
+
+	vm := &VolumeMgr{
+		stat:    stat,
+		diskMgr: mockDiskMgr,
+		codeMode: map[codemode.CodeMode]codeModeConf{
+			modeConf.mode: modeConf,
+		},
+		VolumeMgrConfig: VolumeMgrConfig{
+			MinWritableVolumeSpace:  10000,
+			MinAllocableVolumeCount: 5,
+			ChunkSize:               100,
+			FreezeThreshold:         0,
+		},
+	}
+
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	curVolCount := 20
+	got := vm.getCreateVolumeCount(ctx, modeConf, curVolCount)
+	require.Equal(t, curVolCount+1, got)
 }
 
 func makeBenchVolumeMgr(n int) *VolumeMgr {

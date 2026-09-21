@@ -376,7 +376,7 @@ func (v *VolumeMgr) applyChunkReport(ctx context.Context, chunks *cmapi.ReportCh
 		dirty := v.dirty.Load().(*shardedVolumes)
 		dirty.putVol(vol)
 		// stat volume writable space
-		v.stat.addSize(vol.vid, status, freeSize)
+		v.stat.addSize(vol.vid, vol.volInfoBase.CodeMode, status, freeSize)
 	}
 	return
 }

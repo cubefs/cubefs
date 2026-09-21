@@ -566,7 +566,7 @@ func (v *VolumeMgr) Stat(ctx context.Context) (stat cm.VolumeStatInfo) {
 	stat.IdleVolume = statusNumM[proto.VolumeStatusIdle]
 	stat.LockVolume = statusNumM[proto.VolumeStatusLock]
 	stat.UnlockingVolume = statusNumM[proto.VolumeStatusUnlocking]
-	stat.WritableSpace = v.stat.getWriteSpace()
+	stat.WritableSpace = v.stat.getTotalWriteSpace()
 
 	return
 }
@@ -955,33 +955,27 @@ func (v *VolumeMgr) getModeUnitCount(mode codemode.CodeMode) int {
 	return unitCount
 }
 
-func (v *VolumeMgr) getWeightedDataUnitCount() float64 {
-	var weightedUnitCount float64
-	for _, modeConf := range v.codeMode {
-		if !modeConf.enable {
-			continue
-		}
-		weightedUnitCount += float64(modeConf.tactic.N) * modeConf.sizeRatio
-	}
-	return weightedUnitCount
-}
-
 func (v *VolumeMgr) getCreateVolumeCount(ctx context.Context, modeConf codeModeConf, curVolCount int) int {
 	span := trace.SpanFromContextSafe(ctx)
 
 	diskNums := v.diskMgr.Stat(ctx, proto.DiskTypeHDD).TotalDisk
 	count := v.getModeUnitCount(modeConf.mode)
 	volCount := int(util.Max(float64(diskNums)*modeConf.sizeRatio/float64(count), float64(v.MinAllocableVolumeCount)*modeConf.sizeRatio))
-	writableSpace := v.stat.getWriteSpace()
-	if writableSpace >= v.MinWritableVolumeSpace {
+	modeWritable := v.stat.getWriteSpace(modeConf.mode)
+	modeMinSpace := uint64(float64(v.MinWritableVolumeSpace) * modeConf.sizeRatio)
+	if modeWritable >= modeMinSpace {
 		span.Infof("code mode %v, min allocatable volume count is %d, current count is %d", modeConf.mode, v.MinAllocableVolumeCount, curVolCount)
 		return volCount
 	}
-	weightedUnitCount := v.getWeightedDataUnitCount()
-	writableSpaceVolCount := int(float64(v.MinWritableVolumeSpace-writableSpace) / float64(v.ChunkSize) / weightedUnitCount * modeConf.sizeRatio)
-	span.Infof("code mode %v, writable space vol count %d, min writable vol space %d, current space %d", modeConf.mode, writableSpaceVolCount, v.MinWritableVolumeSpace, writableSpace)
+	gap := modeMinSpace - modeWritable
+	perVolWritable := v.ChunkSize*uint64(modeConf.tactic.N) - v.FreezeThreshold
+	if perVolWritable == 0 {
+		return volCount
+	}
+	supplement := int(gap/perVolWritable) + 1
+	span.Infof("code mode %v, writable space vol count %d, min writable vol space %d, current space %d", modeConf.mode, supplement, modeMinSpace, modeWritable)
 
-	return util.Max(volCount, curVolCount+writableSpaceVolCount)
+	return util.Max(volCount, curVolCount+supplement)
 }
 
 func (v *VolumeMgr) createVolumeCount(ctx context.Context, modeConfig codeModeConf, curVolCount int, healthyCount int) int {
