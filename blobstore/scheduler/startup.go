@@ -23,6 +23,8 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/common/trace"
+
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	api "github.com/cubefs/cubefs/blobstore/api/scheduler"
 	"github.com/cubefs/cubefs/blobstore/cmd"
@@ -33,6 +35,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/taskswitch"
 	"github.com/cubefs/cubefs/blobstore/scheduler/base"
 	"github.com/cubefs/cubefs/blobstore/scheduler/client"
+	"github.com/cubefs/cubefs/blobstore/util/closer"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
@@ -42,11 +45,9 @@ const (
 )
 
 var (
-	errIllegalClusterID = errors.New("illegal cluster_id")
-	errInvalidMembers   = errors.New("invalid members")
-	errInvalidLeader    = errors.New("invalid leader")
-	errInvalidNodeID    = errors.New("invalid node_id")
-	errInvalidKafka     = errors.New("invalid kafka")
+	errIllegalClusterID    = errors.New("illegal cluster_id")
+	errInvalidRegisterHost = errors.New("invalid service register host")
+	errInvalidKafka        = errors.New("invalid kafka")
 )
 
 var (
@@ -97,10 +98,13 @@ func NewService(conf *Config) (svr *Service, err error) {
 
 	svr = &Service{
 		ClusterID:     conf.ClusterID,
-		leader:        conf.IsLeader(),
-		leaderHost:    conf.Leader(),
-		followerHosts: conf.Follower(),
+		leader:        conf.IsLeader,
+		selfHost:      conf.ServiceRegister.Host,
+		memberCloser:  closer.New(),
 		kafkaMonitors: make([]*base.KafkaTopicMonitor, 0),
+	}
+	if conf.IsLeader {
+		svr.setLeaderHost(conf.ServiceRegister.Host)
 	}
 
 	clusterMgrCli := client.NewClusterMgrClient(&conf.ClusterMgr)
@@ -115,7 +119,7 @@ func NewService(conf *Config) (svr *Service, err error) {
 
 	topoConf := &clusterTopologyConfig{
 		ClusterID:               conf.ClusterID,
-		Leader:                  conf.IsLeader(),
+		Leader:                  conf.IsLeader,
 		UpdateInterval:          time.Duration(conf.TopologyUpdateIntervalMin) * time.Minute,
 		VolumeUpdateInterval:    time.Duration(conf.VolumeCacheUpdateIntervalS) * time.Second,
 		FreeChunkCounterBuckets: conf.FreeChunkCounterBuckets,
@@ -150,7 +154,13 @@ func NewService(conf *Config) (svr *Service, err error) {
 	}
 
 	if !svr.leader {
-		return
+		host, err := svr.clusterMgrCli.GetLeader(context.Background())
+		if err != nil {
+			log.Errorf("get leader host failed: err[%v]", err)
+			return svr, nil
+		}
+		svr.setLeaderHost(host)
+		return svr, nil
 	}
 
 	err = svr.NewKafkaMonitor(conf.ClusterID)
@@ -217,6 +227,12 @@ func NewService(conf *Config) (svr *Service, err error) {
 		log.Errorf("load task from database failed: err[%+v]", err)
 		return nil, err
 	}
+
+	if err = svr.clusterMgrCli.SetLeader(context.Background(), svr.selfHost); err != nil {
+		return nil, fmt.Errorf("report leader host: %w", err)
+	}
+
+	go svr.loopRefreshMembers(time.Duration(conf.MemberRefreshIntervalS) * time.Second)
 
 	go svr.Run()
 	return svr, nil
@@ -341,24 +357,54 @@ func (svr *Service) needForwardToLeader(req *http.Request) bool {
 
 // forwardToLeader will forward http request to leader
 func (svr *Service) forwardToLeader(w http.ResponseWriter, req *http.Request) {
-	url, err := url.Parse(scheme + req.RequestURI)
-	if err != nil {
-		panic("parse leader host url failed: " + err.Error())
+	host := svr.getLeaderHost()
+	if host != "" && svr.serveReverseProxy(w, req, host) {
+		return
 	}
-	url.Host = svr.leaderHost
+	newHost, err := svr.clusterMgrCli.GetLeader(req.Context())
+	if err != nil || newHost == "" || newHost == host {
+		http.Error(w, "forward to leader failed, leader unavailable", http.StatusBadGateway)
+		return
+	}
+	svr.setLeaderHost(newHost)
+	if svr.serveReverseProxy(w, req, newHost) {
+		return
+	}
+	http.Error(w, "forward to leader failed", http.StatusBadGateway)
+}
 
+func (svr *Service) serveReverseProxy(w http.ResponseWriter, req *http.Request, host string) bool {
+	span := trace.SpanFromContextSafe(req.Context())
+	host = normalizeHost(host)
+	if host == "" {
+		return false
+	}
+	target, err := url.Parse(scheme + req.RequestURI)
+	if err != nil {
+		span.Errorf("forward failed, %s", err)
+		return false
+	}
+	target.Host = host
+	failed := false
 	proxy := httpproxy.ReverseProxy{
 		Director: func(request *http.Request) {
-			request.URL = url
+			request.URL = target
+		},
+		ErrorHandler: func(w http.ResponseWriter, req *http.Request, err error) {
+			span.Errorf("forward failed, err: %s", err)
+			failed = true
 		},
 	}
-
 	proxy.ServeHTTP(w, req)
+	return !failed
 }
 
 // Close close service safe
 func (svr *Service) Close() {
 	log.Infof("stop scheduler service")
+	if svr.memberCloser != nil {
+		svr.memberCloser.Close()
+	}
 	svr.blobDeleteMgr.Close()
 	svr.shardRepairMgr.Close()
 	if !svr.leader {
