@@ -59,6 +59,9 @@ const (
 	DeleteStatusUndo
 )
 
+// noSegment marks an hour uncovered by any QPSHourRange in the hour table.
+const noSegment = -1
+
 // ErrVunitLengthNotEqual vunit length not equal
 var (
 	ErrVunitLengthNotEqual = errors.New("vunit length not equal")
@@ -143,19 +146,66 @@ func toDelDoc(msg proto.DeleteMsg) proto.DelDoc {
 	}
 }
 
-type HourRange struct {
+// QPSHourRange defines a daily time window and the delete QPS applied within it.
+// The window is a half-open interval [From, To) over integer hours, with From
+// and To in [0, 24]. To < From means a cross-night window [From, 24) ∪ [0, To).
+type QPSHourRange struct {
 	From int `json:"from"`
 	To   int `json:"to"`
+	QPS  int `json:"qps"`
 }
 
-func (t HourRange) Valid() bool {
-	if t.From > t.To {
+// inBounds reports whether From and To are within [0, 24].
+func (s QPSHourRange) inBounds() bool {
+	return s.From >= 0 && s.From <= 24 && s.To >= 0 && s.To <= 24
+}
+
+// valid reports whether the segment's own bounds and QPS are legal. Overlap
+// between segments is checked separately during hour-table expansion.
+func (s QPSHourRange) valid() bool {
+	if s.From == s.To {
 		return false
 	}
-	if t.From < 0 || t.From > 24 || t.To < 0 || t.To > 24 {
+	if !s.inBounds() {
+		return false
+	}
+	if s.QPS < 0 {
 		return false
 	}
 	return true
+}
+
+// covers reports whether the given hour (0-23) falls in this segment.
+func (s QPSHourRange) covers(hour int) bool {
+	if s.From < s.To {
+		return hour >= s.From && hour < s.To
+	}
+	// cross-night: From > To (From == To is rejected by valid)
+	return hour >= s.From || hour < s.To
+}
+
+// buildHourTable validates the schedule and expands it into a length-24 lookup
+// table mapping each hour to the covering segment index, or noSegment if none.
+// It rejects invalid segments and any overlap (including cross-night overlap).
+func buildHourTable(segments []QPSHourRange) (ht [24]int, err error) {
+	for i := range ht {
+		ht[i] = noSegment
+	}
+	for idx, seg := range segments {
+		if !seg.valid() {
+			return ht, errors.New("invalid delete_rate_schedule")
+		}
+		for h := 0; h < 24; h++ {
+			if !seg.covers(h) {
+				continue
+			}
+			if ht[h] != noSegment {
+				return ht, errors.New("overlapped delete_rate_schedule")
+			}
+			ht[h] = idx
+		}
+	}
+	return ht, nil
 }
 
 // BlobDeleteConfig is blob delete config
@@ -173,10 +223,10 @@ type BlobDeleteConfig struct {
 	MaxBatchSize     int              `json:"max_batch_size"`
 	BatchIntervalS   int              `json:"batch_interval_s"`
 	SafeDelayTimeH   int64            `json:"safe_delay_time_h"`
-	DeleteHourRange  HourRange        `json:"delete_hour_range"`
 	DeleteLog        recordlog.Config `json:"delete_log"`
 
-	DeleteRatePerSecond int `json:"delete_rate_per_second"`
+	DeleteRatePerSecond int            `json:"delete_rate_per_second"`
+	DeleteRateSchedule  []QPSHourRange `json:"delete_rate_schedule"`
 }
 
 func (cfg *BlobDeleteConfig) topics() []string {
@@ -211,9 +261,14 @@ type BlobDeleteMgr struct {
 	safeDelayTime       time.Duration
 	punishTime          time.Duration
 	slowDownTime        time.Duration
-	deleteHourRange     HourRange
 	failMsgSender       base.IProducer
 	deleteLimiter       *rate.Limiter
+	// rateSchedule and hourTable are built once at construction and read-only
+	// at runtime; currentQPS is mutated only by the single runTask goroutine.
+	rateSchedule []QPSHourRange
+	hourTable    [24]int
+	currentQPS   int
+	defaultQPS   int
 
 	// delete log
 	delLogger recordlog.Encoder
@@ -265,11 +320,21 @@ func NewBlobDeleteMgr(
 		safeDelayTime:       time.Duration(cfg.SafeDelayTimeH) * time.Hour,
 		punishTime:          time.Duration(cfg.MessagePunishTimeM) * time.Minute,
 		slowDownTime:        time.Duration(cfg.MessageSlowDownTimeS) * time.Second,
-		deleteHourRange:     cfg.DeleteHourRange,
+		rateSchedule:        cfg.DeleteRateSchedule,
+		currentQPS:          cfg.DeleteRatePerSecond,
+		defaultQPS:          cfg.DeleteRatePerSecond,
 		failMsgSender:       failMsgSender,
 		delLogger:           delLogger,
 		cfg:                 cfg,
 		Closer:              closer.New(),
+	}
+
+	if len(cfg.DeleteRateSchedule) > 0 {
+		ht, err := buildHourTable(cfg.DeleteRateSchedule)
+		if err != nil {
+			return nil, err
+		}
+		mgr.hourTable = ht
 	}
 
 	return mgr, nil
@@ -296,7 +361,7 @@ func (mgr *BlobDeleteMgr) runTask() {
 				mgr.stopConsumer()
 				continue
 			}
-			if _, ok := mgr.allowDeleting(time.Now()); !ok {
+			if !mgr.allowDelete(time.Now()) {
 				mgr.stopConsumer()
 				continue
 			}
@@ -690,7 +755,7 @@ func (mgr *BlobDeleteMgr) deleteShard(ctx context.Context, location proto.VunitL
 	span := trace.SpanFromContextSafe(ctx)
 
 	// has mark delete or delete before and just return
-	if (stageMgr.hasDelete(location.Vuid)) || (markDelete && stageMgr.hasMarkDel(location.Vuid)) {
+	if stageMgr.hasDelete(location.Vuid) || (markDelete && stageMgr.hasMarkDel(location.Vuid)) {
 		span.Debugf("already delete and return: bid[%d], location[%+v], markDelete[%+v]",
 			bid, location, markDelete)
 		return nil
@@ -760,23 +825,41 @@ func (mgr *BlobDeleteMgr) send2FailQueue(ctx context.Context, msg *proto.DeleteM
 	return nil
 }
 
-func (mgr *BlobDeleteMgr) allowDeleting(now time.Time) (waitTime time.Duration, ok bool) {
-	// from <= now < to
-	nowHour := now.Hour()
-	if nowHour >= mgr.deleteHourRange.From && nowHour < mgr.deleteHourRange.To {
-		return waitTime, true
+// allowDelete reports whether deletion is allowed at the given time.
+// With delete_rate_schedule configured it matches the current hour to a
+// segment and applies that segment's QPS to the limiter; an hour outside
+// every configured segment falls back to the default QPS. A segment with
+// QPS 0 blocks deletion for its window. With no schedule it always allows
+// at the default QPS.
+func (mgr *BlobDeleteMgr) allowDelete(now time.Time) bool {
+	if len(mgr.rateSchedule) == 0 {
+		mgr.setRate(mgr.defaultQPS)
+		return true
 	}
+	idx := mgr.hourTable[now.Hour()]
+	if idx == noSegment {
+		mgr.setRate(mgr.defaultQPS)
+		return true
+	}
+	seg := mgr.rateSchedule[idx]
+	if seg.QPS == 0 {
+		return false
+	}
+	mgr.setRate(seg.QPS)
+	return true
+}
 
-	// now < from
-	fromTime := time.Date(now.Year(), now.Month(), now.Day(), mgr.deleteHourRange.From, 0, 0, 0, now.Location())
-	if now.Before(fromTime) {
-		waitTime = fromTime.Sub(now)
-		return waitTime, false
+// setRate applies the given QPS to the limiter. Concurrent-safe via the
+// limiter's internal lock; called only from the runTask goroutine.
+func (mgr *BlobDeleteMgr) setRate(qps int) {
+	if qps == mgr.currentQPS {
+		return
 	}
-	// now >= to
-	endTime := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())
-	waitTime = endTime.Sub(now) + time.Duration(mgr.deleteHourRange.From)*time.Hour
-	return
+	span := trace.SpanFromContextSafe(context.Background())
+	span.Infof("delete rate schedule switches to qps[%d] at hour[%d]", qps, time.Now().Hour())
+	mgr.deleteLimiter.SetLimit(rate.Limit(qps))
+	mgr.deleteLimiter.SetBurst(qps)
+	mgr.currentQPS = qps
 }
 
 func (mgr *BlobDeleteMgr) delayDuration(delTimeStamp int64) time.Duration {

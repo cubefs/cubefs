@@ -50,7 +50,6 @@ const (
 	defaultInspectCheckTaskTimeoutIntervalMs = 10000
 
 	defaultTaskPoolSize           = 10
-	defaultDeleteHourRangeTo      = 24
 	defaultMessagePunishThreshold = 3
 	defaultMessagePunishTimeM     = 4
 	defaultSlowDownTimeS          = 3
@@ -296,11 +295,10 @@ func (c *Config) fixShardRepairConfig() {
 }
 
 func (c *Config) fixBlobDeleteConfig() error {
-	if !c.BlobDelete.DeleteHourRange.Valid() {
-		return errInvalidHourRange
-	}
-	if c.BlobDelete.DeleteHourRange.From == 0 {
-		defaulter.Equal(&c.BlobDelete.DeleteHourRange.To, defaultDeleteHourRangeTo)
+	if len(c.BlobDelete.DeleteRateSchedule) > 0 {
+		if _, err := buildHourTable(c.BlobDelete.DeleteRateSchedule); err != nil {
+			return err
+		}
 	}
 	c.BlobDelete.ClusterID = c.ClusterID
 	defaulter.LessOrEqual(&c.BlobDelete.TaskPoolSize, defaultTaskPoolSize)

@@ -504,10 +504,6 @@ func TestNewDeleteMgr(t *testing.T) {
 	blobCfg := &BlobDeleteConfig{
 		ClusterID:    0,
 		TaskPoolSize: 2,
-		DeleteHourRange: HourRange{
-			From: 0,
-			To:   defaultDeleteHourRangeTo,
-		},
 		DeleteLog: recordlog.Config{
 			Dir:       testDir,
 			ChunkBits: 22,
@@ -546,28 +542,17 @@ func TestNewDeleteMgr(t *testing.T) {
 	mgr.GetErrorStats()
 }
 
-func TestAllowDeleting(t *testing.T) {
+func TestRateScheduleNoScheduleAllowsAtDefault(t *testing.T) {
+	// no schedule configured -> always allow at the default QPS
+	mgr := &BlobDeleteMgr{
+		currentQPS:    100,
+		defaultQPS:    100,
+		deleteLimiter: rate.NewLimiter(rate.Limit(100), 100),
+	}
 	now := time.Now()
-	mgr := &BlobDeleteMgr{}
-	testCases := []struct {
-		hourRange HourRange
-		now       time.Time
-		ok        bool
-		waitTime  time.Duration
-	}{
-		{hourRange: HourRange{0, 1}, now: time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()), ok: true},
-		{hourRange: HourRange{0, 1}, now: time.Date(now.Year(), now.Month(), now.Day(), 1, 0, 0, 0, now.Location()), ok: false, waitTime: 23 * time.Hour},
-		{hourRange: HourRange{0, 2}, now: time.Date(now.Year(), now.Month(), now.Day(), 1, 0, 0, 0, now.Location()), ok: true},
-		{hourRange: HourRange{0, 23}, now: time.Date(now.Year(), now.Month(), now.Day(), 23, 10, 0, 0, now.Location()), ok: false, waitTime: 50 * time.Minute},
-		{hourRange: HourRange{1, 2}, now: time.Date(now.Year(), now.Month(), now.Day(), 3, 0, 0, 0, now.Location()), ok: false, waitTime: (21 + 1) * time.Hour},
-		{hourRange: HourRange{2, 5}, now: time.Date(now.Year(), now.Month(), now.Day(), 1, 0, 0, 0, now.Location()), ok: false, waitTime: 1 * time.Hour},
-	}
-	for _, test := range testCases {
-		mgr.deleteHourRange = test.hourRange
-		waitTime, ok := mgr.allowDeleting(test.now)
-		require.Equal(t, test.ok, ok)
-		require.Equal(t, test.waitTime, waitTime)
-	}
+	require.True(t, mgr.allowDelete(now))
+	require.Equal(t, rate.Limit(100), mgr.deleteLimiter.Limit())
+	require.Equal(t, 100, mgr.currentQPS)
 }
 
 func TestDeleteBlob(t *testing.T) {
