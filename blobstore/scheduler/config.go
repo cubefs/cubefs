@@ -68,6 +68,8 @@ const (
 	defaultHeartbeatTicks = uint32(30)
 	defaultExpiresTicks   = uint32(60)
 
+	defaultMemberRefreshIntervalS = 30
+
 	defaultShardRepairNormalTopic   = "shard_repair"
 	defaultShardRepairPriorityTopic = "shard_repair_prior"
 	defaultShardRepairFailedTopic   = "shard_repair_failed"
@@ -81,10 +83,11 @@ type Config struct {
 	cmd.Config
 
 	ClusterID proto.ClusterID `json:"cluster_id"`
-	Services  Services        `json:"services"`
+	IsLeader  bool            `json:"is_leader"`
 
 	TopologyUpdateIntervalMin  int       `json:"topology_update_interval_min"`
 	VolumeCacheUpdateIntervalS int       `json:"volume_cache_update_interval_s"`
+	MemberRefreshIntervalS     int       `json:"member_refresh_interval_s"`
 	FreeChunkCounterBuckets    []float64 `json:"free_chunk_counter_buckets"`
 
 	ClusterMgr clustermgr.Config `json:"clustermgr"`
@@ -148,52 +151,16 @@ type KafkaConfig struct {
 	Version                string   `json:"version"`
 }
 
-type Services struct {
-	Leader  uint64            `json:"leader"`
-	NodeID  uint64            `json:"node_id"`
-	Members map[uint64]string `json:"members"`
-}
-
-func (c *Config) IsLeader() bool {
-	return c.Services.Leader == c.Services.NodeID
-}
-
-func (c *Config) Leader() string {
-	return c.Services.Members[c.Services.Leader]
-}
-
-func (c *Config) Follower() []string {
-	var followers []string
-	for k, v := range c.Services.Members {
-		if k != c.Services.Leader {
-			followers = append(followers, v)
-		}
-	}
-	return followers
-}
-
-func (c *Config) fixServices() error {
-	if len(c.Services.Members) < 1 {
-		return errInvalidMembers
-	}
-	if _, ok := c.Services.Members[c.Services.Leader]; !ok {
-		return errInvalidLeader
-	}
-	if _, ok := c.Services.Members[c.Services.NodeID]; !ok {
-		return errInvalidNodeID
-	}
-	return nil
-}
-
 func (c *Config) fixConfig() (err error) {
 	if c.ClusterID == 0 {
 		return errIllegalClusterID
 	}
-	if err := c.fixServices(); err != nil {
+	if err := c.fixRegisterConfig(); err != nil {
 		return err
 	}
 	defaulter.LessOrEqual(&c.TopologyUpdateIntervalMin, defaultTopologyUpdateIntervalMin)
 	defaulter.LessOrEqual(&c.VolumeCacheUpdateIntervalS, defaultVolumeCacheUpdateIntervalS)
+	defaulter.LessOrEqual(&c.MemberRefreshIntervalS, defaultMemberRefreshIntervalS)
 	defaulter.LessOrEqual(&c.TaskLog.ChunkBits, defaultDeleteLogChunkSize)
 	c.fixClientConfig()
 	if err := c.fixKafkaConfig(); err != nil {
@@ -208,8 +175,6 @@ func (c *Config) fixConfig() (err error) {
 	if err := c.fixBlobDeleteConfig(); err != nil {
 		return err
 	}
-	c.fixRegisterConfig()
-
 	c.fixShardDiskRepairConfig()
 	return nil
 }
@@ -319,10 +284,14 @@ func (c *Config) fixBlobDeleteConfig() error {
 	return nil
 }
 
-func (c *Config) fixRegisterConfig() {
+func (c *Config) fixRegisterConfig() error {
+	if c.ServiceRegister.Host == "" {
+		return errInvalidRegisterHost
+	}
 	defaulter.LessOrEqual(&c.ServiceRegister.TickInterval, defaultTickInterval)
 	defaulter.LessOrEqual(&c.ServiceRegister.HeartbeatTicks, defaultHeartbeatTicks)
 	defaulter.LessOrEqual(&c.ServiceRegister.ExpiresTicks, defaultExpiresTicks)
+	return nil
 }
 
 func (c *Config) fixShardDiskRepairConfig() {

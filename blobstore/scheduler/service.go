@@ -15,9 +15,13 @@
 package scheduler
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"net/http"
+	"strings"
+	"sync/atomic"
+	"time"
 
 	api "github.com/cubefs/cubefs/blobstore/api/scheduler"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
@@ -26,6 +30,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/scheduler/base"
 	"github.com/cubefs/cubefs/blobstore/scheduler/client"
+	"github.com/cubefs/cubefs/blobstore/util/closer"
 	"github.com/cubefs/cubefs/blobstore/util/task"
 )
 
@@ -33,10 +38,13 @@ var errIllegalTaskType = rpc.NewError(http.StatusBadRequest, "illegal_type", err
 
 // Service rpc service
 type Service struct {
-	ClusterID     proto.ClusterID
-	leader        bool
-	leaderHost    string
-	followerHosts []string
+	ClusterID proto.ClusterID
+	leader    bool
+	selfHost  string
+
+	leaderHost    atomic.Value
+	followerHosts atomic.Value
+	memberCloser  closer.Closer
 
 	balanceMgr    Migrator
 	diskDropMgr   IDisKMigrator
@@ -440,8 +448,9 @@ func (svr *Service) HTTPUpdateVolume(c *rpc.Context) {
 		return
 	}
 
-	tasks := make([]func() error, 0, len(svr.followerHosts))
-	for _, host := range svr.followerHosts {
+	hosts := svr.getFollowerHosts()
+	tasks := make([]func() error, 0, len(hosts))
+	for _, host := range hosts {
 		host := host
 		tasks = append(tasks, func() error {
 			return svr.volumeUpdater.UpdateFollowerVolumeCache(ctx, host, args.Vid)
@@ -474,4 +483,69 @@ func (svr *Service) HTTPCheckTaskExist(c *rpc.Context) {
 	c.RespondJSON(api.CheckTaskExistResp{
 		Exist: exist,
 	})
+}
+
+func (svr *Service) getLeaderHost() string {
+	host, ok := svr.leaderHost.Load().(string)
+	if !ok {
+		return ""
+	}
+	return host
+}
+
+func (svr *Service) setLeaderHost(host string) {
+	svr.leaderHost.Store(host)
+}
+
+// getFollowerHosts returns a copy of the current follower hosts under read lock.
+func (svr *Service) getFollowerHosts() []string {
+	followers, ok := svr.followerHosts.Load().([]string)
+	if !ok {
+		return nil
+	}
+	return followers
+}
+
+// setFollowerHosts replaces the follower hosts under write lock.
+func (svr *Service) setFollowerHosts(hosts []string) {
+	svr.followerHosts.Store(hosts)
+}
+
+func (svr *Service) loopRefreshMembers(interval time.Duration) {
+	ctx := context.Background()
+	svr.refreshFollowers(ctx)
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			svr.refreshFollowers(ctx)
+		case <-svr.memberCloser.Done():
+			return
+		}
+	}
+}
+
+// refreshFollowers pulls the SC service list from clustermgr and updates the
+// follower hosts. On error it keeps the last known good view.
+func (svr *Service) refreshFollowers(ctx context.Context) {
+	span := trace.SpanFromContextSafe(ctx)
+
+	followers, err := svr.clusterMgrCli.ListFollowers(ctx, svr.ClusterID, svr.selfHost)
+	if err != nil {
+		span.Warnf("refresh scheduler members failed: err[%+v]", err)
+		return
+	}
+
+	svr.setFollowerHosts(followers)
+	span.Infof("refresh scheduler members success: count[%d], followers[%v]", len(followers), followers)
+}
+
+// normalizeHost strips the scheme prefix from a host string for comparison.
+func normalizeHost(host string) string {
+	host = strings.TrimPrefix(host, "http://")
+	host = strings.TrimPrefix(host, "https://")
+	return host
 }

@@ -343,6 +343,25 @@ func TestClustermgrClient(t *testing.T) {
 		require.NoError(t, err)
 	}
 	{
+		cli.client.(*MockClusterManager).EXPECT().SetKV(any, "scheduler_leader", []byte("http://127.0.0.1:9800")).Return(nil)
+		err := cli.SetLeader(ctx, "http://127.0.0.1:9800")
+		require.NoError(t, err)
+
+		cli.client.(*MockClusterManager).EXPECT().GetKV(any, "scheduler_leader").Return(cmapi.GetKvRet{Value: []byte("http://127.0.0.1:9800")}, nil)
+		host, err := cli.GetLeader(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "http://127.0.0.1:9800", host)
+
+		cli.client.(*MockClusterManager).EXPECT().GetService(any, any).Return(cmapi.ServiceInfo{Nodes: []cmapi.ServiceNode{
+			{ClusterID: 1, Host: "http://127.0.0.1:9800"},
+			{ClusterID: 1, Host: "http://127.0.0.1:9880"},
+			{ClusterID: 2, Host: "http://10.0.0.1:9800"},
+		}}, nil)
+		hosts, err := cli.ListFollowers(ctx, proto.ClusterID(1), "http://127.0.0.1:9800")
+		require.NoError(t, err)
+		require.Equal(t, []string{"http://127.0.0.1:9880"}, hosts)
+	}
+	{
 		// add migrate task
 		cli.client.(*MockClusterManager).EXPECT().SetKV(any, any, any).Return(nil)
 		task, _ := (&proto.MigrateTask{TaskID: GenMigrateTaskID(proto.TaskTypeDiskRepair, proto.DiskID(1), 1)}).ToTask()

@@ -30,17 +30,10 @@ func TestConfigCheckAndFix(t *testing.T) {
 
 	cfg.ClusterID = 1
 	err = cfg.fixConfig()
-	require.Error(t, err, errInvalidMembers)
+	require.Error(t, err, errInvalidRegisterHost)
 
-	cfg.Services.Members = map[uint64]string{1: "127.0.0.1:9800"}
-	err = cfg.fixConfig()
-	require.Error(t, err, errInvalidLeader)
-
-	cfg.Services.Leader = 1
-	err = cfg.fixConfig()
-	require.Error(t, err, errInvalidNodeID)
-
-	cfg.Services.NodeID = 1
+	cfg.ServiceRegister.Host = "http://127.0.0.1:9800"
+	cfg.IsLeader = true
 	cfg.Kafka.Version = "v2.3.aa"
 	err = cfg.fixConfig()
 	require.Error(t, err, errInvalidKafka)
@@ -52,15 +45,17 @@ func TestConfigCheckAndFix(t *testing.T) {
 	cfg.Kafka.Version = "2.1.0"
 	err = cfg.fixConfig() // ok
 	require.NoError(t, err)
-	require.True(t, cfg.IsLeader())
-	require.Equal(t, "127.0.0.1:9800", cfg.Leader())
-	require.Nil(t, cfg.Follower())
+	require.True(t, cfg.IsLeader)
+	require.Equal(t, "http://127.0.0.1:9800", cfg.ServiceRegister.Host)
+	require.Equal(t, defaultMemberRefreshIntervalS, cfg.MemberRefreshIntervalS)
+
+	cfg.MemberRefreshIntervalS = 15
+	err = cfg.fixConfig()
+	require.NoError(t, err)
+	require.Equal(t, 15, cfg.MemberRefreshIntervalS)
 	require.Equal(t, defaultDeleteDelayH, cfg.BlobDelete.SafeDelayTimeH)
 	require.Equal(t, sarama.V2_1_0_0, kafka.DefaultKafkaVersion)
-	cfg.Services.Members[2] = "127.0.0.1:9880"
-	require.Equal(t, "127.0.0.1:9880", cfg.Follower()[0])
 
-	cfg.Services.NodeID = 1
 	cfg.BlobDelete.SafeDelayTimeH = -1
 	err = cfg.fixConfig()
 	require.NoError(t, err)

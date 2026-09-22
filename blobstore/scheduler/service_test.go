@@ -16,6 +16,7 @@ package scheduler
 
 import (
 	"context"
+	"fmt"
 	"net/http/httptest"
 	"sync"
 	"testing"
@@ -177,7 +178,6 @@ func newMockService(t *testing.T) *Service {
 	service := &Service{
 		ClusterID:     1,
 		leader:        true,
-		leaderHost:    localHost + ":9800",
 		balanceMgr:    balanceMgr,
 		diskDropMgr:   diskDropMgr,
 		manualMigMgr:  manualMgr,
@@ -191,6 +191,7 @@ func newMockService(t *testing.T) *Service {
 		clusterMgrCli:      clusterMgrCli,
 		shardDiskRepairMgr: shardDiskRepair,
 	}
+	service.setLeaderHost(localHost + ":9800")
 	return service
 }
 
@@ -338,4 +339,99 @@ func TestServiceAPI(t *testing.T) {
 		require.Equal(t, int(testDisk1.UsedChunkCnt), stats.TotalTasksCnt)
 		require.Equal(t, 1, stats.MigratedTasksCnt)
 	}
+}
+
+func TestRefreshFollowers(t *testing.T) {
+	ctr := gomock.NewController(t)
+	defer ctr.Finish()
+
+	ctx := context.Background()
+
+	t.Run("success: self excluded, others kept", func(t *testing.T) {
+		cli := NewMockClusterMgrAPI(ctr)
+		cli.EXPECT().ListFollowers(gomock.Any(), proto.ClusterID(1), "https://10.0.0.2:7800").Return(
+			[]string{"http://10.0.0.1:7800", "http://10.0.0.3:7800"}, nil)
+
+		svr := &Service{
+			ClusterID:     1,
+			selfHost:      "https://10.0.0.2:7800",
+			clusterMgrCli: cli,
+		}
+		svr.setFollowerHosts([]string{"old-host:7800"})
+		svr.refreshFollowers(ctx)
+		require.Equal(t, []string{"http://10.0.0.1:7800", "http://10.0.0.3:7800"}, svr.getFollowerHosts())
+	})
+
+	t.Run("error from cm: keep existing", func(t *testing.T) {
+		cli := NewMockClusterMgrAPI(ctr)
+		cli.EXPECT().ListFollowers(gomock.Any(), proto.ClusterID(1), "10.0.0.2:7800").Return(
+			nil, fmt.Errorf("cm unavailable"))
+
+		svr := &Service{
+			ClusterID:     1,
+			selfHost:      "10.0.0.2:7800",
+			clusterMgrCli: cli,
+		}
+		svr.setFollowerHosts([]string{"existing:7800"})
+		svr.refreshFollowers(ctx)
+		require.Equal(t, []string{"existing:7800"}, svr.getFollowerHosts())
+	})
+
+	t.Run("only self: clear existing", func(t *testing.T) {
+		cli := NewMockClusterMgrAPI(ctr)
+		cli.EXPECT().ListFollowers(gomock.Any(), proto.ClusterID(1), "10.0.0.2:7800").Return(
+			nil, nil)
+
+		svr := &Service{
+			ClusterID:     1,
+			selfHost:      "10.0.0.2:7800",
+			clusterMgrCli: cli,
+		}
+		svr.setFollowerHosts([]string{"preserved:7800"})
+		svr.refreshFollowers(ctx)
+		require.Empty(t, svr.getFollowerHosts())
+	})
+
+	t.Run("empty node list: clear existing", func(t *testing.T) {
+		cli := NewMockClusterMgrAPI(ctr)
+		cli.EXPECT().ListFollowers(gomock.Any(), proto.ClusterID(1), "10.0.0.2:7800").Return(
+			[]string{}, nil)
+
+		svr := &Service{
+			ClusterID:     1,
+			selfHost:      "10.0.0.2:7800",
+			clusterMgrCli: cli,
+		}
+		svr.setFollowerHosts([]string{"preserved:7800"})
+		svr.refreshFollowers(ctx)
+		require.Empty(t, svr.getFollowerHosts())
+	})
+}
+
+func TestNormalizeHost(t *testing.T) {
+	require.Equal(t, "10.0.0.1:7800", normalizeHost("http://10.0.0.1:7800"))
+	require.Equal(t, "10.0.0.1:7800", normalizeHost("https://10.0.0.1:7800"))
+	require.Equal(t, "10.0.0.1:7800", normalizeHost("10.0.0.1:7800"))
+}
+
+func TestFollowerHostsConcurrency(t *testing.T) {
+	svr := &Service{}
+	require.Nil(t, svr.getFollowerHosts())
+	svr.setFollowerHosts([]string{"host1:7800", "host2:7800"})
+	var wg sync.WaitGroup
+	for i := 0; i < 100; i++ {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			_ = svr.getFollowerHosts()
+		}()
+		go func(i int) {
+			defer wg.Done()
+			svr.setFollowerHosts([]string{fmt.Sprintf("host%d:7800", i)})
+		}(i)
+	}
+	wg.Wait()
+	// should not panic or race
+	followers := svr.getFollowerHosts()
+	require.Equal(t, 1, len(followers))
 }

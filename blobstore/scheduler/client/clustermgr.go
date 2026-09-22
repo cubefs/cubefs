@@ -80,6 +80,9 @@ type ClusterMgrDiskAPI interface {
 type ClusterMgrServiceAPI interface {
 	Register(ctx context.Context, info RegisterInfo) error
 	GetService(ctx context.Context, name string, clusterID proto.ClusterID) (nodes []cmapi.ServiceNode, err error)
+	SetLeader(ctx context.Context, host string) error
+	GetLeader(ctx context.Context) (string, error)
+	ListFollowers(ctx context.Context, clusterID proto.ClusterID, selfHost string) ([]string, error)
 }
 
 type ClusterMgrTaskAPI interface {
@@ -153,6 +156,7 @@ const (
 	_checkPoint          = "checkpoint"
 	_consumeOffset       = "consume_offset"
 	_volumeDegradeStats  = "volume_degrade_stats"
+	_schedulerLeaderKey  = "scheduler_leader"
 )
 
 var (
@@ -884,6 +888,36 @@ func (c *clustermgrClient) GetService(ctx context.Context, name string, clusterI
 		}
 	}
 	return nodes, nil
+}
+
+// SetLeader reports this scheduler as the leader. host is the register host.
+func (c *clustermgrClient) SetLeader(ctx context.Context, host string) error {
+	return c.client.SetKV(ctx, _schedulerLeaderKey, []byte(host))
+}
+
+// GetLeader returns the leader host reported by the leader scheduler.
+func (c *clustermgrClient) GetLeader(ctx context.Context) (string, error) {
+	ret, err := c.client.GetKV(ctx, _schedulerLeaderKey)
+	if err != nil {
+		return "", err
+	}
+	return string(ret.Value), nil
+}
+
+// ListFollowers returns scheduler hosts in the cluster except selfHost.
+func (c *clustermgrClient) ListFollowers(ctx context.Context, clusterID proto.ClusterID, selfHost string) ([]string, error) {
+	nodes, err := c.GetService(ctx, proto.ServiceNameScheduler, clusterID)
+	if err != nil {
+		return nil, err
+	}
+	hosts := make([]string, 0, len(nodes))
+	for _, node := range nodes {
+		if node.Host == selfHost {
+			continue
+		}
+		hosts = append(hosts, node.Host)
+	}
+	return hosts, nil
 }
 
 // AddMigrateTask adds migrate task

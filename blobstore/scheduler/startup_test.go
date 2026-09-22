@@ -69,21 +69,7 @@ func TestNewService(t *testing.T) {
 		},
 		{
 			conf: &Config{ClusterID: proto.ClusterID(1)},
-			err:  errInvalidMembers,
-		},
-		{
-			conf: &Config{
-				ClusterID: proto.ClusterID(1),
-				Services:  Services{Members: map[uint64]string{1: "127.0.0.1:9800"}},
-			},
-			err: errInvalidLeader,
-		},
-		{
-			conf: &Config{
-				ClusterID: proto.ClusterID(1),
-				Services:  Services{Leader: 1, Members: map[uint64]string{1: "127.0.0.1:9800"}},
-			},
-			err: errInvalidNodeID,
+			err:  errInvalidRegisterHost,
 		},
 	}
 	for _, tc := range testCases {
@@ -197,10 +183,10 @@ func TestServer(t *testing.T) {
 
 	followerHost := runMockFollowerService(followerServer)
 
-	leaderServer.leaderHost = leaderHost[len(scheme):]
-	followerServer.leaderHost = leaderHost[len(scheme):]
-	leaderServer.followerHosts = []string{followerHost[len(scheme):]}
-	followerServer.followerHosts = []string{followerHost[len(scheme):]}
+	leaderServer.setLeaderHost(leaderHost)
+	followerServer.setLeaderHost(leaderHost)
+	leaderServer.setFollowerHosts([]string{followerHost[len(scheme):]})
+	followerServer.setFollowerHosts([]string{followerHost[len(scheme):]})
 
 	go leaderServer.Run()
 	go followerServer.Run()
@@ -262,4 +248,124 @@ func TestServiceRegister(t *testing.T) {
 	service.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().Register(any, any).Return(nil)
 	err := service.register(ServiceRegisterConfig{})
 	require.NoError(t, err)
+}
+
+func TestForwardToLeaderRefresh(t *testing.T) {
+	ctr := gomock.NewController(t)
+	leader := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("leader"))
+	}))
+	defer leader.Close()
+
+	t.Run("cached host reachable", func(t *testing.T) {
+		svr := newMockServiceWithOpts(ctr, false)
+		svr.setLeaderHost(leader.URL)
+		rec := httptest.NewRecorder()
+		svr.forwardToLeader(rec, httptest.NewRequest(http.MethodGet, "/task/acquire", nil))
+		require.Equal(t, http.StatusOK, rec.Code)
+		require.Equal(t, "leader", rec.Body.String())
+		require.Equal(t, leader.URL, svr.getLeaderHost())
+	})
+
+	t.Run("empty host pulls leader", func(t *testing.T) {
+		svr := newMockServiceWithOpts(ctr, false)
+		svr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().
+			GetLeader(gomock.Any()).
+			Return(leader.URL, nil)
+		rec := httptest.NewRecorder()
+		svr.forwardToLeader(rec, httptest.NewRequest(http.MethodGet, "/task/acquire", nil))
+		require.Equal(t, http.StatusOK, rec.Code)
+		require.Equal(t, "leader", rec.Body.String())
+		require.Equal(t, leader.URL, svr.getLeaderHost())
+	})
+
+	t.Run("dial failure pulls leader once", func(t *testing.T) {
+		svr := newMockServiceWithOpts(ctr, false)
+		svr.setLeaderHost("http://127.0.0.1:1")
+		svr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().
+			GetLeader(gomock.Any()).
+			Return(leader.URL, nil)
+		rec := httptest.NewRecorder()
+		svr.forwardToLeader(rec, httptest.NewRequest(http.MethodGet, "/task/acquire", nil))
+		require.Equal(t, http.StatusOK, rec.Code)
+		require.Equal(t, "leader", rec.Body.String())
+		require.Equal(t, leader.URL, svr.getLeaderHost())
+	})
+
+	t.Run("http error does not pull leader", func(t *testing.T) {
+		down := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+		}))
+		defer down.Close()
+		svr := newMockServiceWithOpts(ctr, false)
+		svr.setLeaderHost(down.URL)
+		rec := httptest.NewRecorder()
+		svr.forwardToLeader(rec, httptest.NewRequest(http.MethodGet, "/task/acquire", nil))
+		require.Equal(t, http.StatusInternalServerError, rec.Code)
+		require.Equal(t, down.URL, svr.getLeaderHost())
+	})
+
+	t.Run("pull fails", func(t *testing.T) {
+		svr := newMockServiceWithOpts(ctr, false)
+		svr.setLeaderHost("http://127.0.0.1:1")
+		svr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().
+			GetLeader(gomock.Any()).
+			Return("", errors.New("cm unavailable"))
+		rec := httptest.NewRecorder()
+		svr.forwardToLeader(rec, httptest.NewRequest(http.MethodGet, "/task/acquire", nil))
+		require.Equal(t, http.StatusBadGateway, rec.Code)
+		require.Equal(t, "http://127.0.0.1:1", svr.getLeaderHost())
+	})
+
+	t.Run("pulled host unchanged", func(t *testing.T) {
+		svr := newMockServiceWithOpts(ctr, false)
+		svr.setLeaderHost("http://127.0.0.1:1")
+		svr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().
+			GetLeader(gomock.Any()).
+			Return("http://127.0.0.1:1", nil)
+		rec := httptest.NewRecorder()
+		svr.forwardToLeader(rec, httptest.NewRequest(http.MethodGet, "/task/acquire", nil))
+		require.Equal(t, http.StatusBadGateway, rec.Code)
+		require.Equal(t, "http://127.0.0.1:1", svr.getLeaderHost())
+	})
+}
+
+func TestHandlerForwardTrigger(t *testing.T) {
+	ctr := gomock.NewController(t)
+	localHit := false
+	local := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		localHit = true
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	t.Run("follower stats stays local", func(t *testing.T) {
+		localHit = false
+		svr := newMockServiceWithOpts(ctr, false)
+		rec := httptest.NewRecorder()
+		svr.Handler(rec, httptest.NewRequest(http.MethodGet, api.PathStats, nil), local)
+		require.True(t, localHit)
+		require.Equal(t, http.StatusNoContent, rec.Code)
+	})
+
+	t.Run("follower acquire forwards", func(t *testing.T) {
+		localHit = false
+		svr := newMockServiceWithOpts(ctr, false)
+		svr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().
+			GetLeader(gomock.Any()).
+			Return("", errors.New("cm unavailable"))
+		rec := httptest.NewRecorder()
+		svr.Handler(rec, httptest.NewRequest(http.MethodGet, api.PathTaskAcquire, nil), local)
+		require.False(t, localHit)
+		require.Equal(t, http.StatusBadGateway, rec.Code)
+	})
+
+	t.Run("leader acquire stays local", func(t *testing.T) {
+		localHit = false
+		svr := newMockServiceWithOpts(ctr, true)
+		rec := httptest.NewRecorder()
+		svr.Handler(rec, httptest.NewRequest(http.MethodGet, api.PathTaskAcquire, nil), local)
+		require.True(t, localHit)
+		require.Equal(t, http.StatusNoContent, rec.Code)
+	})
 }

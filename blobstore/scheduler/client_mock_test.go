@@ -227,6 +227,44 @@ func (mr *MockClusterMgrAPIMockRecorder) GetService(arg0, arg1, arg2 interface{}
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetService", reflect.TypeOf((*MockClusterMgrAPI)(nil).GetService), arg0, arg1, arg2)
 }
 
+func (m *MockClusterMgrAPI) GetLeader(arg0 context.Context) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetLeader", arg0)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+func (mr *MockClusterMgrAPIMockRecorder) GetLeader(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLeader", reflect.TypeOf((*MockClusterMgrAPI)(nil).GetLeader), arg0)
+}
+
+func (m *MockClusterMgrAPI) SetLeader(arg0 context.Context, arg1 string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLeader", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+func (mr *MockClusterMgrAPIMockRecorder) SetLeader(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLeader", reflect.TypeOf((*MockClusterMgrAPI)(nil).SetLeader), arg0, arg1)
+}
+
+func (m *MockClusterMgrAPI) ListFollowers(arg0 context.Context, arg1 proto.ClusterID, arg2 string) ([]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListFollowers", arg0, arg1, arg2)
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+func (mr *MockClusterMgrAPIMockRecorder) ListFollowers(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListFollowers", reflect.TypeOf((*MockClusterMgrAPI)(nil).ListFollowers), arg0, arg1, arg2)
+}
+
 // GetShardDiskInfo mocks base method.
 func (m *MockClusterMgrAPI) GetShardDiskInfo(arg0 context.Context, arg1 proto.DiskID) (*client.ShardNodeDiskInfo, error) {
 	m.ctrl.T.Helper()
