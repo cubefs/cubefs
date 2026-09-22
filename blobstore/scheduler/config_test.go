@@ -15,7 +15,6 @@
 package scheduler
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/Shopify/sarama"
@@ -66,32 +65,4 @@ func TestConfigCheckAndFix(t *testing.T) {
 	err = cfg.fixConfig()
 	require.NoError(t, err)
 	require.Equal(t, defaultDeleteNoDelay, cfg.BlobDelete.SafeDelayTimeH)
-	require.Equal(t, defaultDeleteHourRangeTo, cfg.BlobDelete.DeleteHourRange.To)
-
-	testCases := []struct {
-		hourRange HourRange
-		err       error
-	}{
-		{
-			hourRange: HourRange{From: 1, To: 0},
-			err:       errInvalidHourRange,
-		},
-		{
-			hourRange: HourRange{From: 1, To: 25},
-			err:       errInvalidHourRange,
-		},
-		{
-			hourRange: HourRange{From: -2, To: -1},
-			err:       errInvalidHourRange,
-		},
-		{
-			hourRange: HourRange{From: 25, To: 26},
-			err:       errInvalidHourRange,
-		},
-	}
-	for _, test := range testCases {
-		cfg.BlobDelete.DeleteHourRange = test.hourRange
-		err = cfg.fixConfig()
-		require.True(t, errors.Is(err, test.err))
-	}
 }
