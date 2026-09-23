@@ -23,12 +23,13 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 )
 
 var Buckets = []float64{1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000}
 
 var MetricLabelNames = []string{
-	"host", "service", "team", "tag", "api", "method", "code",
+	"host", "service", "team", "tag", "api", "method", "code", "uid",
 	"reqlength", "resplength", "deleteAfterDays", "idc", "xwarn", "country", "region", "isp",
 }
 
@@ -49,6 +50,18 @@ type PrometheusConfig struct {
 	XWarns              []string        `json:"xwarns"`
 	ErrCodes            map[string]bool `json:"resp_err_codes"`
 	SizeBuckets         []int64         `json:"size_buckets"`
+
+	// UserLabels maps an audit log response header key (map key) to the
+	// Prometheus label name (map value) added to every metric vector. The
+	// header key is what callers write via ExtraHeader; the label name is what
+	// appears as the metric dimension. They may differ so a caller-owned
+	// header key never dictates the metric label surface.
+	UserLabels map[string]string `json:"user_labels"`
+
+	// registerer is nil in production and uses prometheus.DefaultRegisterer.
+	// Tests set an isolated registry so a different label set does not collide
+	// with metrics already registered in the process.
+	registerer prometheus.Registerer `json:"-"`
 }
 
 type PrometheusSender struct {
@@ -62,6 +75,9 @@ type PrometheusSender struct {
 	xwarnCounter            *prometheus.CounterVec
 
 	sizeBuckets []string
+
+	userLabelKeys  []string
+	userLabelNames []string
 
 	PrometheusConfig
 }
@@ -80,12 +96,18 @@ func NewPrometheusSender(conf PrometheusConfig) (ps *PrometheusSender) {
 		"team":    conf.Team,
 	}
 
-	responseCodeCounter := mustRegisterOrGet(getResponseCounterVec(subsystem, constLabels)).(*prometheus.CounterVec)
-	responseErrCodeCounter := mustRegisterOrGet(getResponseErrCounterVec(subsystem, constLabels)).(*prometheus.CounterVec)
-	responseDurationCounter := mustRegisterOrGet(getResponseDurationVec(subsystem, constLabels)).(*prometheus.HistogramVec)
-	responseLengthCounter := mustRegisterOrGet(getResponseLengthCounterVec(subsystem, constLabels)).(*prometheus.CounterVec)
-	requestLengthCounter := mustRegisterOrGet(getRequestLengthCounterVec(subsystem, constLabels)).(*prometheus.CounterVec)
-	xwarnCounter := mustRegisterOrGet(getXwarnCountVec(constLabels)).(*prometheus.CounterVec)
+	userLabelKeys, userLabelNames := sortedUserLabels(conf.UserLabels, constLabels)
+
+	registerer := conf.registerer
+	if registerer == nil {
+		registerer = prometheus.DefaultRegisterer
+	}
+	responseCodeCounter := mustRegisterOrGet(registerer, getResponseCounterVec(subsystem, constLabels, userLabelNames)).(*prometheus.CounterVec)
+	responseErrCodeCounter := mustRegisterOrGet(registerer, getResponseErrCounterVec(subsystem, constLabels, userLabelNames)).(*prometheus.CounterVec)
+	responseDurationCounter := mustRegisterOrGet(registerer, getResponseDurationVec(subsystem, constLabels, userLabelNames)).(*prometheus.HistogramVec)
+	responseLengthCounter := mustRegisterOrGet(registerer, getResponseLengthCounterVec(subsystem, constLabels, userLabelNames)).(*prometheus.CounterVec)
+	requestLengthCounter := mustRegisterOrGet(registerer, getRequestLengthCounterVec(subsystem, constLabels, userLabelNames)).(*prometheus.CounterVec)
+	xwarnCounter := mustRegisterOrGet(registerer, getXwarnCountVec(constLabels, userLabelNames)).(*prometheus.CounterVec)
 
 	sizeBuckets := make([]string, 0, len(conf.SizeBuckets))
 	for idx := range conf.SizeBuckets {
@@ -108,6 +130,8 @@ func NewPrometheusSender(conf PrometheusConfig) (ps *PrometheusSender) {
 		requestLengthCounter:    requestLengthCounter,
 		xwarnCounter:            xwarnCounter,
 		sizeBuckets:             sizeBuckets,
+		userLabelKeys:           userLabelKeys,
+		userLabelNames:          userLabelNames,
 	}
 	return ps
 }
@@ -151,33 +175,89 @@ func (ps *PrometheusSender) SendEntry(entry LogEntry) {
 	tag := strings.Join(tags, ",")
 	statusCode := entry.Code()
 
-	ps.responseCodeCounter.WithLabelValues(tag, api, method, statusCode).Inc()
+	userVals := ps.userLabelValues(entry)
+	ps.responseCodeCounter.WithLabelValues(append([]string{tag, api, method, statusCode}, userVals...)...).Inc()
 	if ps.isErrCode(statusCode) {
 		uid := strconv.FormatUint(uint64(entry.Uid()), 10)
-		ps.responseErrCodeCounter.WithLabelValues(tag, api, method, uid, statusCode).Inc()
+		ps.responseErrCodeCounter.WithLabelValues(append([]string{tag, api, method, uid, statusCode}, userVals...)...).Inc()
 	}
 
 	requestLength := entry.ReqLength()
 	responseLength := entry.RespLength()
 	if ps.EnableReqLengthCnt {
-		ps.requestLengthCounter.WithLabelValues(tag, api, method, statusCode).Add(float64(requestLength))
+		ps.requestLengthCounter.WithLabelValues(append([]string{tag, api, method, statusCode}, userVals...)...).Add(float64(requestLength))
 	}
 	if ps.EnableRespLengthCnt {
-		ps.responseLengthCounter.WithLabelValues(tag, api, method, statusCode).Add(float64(responseLength))
+		ps.responseLengthCounter.WithLabelValues(append([]string{tag, api, method, statusCode}, userVals...)...).Add(float64(responseLength))
 	}
 	if ps.EnableRespDuration && (strings.HasPrefix(statusCode, "2") || statusCode == "499") {
 		reqlengthTag := ps.getSizeTag(requestLength)
 		resplengthTag := ps.getSizeTag(responseLength)
 		respTimeMs := float64(entry.RespTime()) / 1e3
-		ps.responseDurationCounter.WithLabelValues(tag, api, method, statusCode, reqlengthTag, resplengthTag).Observe(respTimeMs)
+		ps.responseDurationCounter.WithLabelValues(append([]string{tag, api, method, statusCode, reqlengthTag, resplengthTag}, userVals...)...).Observe(respTimeMs)
 	}
 	if ps.EnableXWarnCnt {
 		if xwarns := entry.XWarns(); len(xwarns) != 0 {
 			for _, hit := range hitXWarns(xwarns, ps.XWarns) {
-				ps.xwarnCounter.WithLabelValues(hit, statusCode).Add(1)
+				ps.xwarnCounter.WithLabelValues(append([]string{hit, statusCode}, userVals...)...).Add(1)
 			}
 		}
 	}
+}
+
+func (ps *PrometheusSender) userLabelValues(entry LogEntry) []string {
+	if len(ps.userLabelKeys) == 0 {
+		return nil
+	}
+	vals := make([]string, len(ps.userLabelKeys))
+	for i, key := range ps.userLabelKeys {
+		vals[i] = strings.Join(entry.RespHeader(key), ",")
+	}
+	return vals
+}
+
+func sortedUserLabels(userLabels map[string]string, constLabels map[string]string) (keys, names []string) {
+	if len(userLabels) == 0 {
+		return nil, nil
+	}
+
+	seen := make(map[string]struct{}, 0)
+	for k := range constLabels {
+		seen[k] = struct{}{}
+	}
+	for _, name := range MetricLabelNames {
+		seen[name] = struct{}{}
+	}
+
+	all := make([]string, 0, len(userLabels))
+	for key := range userLabels {
+		all = append(all, key)
+	}
+	sort.Strings(all)
+	keys = make([]string, 0, len(all))
+	names = make([]string, 0, len(all))
+	for _, key := range all {
+		if key == "" {
+			continue
+		}
+		label := userLabels[key]
+		if label == "" {
+			label = key
+		}
+		if !model.LabelName(label).IsValid() {
+			continue
+		}
+		if _, ok := seen[label]; ok {
+			panic(fmt.Sprintf("user_labels label %q conflicts", label))
+		}
+		seen[label] = struct{}{}
+		keys = append(keys, key)
+		names = append(names, label)
+	}
+	if len(keys) == 0 {
+		return nil, nil
+	}
+	return keys, names
 }
 
 func (ps *PrometheusSender) isErrCode(code string) bool {
@@ -200,51 +280,51 @@ func (ps *PrometheusSender) getSizeTag(size int64) string {
 	return ps.sizeBuckets[i-1]
 }
 
-func getResponseCounterVec(logtype string, constLabels map[string]string) *prometheus.CounterVec {
+func getResponseCounterVec(logtype string, constLabels map[string]string, userLabels []string) *prometheus.CounterVec {
 	return prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name:        logtype + "_response_code",
 			Help:        logtype + " response code",
 			ConstLabels: constLabels,
 		},
-		[]string{"tag", "api", "method", "code"},
+		metricLabels([]string{"tag", "api", "method", "code"}, userLabels),
 	)
 }
 
-func getResponseErrCounterVec(logtype string, constLabels map[string]string) *prometheus.CounterVec {
+func getResponseErrCounterVec(logtype string, constLabels map[string]string, userLabels []string) *prometheus.CounterVec {
 	return prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name:        logtype + "_response_err_code",
 			Help:        logtype + " response err code",
 			ConstLabels: constLabels,
 		},
-		[]string{"tag", "api", "method", "uid", "code"},
+		metricLabels([]string{"tag", "api", "method", "uid", "code"}, userLabels),
 	)
 }
 
-func getRequestLengthCounterVec(logtype string, constLabels map[string]string) *prometheus.CounterVec {
+func getRequestLengthCounterVec(logtype string, constLabels map[string]string, userLabels []string) *prometheus.CounterVec {
 	return prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name:        logtype + "_request_length",
 			Help:        logtype + " request length",
 			ConstLabels: constLabels,
 		},
-		[]string{"tag", "api", "method", "code"},
+		metricLabels([]string{"tag", "api", "method", "code"}, userLabels),
 	)
 }
 
-func getResponseLengthCounterVec(logtype string, constLabels map[string]string) *prometheus.CounterVec {
+func getResponseLengthCounterVec(logtype string, constLabels map[string]string, userLabels []string) *prometheus.CounterVec {
 	return prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name:        logtype + "_response_length",
 			Help:        logtype + " response length",
 			ConstLabels: constLabels,
 		},
-		[]string{"tag", "api", "method", "code"},
+		metricLabels([]string{"tag", "api", "method", "code"}, userLabels),
 	)
 }
 
-func getResponseDurationVec(logtype string, constLabels map[string]string) *prometheus.HistogramVec {
+func getResponseDurationVec(logtype string, constLabels map[string]string, userLabels []string) *prometheus.HistogramVec {
 	buckets := Buckets
 	return prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
@@ -253,23 +333,32 @@ func getResponseDurationVec(logtype string, constLabels map[string]string) *prom
 			Buckets:     buckets,
 			ConstLabels: constLabels,
 		},
-		[]string{"tag", "api", "method", "code", "reqlength", "resplength"},
+		metricLabels([]string{"tag", "api", "method", "code", "reqlength", "resplength"}, userLabels),
 	)
 }
 
-func getXwarnCountVec(constLabels map[string]string) *prometheus.CounterVec {
+func getXwarnCountVec(constLabels map[string]string, userLabels []string) *prometheus.CounterVec {
 	return prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name:        "service_xwarn_count",
 			Help:        "service xwarn count",
 			ConstLabels: constLabels,
 		},
-		[]string{"xwarn", "code"},
+		metricLabels([]string{"xwarn", "code"}, userLabels),
 	)
 }
 
-func mustRegisterOrGet(c prometheus.Collector) prometheus.Collector {
-	if err := prometheus.Register(c); err != nil {
+// metricLabels returns base with userLabels appended. base is a fresh slice
+// literal at every caller, so append never mutates shared state.
+func metricLabels(base []string, userLabels []string) []string {
+	if len(userLabels) == 0 {
+		return base
+	}
+	return append(base, userLabels...)
+}
+
+func mustRegisterOrGet(registerer prometheus.Registerer, c prometheus.Collector) prometheus.Collector {
+	if err := registerer.Register(c); err != nil {
 		if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
 			return are.ExistingCollector
 		}

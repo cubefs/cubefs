@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/textproto"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -60,6 +61,9 @@ type LogEntry interface {
 	ReqParams() string
 	Uid() uint32
 	ApiName() string
+	// RespHeader returns values for a response header key. The map includes both
+	// the written response headers and values set through ExtraHeader.
+	RespHeader(key string) []string
 }
 
 type auditLogEntry struct {
@@ -88,6 +92,17 @@ func (a *auditLogEntry) ReqLength() int64 {
 		}
 	}
 	return 0
+}
+
+func (a *auditLogEntry) RespHeader(key string) []string {
+	canon := textproto.CanonicalMIMEHeaderKey(key)
+	if v := a.log.RespHeader.gets(canon); v != nil {
+		return v
+	}
+	if canon != key {
+		return a.log.RespHeader.gets(key)
+	}
+	return nil
 }
 
 func ErrInValidFieldCnt(msg string) error {
@@ -266,6 +281,8 @@ func (a *RequestRow) getRespHeader() *RespHeader {
 	}
 	return a.respHeader
 }
+
+func (a *RequestRow) RespHeader(_ string) []string { return nil } // ignore
 
 func (a *RequestRow) String() string {
 	return strings.Join(a.data, "\t")
