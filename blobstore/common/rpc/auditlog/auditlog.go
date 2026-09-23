@@ -257,7 +257,7 @@ func (j *jsonAuditlog) Handler(w http.ResponseWriter, req *http.Request, f func(
 	auditLog.RespLength = _w.getBodyWritten()
 	auditLog.Duration = endTime - startTime/1000
 
-	j.filterLogging(auditLog, false)
+	j.filterLogging(auditLog, true)
 }
 
 func (j *jsonAuditlog) Handle(w rpc2.ResponseWriter, req *rpc2.Request, f rpc2.Handle) error {

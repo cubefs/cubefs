@@ -30,6 +30,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/resourcepool"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
+	"github.com/cubefs/cubefs/blobstore/common/rpc/auditlog"
 	"github.com/cubefs/cubefs/blobstore/common/security"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
@@ -44,6 +45,8 @@ const (
 	limitNameGet    = "get"
 	limitNameDelete = "delete"
 	limitNameSign   = "sign"
+
+	labelCluster = "label-cluster"
 )
 
 type accessStatus struct {
@@ -70,6 +73,7 @@ type Service struct {
 	streamHandler stream.StreamHandler
 	limiter       stream.Limiter
 	closer        closer.Closer
+	enableLabel   bool
 }
 
 // New returns an access service
@@ -83,11 +87,16 @@ func New(cfg Config) *Service {
 		log.Fatalf("new stream handler failed, err: %+v", err)
 	}
 
+	enableLabel := false
+	if cfg.AuditLog.MetricConfig.UserLabels != nil {
+		_, enableLabel = cfg.AuditLog.MetricConfig.UserLabels[labelCluster]
+	}
 	return &Service{
 		config:        cfg,
 		streamHandler: h,
 		limiter:       stream.NewLimiter(cfg.Limit),
 		closer:        cl,
+		enableLabel:   enableLabel,
 	}
 }
 
@@ -230,6 +239,7 @@ func (s *Service) Put(c *rpc.Context) {
 		Location:   *loc,
 		HashSumMap: hashSumMap,
 	})
+	s.setClusterLabel(c, loc.ClusterID)
 	span.Infof("done /put request location:%+v hash:%+v", loc, hashSumMap.All())
 }
 
@@ -285,6 +295,7 @@ func (s *Service) PutAt(c *rpc.Context) {
 	}
 
 	c.RespondJSON(access.PutAtResp{HashSumMap: hashSumMap})
+	s.setClusterLabel(c, args.ClusterID)
 	span.Infof("done /putat request hash:%+v", hashSumMap.All())
 }
 
@@ -323,6 +334,7 @@ func (s *Service) Alloc(c *rpc.Context) {
 		Tokens:   security.StreamGenTokens(location),
 	}
 	c.RespondJSON(resp)
+	s.setClusterLabel(c, location.ClusterID)
 	span.Infof("done /alloc request resp:%+v", resp)
 }
 
@@ -377,6 +389,7 @@ func (s *Service) Get(c *rpc.Context) {
 
 	// flush headers to client firstly
 	c.Flush()
+	s.setClusterLabel(c, args.Location.ClusterID)
 
 	err = transfer()
 	if err != nil {
@@ -433,6 +446,10 @@ func (s *Service) Delete(c *rpc.Context) {
 			return
 		}
 		clusterBlobsN[loc.ClusterID] += len(loc.Slices)
+	}
+	for cid := range clusterBlobsN {
+		s.setClusterLabel(c, cid)
+		break
 	}
 
 	if len(args.Locations) == 1 {
@@ -542,6 +559,7 @@ func (s *Service) DeleteBlob(c *rpc.Context) {
 	}
 
 	c.Respond()
+	s.setClusterLabel(c, args.ClusterID)
 	span.Info("done /deleteblob request")
 }
 
@@ -582,4 +600,10 @@ func httpError(err error) error {
 		return rpc.NewError(http.StatusInternalServerError, "ServerError", e.Cause())
 	}
 	return errcode.ErrUnexpected
+}
+
+func (s *Service) setClusterLabel(c *rpc.Context, cluster proto.ClusterID) {
+	if s.enableLabel {
+		auditlog.ExtraHeader(c.Writer).Set(labelCluster, cluster.ToString())
+	}
 }

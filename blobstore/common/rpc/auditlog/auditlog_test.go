@@ -31,6 +31,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
@@ -500,4 +501,143 @@ func TestAuditLogEntry_Basic(t *testing.T) {
 	require.Equal(t, `["ACCESS","DISK_READ"]`, string(logsBytes))
 
 	require.Contains(t, audit.RespHeader[rpc.HeaderTraceTags], "user:test_user")
+}
+
+func requireMetric(t *testing.T, g prometheus.Gatherer, idc string, want map[string]string) {
+	t.Helper()
+	got, err := g.Gather()
+	require.NoError(t, err)
+	for _, mf := range got {
+		if mf.GetName() != "service_response_code" {
+			continue
+		}
+		for _, m := range mf.GetMetric() {
+			labels := map[string]string{}
+			for _, lp := range m.GetLabel() {
+				labels[lp.GetName()] = lp.GetValue()
+			}
+			if labels["idc"] != idc {
+				continue
+			}
+			match := true
+			for k, v := range want {
+				if labels[k] != v {
+					match = false
+					break
+				}
+			}
+			if match {
+				return
+			}
+		}
+	}
+	require.Failf(t, "metric not found", "idc=%s want=%v", idc, want)
+}
+
+func TestRespHeader(t *testing.T) {
+	entry := &auditLogEntry{log: &AuditLog{RespHeader: M{"cluster": "3", "api": "put"}}}
+	require.Equal(t, []string{"3"}, entry.RespHeader("cluster"))
+	require.Equal(t, []string{"put"}, entry.RespHeader("api"))
+	require.Nil(t, entry.RespHeader("absent"))
+
+	entry = &auditLogEntry{log: &AuditLog{RespHeader: M{"Label-Cluster": "1"}}}
+	require.Equal(t, []string{"1"}, entry.RespHeader("label-cluster"))
+	require.Equal(t, []string{"1"}, entry.RespHeader("Label-Cluster"))
+
+	line := strings.Join([]string{
+		"REQ", "UL", "1", "POST", "/ul/test", `{"Host":"127.0.0.1"}`, "{}", "200",
+		`{"cluster":"7","api":"ul.test"}`, "{}", "1", "1",
+	}, "\t")
+	row, err := ParseReqlogToAdrow(line)
+	require.NoError(t, err)
+	require.Nil(t, row.RespHeader("cluster"))
+	require.Nil(t, row.RespHeader("api"))
+}
+
+func TestAuditLogEntryMatchesRequestRow(t *testing.T) {
+	alog := &AuditLog{
+		ReqType:    "REQ",
+		Module:     "UL",
+		StartTime:  1,
+		Method:     "POST",
+		Path:       "/ul/test",
+		ReqHeader:  M{"Host": "127.0.0.1", "BodySize": int64(1024), "Token": M{"uid": uint32(9)}},
+		ReqParams:  "{}",
+		StatusCode: 599,
+		RespHeader: M{
+			"api": "put", "X-Log": []string{"ACCESS"}, "X-Warn": []string{"slow"},
+			"SToken": M{"uid": uint32(7), "tbl": "b"}, "cluster": "3",
+		},
+		RespBody: "{}", RespLength: 10, Duration: 20,
+	}
+	entry := &auditLogEntry{log: alog}
+	row, err := ParseReqlogToAdrow(string(alog.ToBytesWithTab(bytes.NewBuffer(nil))))
+	require.NoError(t, err)
+	require.Equal(t, row.Service(), entry.Service())
+	require.Equal(t, row.Method(), entry.Method())
+	require.Equal(t, row.Path(), entry.Path())
+	require.Equal(t, row.Code(), entry.Code())
+	require.Equal(t, row.ReqHost(), entry.ReqHost())
+	require.Equal(t, row.ReqLength(), entry.ReqLength())
+	require.Equal(t, row.RespLength(), entry.RespLength())
+	require.Equal(t, row.RespTime(), entry.RespTime())
+	require.Equal(t, row.ApiName(), entry.ApiName())
+	require.Equal(t, row.Xlogs(), entry.Xlogs())
+	require.Equal(t, row.XWarns(), entry.XWarns())
+	require.Equal(t, uint32(0), entry.Uid())
+	require.Equal(t, uint32(7), row.Uid())
+	require.Equal(t, []string{"3"}, entry.RespHeader("cluster"))
+	require.Nil(t, row.RespHeader("cluster"))
+}
+
+func TestUserLabelsSendEntry(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	idc := "TestUserLabelsSendEntry"
+	sender := NewPrometheusSender(PrometheusConfig{
+		Idc: idc, Service: "ul", UserLabels: map[string]string{"cluster": "cluster"},
+		registerer: reg,
+	})
+	sender.SendEntry(&auditLogEntry{log: &AuditLog{
+		Module: "UL", Method: "POST", Path: "/ul/test", StatusCode: 200,
+		RespHeader: M{"cluster": "5"},
+	}})
+	requireMetric(t, reg, idc, map[string]string{"cluster": "5", "code": "200"})
+
+	idc = "TestUserLabelsRequestRow"
+	sender = NewPrometheusSender(PrometheusConfig{
+		Idc: idc, Service: "ulrow", UserLabels: map[string]string{"cluster": "cluster"},
+		registerer: reg,
+	})
+	line := strings.Join([]string{
+		"REQ", "ULROW", "1", "POST", "/ulrow/test", `{"Host":"127.0.0.1"}`, "{}", "200",
+		`{"cluster":"9"}`, "{}", "1", "1",
+	}, "\t")
+	require.NoError(t, sender.Send([]byte(line)))
+	requireMetric(t, reg, idc, map[string]string{"cluster": "", "code": "200"})
+}
+
+func TestUserLabelsNormalize(t *testing.T) {
+	constLabels := map[string]string{"idc": "i", "host": "h", "service": "s", "team": "t"}
+	cases := []struct {
+		in          map[string]string
+		keys, names []string
+	}{
+		{map[string]string{"": "skipped", "cluster": "cluster"}, []string{"cluster"}, []string{"cluster"}},
+		{map[string]string{"cluster": ""}, []string{"cluster"}, []string{"cluster"}},
+		{map[string]string{"code": "cluster"}, []string{"code"}, []string{"cluster"}},
+		{map[string]string{"label-cluster": ""}, nil, nil},
+		{map[string]string{"label-cluster": "cluster"}, []string{"label-cluster"}, []string{"cluster"}},
+		{map[string]string{"label-cluster": "cid", "bad-name": "ok", "foo.bar": ""}, []string{"bad-name", "label-cluster"}, []string{"ok", "cid"}},
+	}
+	for _, tc := range cases {
+		keys, names := sortedUserLabels(tc.in, constLabels)
+		require.Equal(t, tc.keys, keys)
+		require.Equal(t, tc.names, names)
+	}
+	for _, in := range []map[string]string{
+		{"loc": "country"},
+		{"b": "dup", "a": "dup"},
+	} {
+		require.Panics(t, func() { sortedUserLabels(in, constLabels) })
+	}
 }
