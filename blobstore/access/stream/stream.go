@@ -16,7 +16,6 @@ package stream
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -28,11 +27,9 @@ import (
 	"github.com/cubefs/cubefs/blobstore/access/controller"
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
-	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
-	"github.com/cubefs/cubefs/blobstore/common/ec"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/resourcepool"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -104,6 +101,9 @@ type StreamHandler interface {
 
 	// Delete delete all blobs in this location
 	Delete(ctx context.Context, location *proto.Location) error
+
+	// ListCodeModes lists enabled CodeModes on writable clusters.
+	ListCodeModes() map[codemode.CodeMode][]proto.ClusterID
 
 	// Admin returns internal admin interface.
 	Admin() any
@@ -208,16 +208,12 @@ func (id *blobIdent) String() string {
 // Handler stream handler
 type Handler struct {
 	memPool           *resourcepool.MemPool
-	encoder           map[codemode.CodeMode]ec.Encoder
 	clusterController controller.ClusterController
 	groupRun          singleflight.Group
 
 	blobnodeClient  blobnode.StorageAPI
 	proxyClient     proxy.Client
 	shardnodeClient shardnode.AccessAPI
-
-	allCodeModes  CodeModePairs
-	maxObjectSize int64
 
 	discardVidChan chan discardVid
 	stopCh         <-chan struct{}
@@ -233,6 +229,8 @@ func confCheck(cfg *StreamConfig) error {
 		return errors.New("consul or clusters can not all be empty")
 	}
 	cfg.ClusterConfig.IDC = cfg.IDC
+	cfg.ClusterConfig.EncoderEnableVerify = cfg.EncoderEnableVerify
+	cfg.ClusterConfig.EncoderConcurrency = cfg.EncoderConcurrency
 
 	if len(cfg.MemPoolSizeClasses) == 0 {
 		cfg.MemPoolSizeClasses = getDefaultMempoolSize()
@@ -316,8 +314,7 @@ func NewStreamHandler(cfg *StreamConfig, stopCh <-chan struct{}) (h StreamHandle
 		proxyClient:     proxyClient,
 		shardnodeClient: shardnode.NewNonsupportShardnode(),
 
-		maxObjectSize: defaultMaxObjectSize,
-		StreamConfig:  *cfg,
+		StreamConfig: *cfg,
 	}
 	if cfg.ShardnodeConfig != nil { // enable shard node
 		// Do not use rpc retry, because the stream blob handles retries itself
@@ -328,56 +325,6 @@ func NewStreamHandler(cfg *StreamConfig, stopCh <-chan struct{}) (h StreamHandle
 		handler.StreamConfig.RepairIntoShardnodePercentage = 0
 	}
 
-	if err = clustermgr.LoadExtendCodemode(context.Background(), handler.clusterController); err != nil {
-		e = errors.Newf("load extend codemode failed, err: %+v", err)
-		return
-	}
-	rawCodeModePolicies, err := handler.clusterController.GetConfig(context.Background(), proto.CodeModeConfigKey)
-	if err != nil {
-		e = errors.Newf("get codemode policy from cluster manager failed, err: %+v", err)
-		return
-	}
-	codeModePolicies := make([]codemode.Policy, 0)
-	err = json.Unmarshal([]byte(rawCodeModePolicies), &codeModePolicies)
-	if err != nil {
-		e = errors.Newf("json decode codemode policy failed, err: %+v", err)
-		return
-	}
-	if len(codeModePolicies) <= 0 {
-		e = errors.Newf("invalid codemode policy raw: %s", rawCodeModePolicies)
-		return
-	}
-
-	allCodeModes := make(CodeModePairs)
-	encoders := make(map[codemode.CodeMode]ec.Encoder)
-	maxSize := int64(0)
-	for _, policy := range codeModePolicies {
-		if policy.MaxSize > maxSize {
-			maxSize = policy.MaxSize
-		}
-		codeMode := policy.ModeName.GetCodeMode()
-		tactic := codeMode.Tactic()
-		allCodeModes[codeMode] = CodeModePair{
-			Policy: policy,
-			Tactic: tactic,
-		}
-		encoder, err := ec.NewEncoder(ec.Config{
-			CodeMode:     tactic,
-			EnableVerify: cfg.EncoderEnableVerify,
-			Concurrency:  cfg.EncoderConcurrency,
-		})
-		if err != nil {
-			e = errors.Newf("new encoder failed, err: %v", err)
-			return
-		}
-		encoders[codeMode] = encoder
-	}
-	handler.allCodeModes = allCodeModes
-	handler.encoder = encoders
-	if maxSize < handler.maxObjectSize {
-		handler.maxObjectSize = maxSize
-	}
-
 	hystrix.ConfigureCommand(allocCommand, cfg.AllocCommandConfig)
 	hystrix.ConfigureCommand(rwCommand, cfg.RWCommandConfig)
 
@@ -385,6 +332,16 @@ func NewStreamHandler(cfg *StreamConfig, stopCh <-chan struct{}) (h StreamHandle
 	handler.stopCh = stopCh
 	handler.loopDiscardVids()
 	return handler, nil
+}
+
+// maxObjectSize returns the upload size ceiling: min(defaultMaxObjectSize,
+// max enabled policy MaxSize across all clusters). Never exceeds 5GB.
+func (h *Handler) maxObjectSize() int64 {
+	maxPolicy := h.clusterController.MaxPolicySize()
+	if maxPolicy > 0 && maxPolicy < defaultMaxObjectSize {
+		return maxPolicy
+	}
+	return defaultMaxObjectSize
 }
 
 // Delete delete all blobs in this location
@@ -399,6 +356,11 @@ func (h *Handler) Delete(ctx context.Context, location *proto.Location) error {
 	}
 	span.Debugf("to delete into proxy %+v", location)
 	return h.clearGarbage(ctx, location)
+}
+
+// ListCodeModes lists enabled CodeModes on writable clusters.
+func (h *Handler) ListCodeModes() map[codemode.CodeMode][]proto.ClusterID {
+	return h.clusterController.ListCodeModes()
 }
 
 // Admin returns internal admin interface.

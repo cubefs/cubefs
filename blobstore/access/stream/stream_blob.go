@@ -633,8 +633,8 @@ func (h *Handler) getLeaderShardInfo(ctx context.Context, clusterID proto.Cluste
 
 func (h *Handler) fixCreateBlobArgs(ctx context.Context, args *acapi.CreateBlobArgs) error {
 	span := trace.SpanFromContextSafe(ctx)
-	if int64(args.Size) > h.maxObjectSize {
-		span.Info("exceed max object size", h.maxObjectSize)
+	if maxSize := h.maxObjectSize(); int64(args.Size) > maxSize {
+		span.Info("exceed max object size", maxSize)
 		return errcode.ErrAccessExceedSize
 	}
 
@@ -643,25 +643,14 @@ func (h *Handler) fixCreateBlobArgs(ctx context.Context, args *acapi.CreateBlobA
 		span.Debugf("fill slice size:%d", args.SliceSize)
 	}
 
-	if args.CodeMode == 0 {
-		args.CodeMode = h.allCodeModes.SelectCodeMode(int64(args.Size))
-		span.Debugf("select codemode:%d", args.CodeMode)
+	clusterID, codeMode, err := h.clusterController.ChooseOne(int64(args.Size), args.CodeMode, args.ClusterID)
+	if err != nil {
+		span.Errorf("choose failed cluster:%d codemode:%d size:%d err:%v", args.ClusterID, args.CodeMode, args.Size, err)
+		return err
 	}
-
-	if !args.CodeMode.IsValid() {
-		span.Infof("invalid codemode:%d", args.CodeMode)
-		return errcode.ErrIllegalArguments
-	}
-
-	if args.ClusterID == 0 {
-		cluster, err := h.clusterController.ChooseOne()
-		if err != nil {
-			return err
-		}
-		args.ClusterID = cluster.ClusterID
-		span.Debugf("choose cluster[%+v]", cluster)
-	}
-
+	args.ClusterID = clusterID
+	args.CodeMode = codeMode
+	span.Debugf("choose cluster[%d] codemode[%d]", args.ClusterID, args.CodeMode)
 	return nil
 }
 

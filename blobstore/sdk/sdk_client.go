@@ -472,6 +472,10 @@ func (s *sdkHandler) sealBlob(ctx context.Context, args *acapi.SealBlobArgs) err
 	return s.handler.SealBlob(ctx, args)
 }
 
+func (s *sdkHandler) ListCodeModes(ctx context.Context) (acapi.ListCodeModeResp, error) {
+	return acapi.ListCodeModeResp(s.handler.ListCodeModes()), nil
+}
+
 func (s *sdkHandler) alloc(ctx context.Context, args *acapi.AllocArgs) (acapi.AllocResp, error) {
 	if !args.IsValid() {
 		return acapi.AllocResp{}, errcode.ErrIllegalArguments

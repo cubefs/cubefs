@@ -12,6 +12,8 @@ import (
 	access "github.com/cubefs/cubefs/blobstore/api/access"
 	clustermgr "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	shardnode "github.com/cubefs/cubefs/blobstore/api/shardnode"
+	codemode "github.com/cubefs/cubefs/blobstore/common/codemode"
+	ec "github.com/cubefs/cubefs/blobstore/common/ec"
 	proto "github.com/cubefs/cubefs/blobstore/common/proto"
 	sharding "github.com/cubefs/cubefs/blobstore/common/sharding"
 	gomock "github.com/golang/mock/gomock"
@@ -55,18 +57,61 @@ func (mr *MockClusterControllerMockRecorder) All() *gomock.Call {
 }
 
 // ChooseOne mocks base method.
-func (m *MockClusterController) ChooseOne() (*clustermgr.ClusterInfo, error) {
+func (m *MockClusterController) ChooseOne(arg0 int64, arg1 codemode.CodeMode, arg2 proto.ClusterID) (proto.ClusterID, codemode.CodeMode, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ChooseOne")
-	ret0, _ := ret[0].(*clustermgr.ClusterInfo)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret := m.ctrl.Call(m, "ChooseOne", arg0, arg1, arg2)
+	ret0, _ := ret[0].(proto.ClusterID)
+	ret1, _ := ret[1].(codemode.CodeMode)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
 }
 
 // ChooseOne indicates an expected call of ChooseOne.
-func (mr *MockClusterControllerMockRecorder) ChooseOne() *gomock.Call {
+func (mr *MockClusterControllerMockRecorder) ChooseOne(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ChooseOne", reflect.TypeOf((*MockClusterController)(nil).ChooseOne))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ChooseOne", reflect.TypeOf((*MockClusterController)(nil).ChooseOne), arg0, arg1, arg2)
+}
+
+// GetEncoder mocks base method.
+func (m *MockClusterController) GetEncoder(arg0 codemode.CodeMode) ec.Encoder {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetEncoder", arg0)
+	ret0, _ := ret[0].(ec.Encoder)
+	return ret0
+}
+
+// GetEncoder indicates an expected call of GetEncoder.
+func (mr *MockClusterControllerMockRecorder) GetEncoder(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEncoder", reflect.TypeOf((*MockClusterController)(nil).GetEncoder), arg0)
+}
+
+// MaxPolicySize mocks base method.
+func (m *MockClusterController) MaxPolicySize() int64 {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MaxPolicySize")
+	ret0, _ := ret[0].(int64)
+	return ret0
+}
+
+// MaxPolicySize indicates an expected call of MaxPolicySize.
+func (mr *MockClusterControllerMockRecorder) MaxPolicySize() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MaxPolicySize", reflect.TypeOf((*MockClusterController)(nil).MaxPolicySize))
+}
+
+// ListCodeModes mocks base method.
+func (m *MockClusterController) ListCodeModes() map[codemode.CodeMode][]proto.ClusterID {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListCodeModes")
+	ret0, _ := ret[0].(map[codemode.CodeMode][]proto.ClusterID)
+	return ret0
+}
+
+// ListCodeModes indicates an expected call of ListCodeModes.
+func (mr *MockClusterControllerMockRecorder) ListCodeModes() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListCodeModes", reflect.TypeOf((*MockClusterController)(nil).ListCodeModes))
 }
 
 // GetConfig mocks base method.

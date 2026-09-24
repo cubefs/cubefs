@@ -83,6 +83,10 @@ func NewHandler(service *Service) *rpc.Router {
 	// response body:  json
 	rpc.POST("/alloc", service.Alloc, rpc.OptArgsBody())
 
+	// GET /list/codemodes
+	// response body: json
+	rpc.GET("/list/codemodes", service.ListCodeModes)
+
 	// POST /get
 	// request  body:  json
 	// response body:  DataStream

@@ -47,8 +47,8 @@ func (h *Handler) Alloc(ctx context.Context, size uint64, blobSize uint32,
 	span.Debugf("alloc request with size:%d blobsize:%d cluster:%d codemode:%d",
 		size, blobSize, assignClusterID, codeMode)
 
-	if int64(size) > h.maxObjectSize {
-		span.Info("exceed max object size", h.maxObjectSize)
+	if maxSize := h.maxObjectSize(); int64(size) > maxSize {
+		span.Info("exceed max object size", maxSize)
 		return nil, errcode.ErrAccessExceedSize
 	}
 
@@ -57,20 +57,18 @@ func (h *Handler) Alloc(ctx context.Context, size uint64, blobSize uint32,
 		span.Debugf("fill blobsize:%d", blobSize)
 	}
 
-	if codeMode == codemode.CodeModeNone {
-		codeMode = h.allCodeModes.SelectCodeMode(int64(size))
-		span.Debugf("select codemode:%d", codeMode)
-	} else if !h.allCodeModes.VerifySelectCodeMode(codeMode) {
-		span.Errorf("specify codemode %d not found in codemode policy", codeMode)
-		return nil, errcode.ErrIllegalArguments
+	clusterID, codeMode, err := h.clusterController.ChooseOne(int64(size), codeMode, assignClusterID)
+	if err != nil {
+		span.Errorf("choose failed cluster:%d codemode:%d size:%d err:%v", clusterID, codeMode, size, err)
+		return nil, err
 	}
 
-	clusterID, blobs, err := h.allocFromAllocatorWithHystrix(ctx, codeMode, size, blobSize, assignClusterID)
+	blobs, err := h.allocFromAllocatorWithHystrix(ctx, codeMode, size, blobSize, clusterID)
 	if err != nil {
 		span.Error("alloc from proxy", errors.Detail(err))
 		return nil, err
 	}
-	span.Debugf("allocated from %d %+v", clusterID, blobs)
+	span.Debugf("allocated from cluster:%d blobs:%+v", clusterID, blobs)
 
 	location := &proto.Location{
 		ClusterID: clusterID,
@@ -85,9 +83,9 @@ func (h *Handler) Alloc(ctx context.Context, size uint64, blobSize uint32,
 
 func (h *Handler) allocFromAllocatorWithHystrix(ctx context.Context,
 	codeMode codemode.CodeMode, size uint64, blobSize uint32, clusterID proto.ClusterID,
-) (cid proto.ClusterID, bidRets []proto.Slice, err error) {
+) (bidRets []proto.Slice, err error) {
 	err = hystrix.Do(allocCommand, func() error {
-		cid, bidRets, err = h.allocFromAllocator(ctx, codeMode, size, blobSize, clusterID)
+		bidRets, err = h.allocFromAllocator(ctx, codeMode, size, blobSize, clusterID)
 		return err
 	}, nil)
 	return
@@ -95,18 +93,11 @@ func (h *Handler) allocFromAllocatorWithHystrix(ctx context.Context,
 
 func (h *Handler) allocFromAllocator(ctx context.Context,
 	codeMode codemode.CodeMode, size uint64, blobSize uint32, clusterID proto.ClusterID,
-) (proto.ClusterID, []proto.Slice, error) {
+) ([]proto.Slice, error) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	if blobSize == 0 {
 		blobSize = atomic.LoadUint32(&h.MaxBlobSize)
-	}
-	if clusterID == 0 {
-		clusterChosen, err := h.clusterController.ChooseOne()
-		if err != nil {
-			return 0, nil, err
-		}
-		clusterID = clusterChosen.ClusterID
 	}
 
 	args := proxy.AllocVolsArgs{
@@ -118,12 +109,12 @@ func (h *Handler) allocFromAllocator(ctx context.Context,
 	serviceController, err := h.clusterController.GetServiceController(clusterID)
 	if err != nil {
 		span.Error(err)
-		return 0, nil, err
+		return nil, err
 	}
 	hosts, err := serviceController.GetServiceHosts(ctx, serviceProxy)
 	if err != nil {
 		span.Error(err)
-		return 0, nil, err
+		return nil, err
 	}
 	for len(hosts) < h.AllocRetryTimes {
 		hosts = append(hosts, hosts...)
@@ -170,7 +161,7 @@ func (h *Handler) allocFromAllocator(ctx context.Context,
 	}); err != nil {
 		if err != errAllocatePunishedVolume {
 			reportUnhealth(clusterID, "allocate", "-", "-", "failed")
-			return 0, nil, err
+			return nil, err
 		}
 		// still write to storage if allocating punished volume
 		reportUnhealth(clusterID, "allocate", "-", "-", "punished")
@@ -198,13 +189,13 @@ func (h *Handler) allocFromAllocator(ctx context.Context,
 		})
 	}
 	if blobN > 0 {
-		return 0, nil, errors.New("no enough blob ids from allocator")
+		return nil, errors.New("no enough blob ids from allocator")
 	}
 
 	if len(blobs) > access.MaxLocationBlobs {
 		span.Errorf("alloc exceed max blobs %d>%d", len(blobs), access.MaxLocationBlobs)
-		return 0, nil, errors.New("alloc exceed max blobs of location")
+		return nil, errors.New("alloc exceed max blobs of location")
 	}
 
-	return clusterID, blobs, nil
+	return blobs, nil
 }

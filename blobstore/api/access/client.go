@@ -212,6 +212,8 @@ type API interface {
 	// - (nil, ErrIllegalArguments): when args is invalid.
 	// - (failedLocations, err): returns the list of locations that have not yet been deleted.
 	Delete(ctx context.Context, args *DeleteArgs) (failedLocations []proto.Location, err error)
+	// ListCodeModes lists enabled CodeModes on writable clusters.
+	ListCodeModes(ctx context.Context) (ListCodeModeResp, error)
 }
 
 type Client interface {
@@ -817,6 +819,20 @@ func (c *client) Delete(ctx context.Context, args *DeleteArgs) ([]proto.Location
 		return locations, err
 	}
 	return nil, nil
+}
+
+func (c *client) ListCodeModes(ctx context.Context) (ListCodeModeResp, error) {
+	rpcClient := c.rpcClient.Load().(rpc.Client)
+
+	ctx = withReqidContext(ctx)
+	resp := ListCodeModeResp{}
+	if err := rpcClient.GetWith(ctx, "/list/codemodes", &resp); err != nil {
+		return ListCodeModeResp{}, err
+	}
+	if resp == nil {
+		resp = ListCodeModeResp{}
+	}
+	return resp, nil
 }
 
 func shouldRetry(code int, err error) bool {

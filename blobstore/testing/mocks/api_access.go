@@ -82,3 +82,18 @@ func (mr *MockAccessAPIMockRecorder) Put(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Put", reflect.TypeOf((*MockAccessAPI)(nil).Put), arg0, arg1)
 }
+
+// ListCodeModes mocks base method.
+func (m *MockAccessAPI) ListCodeModes(arg0 context.Context) (access.ListCodeModeResp, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListCodeModes", arg0)
+	ret0, _ := ret[0].(access.ListCodeModeResp)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListCodeModes indicates an expected call of ListCodeModes.
+func (mr *MockAccessAPIMockRecorder) ListCodeModes(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListCodeModes", reflect.TypeOf((*MockAccessAPI)(nil).ListCodeModes), arg0)
+}

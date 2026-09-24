@@ -57,6 +57,7 @@ var errCodeMap = map[int]string{
 	CodeShardNotFound:          "shard not found",
 	CodeCallShardNodeFail:      "access call shard node fail",
 	CodeConnectionRefused:      "connection refused",
+	CodeAccessNoClusterAvail:   "access no cluster available",
 
 	// clustermgr
 	CodeCMUnexpect:                   "cm: unexpected error",

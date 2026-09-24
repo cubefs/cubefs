@@ -81,6 +81,21 @@ func TestSdkBlobstore_New(t *testing.T) {
 	require.Contains(t, err.Error(), "cluster")
 }
 
+func TestSdkHandler_ListCodeModes(t *testing.T) {
+	ctx := context.Background()
+	hd := newSdkHandler(t)
+	defer hd.Close()
+
+	want := map[codemode.CodeMode][]proto.ClusterID{
+		codemode.EC3P3: {1, 9},
+		codemode.EC6P6: {1},
+	}
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().ListCodeModes().Return(want)
+	resp, err := hd.ListCodeModes(ctx)
+	require.NoError(t, err)
+	require.Equal(t, acapi.ListCodeModeResp(want), resp)
+}
+
 func TestSdkHandler_Delete(t *testing.T) {
 	ctx := context.Background()
 	hd := newSdkHandler(t)

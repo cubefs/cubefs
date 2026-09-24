@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
-	"math"
 	"math/rand"
 	"strconv"
 	"sync"
@@ -67,10 +66,7 @@ var (
 	streamer *Handler
 
 	memPool     *resourcepool.MemPool
-	encoder     map[codemode.CodeMode]ec.Encoder
 	proxyClient proxy.Client
-
-	allCodeModes CodeModePairs
 
 	cmcli             clustermgr.APIAccess
 	volumeGetter      controller.VolumeGetter
@@ -422,7 +418,25 @@ func initMockData() {
 	ctr = gomock.NewController(&testing.T{})
 	c := NewMockClusterController(ctr)
 	c.EXPECT().Region().AnyTimes().Return("test-region")
-	c.EXPECT().ChooseOne().AnyTimes().Return(clusterInfo, nil)
+	c.EXPECT().MaxPolicySize().AnyTimes().Return(defaultMaxObjectSize)
+	c.EXPECT().ChooseOne(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
+		func(_ int64, mode codemode.CodeMode, assignClusterID proto.ClusterID) (proto.ClusterID, codemode.CodeMode, error) {
+			if assignClusterID == 2 {
+				return 0, codemode.CodeModeNone, errcode.ErrIllegalArguments
+			}
+			if mode != codemode.CodeModeNone && mode != codemode.EC6P6 {
+				return 0, codemode.CodeModeNone, errcode.ErrIllegalArguments
+			}
+			cid := assignClusterID
+			if cid == 0 {
+				cid = clusterID
+			}
+			resolved := codemode.EC6P6
+			if mode != codemode.CodeModeNone {
+				resolved = mode
+			}
+			return cid, resolved, nil
+		})
 	c.EXPECT().GetServiceController(gomock.Any()).AnyTimes().DoAndReturn(
 		func(needClusterID proto.ClusterID) (controller.ServiceController, error) {
 			if needClusterID != clusterID {
@@ -456,62 +470,15 @@ func initPool() {
 	memPool = resourcepool.NewMemPool(getDefaultMempoolSize())
 }
 
-func initEncoder() {
-	coderEC6P6, _ := ec.NewEncoder(ec.Config{
-		CodeMode:     codemode.EC6P6.Tactic(),
-		EnableVerify: true,
-	})
-	coderEC6P10L2, _ := ec.NewEncoder(ec.Config{
-		CodeMode:     codemode.EC6P10L2.Tactic(),
-		EnableVerify: true,
-	})
-	coderEC15P12, _ := ec.NewEncoder(ec.Config{
-		CodeMode:     codemode.EC15P12.Tactic(),
-		EnableVerify: true,
-	})
-	coderEC16P20L2, _ := ec.NewEncoder(ec.Config{
-		CodeMode:     codemode.EC16P20L2.Tactic(),
-		EnableVerify: true,
-	})
-	encoder = map[codemode.CodeMode]ec.Encoder{
-		codemode.EC6P6:     coderEC6P6,
-		codemode.EC6P10L2:  coderEC6P10L2,
-		codemode.EC15P12:   coderEC15P12,
-		codemode.EC16P20L2: coderEC16P20L2,
-	}
-}
-
-func initEC() {
-	allCodeModes = CodeModePairs{
-		codemode.EC6P6: CodeModePair{
-			Policy: codemode.Policy{
-				ModeName: codemode.EC6P6.Name(),
-				MaxSize:  math.MaxInt64,
-				Enable:   true,
-			},
-			Tactic: codemode.EC6P6.Tactic(),
-		},
-		codemode.EC6P10L2: CodeModePair{
-			Policy: codemode.Policy{
-				ModeName: codemode.EC6P10L2.Name(),
-				MaxSize:  -1,
-			},
-			Tactic: codemode.EC6P10L2.Tactic(),
-		},
-		codemode.EC15P12: CodeModePair{
-			Policy: codemode.Policy{
-				ModeName: codemode.EC15P12.Name(),
-				MaxSize:  -1,
-			},
-			Tactic: codemode.EC15P12.Tactic(),
-		},
-		codemode.EC16P20L2: CodeModePair{
-			Policy: codemode.Policy{
-				ModeName: codemode.EC16P20L2.Name(),
-				MaxSize:  -1,
-			},
-			Tactic: codemode.EC16P20L2.Tactic(),
-		},
+func initEncoder(c *MockClusterController) {
+	for _, cm := range []codemode.CodeMode{
+		codemode.EC6P6, codemode.EC6P10L2, codemode.EC15P12, codemode.EC16P20L2,
+	} {
+		enc, err := ec.NewEncoder(ec.Config{CodeMode: cm.Tactic()})
+		if err == nil {
+			enc := enc
+			c.EXPECT().GetEncoder(cm).AnyTimes().Return(enc)
+		}
 	}
 }
 
@@ -551,8 +518,6 @@ func init() {
 	})
 
 	initPool()
-	initEncoder()
-	initEC()
 	initMockData()
 	initController()
 
@@ -560,14 +525,11 @@ func init() {
 
 	streamer = &Handler{
 		memPool:           memPool,
-		encoder:           encoder,
 		clusterController: cc,
 
 		blobnodeClient: newMockStorageAPI(),
 		proxyClient:    proxyClient,
 
-		allCodeModes:  allCodeModes,
-		maxObjectSize: defaultMaxObjectSize,
 		StreamConfig: StreamConfig{
 			IDC:                    idc,
 			MaxBlobSize:            uint32(blobSize), // 4M
@@ -585,6 +547,7 @@ func init() {
 		discardVidChan: make(chan discardVid, 8),
 		stopCh:         make(chan struct{}),
 	}
+	initEncoder(cc.(*MockClusterController))
 	streamer.loopDiscardVids()
 }
 

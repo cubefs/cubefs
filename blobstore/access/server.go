@@ -326,6 +326,19 @@ func (s *Service) Alloc(c *rpc.Context) {
 	span.Infof("done /alloc request resp:%+v", resp)
 }
 
+/*
+ *  method:         GET
+ *  url:            /list/codemodes
+ *  response body:  json
+ */
+func (s *Service) ListCodeModes(c *rpc.Context) {
+	ctx := c.Request.Context()
+	span := trace.SpanFromContextSafe(ctx)
+
+	span.Debugf("accept /list/codemodes request")
+	c.RespondJSON(access.ListCodeModeResp(s.streamHandler.ListCodeModes()))
+}
+
 // Get read file
 func (s *Service) Get(c *rpc.Context) {
 	args := new(access.GetArgs)

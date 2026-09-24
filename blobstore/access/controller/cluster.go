@@ -31,6 +31,9 @@ import (
 
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
+	"github.com/cubefs/cubefs/blobstore/common/codemode"
+	"github.com/cubefs/cubefs/blobstore/common/ec"
+	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
@@ -109,8 +112,9 @@ func (alg AlgChoose) String() string {
 
 // errors
 var (
-	ErrNoSuchCluster      = errors.New("controller: no such cluster")
-	ErrNoClusterAvailable = errors.New("controller: no cluster available")
+	ErrNoSuchCluster       = errors.New("controller: no such cluster")
+	ErrNoClusterAvailable  = errors.New("controller: no cluster available")
+	ErrNoCodeModeAvailable = errors.New("controller: no enabled codemode policy loaded from any cluster")
 )
 
 // ParseClusterChooseAlg parses cluster_choose_alg from access JSON config.
@@ -132,8 +136,20 @@ type ClusterController interface {
 	Region() string
 	// All returns all cluster info in this region
 	All() []*cmapi.ClusterInfo
-	// ChooseOne returns a available cluster to upload
-	ChooseOne() (*cmapi.ClusterInfo, error)
+	// ChooseOne resolves the upload target for a given (size, codeMode, clusterID) triple.
+	// It covers all four combinations of known/unknown inputs:
+	//
+	//   (size, None, 0)   → choose the best (cluster, mode) pair globally by size
+	//   (size, mode, 0)   → choose a cluster that enables this mode (size is ignored)
+	//   (size, None, cid) → choose a mode from the specified cluster's policies by size
+	//   (size, mode, cid) → validate that this cluster enables this mode (size is ignored)
+	//
+	// Returns (resolved ClusterID, resolved CodeMode, error). Always returns error when no
+	// valid candidate satisfies the constraints.
+	ChooseOne(size int64, codeMode codemode.CodeMode, clusterID proto.ClusterID) (proto.ClusterID, codemode.CodeMode, error)
+	// GetEncoder returns the EC encoder for the given CodeMode.
+	// Panics if the encoder was not initialised during cluster policy load.
+	GetEncoder(cm codemode.CodeMode) ec.Encoder
 	// GetServiceController return ServiceController in specified cluster
 	GetServiceController(clusterID proto.ClusterID) (ServiceController, error)
 	// GetVolumeGetter return VolumeGetter in specified cluster
@@ -142,6 +158,11 @@ type ClusterController interface {
 	GetConfig(ctx context.Context, key string) (string, error)
 	// GetShardController return IShardController in specified cluster
 	GetShardController(clusterID proto.ClusterID) (IShardController, error)
+	// MaxPolicySize returns the max enabled policy MaxSize across all loaded
+	// clusters. Zero when no enabled policy has been loaded yet.
+	MaxPolicySize() int64
+	// ListCodeModes returns enabled CodeModes on currently writable clusters.
+	ListCodeModes() map[codemode.CodeMode][]proto.ClusterID
 }
 
 // ClusterConfig cluster config
@@ -166,6 +187,10 @@ type ClusterConfig struct {
 
 	// ClusterChooseAlg selects how Access picks a cluster for Put/Alloc without assign_cluster_id.
 	ClusterChooseAlg string `json:"cluster_choose_alg"`
+
+	// EC encoder configuration shared across all CodeModes.
+	EncoderEnableVerify bool `json:"-"`
+	EncoderConcurrency  int  `json:"-"`
 }
 
 // Cluster cluster config, each clusterID related to hosts list
@@ -189,6 +214,7 @@ type clusterControllerImpl struct {
 	kvClient        *api.Client
 	allocAlg        uint32
 	totalAvailable  int64        // available space of all clusters
+	maxPolicySize   int64        // max enabled policy MaxSize across all clusters
 	clusters        atomic.Value // all clusters
 	available       atomic.Value // available clusters
 	serviceMgrs     sync.Map
@@ -197,6 +223,14 @@ type clusterControllerImpl struct {
 	roundRobinCount uint64   // a count for round robin
 	proxy           proxy.Cacher
 	stopCh          <-chan struct{}
+
+	// clusterCodeModes caches per-cluster codemode policies loaded from clustermgr.
+	// key: proto.ClusterID, value: []codemode.Policy
+	clusterCodeModes sync.Map
+
+	// encoders caches EC encoders indexed by CodeMode (uint8).
+	// Each slot stores an ec.Encoder; nil Load means not initialised.
+	encoders [256]atomic.Value
 
 	config ClusterConfig
 }
@@ -238,6 +272,9 @@ func NewClusterController(cfg *ClusterConfig, proxy proxy.Cacher, stopCh <-chan 
 	}
 	if err := f(); err != nil {
 		return nil, errors.Base(err, "load cluster failed")
+	}
+	if !controller.hasEnabledPolicy() {
+		return nil, ErrNoCodeModeAvailable
 	}
 
 	if stopCh == nil {
@@ -291,7 +328,6 @@ func (c *clusterControllerImpl) loadWithConfig() error {
 		}
 
 		allClusters[cs.ClusterID] = &cluster{client: cmCli, clusterInfo: clusterInfo}
-
 		if !clusterInfo.Readonly && clusterInfo.Available > 0 {
 			available = append(available, clusterInfo)
 			totalAvailable += clusterInfo.Available
@@ -417,6 +453,12 @@ func (c *clusterControllerImpl) deal(ctx context.Context,
 			continue
 		}
 
+		if err := c.loadCodeModePolicy(ctx, clusterID, cmCli); err != nil {
+			removeThisCluster()
+			span.Warnf("load codemode policy for cluster(%d) failed: %v", clusterID, err)
+			continue
+		}
+
 		space := c.getSpaceConf(clusterID)
 		span.Debugf("get space config valid:%t, cluster:%d", space.IsValid(), clusterID)
 		if space.IsValid() { // need shard node, meta system
@@ -445,6 +487,18 @@ func (c *clusterControllerImpl) deal(ctx context.Context,
 	return nil
 }
 
+func (c *clusterControllerImpl) MaxPolicySize() int64 {
+	return atomic.LoadInt64(&c.maxPolicySize)
+}
+
+func (c *clusterControllerImpl) GetEncoder(cm codemode.CodeMode) ec.Encoder {
+	val := c.encoders[cm].Load()
+	if val == nil {
+		panic(fmt.Sprintf("encoder not found for codemode %d", cm))
+	}
+	return val.(ec.Encoder)
+}
+
 func (c *clusterControllerImpl) Region() string {
 	return c.region
 }
@@ -460,42 +514,252 @@ func (c *clusterControllerImpl) All() []*cmapi.ClusterInfo {
 	return ret
 }
 
-func (c *clusterControllerImpl) ChooseOne() (*cmapi.ClusterInfo, error) {
+func (c *clusterControllerImpl) loadCodeModePolicy(
+	ctx context.Context, clusterID proto.ClusterID, cmCli *cmapi.Client,
+) error {
+	span := trace.SpanFromContextSafe(ctx)
+
+	// Extend must be registered before policy ModeName resolution.
+	// Invalid extend config panics inside codemode.Extend (ClusterMgr config error).
+	if err := cmapi.LoadExtendCodemode(ctx, cmCli); err != nil {
+		return err
+	}
+
+	raw, err := cmCli.GetConfig(ctx, proto.CodeModeConfigKey)
+	if err != nil {
+		return fmt.Errorf("load codemode policy failed: %w", err)
+	}
+	var policies []codemode.Policy
+	if err = json.Unmarshal([]byte(raw), &policies); err != nil {
+		return fmt.Errorf("parse codemode policy failed: %w", err)
+	}
+	if len(policies) == 0 {
+		return fmt.Errorf("codemode policy is empty")
+	}
+
+	// Resolve CodeMode and initialise encoders before exposing policies, so
+	// ChooseOne never selects a mode without a ready encoder.
+	newMaxSize := int64(0)
+	for _, p := range policies {
+		if !p.ModeName.IsValid() {
+			return fmt.Errorf("policy has unknown mode_name %q", p.ModeName)
+		}
+		codeMode := p.ModeName.GetCodeMode()
+		if c.encoders[codeMode].Load() == nil {
+			enc, encErr := ec.NewEncoder(ec.Config{
+				CodeMode:     codeMode.Tactic(),
+				EnableVerify: c.config.EncoderEnableVerify,
+				Concurrency:  c.config.EncoderConcurrency,
+			})
+			if encErr != nil {
+				return fmt.Errorf("init encoder for codemode(%d) failed: %w", codeMode, encErr)
+			}
+			c.encoders[codeMode].Store(enc)
+		}
+		if p.Enable && p.MaxSize > newMaxSize {
+			newMaxSize = p.MaxSize
+		}
+	}
+
+	c.clusterCodeModes.Store(clusterID, policies)
+	for {
+		old := atomic.LoadInt64(&c.maxPolicySize)
+		if newMaxSize <= old {
+			break
+		}
+		if atomic.CompareAndSwapInt64(&c.maxPolicySize, old, newMaxSize) {
+			break
+		}
+	}
+	span.Infof("loaded codemode policies for cluster(%d): %+v, maxPolicySize=%d",
+		clusterID, policies, atomic.LoadInt64(&c.maxPolicySize))
+
+	return nil
+}
+
+func (c *clusterControllerImpl) isClusterAvailable(clusterID proto.ClusterID) bool {
+	available := c.available.Load().(clusterQueue)
+	for _, ci := range available {
+		if ci.ClusterID == clusterID {
+			return true
+		}
+	}
+	return false
+}
+
+// hasEnabledPolicy reports whether at least one enabled codemode policy has
+// been loaded.
+func (c *clusterControllerImpl) hasEnabledPolicy() bool {
+	found := false
+	c.clusterCodeModes.Range(func(_, val any) bool {
+		policies, _ := val.([]codemode.Policy)
+		for _, p := range policies {
+			if p.Enable {
+				found = true
+				return false
+			}
+		}
+		return true
+	})
+	return found
+}
+
+// clusterCandidate pairs a ClusterInfo with the codemode that satisfies the caller's constraints.
+type clusterCandidate struct {
+	ci   *cmapi.ClusterInfo
+	mode codemode.CodeMode
+}
+
+// chooseFromCandidates selects one candidate using the configured choose algorithm.
+// Available space is read from candidate.ci.Available for AlgAvailable.
+func (c *clusterControllerImpl) chooseFromCandidates(candidates []clusterCandidate) (clusterCandidate, error) {
 	alg := AlgChoose(atomic.LoadUint32(&c.allocAlg))
 
 	switch alg {
 	case AlgAvailable:
-		totalAvailable := atomic.LoadInt64(&c.totalAvailable)
-		if totalAvailable <= 0 {
-			return nil, fmt.Errorf("no available space %d", totalAvailable)
+		total := int64(0)
+		for _, cand := range candidates {
+			total += cand.ci.Available
 		}
-		randValue := rand.Int63n(totalAvailable)
-		available := c.available.Load().(clusterQueue)
-		for _, cluster := range available {
-			if cluster.Available >= randValue {
-				return cluster, nil
+		if total <= 0 {
+			return clusterCandidate{}, errcode.ErrAccessNoClusterAvail
+		}
+		randValue := rand.Int63n(total)
+		for _, cand := range candidates {
+			if cand.ci.Available > randValue {
+				return cand, nil
 			}
-			randValue -= cluster.Available
+			randValue -= cand.ci.Available
 		}
 
 	case AlgRoundRobin:
-		available := c.available.Load().(clusterQueue)
-		if length := uint64(len(available)); length > 0 {
+		if length := uint64(len(candidates)); length > 0 {
 			count := atomic.AddUint64(&c.roundRobinCount, 1)
-			return available[count%length], nil
+			return candidates[count%length], nil
 		}
 
 	case AlgRandom:
-		available := c.available.Load().(clusterQueue)
-		if length := int64(len(available)); length > 0 {
-			return available[rand.Int63()%length], nil
+		if length := int64(len(candidates)); length > 0 {
+			return candidates[rand.Int63()%length], nil
 		}
 
 	default:
-		return nil, fmt.Errorf("not implemented algorithm %s(%d)", alg.String(), alg)
+		return clusterCandidate{}, errcode.ErrUnexpected
 	}
 
-	return nil, fmt.Errorf("no available cluster by %s", alg.String())
+	return clusterCandidate{}, errcode.ErrAccessNoClusterAvail
+}
+
+// pickModeFromPolicies finds a matching codemode from a cluster's policy list.
+// If mode != None, it returns that mode when the cluster has it enabled; size is ignored.
+// If mode == None, it returns the first enabled policy whose size range covers size.
+// On no match, returns CodeModeNone.
+func pickModeFromPolicies(policies []codemode.Policy, mode codemode.CodeMode, size int64) codemode.CodeMode {
+	if mode != codemode.CodeModeNone {
+		for _, p := range policies {
+			if p.Enable && p.ModeName.GetCodeMode() == mode {
+				return mode
+			}
+		}
+		return codemode.CodeModeNone
+	}
+
+	for _, p := range policies {
+		if !p.Enable {
+			continue
+		}
+		if size >= p.MinSize && size <= p.MaxSize {
+			return p.ModeName.GetCodeMode()
+		}
+	}
+
+	return codemode.CodeModeNone
+}
+
+// ChooseOne resolves the upload target for the given (size, codeMode, clusterID) triple.
+// See the ClusterController interface for the full contract.
+func (c *clusterControllerImpl) ChooseOne(size int64, mode codemode.CodeMode, clusterID proto.ClusterID) (proto.ClusterID, codemode.CodeMode, error) {
+	// Validate caller-specified mode early to avoid iterating policies needlessly.
+	if mode != codemode.CodeModeNone {
+		if !mode.IsValid() {
+			return 0, codemode.CodeModeNone, errcode.ErrIllegalArguments
+		}
+		if c.encoders[mode].Load() == nil {
+			return 0, codemode.CodeModeNone, errcode.ErrIllegalArguments
+		}
+	}
+
+	if clusterID != 0 {
+		val, ok := c.clusterCodeModes.Load(clusterID)
+		if !ok {
+			return 0, codemode.CodeModeNone, errcode.ErrIllegalArguments
+		}
+		if !c.isClusterAvailable(clusterID) {
+			return 0, codemode.CodeModeNone, errcode.ErrAccessNoClusterAvail
+		}
+		// Cluster is known: validate or pick mode from that cluster's policies only.
+		policies, _ := val.([]codemode.Policy)
+		resolvedMode := pickModeFromPolicies(policies, mode, size)
+		if resolvedMode == codemode.CodeModeNone {
+			return 0, codemode.CodeModeNone, errcode.ErrAccessNoClusterAvail
+		}
+		return clusterID, resolvedMode, nil
+	}
+
+	// clusterID == 0: collect all available clusters that satisfy the constraints,
+	// then apply the configured choose algorithm.
+	available := c.available.Load().(clusterQueue)
+	candidates := make([]clusterCandidate, 0, len(available))
+
+	for _, ci := range available {
+		val, ok := c.clusterCodeModes.Load(ci.ClusterID)
+		if !ok {
+			continue
+		}
+		policies, _ := val.([]codemode.Policy)
+		resolvedMode := pickModeFromPolicies(policies, mode, size)
+		if resolvedMode == codemode.CodeModeNone {
+			continue
+		}
+		candidates = append(candidates, clusterCandidate{
+			ci:   ci,
+			mode: resolvedMode,
+		})
+	}
+
+	if len(candidates) == 0 {
+		// no available cluster can serve any policy for this size — service-side issue
+		return 0, codemode.CodeModeNone, errcode.ErrAccessNoClusterAvail
+	}
+
+	chosen, err := c.chooseFromCandidates(candidates)
+	if err != nil {
+		return 0, codemode.CodeModeNone, err
+	}
+	return chosen.ci.ClusterID, chosen.mode, nil
+}
+
+func (c *clusterControllerImpl) ListCodeModes() map[codemode.CodeMode][]proto.ClusterID {
+	grouped := make(map[codemode.CodeMode][]proto.ClusterID)
+	available, ok := c.available.Load().(clusterQueue)
+	if !ok {
+		return grouped
+	}
+
+	for _, ci := range available {
+		val, ok := c.clusterCodeModes.Load(ci.ClusterID)
+		if !ok {
+			continue
+		}
+		policies, _ := val.([]codemode.Policy)
+		for _, p := range policies {
+			if p.Enable {
+				cm := p.ModeName.GetCodeMode()
+				grouped[cm] = append(grouped[cm], ci.ClusterID)
+			}
+		}
+	}
+	return grouped
 }
 
 func (c *clusterControllerImpl) GetServiceController(clusterID proto.ClusterID) (ServiceController, error) {

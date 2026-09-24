@@ -358,3 +358,43 @@ func TestBrokenShardUnitNumReport(t *testing.T) {
 	require.NotNil(t, shards)
 	testService.reportBrokenUnitNumInShard(shards)
 }
+
+func codeModeCheckBaseConfig(policies []codemode.Policy) *Config {
+	return &Config{
+		IDC:                    []string{"z0", "z1", "z2"},
+		ChunkSize:              DefaultChunkSize,
+		ClusterCfg:             map[string]interface{}{},
+		VolumeCodeModePolicies: policies,
+		VolumeCodeModeExtends:  testServiceCfg.VolumeCodeModeExtends,
+		ShardCodeModeName:      testServiceCfg.ShardCodeModeName,
+	}
+}
+
+func TestConfigCheckCodeModePolicies(t *testing.T) {
+	t.Run("single enabled policy must start from zero", func(t *testing.T) {
+		cfg := codeModeCheckBaseConfig([]codemode.Policy{
+			{ModeName: codemode.EC6P6.Name(), MinSize: 1073741825, MaxSize: 50 << 30, SizeRatio: 1, Enable: true},
+		})
+		err := cfg.checkAndFix()
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "must be started with 0")
+	})
+
+	t.Run("serial enabled policies are accepted", func(t *testing.T) {
+		cfg := codeModeCheckBaseConfig([]codemode.Policy{
+			{ModeName: codemode.EC6P6.Name(), MinSize: 0, MaxSize: 1 << 20, SizeRatio: 0.5, Enable: true},
+			{ModeName: codemode.EC15P12.Name(), MinSize: (1 << 20) + 1, MaxSize: 1 << 30, SizeRatio: 0.5, Enable: true},
+		})
+		require.NoError(t, cfg.checkAndFix())
+	})
+
+	t.Run("gap between enabled policies is rejected", func(t *testing.T) {
+		cfg := codeModeCheckBaseConfig([]codemode.Policy{
+			{ModeName: codemode.EC6P6.Name(), MinSize: 0, MaxSize: 1 << 20, SizeRatio: 0.5, Enable: true},
+			{ModeName: codemode.EC15P12.Name(), MinSize: 10 << 20, MaxSize: 1 << 30, SizeRatio: 0.5, Enable: true},
+		})
+		err := cfg.checkAndFix()
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "must be serially")
+	})
+}

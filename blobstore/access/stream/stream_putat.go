@@ -48,7 +48,7 @@ func (h *Handler) PutAt(ctx context.Context, rc io.Reader,
 	if err != nil {
 		return err
 	}
-	encoder := h.encoder[volume.CodeMode]
+	encoder := h.clusterController.GetEncoder(volume.CodeMode)
 
 	readSize := int(size)
 	st := time.Now()

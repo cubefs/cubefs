@@ -452,7 +452,7 @@ func (h *Handler) readOneBlob(ctx context.Context, getTime *timeReadWrite,
 
 		// has bad shards, but have enough shards to reconstruct
 		if len(received) >= dataN+badShards {
-			var err error
+			encoder := h.clusterController.GetEncoder(blob.CodeMode)
 			if shardReadSize < shardSize {
 				span.Debugf("bid(%d) ready to segment ec reconstruct data", blob.Bid)
 				reportDownload(blob.Cid, "EC", "segment")
@@ -460,10 +460,10 @@ func (h *Handler) readOneBlob(ctx context.Context, getTime *timeReadWrite,
 				for idx := range shards {
 					segments[idx] = shards[idx][shardOffset : shardOffset+shardReadSize]
 				}
-				err = h.encoder[blob.CodeMode].ReconstructData(segments, badIdx)
+				err = encoder.ReconstructData(segments, badIdx)
 			} else {
 				span.Debugf("bid(%d) ready to ec reconstruct data", blob.Bid)
-				err = h.encoder[blob.CodeMode].ReconstructData(shards, badIdx)
+				err = encoder.ReconstructData(shards, badIdx)
 			}
 			if err == nil {
 				reconstructed = true

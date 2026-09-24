@@ -18,6 +18,7 @@ package errors
 const (
 	CodeAccessUnexpect         = 550 // unexpect
 	CodeAccessServiceDiscovery = 551 // service discovery for access api client
+	CodeAccessNoClusterAvail   = 552 // no available cluster to serve the request
 
 	CodeAccessExceedSize      = 400 // exceed max size
 	CodeShardNotFound         = 404 // not support shard node
@@ -25,6 +26,7 @@ const (
 	CodeAccessReadRequestBody = 466 // read request body error
 	CodeCallShardNodeFail     = 467 // call shard node failed
 	CodeConnectionRefused     = 468 //
+
 )
 
 // errro of access
@@ -37,4 +39,5 @@ var (
 	ErrAccessNotFoundShard    = Error(CodeShardNotFound)
 	ErrCallShardNodeFail      = Error(CodeCallShardNodeFail)
 	ErrConnectionRefused      = Error(CodeConnectionRefused)
+	ErrAccessNoClusterAvail   = Error(CodeAccessNoClusterAvail)
 )
