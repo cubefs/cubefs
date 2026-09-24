@@ -63,6 +63,20 @@ func (mr *MockQosAPIMockRecorder) AcquireBid(arg0 interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AcquireBid", reflect.TypeOf((*MockQosAPI)(nil).AcquireBid), arg0)
 }
 
+// Delete mocks base method.
+func (m *MockQosAPI) Delete(arg0 context.Context, arg1 int64, arg2 func() error) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Delete", arg0, arg1, arg2)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Delete indicates an expected call of Delete.
+func (mr *MockQosAPIMockRecorder) Delete(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockQosAPI)(nil).Delete), arg0, arg1, arg2)
+}
+
 // Reader mocks base method.
 func (m *MockQosAPI) Reader(arg0 context.Context, arg1 io.Reader) io.Reader {
 	m.ctrl.T.Helper()

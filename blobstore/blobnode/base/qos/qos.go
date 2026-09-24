@@ -52,6 +52,7 @@ type QosAPI interface {
 	Release()
 	AcquireBid(uint64) error
 	ReleaseBid(uint64)
+	Delete(ctx context.Context, size int64, fn func() error) error
 }
 
 // QosMgr manages QoS for different IO types
@@ -213,6 +214,18 @@ func (q *queueQos) WriterAt(ctx context.Context, writer io.WriterAt) io.WriterAt
 func (q *queueQos) Writer(ctx context.Context, writer io.Writer) io.Writer {
 	w := q.ioStat.Writer(writer)
 	return &rateLimiter{ctx: ctx, writer: w, ctrl: q}
+}
+
+// Delete instruments a one-shot discard (punch-hole) with the write-tier io stat
+func (q *queueQos) Delete(ctx context.Context, size int64, fn func() error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	t := time.Now()
+	q.ioStat.WriteBegin(uint64(size))
+	err := fn()
+	q.ioStat.WriteEnd(t)
+	return err
 }
 
 // Acquire attempts to acquire a concurrency slot
