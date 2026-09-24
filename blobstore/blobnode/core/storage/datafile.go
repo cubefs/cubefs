@@ -496,7 +496,13 @@ func (cd *datafile) Delete(ctx context.Context, shard *core.Shard) (err error) {
 	// punch hole
 	discardSize = core.Alignphysize(int64(shard.Size))
 	discardSize = core.AlignSize(discardSize, _pageSize)
-	err = cd.ef.Discard(shard.Offset, discardSize)
+	if ioQos, exist := cd.qosMgr.GetQueueQos(ctx); exist {
+		err = ioQos.Delete(ctx, discardSize, func() error {
+			return cd.ef.Discard(shard.Offset, discardSize)
+		})
+	} else {
+		err = cd.ef.Discard(shard.Offset, discardSize)
+	}
 	span.AppendTrackLog("dat.d", start, err) // cost time: Discard(PunchHole)
 
 	return err

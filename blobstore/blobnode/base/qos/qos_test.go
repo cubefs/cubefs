@@ -468,6 +468,26 @@ func TestQueueQos_IO_Wrappers(t *testing.T) {
 		require.Equal(t, "test data", buf.String())
 	})
 
+	t.Run("Delete wrapper", func(t *testing.T) {
+		ctx := bnapi.SetIoType(context.Background(), bnapi.DeleteIO)
+		qos, ok := mgr.GetQueueQos(ctx)
+		require.True(t, ok)
+
+		called := false
+		err := qos.Delete(ctx, 4096, func() error {
+			called = true
+			return nil
+		})
+		require.NoError(t, err)
+		require.True(t, called)
+
+		// ctx already cancelled: fn must not run, error returned.
+		cancelCtx, cancel := context.WithCancel(ctx)
+		cancel()
+		err = qos.Delete(cancelCtx, 4096, func() error { return nil })
+		require.ErrorIs(t, err, context.Canceled)
+	})
+
 	t.Run("ReaderAt wrapper", func(t *testing.T) {
 		ctx := bnapi.SetIoType(context.Background(), bnapi.ReadIO)
 		qos, ok := mgr.GetQueueQos(ctx)
