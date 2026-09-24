@@ -287,6 +287,10 @@ type AllocResp struct {
 	Tokens   []string       `json:"tokens"`
 }
 
+// ListCodeModeResp for GET /list/codemodes.
+// Key is CodeMode, value is writable cluster ids that enable it.
+type ListCodeModeResp map[codemode.CodeMode][]proto.ClusterID
+
 // GetArgs for service /get
 type GetArgs struct {
 	Location proto.Location `json:"location"`

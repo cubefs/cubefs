@@ -35,6 +35,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/api/access"
+	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
@@ -109,6 +110,7 @@ func init() {
 	handler.Handle(http.MethodPost, "/alloc", handleAlloc, rpc.OptArgsBody())
 	handler.Handle(http.MethodPut, "/put", handlePut, rpc.OptArgsQuery())
 	handler.Handle(http.MethodPut, "/putat", handlePutAt, rpc.OptArgsQuery())
+	handler.Handle(http.MethodGet, "/list/codemodes", handleListCodeModes)
 	handler.Handle(http.MethodPost, "/get", handleGet, rpc.OptArgsBody())
 	handler.Handle(http.MethodPost, "/delete", handleDelete, rpc.OptArgsBody())
 	handler.Handle(http.MethodPost, "/sign", handleSign, rpc.OptArgsBody())
@@ -357,6 +359,13 @@ func handleSign(c *rpc.Context) {
 		return
 	}
 	c.RespondJSON(access.SignResp{Location: args.Location})
+}
+
+func handleListCodeModes(c *rpc.Context) {
+	c.RespondJSON(access.ListCodeModeResp{
+		codemode.EC3P3: {1, 9},
+		codemode.EC6P6: {1},
+	})
 }
 
 func calcCrc(loc *proto.Location) (uint32, error) {
@@ -985,4 +994,13 @@ func TestAccessClientPutRetryGetBody(t *testing.T) {
 		}
 	}
 	require.Fail(t, "retry with get body failed")
+}
+
+func TestAccessClientListCodeModes(t *testing.T) {
+	resp, err := client.ListCodeModes(randCtx())
+	require.NoError(t, err)
+	require.Equal(t, access.ListCodeModeResp{
+		codemode.EC3P3: {1, 9},
+		codemode.EC6P6: {1},
+	}, resp)
 }

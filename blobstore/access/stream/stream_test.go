@@ -20,6 +20,7 @@ import (
 	"io"
 	"testing"
 
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/access/controller"
@@ -75,6 +76,30 @@ func TestAccessStreamNew(t *testing.T) {
 
 	_, err := NewStreamHandler(&StreamConfig{IDC: "idc"}, nil)
 	require.NotNil(t, err)
+}
+
+func TestAccessStreamMaxObjectSize(t *testing.T) {
+	ctr := gomock.NewController(t)
+	defer ctr.Finish()
+
+	clu := NewMockClusterController(ctr)
+	h := &Handler{clusterController: clu}
+
+	t.Run("caps at defaultMaxObjectSize when policy exceeds 5GB", func(t *testing.T) {
+		clu.EXPECT().MaxPolicySize().Return(int64(50 << 30))
+		require.Equal(t, defaultMaxObjectSize, h.maxObjectSize())
+	})
+
+	t.Run("uses policy MaxSize when below 5GB", func(t *testing.T) {
+		smallMax := int64(1 << 30)
+		clu.EXPECT().MaxPolicySize().Return(smallMax)
+		require.Equal(t, smallMax, h.maxObjectSize())
+	})
+
+	t.Run("uses defaultMaxObjectSize when policy is zero", func(t *testing.T) {
+		clu.EXPECT().MaxPolicySize().Return(int64(0))
+		require.Equal(t, defaultMaxObjectSize, h.maxObjectSize())
+	})
 }
 
 func TestAccessStreamDelete(t *testing.T) {

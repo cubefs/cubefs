@@ -169,6 +169,10 @@ func newService() *Service {
 			}
 			return nil
 		})
+	s.EXPECT().ListCodeModes().AnyTimes().Return(map[codemode.CodeMode][]proto.ClusterID{
+		codemode.EC3P3: {1, 9},
+		codemode.EC6P6: {1},
+	})
 
 	return &Service{
 		streamHandler: s,
@@ -989,4 +993,17 @@ func TestAccessServiceLimited(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+func TestAccessServiceListCodeModes(t *testing.T) {
+	host := runMockService(newService())
+	cli := newClient()
+
+	var resp access.ListCodeModeResp
+	err := cli.GetWith(ctx, host+"/list/codemodes", &resp)
+	require.NoError(t, err)
+	require.Equal(t, access.ListCodeModeResp{
+		codemode.EC3P3: {1, 9},
+		codemode.EC6P6: {1},
+	}, resp)
 }

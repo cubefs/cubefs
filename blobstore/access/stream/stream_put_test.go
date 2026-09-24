@@ -21,6 +21,7 @@ import (
 	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"hash/crc32"
 	"sync"
 	"testing"
@@ -32,7 +33,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
 func TestAccessStreamPutBase(t *testing.T) {

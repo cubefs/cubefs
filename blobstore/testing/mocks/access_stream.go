@@ -171,6 +171,20 @@ func (mr *MockStreamHandlerMockRecorder) ListBlob(arg0, arg1 interface{}) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBlob", reflect.TypeOf((*MockStreamHandler)(nil).ListBlob), arg0, arg1)
 }
 
+// ListCodeModes mocks base method.
+func (m *MockStreamHandler) ListCodeModes() map[codemode.CodeMode][]proto.ClusterID {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListCodeModes")
+	ret0, _ := ret[0].(map[codemode.CodeMode][]proto.ClusterID)
+	return ret0
+}
+
+// ListCodeModes indicates an expected call of ListCodeModes.
+func (mr *MockStreamHandlerMockRecorder) ListCodeModes() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListCodeModes", reflect.TypeOf((*MockStreamHandler)(nil).ListCodeModes))
+}
+
 // Put mocks base method.
 func (m *MockStreamHandler) Put(arg0 context.Context, arg1 io.Reader, arg2 int64, arg3 access.HasherMap, arg4 proto.ClusterID, arg5 codemode.CodeMode) (*proto.Location, error) {
 	m.ctrl.T.Helper()

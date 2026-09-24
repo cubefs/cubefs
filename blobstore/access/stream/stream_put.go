@@ -60,8 +60,8 @@ func (h *Handler) Put(ctx context.Context,
 	if size <= 0 {
 		return nil, errcode.ErrIllegalArguments
 	}
-	if size > h.maxObjectSize {
-		span.Info("exceed max object size", h.maxObjectSize)
+	if maxSize := h.maxObjectSize(); size > maxSize {
+		span.Info("exceed max object size", maxSize)
 		return nil, errcode.ErrAccessExceedSize
 	}
 
@@ -71,25 +71,20 @@ func (h *Handler) Put(ctx context.Context,
 	}
 
 	// 2.choose cluster and alloc volume from allocator
-	selectedCodeMode := codeMode
-	if selectedCodeMode == codemode.CodeModeNone {
-		selectedCodeMode = h.allCodeModes.SelectCodeMode(size)
-	} else {
-		valid := h.allCodeModes.VerifySelectCodeMode(selectedCodeMode)
-		if !valid {
-			span.Errorf("specify codemode %d not found in codemode policy", selectedCodeMode)
-			return nil, errcode.ErrIllegalArguments
-		}
+	clusterID, selectedCodeMode, err := h.clusterController.ChooseOne(size, codeMode, assignClusterID)
+	if err != nil {
+		span.Errorf("choose failed assign_cluster:%d codemode:%d size:%d err:%v", assignClusterID, codeMode, size, err)
+		return nil, err
 	}
-	span.Debugf("select codemode %d, specify codemode %d", selectedCodeMode, codeMode)
+	span.Debugf("choose codemode:%d cluster:%d", selectedCodeMode, clusterID)
 
 	blobSize := atomic.LoadUint32(&h.MaxBlobSize)
-	clusterID, blobs, err := h.allocFromAllocatorWithHystrix(ctx, selectedCodeMode, uint64(size), blobSize, assignClusterID)
+	blobs, err := h.allocFromAllocatorWithHystrix(ctx, selectedCodeMode, uint64(size), blobSize, clusterID)
 	if err != nil {
 		span.Error("alloc failed", errors.Detail(err))
 		return nil, err
 	}
-	span.Debugf("allocated from %d %+v", clusterID, blobs)
+	span.Debugf("allocated from cluster:%d blobs:%+v", clusterID, blobs)
 
 	// 3.read body and split, alloc from mem pool;ec encode and put into data node
 	limitReader := io.LimitReader(rc, int64(size))
@@ -135,7 +130,7 @@ func (h *Handler) Put(ctx context.Context,
 		go func() {
 			defer close(ch)
 
-			encoder := h.encoder[selectedCodeMode]
+			encoder := h.clusterController.GetEncoder(selectedCodeMode)
 			tactic := selectedCodeMode.Tactic()
 			for _, blob := range location.Spread() {
 				select {
@@ -220,7 +215,7 @@ func (h *Handler) putSequential(
 	putTime *timeReadWrite,
 ) error {
 	span := trace.SpanFromContextSafe(ctx)
-	encoder := h.encoder[selectedCodeMode]
+	encoder := h.clusterController.GetEncoder(selectedCodeMode)
 	tactic := selectedCodeMode.Tactic()
 
 	task := h.prepareBlob(ctx, encoder, tactic, limitReader, location.Spread()[0], location.ClusterID, putTime)

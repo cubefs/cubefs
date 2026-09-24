@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"math"
 	"strings"
 	"testing"
 
@@ -13,7 +12,6 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/access/controller"
 	acapi "github.com/cubefs/cubefs/blobstore/api/access"
-	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
@@ -47,27 +45,15 @@ func newStreamHandlerSuccess(t *testing.T) *Handler {
 	clu := NewMockClusterController(ctr)
 	clu.EXPECT().GetShardController(gAny).Return(shardMgr, nil).AnyTimes()
 	clu.EXPECT().GetServiceController(gAny).Return(svrCtrl, nil).AnyTimes()
+	clu.EXPECT().MaxPolicySize().Return(int64(100)).AnyTimes()
 
 	shardCli := mocks.NewMockShardnodeAccess(ctr)
 	proxyClient := mocks.NewMockProxyClient(ctr)
 
-	allCodeModes := CodeModePairs{
-		codemode.EC3P3: CodeModePair{
-			Policy: codemode.Policy{
-				ModeName: codemode.EC3P3.Name(),
-				MaxSize:  math.MaxInt64,
-				Enable:   true,
-			},
-			Tactic: codemode.EC3P3.Tactic(),
-		},
-	}
 	handler := &Handler{
 		clusterController: clu,
 		shardnodeClient:   shardCli,
 		proxyClient:       proxyClient,
-
-		maxObjectSize: 100,
-		allCodeModes:  allCodeModes,
 	}
 
 	return handler
@@ -157,9 +143,7 @@ func TestStreamBlobCreate(t *testing.T) {
 	}
 	h.shardnodeClient.(*mocks.MockShardnodeAccess).EXPECT().CreateBlob(gAny, gAny, gAny).Return(ret, errcode.ErrShardRouteVersionNeedUpdate)
 	h.shardnodeClient.(*mocks.MockShardnodeAccess).EXPECT().CreateBlob(gAny, gAny, gAny).Return(ret, nil)
-	h.clusterController.(*MockClusterController).EXPECT().ChooseOne().Return(&clustermgr.ClusterInfo{
-		ClusterID: 1,
-	}, nil)
+	h.clusterController.(*MockClusterController).EXPECT().ChooseOne(gomock.Any(), gomock.Any(), gomock.Any()).Return(proto.ClusterID(1), codemode.EC6P6, nil)
 
 	loc, err := h.CreateBlob(ctx, &args)
 	require.NoError(t, err)
