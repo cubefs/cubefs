@@ -179,11 +179,11 @@ func (auth *FormAuth) SignatureMatch(secretKey string, wildcards Wildcards) bool
 	auth.stringToSign = auth.FromMultipartForm("Policy")
 	switch auth.version {
 	case signatureV2:
-		return auth.signature == calculateSignatureV2(secretKey, auth.stringToSign)
+		return signatureEqual(calculateSignatureV2(secretKey, auth.stringToSign), auth.signature)
 	case signatureV4:
 		cred := auth.credential
 		signingKey := buildSigningKey(auth.version, secretKey, cred.Date, cred.Region, cred.Service, cred.Request)
-		return auth.signature == calculateSignature(signingKey, auth.stringToSign)
+		return signatureEqual(calculateSignature(signingKey, auth.stringToSign), auth.signature)
 	default:
 		return false
 	}

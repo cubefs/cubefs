@@ -187,9 +187,9 @@ func (auth *QueryAuth) CanonicalRequest() string {
 func (auth *QueryAuth) SignatureMatch(secretKey string, wildcards Wildcards) bool {
 	switch auth.version {
 	case signatureV2:
-		return auth.signature == auth.buildSignatureV2(secretKey, wildcards)
+		return signatureEqual(auth.buildSignatureV2(secretKey, wildcards), auth.signature)
 	case signatureV4:
-		return auth.signature == auth.buildSignatureV4(secretKey)
+		return signatureEqual(auth.buildSignatureV4(secretKey), auth.signature)
 	default:
 		return false
 	}
