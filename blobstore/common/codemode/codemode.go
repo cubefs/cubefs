@@ -51,6 +51,8 @@ const (
 	EC6P6L9       CodeMode = 200
 	EC6P8L10      CodeMode = 201
 	Replica4TwoAZ CodeMode = 202
+
+	EC3P3Align8kAdapt256 CodeMode = 203 // maybe remove or change later
 )
 
 // Note: Don't modify it unless you know very well how codemode works.
@@ -89,6 +91,8 @@ var constCodeModeTactic = map[CodeMode]Tactic{
 	EC6P8L10:      {N: 6, M: 8, L: 10, AZCount: 2, PutQuorum: 13, GetQuorum: 0, MinShardSize: alignSize0B},
 	Replica4TwoAZ: {N: 4, M: 0, L: 0, AZCount: 2, PutQuorum: 3},
 
+	EC3P3Align8kAdapt256: {N: 3, M: 3, L: 0, AZCount: 1, PutQuorum: 5, GetQuorum: 0, MinShardSize: 8 << 10, AdaptShardSize: 256},
+
 	// for replicate
 	Replica3:      {N: 3, M: 0, L: 0, AZCount: 3, PutQuorum: 3},
 	Replica3OneAZ: {N: 3, M: 0, L: 0, AZCount: 1, PutQuorum: 3},
@@ -117,6 +121,8 @@ var constName2CodeMode = map[CodeModeName]CodeMode{
 	"EC6P6L9":       EC6P6L9,
 	"EC6P8L10":      EC6P8L10,
 	"Replica4TwoAZ": Replica4TwoAZ,
+
+	"EC3P3Align8kAdapt256": EC3P3Align8kAdapt256,
 }
 
 var constCodeMode2Name = map[CodeMode]CodeModeName{
@@ -142,6 +148,8 @@ var constCodeMode2Name = map[CodeMode]CodeModeName{
 	EC6P6L9:       "EC6P6L9",
 	EC6P8L10:      "EC6P8L10",
 	Replica4TwoAZ: "Replica4TwoAZ",
+
+	EC3P3Align8kAdapt256: "EC3P3Align8kAdapt256",
 }
 
 //vol layout ep:EC6P10L2
@@ -188,6 +196,33 @@ type Tactic struct {
 	//  |    0    |    1    |    2    |   ....                |    N    |
 	//  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 	MinShardSize int `json:"min_shard_size"`
+
+	// AdaptShardSize shard size granularity when dataSize < MinShardSize (optional, 0 = disabled).
+	//
+	// Background
+	//   When MinShardSize is large (e.g. 64 KB) and dataSize < MinShardSize, the
+	//   data occupies only shard-0; the remaining N-1 shards are all-zero and stored
+	//   as NopData (a flag, no real bytes on disk).  The actual space waste is:
+	//     500 B object, MinShardSize=64 KB, shard-0 uses 64 KB, ~64 KB on disk,
+	//   all space ~128 × (P+1) amplification.
+	//
+	// Adaptive behaviour (AdaptShardSize > 0)
+	//   Triggered only when dataSize < MinShardSize.  Instead of jumping straight to
+	//   MinShardSize, dataSize itself is aligned up to the nearest multiple of
+	//   AdaptShardSize and the result is used as shardSize, capped at MinShardSize.
+	//   Data lands in the first shard; remaining shards are all-zero NopData.
+	//
+	//     shardSize = roundUp(dataSize, AdaptShardSize) <= MinShardSize
+	//
+	// Original behaviour (AdaptShardSize == 0, default)
+	//   Unchanged: shardSize is set to MinShardSize whenever ceil(dataSize/N) is
+	//   below it.  Existing configurations require no change.
+	//
+	// Constraints (validated by IsValid)
+	//   AdaptShardSize > 0  requires  MinShardSize > 0
+	//                       requires  AdaptShardSize <= MinShardSize
+	//                       requires  MinShardSize % AdaptShardSize == 0
+	AdaptShardSize int `json:"adapt_shard_size"`
 }
 
 func init() {
@@ -293,8 +328,10 @@ func (c *Tactic) IsValid() bool {
 		return c.N > 0 && c.AZCount > 0 && c.N%c.AZCount == 0 &&
 			c.PutQuorum > 0 && c.GetQuorum >= 0
 	}
+	adapted := c.AdaptShardSize >= 0 && (c.AdaptShardSize == 0 ||
+		(c.MinShardSize > 0 && c.AdaptShardSize <= c.MinShardSize && c.MinShardSize%c.AdaptShardSize == 0))
 	return c.N > 0 && c.M > 0 && c.L >= 0 && c.AZCount > 0 &&
-		c.PutQuorum > 0 && c.GetQuorum >= 0 && c.MinShardSize >= 0 &&
+		c.PutQuorum > 0 && c.GetQuorum >= 0 && c.MinShardSize >= 0 && adapted &&
 		c.N%c.AZCount == 0 && c.M%c.AZCount == 0 && c.L%c.AZCount == 0
 }
 

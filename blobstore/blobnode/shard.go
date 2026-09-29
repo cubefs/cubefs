@@ -432,6 +432,12 @@ func (s *Service) ShardMarkdelete(c *rpc.Context) {
 		return
 	}
 
+	if err := cs.AllowModify(); err != nil {
+		span.Warnf("chunk %s can not delete: %v", cs.ID().String(), err)
+		c.RespondError(err)
+		return
+	}
+
 	ctx = bnapi.SetIoType(ctx, bnapi.DeleteIO)
 	qosLmt, exist := ds.GetIoQos().GetQueueQos(ctx)
 	if !exist {
@@ -647,6 +653,15 @@ func (s *Service) ShardPut(c *rpc.Context) {
 			c.RespondError(err)
 			return
 		}
+	}
+
+	// A successful data write-back can only target a bid already tracked in
+	// BadBids when it is the crc-repair write-back; clear it right away so the
+	// bad-shard gauges drop as soon as the shard is repaired. Only the
+	// repairer's background write-back (BackgroundIO) can repair a bad bid;
+	// regular user writes never match a BadBid entry, so skip the lookup.
+	if !args.NopData && args.Type == bnapi.BackgroundIO {
+		s.inspectMgr.onBadBidRepaired(ctx, ds, cs, args.Bid)
 	}
 
 	s.reportPutTraffic(args.Type, args.Size)

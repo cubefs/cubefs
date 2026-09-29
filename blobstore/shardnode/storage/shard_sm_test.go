@@ -411,6 +411,109 @@ func TestShardInfo(t *testing.T) {
 	require.Nil(t, err)
 }
 
+func TestApplyInsert_MetaStatsReplayFill(t *testing.T) {
+	mockShard, shardClean := newMockShard(t)
+	defer shardClean()
+
+	patches := gomonkey.ApplyFunc((*shard).getMetaDataTypeAndSpaceIDByKey, func(s *shard, key []byte) (metaDataType, uint64) {
+		return metaDataTypeBlob, 100
+	})
+	patches.ApplyFunc((*shard).getHashValues, func(s *shard, key []byte) ([]uint64, error) {
+		return []uint64{1}, nil
+	})
+	defer patches.Reset()
+
+	sk := mockShard.shard.shardKeys
+	b1 := cproto.Blob{Name: "blob-replay"}
+	key := sk.encodeBlobKey([]byte(b1.Name))
+	kv, err := initKV(key, &io.LimitedReader{R: rpc2.Codec2Reader(&b1), N: int64(b1.Size())})
+	require.NoError(t, err)
+	data := kv.Marshal()
+
+	// Simulate crash: KV written but metaStats not updated
+	require.NoError(t, mockShard.shard.store.KVStore().SetRaw(ctx, dataCF, key, kv.Value(), nil))
+	mockShard.shard.metaStats.set(proto.ShardMetaStats{
+		AppliedIndex:   5,
+		SpaceMetaStats: make(map[uint64]proto.SpaceMetaStats),
+	})
+
+	_, mou, err := mockShard.shardSM.applyInsertBlob(ctx, data)
+	require.NoError(t, err)
+	require.NotNil(t, mou)
+	require.Equal(t, metaOpInsert, mou.op)
+	require.Equal(t, metaDataTypeBlob, mou.dataType)
+	require.Equal(t, uint64(100), mou.spaceID)
+
+	_, err = mockShard.shardSM.Apply(ctx, []raft.ProposalData{{
+		Op: raftOpInsertBlob, Data: data,
+	}}, 10)
+	require.NoError(t, err)
+	stats := mockShard.shard.metaStats.get()
+	require.Equal(t, uint64(10), stats.AppliedIndex)
+	require.Equal(t, uint64(1), stats.BlobCount)
+	require.Equal(t, uint64(1), stats.SpaceMetaStats[100].BlobCount)
+
+	// Replay same index again: AppliedIndex guard skips recount
+	_, err = mockShard.shardSM.Apply(ctx, []raft.ProposalData{{
+		Op: raftOpInsertBlob, Data: data,
+	}}, 10)
+	require.NoError(t, err)
+	stats = mockShard.shard.metaStats.get()
+	require.Equal(t, uint64(10), stats.AppliedIndex)
+	require.Equal(t, uint64(1), stats.BlobCount)
+}
+
+func TestApplyInsertItem_MetaStatsReplayFill(t *testing.T) {
+	mockShard, shardClean := newMockShard(t)
+	defer shardClean()
+
+	patches := gomonkey.ApplyFunc((*shard).getMetaDataTypeAndSpaceIDByKey, func(s *shard, key []byte) (metaDataType, uint64) {
+		return metaDataTypeItem, 100
+	})
+	patches.ApplyFunc((*shard).getHashValues, func(s *shard, key []byte) ([]uint64, error) {
+		return []uint64{1}, nil
+	})
+	defer patches.Reset()
+
+	sk := mockShard.shard.shardKeys
+	item := &proto.Item{
+		ID: "item-replay",
+		Fields: []proto.Field{
+			{ID: 0, Value: []byte("v")},
+		},
+	}
+	key := sk.encodeItemKey([]byte(item.ID))
+	kv, err := initKV(key, &io.LimitedReader{R: rpc2.Codec2Reader(item), N: int64(item.Size())})
+	require.NoError(t, err)
+	data := kv.Marshal()
+
+	require.NoError(t, mockShard.shard.store.KVStore().SetRaw(ctx, dataCF, key, kv.Value(), nil))
+	mockShard.shard.metaStats.set(proto.ShardMetaStats{
+		AppliedIndex:   5,
+		SpaceMetaStats: make(map[uint64]proto.SpaceMetaStats),
+	})
+
+	mou, err := mockShard.shardSM.applyInsertItem(ctx, data)
+	require.NoError(t, err)
+	require.NotNil(t, mou)
+	require.Equal(t, metaOpInsert, mou.op)
+
+	_, err = mockShard.shardSM.Apply(ctx, []raft.ProposalData{{
+		Op: raftOpInsertItem, Data: data,
+	}}, 10)
+	require.NoError(t, err)
+	stats := mockShard.shard.metaStats.get()
+	require.Equal(t, uint64(10), stats.AppliedIndex)
+	require.Equal(t, uint64(1), stats.ItemCount)
+
+	_, err = mockShard.shardSM.Apply(ctx, []raft.ProposalData{{
+		Op: raftOpInsertItem, Data: data,
+	}}, 10)
+	require.NoError(t, err)
+	stats = mockShard.shard.metaStats.get()
+	require.Equal(t, uint64(1), stats.ItemCount)
+}
+
 func checkItemEqual(t *testing.T, shard *mockShard, id []byte, item *proto.Item) {
 	ret, err := shard.shard.GetItem(ctx, OpHeader{
 		ShardKeys: []string{string(id)},

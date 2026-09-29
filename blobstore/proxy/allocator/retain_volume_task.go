@@ -34,6 +34,10 @@ func (v *volumeMgr) retainTask() {
 		select {
 		case <-ticker.C:
 			v.retainAll(ctx)
+			// After every retain cycle, proactively replenish volumes that may have been
+			// discarded due to lease renewal failures, ensuring allocatable volumes are
+			// always available even during idle periods with no incoming alloc requests.
+			v.checkAndReplenish(ctx)
 		case <-v.closeCh:
 			span.Debugf("loop retain done.")
 			return
@@ -77,7 +81,7 @@ func (v *volumeMgr) retain(ctx context.Context, isBackup bool) {
 		if end > numTokens {
 			end = numTokens
 		}
-		v.retainVolumeFromCm(ctx, retainTokenArgs[start:end], isBackup)
+		v.retainVolumeFromCm(ctx, retainTokenArgs[start:end])
 		start = end
 		if start < numTokens {
 			time.Sleep(time.Duration(v.RetainBatchIntervalS) * time.Second)
@@ -113,12 +117,12 @@ func (v *volumeMgr) handleFullVols(ctx context.Context, isBackup bool) {
 
 // remove retain failed volume and update success expire time
 func (v *volumeMgr) handleRetainResult(ctx context.Context, retainTokenArgs []string,
-	retainRet []clustermgr.RetainVolume, isBackup bool,
+	retainRet []clustermgr.RetainVolume,
 ) {
 	span := trace.SpanFromContextSafe(ctx)
 	if len(retainRet) == 0 {
 		for _, token := range retainTokenArgs {
-			err := v.discardVolume(ctx, token, isBackup)
+			err := v.discardVolume(ctx, token)
 			if err != nil {
 				span.Error(err)
 			}
@@ -132,7 +136,7 @@ func (v *volumeMgr) handleRetainResult(ctx context.Context, retainTokenArgs []st
 			span.Errorf("decodeToken %v error", infos.Token)
 			continue
 		}
-		err = v.updateExpireTime(vid, infos.ExpireTime, isBackup)
+		err = v.updateExpireTime(vid, infos.ExpireTime)
 		if err != nil {
 			span.Error(err, vid)
 		}
@@ -142,14 +146,14 @@ func (v *volumeMgr) handleRetainResult(ctx context.Context, retainTokenArgs []st
 		if _, ok := tokenMap[token]; ok {
 			continue
 		}
-		err := v.discardVolume(ctx, token, isBackup)
+		err := v.discardVolume(ctx, token)
 		if err != nil {
 			span.Error(err, token)
 		}
 	}
 }
 
-func (v *volumeMgr) discardVolume(ctx context.Context, token string, isBackup bool) (err error) {
+func (v *volumeMgr) discardVolume(ctx context.Context, token string) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
 	_, vid, err := proto.DecodeToken(token)
 	if err != nil {
@@ -157,7 +161,7 @@ func (v *volumeMgr) discardVolume(ctx context.Context, token string, isBackup bo
 	}
 	span.Infof("retain failed vid: %v", vid)
 	for _, info := range v.modeInfos {
-		if vol, ok := info.Get(vid, isBackup); ok {
+		if vol, ok := info.GetAny(vid); ok {
 			vol.mu.Lock()
 			vol.deleted = true
 			vol.mu.Unlock()
@@ -186,9 +190,9 @@ func (v *volumeMgr) genRetainVolume(ctx context.Context, isBackup bool) (tokens 
 	return
 }
 
-func (v *volumeMgr) updateExpireTime(vid proto.Vid, expireTime int64, isBackup bool) (err error) {
+func (v *volumeMgr) updateExpireTime(vid proto.Vid, expireTime int64) (err error) {
 	for _, modeInfo := range v.modeInfos {
-		if vol, ok := modeInfo.Get(vid, isBackup); ok {
+		if vol, ok := modeInfo.GetAny(vid); ok {
 			vol.ExpireTime = expireTime
 			return nil
 		}
@@ -196,7 +200,7 @@ func (v *volumeMgr) updateExpireTime(vid proto.Vid, expireTime int64, isBackup b
 	return errors.New("vid does not exist ")
 }
 
-func (v *volumeMgr) retainVolumeFromCm(ctx context.Context, tokens []string, isBackup bool) {
+func (v *volumeMgr) retainVolumeFromCm(ctx context.Context, tokens []string) {
 	span := trace.SpanFromContextSafe(ctx)
 	args := &clustermgr.RetainVolumeArgs{
 		Tokens: tokens,
@@ -207,5 +211,17 @@ func (v *volumeMgr) retainVolumeFromCm(ctx context.Context, tokens []string, isB
 		return
 	}
 	span.Debugf("retain result: %#v, lens: %v\n", retainVolume, len(retainVolume.RetainVolTokens))
-	v.handleRetainResult(ctx, tokens, retainVolume.RetainVolTokens, isBackup)
+	v.handleRetainResult(ctx, tokens, retainVolume.RetainVolTokens)
+}
+
+// checkAndReplenish inspects the volume cache for every code mode after a retain cycle.
+func (v *volumeMgr) checkAndReplenish(ctx context.Context) {
+	span := trace.SpanFromContextSafe(ctx)
+	for mode, info := range v.modeInfos {
+		modeCfg := v.getCodeModeConfig(mode)
+		if info.current.Len()+info.backup.Len() == 0 {
+			span.Warnf("codeMode %s: current and backup both empty after retain, triggering replenish", mode.String())
+			v.allocNotify(ctx, mode, modeCfg.DefaultAllocVolsNum, false)
+		}
+	}
 }

@@ -200,7 +200,7 @@ func TestGetAllocList(t *testing.T) {
 	}
 }
 
-func BenchmarkVolumeMgr_Alloc(b *testing.B) {
+func BenchmarkRunCIVolumeMgr_Alloc(b *testing.B) {
 	cmcli := mock.ProxyMockClusterMgrCli(b)
 	ctx := context.Background()
 	bidMgr, _ := NewBidMgr(ctx, BlobConfig{BidAllocNums: 100000}, cmcli)
@@ -246,7 +246,7 @@ func BenchmarkVolumeMgr_Alloc(b *testing.B) {
 	}
 }
 
-func BenchmarkAllocByBackup(b *testing.B) {
+func BenchmarkRunCIAllocByBackup(b *testing.B) {
 	cmcli := mock.ProxyMockClusterMgrCli(b)
 	ctx := context.Background()
 	bidMgr, _ := NewBidMgr(ctx, BlobConfig{BidAllocNums: 100000}, cmcli)

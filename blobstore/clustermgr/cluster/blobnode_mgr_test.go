@@ -227,6 +227,7 @@ func TestDiskMgr_Heartbeat(t *testing.T) {
 	defer closeTestDiskMgr()
 	initTestBlobNodeMgrNodes(t, testDiskMgr, 1, 1, testIdcs[0])
 	initTestBlobNodeMgrDisks(t, testDiskMgr, 1, 10, false, testIdcs[0])
+	testDiskMgr.RegisterDiskUsageCallback(func(proto.DiskID, float64) {})
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 
 	heartbeatInfos := make([]*clustermgr.DiskHeartBeatInfo, 0)
@@ -693,4 +694,379 @@ func TestBlobNodeManager_Disk(t *testing.T) {
 		err := blobNodeManager.DropNode(ctx, &clustermgr.NodeInfoArgs{NodeID: proto.NodeID(1)})
 		require.NoError(t, err)
 	}
+}
+
+// TestDiskMgr_AllocNodeID covers AllocNodeID success and scopeMgr error paths.
+func TestDiskMgr_AllocNodeID(t *testing.T) {
+	mgr, closeMgr := initTestBlobNodeMgr(t)
+	defer closeMgr()
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+
+	testMockScopeMgr.EXPECT().Alloc(gomock.Any(), NodeIDScopeName, 1).Return(uint64(7), uint64(7), nil)
+	nid, err := mgr.AllocNodeID(ctx)
+	require.NoError(t, err)
+	require.Equal(t, proto.NodeID(7), nid)
+
+	// error from scopeMgr
+	testMockScopeMgr.EXPECT().Alloc(gomock.Any(), NodeIDScopeName, 1).Return(uint64(0), uint64(0), apierrors.ErrUnexpected)
+	_, err = mgr.AllocNodeID(ctx)
+	require.Error(t, err)
+}
+
+// TestDiskMgr_IsFrequentHeartBeat covers disk-not-found and both true/false
+// branches based on the notify interval.
+func TestDiskMgr_IsFrequentHeartBeat(t *testing.T) {
+	mgr, closeMgr := initTestBlobNodeMgr(t)
+	defer closeMgr()
+	mgr.cfg.HeartbeatExpireIntervalS = 60
+	initTestBlobNodeMgrNodes(t, mgr, 1, 1, testIdcs[0])
+	initTestBlobNodeMgrDisks(t, mgr, 1, 1, false, testIdcs[0])
+
+	// disk not found
+	_, err := mgr.IsFrequentHeartBeat(proto.DiskID(999), 10)
+	require.ErrorIs(t, err, apierrors.ErrCMDiskNotFound)
+
+	// force expireTime to "now" so that the gap from now is 0 seconds => true when
+	// notifyInterval >= heartbeatExpireInterval
+	disk, _ := mgr.getDisk(proto.DiskID(1))
+	disk.lock.Lock()
+	disk.expireTime = time.Now()
+	disk.lock.Unlock()
+	frequent, err := mgr.IsFrequentHeartBeat(proto.DiskID(1), mgr.cfg.HeartbeatExpireIntervalS+1)
+	require.NoError(t, err)
+	require.True(t, frequent)
+
+	frequent, err = mgr.IsFrequentHeartBeat(proto.DiskID(1), 0)
+	require.NoError(t, err)
+	require.False(t, frequent)
+}
+
+// TestDiskMgr_CheckNodeInfoDuplicated covers both found and not-found paths.
+func TestDiskMgr_CheckNodeInfoDuplicated(t *testing.T) {
+	mgr, closeMgr := initTestBlobNodeMgr(t)
+	defer closeMgr()
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	initTestBlobNodeMgrNodes(t, mgr, 1, 1, testIdcs[0])
+
+	nodeInfo, err := mgr.GetNodeInfo(ctx, proto.NodeID(1))
+	require.NoError(t, err)
+
+	// existing node => duplicated
+	nid, dup := mgr.CheckNodeInfoDuplicated(ctx, &nodeInfo.NodeInfo)
+	require.True(t, dup)
+	require.Equal(t, nodeInfo.NodeID, nid)
+
+	// non-existing node => not duplicated
+	ni := nodeInfo.NodeInfo
+	ni.Host = "not-exist-host"
+	nid, dup = mgr.CheckNodeInfoDuplicated(ctx, &ni)
+	require.False(t, dup)
+	require.Equal(t, proto.InvalidNodeID, nid)
+}
+
+// TestDiskMgr_AllowNodeIPChange covers every early-return branch.
+func TestDiskMgr_AllowNodeIPChange(t *testing.T) {
+	mgr, closeMgr := initTestBlobNodeMgr(t)
+	defer closeMgr()
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	initTestBlobNodeMgrNodes(t, mgr, 1, 2, testIdcs[0])
+
+	nodeInfo, err := mgr.GetNodeInfo(ctx, proto.NodeID(1))
+	require.NoError(t, err)
+
+	// feature disabled
+	mgr.cfg.EnableNodeIPChange = false
+	require.False(t, mgr.AllowNodeIPChange(ctx, &nodeInfo.NodeInfo))
+
+	// feature enabled, node not exist
+	mgr.cfg.EnableNodeIPChange = true
+	missing := nodeInfo.NodeInfo
+	missing.NodeID = proto.NodeID(9999)
+	require.False(t, mgr.AllowNodeIPChange(ctx, &missing))
+
+	// only Host/Rack differ => allowed. AllowNodeIPChange internally zeroes
+	// NodeSetID and Status before comparing, so callers must pass zero values
+	// for those fields when requesting a host/rack update.
+	want := nodeInfo.NodeInfo
+	want.Host = "changed-host"
+	want.Rack = "changed-rack"
+	want.NodeSetID = 0
+	want.Status = 0
+	require.True(t, mgr.AllowNodeIPChange(ctx, &want))
+
+	// other field differs => not allowed
+	bad := want
+	bad.DiskType = proto.DiskTypeSSD
+	require.False(t, mgr.AllowNodeIPChange(ctx, &bad))
+
+	// node already dropped => not allowed
+	dropped, _ := mgr.getNode(proto.NodeID(2))
+	dropped.withLocked(func() error {
+		dropped.info.Status = proto.NodeStatusDropped
+		return nil
+	})
+	nodeInfo2, err := mgr.GetNodeInfo(ctx, proto.NodeID(2))
+	require.NoError(t, err)
+	require.False(t, mgr.AllowNodeIPChange(ctx, &nodeInfo2.NodeInfo))
+}
+
+// TestDiskMgr_ValidateNodeInfo covers every error/ok branch.
+func TestDiskMgr_ValidateNodeInfo(t *testing.T) {
+	mgr, closeMgr := initTestBlobNodeMgr(t)
+	defer closeMgr()
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+
+	// invalid role
+	bad := &clustermgr.NodeInfo{Role: proto.NodeRole(0), DiskType: proto.DiskTypeHDD}
+	require.ErrorIs(t, mgr.ValidateNodeInfo(ctx, bad), apierrors.ErrIllegalArguments)
+
+	// invalid disk type
+	bad = &clustermgr.NodeInfo{Role: proto.NodeRoleBlobNode, DiskType: proto.DiskType(0)}
+	require.ErrorIs(t, mgr.ValidateNodeInfo(ctx, bad), apierrors.ErrIllegalArguments)
+
+	// no NodeSetID => happy path (null nodeSetID skips topo validation)
+	ok := &clustermgr.NodeInfo{Role: proto.NodeRoleBlobNode, DiskType: proto.DiskTypeHDD}
+	require.NoError(t, mgr.ValidateNodeInfo(ctx, ok))
+
+	// non-null NodeSetID that doesn't exist => ErrCMNodeSetNotFound
+	ok.NodeSetID = proto.NodeSetID(12345)
+	require.Error(t, mgr.ValidateNodeInfo(ctx, ok))
+}
+
+// TestDiskMgr_SetStatus exercises the raft-protected SetStatus entry point and
+// its error branches (invalid status / disk not found / changing back).
+func TestDiskMgr_SetStatus(t *testing.T) {
+	mgr, closeMgr := initTestBlobNodeMgr(t)
+	defer closeMgr()
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	initTestBlobNodeMgrNodes(t, mgr, 1, 1, testIdcs[0])
+	initTestBlobNodeMgrDisks(t, mgr, 1, 3, false, testIdcs[0])
+
+	// disk not found
+	err := mgr.SetStatus(ctx, &clustermgr.DiskSetArgs{DiskID: 99999, Status: proto.DiskStatusNormal}, "blobnode")
+	require.ErrorIs(t, err, apierrors.ErrCMDiskNotFound)
+
+	// invalid status
+	err = mgr.SetStatus(ctx, &clustermgr.DiskSetArgs{DiskID: 1, Status: proto.DiskStatus(99)}, "blobnode")
+	require.ErrorIs(t, err, apierrors.ErrInvalidStatus)
+
+	// happy path (Propose is mocked to return nil in the test harness)
+	err = mgr.SetStatus(ctx, &clustermgr.DiskSetArgs{DiskID: 1, Status: proto.DiskStatusBroken}, "blobnode")
+	require.NoError(t, err)
+}
+
+// TestDiskMgr_Close covers the Close() lifecycle.
+func TestDiskMgr_Close(t *testing.T) {
+	mgr, closeMgr := initTestBlobNodeMgr(t)
+	defer closeMgr()
+
+	// Close should not panic and should be safe to call once.
+	mgr.Close()
+}
+
+// TestDiskMgr_RefreshExpireTime covers RefreshExpireTime bumping every disk.
+func TestDiskMgr_RefreshExpireTime(t *testing.T) {
+	mgr, closeMgr := initTestBlobNodeMgr(t)
+	defer closeMgr()
+	mgr.cfg.HeartbeatExpireIntervalS = 60
+	initTestBlobNodeMgrNodes(t, mgr, 1, 1, testIdcs[0])
+	initTestBlobNodeMgrDisks(t, mgr, 1, 3, false, testIdcs[0])
+
+	// manually set a stale expireTime
+	now := time.Now()
+	for i := 1; i <= 3; i++ {
+		di, _ := mgr.getDisk(proto.DiskID(i))
+		di.lock.Lock()
+		di.expireTime = now.Add(-time.Hour)
+		di.lastExpireTime = now.Add(-time.Hour)
+		di.lock.Unlock()
+	}
+
+	mgr.RefreshExpireTime()
+	// every disk's expireTime should be pushed beyond "now"
+	for i := 1; i <= 3; i++ {
+		di, _ := mgr.getDisk(proto.DiskID(i))
+		di.lock.RLock()
+		require.True(t, di.expireTime.After(now))
+		require.True(t, di.lastExpireTime.After(now))
+		di.lock.RUnlock()
+	}
+}
+
+// TestDiskMgr_ValidateAllocRet covers the non-HostAware branch and error paths
+// that the broader AllocChunks tests don't hit.
+func TestDiskMgr_ValidateAllocRet(t *testing.T) {
+	mgr, closeMgr := initTestBlobNodeMgr(t)
+	defer closeMgr()
+	initTestBlobNodeMgrNodes(t, mgr, 1, 1, testIdcs[0])
+	initTestBlobNodeMgrDisks(t, mgr, 1, 3, false, testIdcs[0])
+
+	// HostAware=true: duplicated host (all disks share NodeID=1) => error
+	mgr.cfg.HostAware = true
+	require.Error(t, mgr.validateAllocRet([]proto.DiskID{1, 2}))
+	// HostAware=true with unknown disk => ErrDiskNotExist path
+	require.Error(t, mgr.validateAllocRet([]proto.DiskID{9999}))
+
+	// HostAware=false: duplicated disk id => error
+	mgr.cfg.HostAware = false
+	require.Error(t, mgr.validateAllocRet([]proto.DiskID{1, 1}))
+	// HostAware=false, distinct disks => ok
+	require.NoError(t, mgr.validateAllocRet([]proto.DiskID{1, 2, 3}))
+}
+
+// TestBlobNodeManager_ListNodes verifies ListNodes with status filters:
+// 0 (all), NodeStatusNormal, and NodeStatusDropped.
+func TestBlobNodeManager_ListNodes(t *testing.T) {
+	mgr, closeMgr := initTestBlobNodeMgr(t)
+	defer closeMgr()
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+
+	// Add 4 nodes with one disk each (specifyNodeID=true → disk i belongs to node i).
+	initTestBlobNodeMgrNodes(t, mgr, 1, 4, testIdcs[0])
+	initTestBlobNodeMgrDisks(t, mgr, 1, 4, true, testIdcs[0])
+
+	// ── initial state: all 4 nodes are Normal ──────────────────────────────
+	all := mgr.ListNodes(ctx, 0)
+	require.Equal(t, 4, len(all))
+
+	normals := mgr.ListNodes(ctx, proto.NodeStatusNormal)
+	require.Equal(t, 4, len(normals))
+
+	dropped := mgr.ListNodes(ctx, proto.NodeStatusDropped)
+	require.Equal(t, 0, len(dropped))
+
+	// ── put node 2 into Dropping state (disk 2 readonly → applyDroppingNode) ──
+	// Dropping nodes keep NodeStatusNormal as their persisted status, so they
+	// still appear in the Normal filter result.
+	require.NoError(t, mgr.applySwitchReadonly(proto.DiskID(2), true))
+	_, err := mgr.applyDroppingNode(ctx, proto.NodeID(2), true)
+	require.NoError(t, err)
+
+	// Dropping nodes keep NodeStatusNormal as persisted status, so they still appear.
+	normals = mgr.ListNodes(ctx, proto.NodeStatusNormal)
+	require.Equal(t, 4, len(normals))
+
+	// ── fully drop node 1 ─────────────────────────────────────────────────
+	require.NoError(t, mgr.applySwitchReadonly(proto.DiskID(1), true))
+	_, err = mgr.applyDroppingNode(ctx, proto.NodeID(1), true)
+	require.NoError(t, err)
+	require.NoError(t, mgr.applyDroppedDisk(ctx, proto.DiskID(1)))
+	require.NoError(t, mgr.applyDroppedNode(ctx, proto.NodeID(1)))
+
+	all = mgr.ListNodes(ctx, 0)
+	require.Equal(t, 4, len(all)) // node 1 is still in allNodes, just Dropped
+
+	dropped = mgr.ListNodes(ctx, proto.NodeStatusDropped)
+	require.Equal(t, 1, len(dropped))
+	require.Equal(t, proto.NodeID(1), dropped[0].NodeID)
+	require.Equal(t, proto.NodeStatusDropped, dropped[0].Status)
+
+	// node 2 (dropping) + node 3 + node 4 all have NodeStatusNormal
+	normals = mgr.ListNodes(ctx, proto.NodeStatusNormal)
+	require.Equal(t, 3, len(normals))
+
+	normalIDs := make(map[proto.NodeID]struct{}, 3)
+	for _, n := range normals {
+		normalIDs[n.NodeID] = struct{}{}
+	}
+	require.Contains(t, normalIDs, proto.NodeID(2))
+	require.Contains(t, normalIDs, proto.NodeID(3))
+	require.Contains(t, normalIDs, proto.NodeID(4))
+	require.NotContains(t, normalIDs, proto.NodeID(1)) // node 1 is Dropped
+}
+
+func TestBlobNodeMgr_DiskUsageListener(t *testing.T) {
+	mgr, closeMgr := initTestBlobNodeMgr(t)
+	defer closeMgr()
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+
+	initTestBlobNodeMgrNodes(t, mgr, 1, 1, testIdcs[0])
+	initTestBlobNodeMgrDisks(t, mgr, 1, 1, true, testIdcs[0])
+
+	const diskID = proto.DiskID(1)
+	const total = int64(100 * 1024 * 1024 * 1024) // 100 GiB
+
+	var lastID proto.DiskID
+	var lastRatio float64
+	mgr.RegisterDiskUsageCallback(func(id proto.DiskID, ratio float64) {
+		lastID = id
+		lastRatio = ratio
+	})
+	const watermark = 0.8
+
+	sendHeartbeat := func(used int64) {
+		infos := []*clustermgr.DiskHeartBeatInfo{{
+			DiskID: diskID,
+			Size:   total,
+			Used:   used,
+		}}
+		require.NoError(t, mgr.applyHeartBeatDiskInfo(ctx, infos))
+	}
+
+	t.Run("unknown disk skips listener", func(t *testing.T) {
+		lastRatio = 0
+		require.NoError(t, mgr.applyHeartBeatDiskInfo(ctx, []*clustermgr.DiskHeartBeatInfo{
+			{DiskID: proto.DiskID(9999), Size: total, Free: total / 2},
+		}))
+		require.Equal(t, proto.DiskID(0), lastID)
+	})
+
+	t.Run("zero-size disk skips callback", func(t *testing.T) {
+		prevID := lastID
+		require.NoError(t, mgr.applyHeartBeatDiskInfo(ctx, []*clustermgr.DiskHeartBeatInfo{
+			{DiskID: diskID, Size: 0, Used: 0},
+		}))
+		require.Equal(t, prevID, lastID)
+	})
+
+	t.Run("below watermark notifies ratio < threshold", func(t *testing.T) {
+		sendHeartbeat(79 * 1024 * 1024 * 1024) // 79%
+		require.Equal(t, diskID, lastID)
+		require.Less(t, lastRatio, watermark)
+	})
+
+	t.Run("at watermark boundary notifies ratio >= threshold", func(t *testing.T) {
+		sendHeartbeat(80 * 1024 * 1024 * 1024) // exactly 80%
+		require.Equal(t, diskID, lastID)
+		require.GreaterOrEqual(t, lastRatio, watermark)
+	})
+
+	t.Run("above watermark notifies ratio >= threshold", func(t *testing.T) {
+		sendHeartbeat(95 * 1024 * 1024 * 1024) // 95%
+		require.Equal(t, diskID, lastID)
+		require.GreaterOrEqual(t, lastRatio, watermark)
+	})
+}
+
+// TestDiskMgr_DroppingNode covers applyDroppingNode/applyDroppedNode corner cases:
+// node not found, dropping propagation, and dropped without disks.
+func TestDiskMgr_DroppingNode(t *testing.T) {
+	mgr, closeMgr := initTestBlobNodeMgr(t)
+	defer closeMgr()
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	initTestBlobNodeMgrNodes(t, mgr, 1, 2, testIdcs[0])
+	initTestBlobNodeMgrDisks(t, mgr, 1, 2, true, testIdcs[0]) // disk 1 -> node 1, disk 2 -> node 2
+
+	// node not found
+	_, err := mgr.applyDroppingNode(ctx, proto.NodeID(9999), true)
+	require.ErrorIs(t, err, apierrors.ErrCMNodeNotFound)
+
+	// node 1 has a normal (non-readonly) disk => propagated error via pendingEntries
+	// set the disk to readonly first so dropping succeeds
+	require.NoError(t, mgr.applySwitchReadonly(proto.DiskID(1), true))
+	_, err = mgr.applyDroppingNode(ctx, proto.NodeID(1), true)
+	require.NoError(t, err)
+
+	// double dropping => isUsingStatus() returns false OR dropping=true => returns (true, nil)
+	already, err := mgr.applyDroppingNode(ctx, proto.NodeID(1), true)
+	require.NoError(t, err)
+	require.True(t, already)
+
+	// applyDroppedNode: not a dropping node (node 2 has never been dropped) => no-op, nil
+	require.NoError(t, mgr.applyDroppedNode(ctx, proto.NodeID(2)))
+
+	// applyDroppedNode: non-existing node id through a mocked dropping record.
+	// Since persistentHandler.isDroppingNode would query the DB directly, we rely
+	// on the happy path that the DB has no such record and returns nil.
+	require.NoError(t, mgr.applyDroppedNode(ctx, proto.NodeID(9999)))
 }

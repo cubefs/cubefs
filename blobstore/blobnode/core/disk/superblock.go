@@ -19,8 +19,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
@@ -50,34 +52,85 @@ import (
 //
 //          shards/${chunk_name}/${ShardKey} -> {ShardMeta}
 //
+// data inspect state (DataInspectMgr per-disk inspect store), same kv handler:
 //
-// example:
-//							/(root)
-//		/				\			\						\
-//	disk				vuids		chunks					shards
-//	/${diskinfo}		/${vuid}		/${chunkname}		/${chunk_name}
-//						/${chunkid}		/${chunkmeta}		/${shardkey}
-//															/${shardmeta}
+//          inspect/disk              -> {InspectDiskState JSON}
+//          inspect/vuids/${vuid}     -> {InspectChunkState JSON}
+//
+// Disk-level state records cycle boundaries (CycleStartAt, CycleID).
+// Chunk-level state records per-vuid scan progress (Cursor, CycleMaxBid,
+// CycleID, Counted, CycleCnt, CycleScanned, BadBids, etc.).
+// Keys use dedicated prefixes that do not
+// collide with the
+// existing key spaces. Orphan chunk entries whose vuid no longer exists on disk are
+// garbage-collected at load time via gcOrphanInspectState.
+//
+
+//
+// example layout:
+//
+// meta/superblock ──┬─ disk/
+//                   │   └─ diskinfo ............. DiskMeta
+//                   ├─ vuids/
+//                   │   └─ ${Vuid} .............. ChunkID
+//                   ├─ chunks/
+//                   │   └─ ${ChunkID} ........... VuidMeta
+//                   ├─ shards/
+//                   │   └─ ${ChunkID}/
+//                   │       └─ ${Bid} ........... ShardMeta
+//                   ├─ inspect/disk ............. InspectDiskState
+//                   └─ inspect/vuids/
+//                       └─ ${Vuid} .............. InspectChunkState
+//
+//
 
 const (
 	slashSeparator = "/"
 )
 
 const (
-	_diskSpacePrefix  = "disk"
-	_chunkSpacePrefix = "chunks"
-	_vuidSpacePrefix  = "vuids"
+	_diskSpacePrefix        = "disk"
+	_chunkSpacePrefix       = "chunks"
+	_vuidSpacePrefix        = "vuids"
+	_inspectSpacePrefix     = "inspect"
+	_inspectVuidSpacePrefix = "inspect/vuids"
 
 	_diskmetaKey = "diskinfo"
 )
 
 var (
-	ErrVuidSpaceKeyPrefix = errors.New("disk: vuid space prefix key error")
-	ErrStopped            = errors.New("disk: closed")
+	ErrVuidSpaceKeyPrefix     = errors.New("disk: vuid space prefix key error")
+	errInspectChunkStateRange = errors.New("disk: inspect chunk state range")
+)
+
+// "inspect/disk"
+func GenInspectDiskStateKey() []byte {
+	return []byte(fmt.Sprintf("%s/disk", _inspectSpacePrefix))
+}
+
+// "inspect/vuids/${vuid}"
+func GenInspectChunkStateKey(vuid proto.Vuid) []byte {
+	return []byte(fmt.Sprintf("%s/%d", _inspectVuidSpacePrefix, uint64(vuid)))
+}
+
+const (
+	sbOpen   int32 = iota // open, db available
+	sbLocked              // inspect is using db
+	sbClosed              // Close finished, and db must not be used
 )
 
 type SuperBlock struct {
-	db db.MetaHandler
+	db     db.MetaHandler
+	closed int32 // 0 = open, 1 = locked (inspect using db), 2 = closed
+}
+
+// tryLock marks the superblock in-use for inspect db IO. False means closed or already locked.
+func (s *SuperBlock) tryLock() bool {
+	return atomic.CompareAndSwapInt32(&s.closed, sbOpen, sbLocked)
+}
+
+func (s *SuperBlock) unlock() {
+	atomic.CompareAndSwapInt32(&s.closed, sbLocked, sbOpen)
 }
 
 func GenChunkKey(id clustermgr.ChunkID) string {
@@ -374,9 +427,118 @@ func (s *SuperBlock) SetHandlerIOError(handleIOError func(err error)) {
 }
 
 func (s *SuperBlock) Close(ctx context.Context) error {
+	for !atomic.CompareAndSwapInt32(&s.closed, sbOpen, sbClosed) {
+		if atomic.LoadInt32(&s.closed) == sbClosed {
+			return nil
+		}
+		runtime.Gosched()
+	}
 	s.db.Close(ctx)
-	// db will be automatically closed when gc
 	s.db = nil
+	return nil
+}
+
+// DataInspectMgr persisted state uses the inspect key layout defined above and the
+// shared inspect state types from core/proto.go.
+
+func (s *SuperBlock) ReadInspectDiskState(ctx context.Context) (st core.InspectDiskState, err error) {
+	span := trace.SpanFromContextSafe(ctx)
+	data, err := s.readData(ctx, GenInspectDiskStateKey())
+	if err != nil {
+		return st, err
+	}
+	if err = json.Unmarshal(data, &st); err != nil {
+		span.Warnf("read inspect disk state failed: %+v", err)
+		return st, err
+	}
+	return st, nil
+}
+
+func (s *SuperBlock) UpsertInspectDiskState(ctx context.Context, st core.InspectDiskState) (err error) {
+	span := trace.SpanFromContextSafe(ctx)
+	if !bnapi.IsValidDiskID(st.DiskID) {
+		span.Errorf("Invalid diskID:%d", st.DiskID)
+		return bloberr.ErrInvalidParam
+	}
+
+	data, err := json.Marshal(st)
+	if err != nil {
+		return err
+	}
+	if err = s.writeData(ctx, GenInspectDiskStateKey(), data); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *SuperBlock) ReadInspectChunkState(ctx context.Context, vuid proto.Vuid) (st core.InspectChunkState, err error) {
+	span := trace.SpanFromContextSafe(ctx)
+	if !vuid.IsValid() {
+		span.Errorf("Invalid vuid:%d", vuid)
+		return st, bloberr.ErrInvalidParam
+	}
+
+	data, err := s.readData(ctx, GenInspectChunkStateKey(vuid))
+	if err != nil {
+		return st, err
+	}
+	if err = json.Unmarshal(data, &st); err != nil {
+		span.Warnf("read inspect chunk state failed: %+v", err)
+		return st, err
+	}
+	return st, nil
+}
+
+func (s *SuperBlock) UpsertInspectChunkState(ctx context.Context, st core.InspectChunkState) (err error) {
+	span := trace.SpanFromContextSafe(ctx)
+	if !st.Vuid.IsValid() {
+		span.Errorf("Invalid vuid:%d", st.Vuid)
+		return bloberr.ErrInvalidParam
+	}
+
+	data, err := json.Marshal(st)
+	if err != nil {
+		return err
+	}
+	return s.writeData(ctx, GenInspectChunkStateKey(st.Vuid), data)
+}
+
+func (s *SuperBlock) DeleteInspectChunkState(ctx context.Context, vuid proto.Vuid) (err error) {
+	span := trace.SpanFromContextSafe(ctx)
+	if !vuid.IsValid() {
+		span.Errorf("Invalid vuid:%d", vuid)
+		return bloberr.ErrInvalidParam
+	}
+
+	return s.db.Delete(ctx, GenInspectChunkStateKey(vuid))
+}
+
+func (s *SuperBlock) RangeInspectChunkState(ctx context.Context, fn func(st *core.InspectChunkState) bool) (err error) {
+	span := trace.SpanFromContextSafe(ctx)
+	iter := s.db.NewIterator(ctx)
+	defer iter.Close()
+
+	prefix := []byte(_inspectVuidSpacePrefix + slashSeparator)
+	for iter.Seek(prefix); iter.ValidForPrefix(prefix); iter.Next() {
+		v := iter.Value()
+		data := v.Data()
+		st := &core.InspectChunkState{}
+		if err := json.Unmarshal(data, st); err != nil {
+			v.Free()
+			return err
+		}
+		v.Free()
+
+		if !fn(st) {
+			return errInspectChunkStateRange
+		}
+	}
+
+	if err = iter.Err(); err != nil {
+		span.Errorf("occur err:%v during iteration", err)
+		return err
+	}
+
 	return nil
 }
 

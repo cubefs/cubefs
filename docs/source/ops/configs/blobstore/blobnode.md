@@ -84,9 +84,36 @@ BlobNode configuration is based on the [public configuration](./base.md), and th
     "delete_queue_depth": "delete queue depth, default 32",
     "background_queue_depth": "background queue depth, default 32",
     "data_qos": {
-      "read_mbps": "per disk normal read IO bandwidth",
-      "write_mbps": "per disk normal write IO bandwidth",
-      "background_mbps": "per disk background IO bandwidth"
+      "level": {
+        "read": {
+          "mbps": "read bandwidth, MB/s, default 200",
+          "concurrency": "read concurrency, default 64",
+          "bid_concurrency": "concurrent bids, default 32. Only read accepts a value other than 1",
+          "busy_factor": "rate factor when the disk is busy, range (0, 1], default 1.0",
+          "idle_factor": "rate factor when the disk is idle, must be >= 1, default 1.0"
+        },
+        "write": {
+          "mbps": "write bandwidth, MB/s, default 120",
+          "concurrency": "write concurrency, default 64",
+          "bid_concurrency": "fixed to 1",
+          "busy_factor": "range (0, 1], default 1.0",
+          "idle_factor": "must be >= 1, default 1.2"
+        },
+        "delete": {
+          "mbps": "delete bandwidth, MB/s, default 60",
+          "concurrency": "delete concurrency, default 32",
+          "bid_concurrency": "fixed to 1",
+          "busy_factor": "range (0, 1], default 0.8",
+          "idle_factor": "must be >= 1, default 1.25"
+        },
+        "background": {
+          "mbps": "background bandwidth, MB/s, default 20",
+          "concurrency": "background concurrency, default 32",
+          "bid_concurrency": "fixed to 1",
+          "busy_factor": "range (0, 1], default 0.5",
+          "idle_factor": "must be >= 1, default 3.0"
+        }
+      }
     }
   },
   "meta_config": {
@@ -94,9 +121,7 @@ BlobNode configuration is based on the [public configuration](./base.md), and th
     "support_inline": "whether to enable inline writing of small files to metadata storage RocksDB",
     "tinyfile_threshold_B": "threshold for small files, can be set to less than or equal to 128k",
     "sync": "whether to enable disk sync",
-    "cache_size": "lru cache size",
-    "batch_process_count": "number of batch processing requests for metadata, including deletion and writing",
-    "write_pri_ratio": "ratio of write requests for metadata batch processing. The specific number is batch_process_count*write_pri_ratio"
+    "cache_size": "lru cache size"
   },
   "clustermgr": {
     "hosts": "clustermgr service address"
@@ -106,6 +131,16 @@ BlobNode configuration is based on the [public configuration](./base.md), and th
   },
   "scheduler": {
     "host_sync_interval_ms": "backend node synchronization time for scheduler client used in background tasks"
+  },
+  "inspect_conf": {
+    "interval_sec": "interval between inspect rounds, default 90 seconds",
+    "rate_limit": "inspect read rate limit in bytes per second, default 4MB/s",
+    "batch_read_size": "maximum bytes of one batch read, default 16MB",
+    "cycle_days": "length of a full inspect cycle in days, default 90",
+    "record": {
+      "dir": "directory of inspect records",
+      "chunkbits": "record file size, 2^n bytes"
+    }
   },
   "heartbeat_interval_S": "heartbeat interval to clustermgr, default 30 seconds",
   "chunk_report_interval_S": "chunk report interval, default 60 seconds",
@@ -143,9 +178,12 @@ BlobNode configuration is based on the [public configuration](./base.md), and th
     "set_default_switch": true,
     "must_mount_point": true,
     "data_qos": {
-      "read_mbps": 100,
-      "write_mbps": 60,
-      "background_mbps": 20
+      "level": {
+        "read": {"mbps": 100, "concurrency": 64, "bid_concurrency": 32, "busy_factor": 1.0, "idle_factor": 1.0},
+        "write": {"mbps": 60, "concurrency": 64, "bid_concurrency": 1, "busy_factor": 1.0, "idle_factor": 1.2},
+        "delete": {"mbps": 60, "concurrency": 32, "bid_concurrency": 1, "busy_factor": 0.8, "idle_factor": 1.25},
+        "background": {"mbps": 20, "concurrency": 32, "bid_concurrency": 1, "busy_factor": 0.5, "idle_factor": 3.0}
+      }
     }
   },
   "meta_config": {

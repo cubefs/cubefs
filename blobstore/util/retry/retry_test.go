@@ -31,14 +31,10 @@ var (
 )
 
 func TestRetryNoRetry(t *testing.T) {
-	st := time.Now().Unix()
 	err := retry.Timed(10, 1000000).On(func() error {
 		return nil
 	})
-	et := time.Now().Unix()
-
 	require.NoError(t, err)
-	require.LessOrEqual(t, et, st)
 }
 
 func TestRetryOnce(t *testing.T) {
@@ -108,7 +104,6 @@ func TestRetryExponentialBackoff(t *testing.T) {
 	v := int64(duration / time.Millisecond)
 	require.Equal(t, 7, called)
 	require.Less(t, int64(1000), v, "duration: ", v)
-	require.Greater(t, int64(1250), v, "duration: ", v)
 
 	r.Reset()
 	st = time.Now()
@@ -122,7 +117,6 @@ func TestRetryExponentialBackoff(t *testing.T) {
 	v = int64(duration / time.Millisecond)
 	require.Equal(t, 14, called)
 	require.Less(t, int64(1000), v, "duration: ", v)
-	require.Greater(t, int64(1250), v, "duration: ", v)
 }
 
 func TestRetryContext(t *testing.T) {

@@ -152,7 +152,7 @@ func (c *Context) RespondError(err error) {
 		c.Respond()
 		return
 	}
-	c.RespondStatusData(httpErr.StatusCode(), errorResponse{
+	c.RespondStatusData(httpErr.StatusCode(), ErrorResponse{
 		Error: httpErr.Error(),
 		Code:  httpErr.ErrorCode(),
 	})

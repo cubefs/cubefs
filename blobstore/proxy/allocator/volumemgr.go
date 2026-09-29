@@ -141,6 +141,17 @@ func (m *modeInfo) Get(vid proto.Vid, isBackup bool) (res *volume, ok bool) {
 	return
 }
 
+func (m *modeInfo) GetAny(vid proto.Vid) (res *volume, ok bool) {
+	m.lock.RLock()
+	if res, ok = m.current.Get(vid); ok {
+		m.lock.RUnlock()
+		return
+	}
+	res, ok = m.backup.Get(vid)
+	m.lock.RUnlock()
+	return
+}
+
 func (m *modeInfo) TotalFree() int64 {
 	m.lock.RLock()
 	totalFree := m.backup.TotalFree() + m.current.TotalFree()

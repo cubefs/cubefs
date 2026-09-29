@@ -9,6 +9,7 @@ import (
 	reflect "reflect"
 
 	clustermgr "github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	codemode "github.com/cubefs/cubefs/blobstore/common/codemode"
 	proto "github.com/cubefs/cubefs/blobstore/common/proto"
 	gomock "github.com/golang/mock/gomock"
 )
@@ -139,6 +140,21 @@ func (mr *MockBlobNodeManagerAPIMockRecorder) CheckNodeInfoDuplicated(arg0, arg1
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckNodeInfoDuplicated", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).CheckNodeInfoDuplicated), arg0, arg1)
 }
 
+// DisksSnapshot mocks base method.
+func (m *MockBlobNodeManagerAPI) DisksSnapshot() ([]clustermgr.BlobNodeDiskInfo, []clustermgr.BlobNodeDiskInfo) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DisksSnapshot")
+	ret0, _ := ret[0].([]clustermgr.BlobNodeDiskInfo)
+	ret1, _ := ret[1].([]clustermgr.BlobNodeDiskInfo)
+	return ret0, ret1
+}
+
+// DisksSnapshot indicates an expected call of DisksSnapshot.
+func (mr *MockBlobNodeManagerAPIMockRecorder) DisksSnapshot() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DisksSnapshot", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).DisksSnapshot))
+}
+
 // GetDiskInfo mocks base method.
 func (m *MockBlobNodeManagerAPI) GetDiskInfo(arg0 context.Context, arg1 proto.DiskID) (*clustermgr.BlobNodeDiskInfo, error) {
 	m.ctrl.T.Helper()
@@ -184,17 +200,17 @@ func (mr *MockBlobNodeManagerAPIMockRecorder) GetNodeInfo(arg0, arg1 interface{}
 }
 
 // HasEnoughSpace mocks base method.
-func (m *MockBlobNodeManagerAPI) HasEnoughSpace(arg0 context.Context) bool {
+func (m *MockBlobNodeManagerAPI) HasEnoughSpace(arg0 context.Context, arg1 codemode.CodeMode) bool {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "HasEnoughSpace", arg0)
+	ret := m.ctrl.Call(m, "HasEnoughSpace", arg0, arg1)
 	ret0, _ := ret[0].(bool)
 	return ret0
 }
 
 // HasEnoughSpace indicates an expected call of HasEnoughSpace.
-func (mr *MockBlobNodeManagerAPIMockRecorder) HasEnoughSpace(arg0 interface{}) *gomock.Call {
+func (mr *MockBlobNodeManagerAPIMockRecorder) HasEnoughSpace(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasEnoughSpace", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).HasEnoughSpace), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasEnoughSpace", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).HasEnoughSpace), arg0, arg1)
 }
 
 // IsDiskWritable mocks base method.
@@ -258,6 +274,20 @@ func (mr *MockBlobNodeManagerAPIMockRecorder) ListDroppingDisk(arg0 interface{})
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListDroppingDisk", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).ListDroppingDisk), arg0)
 }
 
+// ListNodes mocks base method.
+func (m *MockBlobNodeManagerAPI) ListNodes(arg0 context.Context, arg1 proto.NodeStatus) []clustermgr.BlobNodeInfo {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListNodes", arg0, arg1)
+	ret0, _ := ret[0].([]clustermgr.BlobNodeInfo)
+	return ret0
+}
+
+// ListNodes indicates an expected call of ListNodes.
+func (mr *MockBlobNodeManagerAPIMockRecorder) ListNodes(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListNodes", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).ListNodes), arg0, arg1)
+}
+
 // RefreshExpireTime mocks base method.
 func (m *MockBlobNodeManagerAPI) RefreshExpireTime() {
 	m.ctrl.T.Helper()
@@ -268,6 +298,18 @@ func (m *MockBlobNodeManagerAPI) RefreshExpireTime() {
 func (mr *MockBlobNodeManagerAPIMockRecorder) RefreshExpireTime() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RefreshExpireTime", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).RefreshExpireTime))
+}
+
+// RegisterDiskUsageCallback mocks base method.
+func (m *MockBlobNodeManagerAPI) RegisterDiskUsageCallback(arg0 func(proto.DiskID, float64)) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "RegisterDiskUsageCallback", arg0)
+}
+
+// RegisterDiskUsageCallback indicates an expected call of RegisterDiskUsageCallback.
+func (mr *MockBlobNodeManagerAPIMockRecorder) RegisterDiskUsageCallback(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterDiskUsageCallback", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).RegisterDiskUsageCallback), arg0)
 }
 
 // SetStatus mocks base method.

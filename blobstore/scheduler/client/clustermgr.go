@@ -79,7 +79,7 @@ type ClusterMgrDiskAPI interface {
 
 type ClusterMgrServiceAPI interface {
 	Register(ctx context.Context, info RegisterInfo) error
-	GetService(ctx context.Context, name string, clusterID proto.ClusterID) (hosts []string, err error)
+	GetService(ctx context.Context, name string, clusterID proto.ClusterID) (nodes []cmapi.ServiceNode, err error)
 }
 
 type ClusterMgrTaskAPI interface {
@@ -98,6 +98,9 @@ type ClusterMgrTaskAPI interface {
 	SetVolumeInspectCheckPoint(ctx context.Context, startVid proto.Vid) (err error)
 	GetConsumeOffset(taskType proto.TaskType, topic string, partition int32) (offset int64, err error)
 	SetConsumeOffset(taskType proto.TaskType, topic string, partition int32, offset int64) (err error)
+	GetVolumeDegradeStats(ctx context.Context) (stats *proto.VolumeDegradeStats, err error)
+	SetVolumeDegradeStats(ctx context.Context, stats *proto.VolumeDegradeStats) (err error)
+	DeleteVolumeDegradeStats(ctx context.Context) (err error)
 }
 
 // ClusterMgrAPI define the interface of clustermgr used by scheduler
@@ -149,6 +152,7 @@ const (
 	_migratingDiskPrefix = "migrating"
 	_checkPoint          = "checkpoint"
 	_consumeOffset       = "consume_offset"
+	_volumeDegradeStats  = "volume_degrade_stats"
 )
 
 var (
@@ -297,10 +301,12 @@ func (vunit *AllocVunitInfo) set(info *cmapi.AllocVolumeUnit, host string) {
 
 // VunitInfoSimple volume unit simple info
 type VunitInfoSimple struct {
-	Vuid   proto.Vuid   `json:"vuid"`
-	DiskID proto.DiskID `json:"disk_id"`
-	Host   string       `json:"host"`
-	Used   uint64       `json:"used"`
+	Vuid       proto.Vuid   `json:"vuid"`
+	DiskID     proto.DiskID `json:"disk_id"`
+	Host       string       `json:"host"`
+	Used       uint64       `json:"used"`
+	LogicSize  uint64       `json:"logic_size"`
+	Compacting bool         `json:"compact"`
 }
 
 func (vunit *VunitInfoSimple) set(info *cmapi.VolumeUnitInfo, host string) {
@@ -308,6 +314,8 @@ func (vunit *VunitInfoSimple) set(info *cmapi.VolumeUnitInfo, host string) {
 	vunit.DiskID = info.DiskID
 	vunit.Host = host
 	vunit.Used = info.Used
+	vunit.LogicSize = info.LogicSize
+	vunit.Compacting = info.Compacting
 }
 
 // DiskInfoSimple disk simple info for blobnode
@@ -322,6 +330,16 @@ type DiskInfoSimple struct {
 	UsedChunkCnt int64            `json:"used_chunk_cnt"`
 	MaxChunkCnt  int64            `json:"max_chunk_cnt"`
 	FreeChunkCnt int64            `json:"free_chunk_cnt"`
+	Used         int64            `json:"used"`
+	Free         int64            `json:"free"`
+	Size         int64            `json:"size"`
+}
+
+func (disk *DiskInfoSimple) UsageRatio() float64 {
+	if disk.Size == 0 {
+		return 0
+	}
+	return float64(disk.Used) / float64(disk.Size)
 }
 
 // IsHealth return true if disk is health
@@ -367,6 +385,9 @@ func (disk *DiskInfoSimple) set(info *clustermgr.BlobNodeDiskInfo) {
 	disk.UsedChunkCnt = info.UsedChunkCnt
 	disk.MaxChunkCnt = info.MaxChunkCnt
 	disk.FreeChunkCnt = info.FreeChunkCnt
+	disk.Used = info.Used
+	disk.Free = info.Free
+	disk.Size = info.Size
 }
 
 // ShardNodeDiskInfo diskInfo for shard node
@@ -850,18 +871,19 @@ func (c *clustermgrClient) Register(ctx context.Context, info RegisterInfo) erro
 	return c.client.RegisterService(ctx, node, info.HeartbeatIntervalS, info.HeartbeatTicks, info.ExpiresTicks)
 }
 
-// GetService returns services
-func (c *clustermgrClient) GetService(ctx context.Context, name string, clusterID proto.ClusterID) (hosts []string, err error) {
+// GetService returns service nodes (with host and idc) for the given name and cluster.
+func (c *clustermgrClient) GetService(ctx context.Context, name string, clusterID proto.ClusterID) ([]cmapi.ServiceNode, error) {
 	svrInfos, err := c.client.GetService(ctx, cmapi.GetServiceArgs{Name: name})
 	if err != nil {
 		return nil, err
 	}
+	nodes := make([]cmapi.ServiceNode, 0, len(svrInfos.Nodes))
 	for _, s := range svrInfos.Nodes {
 		if clusterID == proto.ClusterID(s.ClusterID) {
-			hosts = append(hosts, s.Host)
+			nodes = append(nodes, s)
 		}
 	}
-	return
+	return nodes, nil
 }
 
 // AddMigrateTask adds migrate task
@@ -1274,6 +1296,52 @@ func (c *clustermgrClient) listAllShardDisks(ctx context.Context, status proto.D
 			break
 		}
 		args.Marker = selectMarker
+	}
+	return
+}
+
+func (c *clustermgrClient) GetVolumeDegradeStats(ctx context.Context) (*proto.VolumeDegradeStats, error) {
+	span := trace.SpanFromContextSafe(ctx)
+	span.Debugf("getting volume degrade stats")
+
+	ret, err := c.client.GetKV(ctx, _volumeDegradeStats)
+	if err != nil {
+		span.Errorf("failed to get volume degrade stats from kv: err[%+v]", err)
+		return nil, err
+	}
+
+	var stats proto.VolumeDegradeStats
+	if err := json.Unmarshal(ret.Value, &stats); err != nil {
+		span.Errorf("failed to unmarshal stats: err[%+v]", err)
+		return nil, err
+	}
+
+	return &stats, nil
+}
+
+func (c *clustermgrClient) SetVolumeDegradeStats(ctx context.Context, stats *proto.VolumeDegradeStats) (err error) {
+	span := trace.SpanFromContextSafe(ctx)
+	span.Debugf("setting volume degrade stats: [%+v]", stats)
+
+	statsBytes, err := json.Marshal(stats)
+	if err != nil {
+		span.Errorf("failed to marshal volume degrade stats: err[%+v]", err)
+		return
+	}
+	err = c.client.SetKV(ctx, _volumeDegradeStats, statsBytes)
+	if err != nil {
+		span.Errorf("failed to set volume degrade stats to kv: err[%+v]", err)
+	}
+	return
+}
+
+func (c *clustermgrClient) DeleteVolumeDegradeStats(ctx context.Context) (err error) {
+	span := trace.SpanFromContextSafe(ctx)
+	span.Debugf("deleting volume degrade stats")
+
+	err = c.client.DeleteKV(ctx, _volumeDegradeStats)
+	if err != nil {
+		span.Errorf("failed to delete volume degrade stats from kv: err[%+v]", err)
 	}
 	return
 }

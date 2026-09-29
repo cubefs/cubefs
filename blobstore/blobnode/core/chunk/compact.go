@@ -33,6 +33,38 @@ var (
 	ErrCompactStopped = errors.New("chunk compact stopped")
 )
 
+// activateReplicaStgMetrics marks the chunk as in replica (double-write) state and
+// notifies CompactHooks.OnReplicaStgActive once.
+func (cs *chunk) activateReplicaStgMetrics() {
+	cs.lock.Lock()
+	if cs.replicaStgMetricsActive {
+		cs.lock.Unlock()
+		return
+	}
+	cs.replicaStgMetricsActive = true
+	cs.lock.Unlock()
+
+	if hooks := cs.conf.CompactHooks; hooks.OnReplicaStgActive != nil {
+		hooks.OnReplicaStgActive()
+	}
+}
+
+// deactivateReplicaStgMetrics clears replica state and notifies
+// CompactHooks.OnReplicaStgInactive once.
+func (cs *chunk) deactivateReplicaStgMetrics() {
+	cs.lock.Lock()
+	if !cs.replicaStgMetricsActive {
+		cs.lock.Unlock()
+		return
+	}
+	cs.replicaStgMetricsActive = false
+	cs.lock.Unlock()
+
+	if hooks := cs.conf.CompactHooks; hooks.OnReplicaStgInactive != nil {
+		hooks.OnReplicaStgInactive()
+	}
+}
+
 /*
  *	compacting chunkFile
  */
@@ -86,7 +118,7 @@ func (cs *chunk) StartCompact(ctx context.Context) (newcs core.ChunkAPI, err err
 
 	// create replicate stg
 	backgroundStg := ncs.getStg()
-	repStg := storage.NewReplicateStg(stg, backgroundStg, notify)
+	repStg := storage.NewReplicateStg(stg, backgroundStg, notify, cs.conf.CompactHooks.OnReplicaWrite)
 
 	cs.lock.Lock()
 	{
@@ -96,6 +128,8 @@ func (cs *chunk) StartCompact(ctx context.Context) (newcs core.ChunkAPI, err err
 	}
 	cs.lock.Unlock()
 	span.Warnf("set chunk:%s compacting success", cs.ID())
+
+	cs.activateReplicaStgMetrics()
 
 	// wait for all requests before switching handles to complete
 	timestamp := cs.consistent.Synchronize()
@@ -161,8 +195,6 @@ func (cs *chunk) StopCompact(ctx context.Context, ncs core.ChunkAPI) (err error)
 	span := trace.SpanFromContextSafe(ctx)
 
 	cs.lock.Lock()
-	defer cs.lock.Unlock()
-
 	cs.compacting = false
 	cs.resetCompactTask()
 
@@ -175,7 +207,9 @@ func (cs *chunk) StopCompact(ctx context.Context, ncs core.ChunkAPI) (err error)
 		// restore stg
 		cs.setStg(rawStg)
 	}
+	cs.lock.Unlock()
 
+	cs.deactivateReplicaStgMetrics()
 	return nil
 }
 
@@ -242,6 +276,7 @@ func (cs *chunk) doCompact(ctx context.Context, ncs *chunk) (err error) {
 	replStg := cs.getStg()
 
 	task := cs.compactTask.Load().(*compactTask)
+	onCopyShard := cs.conf.CompactHooks.OnCopyShard
 
 	// read src & write dst
 	copyShardFunc := func(blobID proto.BlobID, srcMeta *core.ShardMeta) (err error) {
@@ -257,6 +292,8 @@ func (cs *chunk) doCompact(ctx context.Context, ncs *chunk) (err error) {
 			span.Errorf("read shard(%v) data from chunk(%s) failed: %v", blobID, cs.ID(), err)
 			return
 		}
+
+		shardSize := int64(shard.Size)
 
 		// check overwrite
 		if srcMeta.Offset != shard.Offset ||
@@ -274,6 +311,10 @@ func (cs *chunk) doCompact(ctx context.Context, ncs *chunk) (err error) {
 		if err != nil {
 			span.Errorf("write shard(%v) to chunk(%s) failed: %v", blobID, ncs.ID(), err)
 			return
+		}
+
+		if onCopyShard != nil {
+			onCopyShard(shardSize)
 		}
 
 		// note: To prevent too much dirty data in one-time flushing,

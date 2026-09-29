@@ -198,7 +198,7 @@ var (
 
 	shardRaftItems = []string{"leader", "applied", "commit"}
 
-	shardMetaItems = []string{"item_count", "item_size", "blob_count", "blob_size"}
+	shardMetaItems = []string{"item_count", "item_size", "blob_count", "blob_size", "report_unix"}
 
 	blobTaskStatuses = []string{"success", "failed"}
 
@@ -362,13 +362,14 @@ func NewShardMetaStatsReporter(clusterID proto.ClusterID) *ShardMetaStatsReporte
 	}
 }
 
-func (r *ShardMetaStatsReporter) Report(metaStats snproto.ShardMetaStats) {
+func (r *ShardMetaStatsReporter) Report(metaStats snproto.ShardMetaStats, reportUnix int64) {
 	shardIDStr := metaStats.ShardID.ToString()
 	values := []float64{
 		float64(metaStats.ItemCount),
 		float64(metaStats.ItemSize),
 		float64(metaStats.BlobCount),
 		float64(metaStats.BlobSize),
+		float64(reportUnix),
 	}
 	for i, item := range shardMetaItems {
 		r.gaugeVec.WithLabelValues(shardIDStr, item).Set(values[i])

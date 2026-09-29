@@ -57,6 +57,11 @@ func (r *RouteMgr) LoadRoute(ctx context.Context) error {
 	if len(records) > int(r.truncateIntervalNum) {
 		records = records[len(records)-int(r.truncateIntervalNum):]
 	}
+
+	if len(records) > 0 {
+		r.resetItemRing()
+	}
+
 	maxRouteVersion := r.stableRouteVersion
 	for _, record := range records {
 		item := r.recordToItem(record)
@@ -106,6 +111,12 @@ func (r *RouteMgr) GetRouteItems(ctx context.Context, ver proto.RouteVersion) (r
 	defer r.lock.RUnlock()
 
 	return r.increments.getFrom(ver)
+}
+
+func (r *RouteMgr) resetItemRing() {
+	r.increments = newRouteItemRing(r.truncateIntervalNum)
+	r.stableRouteVersion = 0
+	r.unstableRouteVersion = 0
 }
 
 func (r *RouteMgr) Loop() {

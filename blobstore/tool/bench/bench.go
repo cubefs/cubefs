@@ -28,19 +28,21 @@ import (
 	"github.com/dustin/go-humanize"
 
 	bk "github.com/cubefs/cubefs/blobstore/tool/bench/backend"
+	lg "github.com/cubefs/cubefs/blobstore/util/log"
+
 	"github.com/cubefs/cubefs/blobstore/tool/bench/db"
 )
 
 // Global variables
 var (
-	backend, database, conf, modes, runName string
-	objSize, outputFile, poolName           string
-	maxObjCnt, maxErrCnt                    int64
-	durationSecs, threads, loops            int
-	interval                                float64
-	size                                    int64
-	objectData                              []byte
-	dbDir                                   string
+	backend, database, conf, modes, runName  string
+	objSize, outputFile, poolName            string
+	maxObjCnt, maxErrCnt                     int64
+	durationSecs, threads, loops, chunkCount int
+	interval                                 float64
+	size, chunkSize                          int64
+	objectData                               []byte
+	dbDir                                    string
 )
 
 var (
@@ -50,9 +52,14 @@ var (
 	locdb           db.DB
 )
 
+const (
+	defChunkSize  = 16 // 16GiB
+	defChunkCount = 1024
+)
+
 func init() {
 	flagSet := flag.NewFlagSet("flags", flag.ExitOnError)
-	flagSet.StringVar(&backend, "b", "blobstore", "Storage backend. 'blobstore' or 'dummy'")
+	flagSet.StringVar(&backend, "b", "blobstore", "Storage backend. 'blobstore', 'diskchunk' or 'dummy'")
 	flagSet.StringVar(&conf, "c", os.Getenv("BLOBSTORE_BENCH_CONF"), "Conf file of blobstore")
 	flagSet.StringVar(&modes, "m", "pgd", "Run modes in order.  See NOTES for more info")
 	flagSet.StringVar(&runName, "pr", "", "Specifies the name of the test run, which also serves as a prefix for generated object names")
@@ -61,6 +68,8 @@ func init() {
 	flagSet.StringVar(&dbDir, "r", "", "RocksDB direcotry. Only for blobstore backend")
 
 	flagSet.Int64Var(&maxObjCnt, "n", -1, "Maximum number of objects <-1 for unlimited>")
+	flagSet.Int64Var(&chunkSize, "cs", defChunkSize, "Chunk size in GiB")
+	flagSet.IntVar(&chunkCount, "cc", defChunkCount, "Number of chunks to create")
 	flagSet.Int64Var(&maxErrCnt, "e", 3, "Maximum number of errors allowed <-1 for unlimited>")
 	flagSet.IntVar(&durationSecs, "d", 60, "Maximum test duration in seconds <-1 for unlimited>")
 	flagSet.IntVar(&threads, "t", 1, "Number of threads to run")
@@ -112,13 +121,16 @@ NOTES:
 		log.Fatalf("Invalid -s argument for object size: %v", err)
 	}
 
-	if backend == "blobstore" && database == "rocksdb" && dbDir == "" {
-		log.Fatal("-r must be specified for blobstore backend")
+	if (backend == "blobstore" || backend == "diskchunk") &&
+		database == "rocksdb" && dbDir == "" {
+		log.Fatal("-r must be specified for blobstore/diskchunk backend")
 	}
 
 	if maxErrCnt == -1 {
 		maxErrCnt = math.MaxInt64
 	}
+
+	lg.SetOutputLevel(lg.Lerror)
 
 	prepareData()
 }
@@ -153,6 +165,8 @@ func printParams() {
 	log.Printf("poolName=%s", poolName)
 	log.Printf("objSize=%s", objSize)
 	log.Printf("maxObjCnt=%d", maxObjCnt)
+	log.Printf("chunkSize=%d", chunkSize)
+	log.Printf("chunkCount=%d", chunkCount)
 	log.Printf("durationSecs=%d", durationSecs)
 	log.Printf("threads=%d", threads)
 	log.Printf("loops=%d", loops)
@@ -439,7 +453,7 @@ func runPutLoad(ctx context.Context, threadNum int, fendtime time.Time, stats *S
 		end := time.Now().UnixNano()
 		stats.updateIntervals(threadNum)
 
-		if backend == "blobstore" {
+		if backend == "blobstore" || backend == "diskchunk" {
 			key := formatKeyString(objnum)
 			location, _ := loc.ExtractBlobLocation()
 			if err = locdb.Put(key, location); err != nil {
@@ -476,7 +490,7 @@ func runGetLoad(ctx context.Context, threadNum int, fendtime time.Time, stats *S
 		var err error
 		var loc bk.LocInfo
 		key := formatKeyString(objnum)
-		if backend == "blobstore" {
+		if backend == "blobstore" || backend == "diskchunk" {
 			loc.Value, err = locdb.Get(key)
 			if err != nil {
 				errcnt++
@@ -525,7 +539,7 @@ func runDelLoad(ctx context.Context, threadNum int, fendtime time.Time, stats *S
 		var loc bk.LocInfo
 
 		key := formatKeyString(objnum)
-		if backend == "blobstore" {
+		if backend == "blobstore" || backend == "diskchunk" {
 			loc.Value, err = locdb.Get(key)
 			if err != nil {
 				errcnt++
@@ -546,7 +560,7 @@ func runDelLoad(ctx context.Context, threadNum int, fendtime time.Time, stats *S
 			log.Printf("delete err %v", err)
 		} else {
 			// delete key/location info. Ignore error.
-			if backend == "blobstore" {
+			if backend == "blobstore" || backend == "diskchunk" {
 				locdb.Del(key)
 			}
 			// Update the stats
@@ -642,6 +656,8 @@ func main() {
 	// init storage
 	var err error
 	switch backend {
+	case "diskchunk":
+		store, err = bk.NewDiskChunkBackend(conf, chunkCount, chunkSize)
 	case "blobstore":
 		store, err = bk.NewBlobStorage(conf)
 	case "dummy":

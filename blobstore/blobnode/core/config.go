@@ -115,6 +115,22 @@ type HostInfo struct {
 	NodeID    proto.NodeID    `json:"-"`                   // A node is a process
 }
 
+// CompactHooks contains callback functions injected by the disk layer for compact metrics collection.
+// They are set as closures by DiskStorage so the chunk and storage layers can report metrics
+// without importing the disk or prometheus packages directly.
+type CompactHooks struct {
+	// OnCopyShard is called after each shard is successfully copied from the old chunk to the new chunk.
+	// bytes is the size of the copied shard.
+	OnCopyShard func(bytes int64)
+	// OnReplicaWrite is called after each successful double-write request during compact.
+	// bytes is the size of the written shard.
+	OnReplicaWrite func(bytes int64)
+	// OnReplicaStgActive is called when a chunk enters double-write (replica) state.
+	OnReplicaStgActive func()
+	// OnReplicaStgInactive is called when a chunk leaves double-write (replica) state.
+	OnReplicaStgInactive func()
+}
+
 type Config struct {
 	BaseConfig
 	RuntimeConfig
@@ -125,6 +141,7 @@ type Config struct {
 	HandleIOError    func(ctx context.Context, diskID proto.DiskID, diskErr error)
 	NotifyCompacting func(ctx context.Context, args *cmapi.SetCompactChunkArgs) (err error)
 	GetGlobalConfig  func(ctx context.Context, key string) (value string, err error)
+	CompactHooks     CompactHooks
 }
 
 func InitConfig(conf *Config) error {

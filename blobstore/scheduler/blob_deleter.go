@@ -673,7 +673,7 @@ func (mgr *BlobDeleteMgr) deleteShard(ctx context.Context, location proto.VunitL
 
 	// has mark delete or delete before and just return
 	if (stageMgr.hasDelete(location.Vuid)) || (markDelete && stageMgr.hasMarkDel(location.Vuid)) {
-		span.Warnf("already delete and return: bid[%d], location[%+v], markDelete[%+v]",
+		span.Debugf("already delete and return: bid[%d], location[%+v], markDelete[%+v]",
 			bid, location, markDelete)
 		return nil
 	}

@@ -266,6 +266,37 @@ func TestExtendCodemode(t *testing.T) {
 	})
 }
 
+func TestAdaptShardSizeIsValid(t *testing.T) {
+	base := Tactic{N: 3, M: 3, L: 0, AZCount: 1, PutQuorum: 5, GetQuorum: 0}
+
+	cases := []struct {
+		desc           string
+		minShardSize   int
+		adaptShardSize int
+		wantValid      bool
+	}{
+		{"disabled(0): always ok", 8 << 10, 0, true},
+		{"valid: 1 is ok", 8 << 10, 1, true},
+		{"valid: step divides min evenly", 8 << 10, 256, true},
+		{"valid: step==min", 256, 256, true},
+		{"invalid: step > min", 100, 256, false},
+		{"invalid: min%step != 0", 8 << 10, 300, false},
+		{"invalid: min==0 with step>0", 0, 256, false},
+	}
+
+	for _, cs := range cases {
+		t.Run(cs.desc, func(t *testing.T) {
+			c := base
+			c.MinShardSize = cs.minShardSize
+			c.AdaptShardSize = cs.adaptShardSize
+			require.Equal(t, cs.wantValid, c.IsValid())
+		})
+	}
+
+	builtIn := EC3P3Align8kAdapt256.Tactic()
+	require.True(t, builtIn.IsValid())
+}
+
 func BenchmarkGlobalStripe(b *testing.B) {
 	tactic := EC16P20L2.Tactic()
 	for ii := 0; ii < b.N; ii++ {

@@ -99,7 +99,8 @@ func (s *Service) ChunkInspect(c *rpc.Context) {
 		return
 	}
 
-	span, ctx := trace.StartSpanFromContext(s.ctx, "")
+	ctx := c.Request.Context()
+	span := trace.SpanFromContextSafe(ctx)
 
 	span.Debugf("chunk inspect args: %v", args)
 	if !bnapi.IsValidDiskID(args.DiskID) {
@@ -133,7 +134,9 @@ func (s *Service) ChunkInspect(c *rpc.Context) {
 		c.RespondError(bloberr.ErrNoSuchVuid)
 		return
 	}
-	badShards, err := s.inspectMgr.inspectChunk(ctx, cs)
+	// the on-demand full chunk scan is a one-shot manager scan; it does not touch
+	// the persisted InspectState
+	badShards, err := s.inspectMgr.inspectChunkFull(ctx, cs)
 	if err != nil {
 		c.RespondError(err)
 		return
@@ -201,6 +204,7 @@ func (s *Service) ChunkRelease(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
+	s.inspectMgr.onChunkReleased(ds, args.Vuid)
 
 	span.Infof("disk release vuid:%v success", args.Vuid)
 }

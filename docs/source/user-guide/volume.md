@@ -31,13 +31,13 @@ curl -v "http://127.0.0.1:17010/vol/expand?name=test&authKey=57f0162b2303be3449c
 If the Blobstore erasure-coded subsystem is deployed, you can create an erasure-coded volume to store cold data.
 
 ```bash
-curl -v 'http://127.0.0.1:17010/admin/createVol?name=test-cold&capacity=100&owner=cfs&volType=1'
+curl -v 'http://127.0.0.1:17010/admin/createVol?name=test-cold&capacity=100&owner=cfs&volStorageClass=3'
 ```
 
 - name: volume name
 - capacity: volume quota. If the quota is used up, it needs to be expanded.
 - owner: the owner of the volume.
-- volType: volume type. 0 for replicated volume, 1 for erasure-coded volume. The default is 0.
+- volStorageClass: storage class of the volume. 1 for SSD replica, 2 for HDD replica, 3 for erasure-coded (BlobStore). Default is 0 (master auto-selects).
 
 ## Enable Multi-Level Cache
 
@@ -45,13 +45,13 @@ You can create an erasure-coded volume and set multiple replicas as read-write c
 
 **Cache read data**
 ```bash
-curl -v 'http://127.0.0.1:17010/admin/createVol?name=test-cold&capacity=100&owner=cfs&volType=1&cacheCap=10&cacheAction=1'
+curl -v 'http://127.0.0.1:17010/admin/createVol?name=test-cold&capacity=100&owner=cfs&volStorageClass=3&cacheCap=10&cacheAction=1'
 ```
 
 - name: volume name
 - capacity: volume quota. If the quota is used up, it needs to be expanded.
 - owner: the owner of the volume.
-- volType: volume type. 0 for replicated volume, 1 for erasure-coded volume. The default is 0.
+- volStorageClass: storage class of the volume. 1 for SSD replica, 2 for HDD replica, 3 for erasure-coded (BlobStore). Default is 0 (master auto-selects).
 - cacheCap: cache size in GB.
 - cacheAction: cache type. 0 for no cache, 1 for cache read, 2 for cache read-write. The default is 0.
 

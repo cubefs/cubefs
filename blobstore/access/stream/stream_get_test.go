@@ -19,6 +19,7 @@ import (
 	"crypto/rand"
 	"math"
 	mrand "math/rand"
+	"sync"
 	"testing"
 	"time"
 
@@ -650,6 +651,141 @@ type writer struct {
 func (w *writer) Write(p []byte) (n int, err error) {
 	copy(w.buf, p)
 	return len(p), nil
+}
+
+// TestAccessStreamGetConcurrent verifies that multiple goroutines can read
+// the same location simultaneously without data corruption.
+func TestAccessStreamGetConcurrent(t *testing.T) {
+	ctx := ctxWithName("TestAccessStreamGetConcurrent")
+	vuidController.Unbreak(1005)
+	dataShards.clean()
+	defer func() {
+		vuidController.Break(1005)
+		dataShards.clean()
+	}()
+
+	size := 1 << 20
+	data := make([]byte, size)
+	rand.Read(data)
+	loc, err := streamer.Put(ctx(), bytes.NewReader(data), int64(size), nil, proto.ClusterID(0), codemode.CodeModeNone)
+	require.NoError(t, err)
+
+	const n = 8
+	errs := make([]error, n)
+	results := make([][]byte, n)
+
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			buf := bytes.NewBuffer(nil)
+			transfer, e := streamer.Get(ctx(), buf, *loc, uint64(size), 0)
+			if e != nil {
+				errs[idx] = e
+				return
+			}
+			errs[idx] = transfer()
+			results[idx] = buf.Bytes()
+		}(i)
+	}
+	wg.Wait()
+
+	for i := 0; i < n; i++ {
+		require.NoError(t, errs[i], "goroutine %d returned unexpected error", i)
+		require.True(t, dataEqual(data, results[i]), "goroutine %d data mismatch", i)
+	}
+}
+
+// TestAccessStreamGetDataIntegrityMultiBlob verifies byte-exact data integrity
+// for objects that span multiple blobs (i.e., size > MaxBlobSize), covering
+// cross-blob reads at various offsets.
+func TestAccessStreamGetDataIntegrityMultiBlob(t *testing.T) {
+	ctx := ctxWithName("TestAccessStreamGetDataIntegrityMultiBlob")
+	vuidController.Unbreak(1005)
+	defer func() {
+		vuidController.Break(1005)
+		dataShards.clean()
+	}()
+
+	// Use a size that spans exactly 2 blobs with a few extra bytes.
+	size := blobSize + 1024
+	data := make([]byte, size)
+	rand.Read(data)
+
+	dataShards.clean()
+	loc, err := streamer.Put(ctx(), bytes.NewReader(data), int64(size), nil, proto.ClusterID(0), codemode.CodeModeNone)
+	require.NoError(t, err)
+	require.Equal(t, 2, len(loc.Slices))
+
+	cases := []struct {
+		offset   uint64
+		readSize uint64
+	}{
+		// Full object read
+		{0, uint64(size)},
+		// First blob only
+		{0, uint64(blobSize)},
+		// Last byte of first blob
+		{uint64(blobSize) - 1, 1},
+		// Straddle the blob boundary
+		{uint64(blobSize) - 512, 1024},
+		// Second blob only
+		{uint64(blobSize), 1024},
+		// Last byte of object
+		{uint64(size) - 1, 1},
+	}
+
+	for _, cs := range cases {
+		buf := bytes.NewBuffer(nil)
+		transfer, e := streamer.Get(ctx(), buf, *loc, cs.readSize, cs.offset)
+		require.NoError(t, e, "offset=%d readSize=%d", cs.offset, cs.readSize)
+		e = transfer()
+		require.NoError(t, e, "offset=%d readSize=%d", cs.offset, cs.readSize)
+		expected := data[cs.offset : cs.offset+cs.readSize]
+		require.True(t, dataEqual(expected, buf.Bytes()),
+			"data mismatch at offset=%d readSize=%d", cs.offset, cs.readSize)
+	}
+}
+
+// TestAccessStreamGetShardReconstructOnly verifies that reading succeeds when
+// exactly N parity-only shards remain (all data shards broken).
+// This exercises the EC full-reconstruction path.
+func TestAccessStreamGetShardReconstructOnly(t *testing.T) {
+	ctx := ctxWithName("TestAccessStreamGetShardReconstructOnly")
+	vuidController.Unbreak(1005)
+	dataShards.clean()
+	// Wait for any punish timers from previous tests.
+	time.Sleep(time.Second * time.Duration(punishServiceS))
+	defer func() {
+		for _, id := range allID {
+			vuidController.Unbreak(proto.Vuid(id))
+		}
+		vuidController.Break(1005) // restore default broken state last
+		dataShards.clean()
+	}()
+
+	// Write with all shards healthy.
+	tactic := codemode.EC6P6.Tactic()
+	size := tactic.N * tactic.MinShardSize
+	data := make([]byte, size)
+	rand.Read(data)
+	loc, err := streamer.Put(ctx(), bytes.NewReader(data), int64(size), nil, proto.ClusterID(0), codemode.CodeModeNone)
+	require.NoError(t, err)
+
+	// Break data shards one-by-one; get must keep succeeding until parity is
+	// also exhausted (covered by TestAccessStreamGetBroken). Here we only
+	// break all data shards to validate full parity-only reconstruction.
+	for _, id := range allID[:tactic.N] { // data shards 1001-1006
+		vuidController.Break(proto.Vuid(id))
+	}
+
+	buf := bytes.NewBuffer(nil)
+	transfer, err := streamer.Get(ctx(), buf, *loc, uint64(size), 0)
+	require.NoError(t, err)
+	err = transfer()
+	require.NoError(t, err)
+	require.True(t, dataEqual(data, buf.Bytes()))
 }
 
 func BenchmarkAccessStreamGet(b *testing.B) {

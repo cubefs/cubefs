@@ -39,6 +39,7 @@ access的配置是基于[公有配置](./base.md)，以下配置说明主要针�
 | alloc_retry_interval_ms   | 申请卷重试间隔时间     | 否, 默认 100ms |
 | shardnode_retry_times     | shardnode 接口重试次数 | 否, 默认 3 |
 |shardnode_retry_interval_ms| Shardnode 重试间隔时间 | 否, 默认 200ms |
+| repair_into_shardnode_percentage | 修复消息发往 shardnode 的比例，范围 0-100。0 表示全部发往 proxy | 否，默认 0 |
 | blobnode_config           | blobnode rpc 配置    | 参考rpc配置章节[rpc](./rpc.md) |
 | proxy_config              | proxy rpc 配置       | 参考rpc配置章节[rpc](./rpc.md) |
 | shardnode_config          | Shardnode rpc 配置   | 参考 shardnode 配置章节[rpc2](./rpc2.md) |
@@ -68,7 +69,7 @@ access的配置是基于[公有配置](./base.md)，以下配置说明主要针�
 | volume_punish_threshold  | 卷磁盘惩罚阈值               | 否，默认 10                     |
 | volume_punish_interval_s | 卷惩罚恢复间隔               | 否，默认 600                    |
 | clustermgr_client_config | clustermgr rpc 配置    | 参考rpc配置示例[rpc](./rpc.md)    |
-
+| cluster_choose_alg       | 多集群且未指定 `assign_cluster_id` 时的选簇算法：`available`、`roundrobin`、`random`。 | 否                           |
 
 ## 配置示例
 

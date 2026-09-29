@@ -250,3 +250,32 @@ func TestNewDiskOnV2HasValidV1Checksum(t *testing.T) {
 	require.NotZero(t, loaded.CheckSum)
 	require.NoError(t, loaded.VerifyV1(), "disk created on 1.5.2 must be readable by 1.5.0 after downgrade")
 }
+
+// TestSaveDiskFormatInfo_WriteError verifies that a file.Write failure is
+// propagated to the caller (previously the function returned nil on write error).
+func TestSaveDiskFormatInfo_WriteError(t *testing.T) {
+	ctx := context.Background()
+
+	diskPath, err := os.MkdirTemp(os.TempDir(), "BlobNodeTestSaveFormatWriteErr")
+	require.NoError(t, err)
+	defer os.RemoveAll(diskPath)
+
+	sysPath := filepath.Join(diskPath, ".sys")
+	require.NoError(t, os.MkdirAll(sysPath, 0o755))
+
+	// Point the temp file at /dev/full so OpenFile succeeds but Write returns ENOSPC.
+	configFileTemp := filepath.Join(sysPath, ".format.json.tmp")
+	require.NoError(t, os.Symlink("/dev/full", configFileTemp))
+
+	info := &FormatInfo{}
+	info.FormatInfoProtectedField = FormatInfoProtectedField{
+		DiskID:  proto.DiskID(1),
+		Version: 1,
+		Format:  FormatMetaTypeV1,
+		Ctime:   time.Now().UnixNano(),
+	}
+	require.NoError(t, info.CalCheckSum())
+
+	err = SaveDiskFormatInfo(ctx, diskPath, info)
+	require.Error(t, err)
+}

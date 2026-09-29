@@ -192,9 +192,12 @@ nohup ./blobnode -f blobnode.conf
     "set_default_switch": true,
     "must_mount_point": true,
     "data_qos": {
-      "read_mbps": 100,
-      "write_mbps": 60,
-      "background_mbps": 20
+      "level": {
+        "read": {"mbps": 100, "concurrency": 64, "bid_concurrency": 32, "busy_factor": 1.0, "idle_factor": 1.0},
+        "write": {"mbps": 60, "concurrency": 64, "bid_concurrency": 1, "busy_factor": 1.0, "idle_factor": 1.2},
+        "delete": {"mbps": 60, "concurrency": 32, "bid_concurrency": 1, "busy_factor": 0.8, "idle_factor": 1.25},
+        "background": {"mbps": 20, "concurrency": 32, "bid_concurrency": 1, "busy_factor": 0.5, "idle_factor": 3.0}
+      }
     }
   },
   "log": {

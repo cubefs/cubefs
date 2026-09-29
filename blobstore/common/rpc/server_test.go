@@ -422,7 +422,7 @@ func TestServerResponseWith(t *testing.T) {
 		w := resp(router)
 		require.Equal(t, 400, w.status)
 
-		ret := new(errorResponse)
+		ret := new(ErrorResponse)
 		err := json.Unmarshal(w.body, ret)
 		require.NoError(t, err)
 		require.Equal(t, "", ret.Code)
@@ -461,7 +461,7 @@ func TestServerResponseWith(t *testing.T) {
 		w := resp(router)
 		require.Equal(t, 400, w.status)
 
-		ret := new(errorResponse)
+		ret := new(ErrorResponse)
 		err := json.Unmarshal(w.body, ret)
 		require.NoError(t, err)
 		require.Equal(t, "", ret.Code)

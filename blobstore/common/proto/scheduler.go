@@ -313,6 +313,27 @@ type VolumeInspectRet struct {
 	MissedShards  []*MissedShard `json:"missed_shards"`
 }
 
+type VolumeDegradeLevel struct {
+	Level int    `json:"level"`
+	Count uint32 `json:"count"`
+}
+
+type VolumeDegradeCodeMode struct {
+	Mode         codemode.CodeMode    `json:"mode"`
+	DegradeStats []VolumeDegradeLevel `json:"degrade"`
+}
+
+type VolumeDegradeBatch struct {
+	BatchIndex    uint32                  `json:"batch_index"`
+	CodeModeStats []VolumeDegradeCodeMode `json:"codemode"`
+}
+
+type VolumeDegradeStats struct {
+	BatchSize uint32               `json:"batch_size"`
+	BlobStats []VolumeDegradeBatch `json:"blob"`
+	VolStats  []VolumeDegradeBatch `json:"volume"`
+}
+
 func (inspect *VolumeInspectRet) Err() error {
 	if len(inspect.InspectErrStr) == 0 {
 		return nil

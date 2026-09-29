@@ -38,11 +38,14 @@ const (
 	defaultMaxDiskFreeChunkCnt = int64(1024)
 	defaultMinDiskFreeChunkCnt = int64(20)
 
-	defaultInspectIntervalS  = 1
-	defaultListVolIntervalMs = 10
-	defaultListVolStep       = 100
-	defaultInspectBatch      = 1000
-	defaultInspectTimeoutMs  = 10000
+	defaultCompactMigrateMinLogicSize = uint64(16 * 1024 * 1024 * 1024) // 16 GiB
+
+	defaultInspectIntervalS    = 1
+	defaultListVolIntervalMs   = 10
+	defaultListVolStep         = 100
+	defaultInspectBatch        = 1000
+	defaultInspectTimeoutMs    = 10000
+	defaultInspectDegradeBatch = uint32(10000)
 
 	defaultTaskPoolSize           = 10
 	defaultDeleteHourRangeTo      = 24
@@ -241,6 +244,9 @@ func (c *Config) fixBalanceConfig() {
 	c.Balance.ClusterID = c.ClusterID
 	defaulter.LessOrEqual(&c.Balance.MaxDiskFreeChunkCnt, defaultMaxDiskFreeChunkCnt)
 	defaulter.LessOrEqual(&c.Balance.MinDiskFreeChunkCnt, defaultMinDiskFreeChunkCnt)
+	if c.Balance.CompactMigrateHoleRate > 0 {
+		defaulter.LessOrEqual(&c.Balance.CompactMigrateMinLogicSize, defaultCompactMigrateMinLogicSize)
+	}
 	c.Balance.CheckAndFix()
 }
 
@@ -262,6 +268,8 @@ func (c *Config) fixManualMigrateConfig() {
 }
 
 func (c *Config) fixInspectConfig() {
+	c.VolumeInspect.ClusterID = c.ClusterID
+	defaulter.LessOrEqual(&c.VolumeInspect.DegradeStats.Batch, defaultInspectDegradeBatch)
 	defaulter.LessOrEqual(&c.VolumeInspect.TimeoutMs, defaultInspectTimeoutMs)
 	defaulter.LessOrEqual(&c.VolumeInspect.ListVolStep, defaultListVolStep)
 	defaulter.LessOrEqual(&c.VolumeInspect.ListVolIntervalMs, defaultListVolIntervalMs)

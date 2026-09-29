@@ -43,6 +43,9 @@ const (
 type BlobNodeManagerAPI interface {
 	// GetNodeInfo return node info with specified node id, it return ErrCMNodeNotFound if node not found
 	GetNodeInfo(ctx context.Context, nodeID proto.NodeID) (*clustermgr.BlobNodeInfo, error)
+	// ListNodes returns nodes filtered by status.
+	// Pass NodeStatusInvalid (0) to return all nodes.
+	ListNodes(ctx context.Context, status proto.NodeStatus) []clustermgr.BlobNodeInfo
 	// GetDiskInfo return disk info, it return ErrDiskNotFound if disk not found
 	GetDiskInfo(ctx context.Context, id proto.DiskID) (*clustermgr.BlobNodeDiskInfo, error)
 	AddDisk(ctx context.Context, args *clustermgr.BlobNodeDiskInfo) error
@@ -52,8 +55,13 @@ type BlobNodeManagerAPI interface {
 	ListDiskInfo(ctx context.Context, opt *clustermgr.ListOptionArgs) (disks []*clustermgr.BlobNodeDiskInfo, marker proto.DiskID, err error)
 	// AllocChunks return available chunks in data center
 	AllocChunks(ctx context.Context, policy AllocPolicy) ([]proto.DiskID, []proto.Vuid, error)
-	// HasEnoughSpace returns true if cluster has enough space
-	HasEnoughSpace(ctx context.Context) bool
+	// HasEnoughSpace reports whether the cluster currently has enough space to create
+	HasEnoughSpace(ctx context.Context, mode codemode.CodeMode) bool
+	// RegisterDiskUsageCallback registers a callback that is invoked on every disk heartbeat.
+	RegisterDiskUsageCallback(fn func(diskID proto.DiskID, ratio float64))
+	// DisksSnapshot returns a snapshot of every disk (all) and a sub-slice
+	// of Normal disks whose heartbeat has expired (expired).
+	DisksSnapshot() (all []clustermgr.BlobNodeDiskInfo, expired []clustermgr.BlobNodeDiskInfo)
 
 	NodeManagerAPI
 	persistentHandler
@@ -144,6 +152,12 @@ type BlobNodeManager struct {
 
 	nodeDiskTable  *normaldb.BlobNodeDiskTable
 	blobNodeClient blobnode.StorageAPI
+
+	diskUsageCallback func(diskID proto.DiskID, ratio float64)
+}
+
+func (b *BlobNodeManager) RegisterDiskUsageCallback(fn func(diskID proto.DiskID, ratio float64)) {
+	b.diskUsageCallback = fn
 }
 
 func (b *BlobNodeManager) Start() {
@@ -447,6 +461,30 @@ func (b *BlobNodeManager) GetNodeInfo(ctx context.Context, nodeID proto.NodeID) 
 	return nodeInfo, nil
 }
 
+// ListNodes returns nodes filtered by the given status.
+// When status is 0, all nodes are returned.
+// NodeStatusNormal matches nodes whose persisted status is Normal (including those in dropping).
+// NodeStatusDropped matches nodes whose persisted status is Dropped.
+func (b *BlobNodeManager) ListNodes(ctx context.Context, status proto.NodeStatus) []clustermgr.BlobNodeInfo {
+	b.metaLock.RLock()
+	nodes := make([]*nodeItem, 0, len(b.allNodes))
+	for _, ni := range b.allNodes {
+		nodes = append(nodes, ni)
+	}
+	b.metaLock.RUnlock()
+
+	result := make([]clustermgr.BlobNodeInfo, 0)
+	for _, ni := range nodes {
+		ni.withRLocked(func() error {
+			if status == proto.NodeStatusInvalid || ni.info.Status == status {
+				result = append(result, clustermgr.BlobNodeInfo{NodeInfo: ni.info.NodeInfo})
+			}
+			return nil
+		})
+	}
+	return result
+}
+
 func (b *BlobNodeManager) AllocChunks(ctx context.Context, policy AllocPolicy) ([]proto.DiskID, []proto.Vuid, error) {
 	span, ctx := trace.StartSpanFromContextWithTraceID(ctx, "AllocChunks", trace.SpanFromContextSafe(ctx).TraceID())
 	span = span.WithOperation("AllocChunks")
@@ -596,8 +634,8 @@ func (b *BlobNodeManager) AllocChunks(ctx context.Context, policy AllocPolicy) (
 	return ret, retVuids, err
 }
 
-func (b *BlobNodeManager) HasEnoughSpace(ctx context.Context) bool {
-	span, _ := trace.StartSpanFromContext(context.Background(), "")
+func (b *BlobNodeManager) HasEnoughSpace(ctx context.Context, mode codemode.CodeMode) bool {
+	span := trace.SpanFromContextSafe(ctx)
 	spaceStat := b.Stat(ctx, proto.DiskTypeHDD)
 	for _, diskStatInfo := range spaceStat.DisksStatInfos {
 		if diskStatInfo.TotalOversoldFreeChunk <= b.cfg.IDCReservedFreeChunk {
@@ -606,11 +644,38 @@ func (b *BlobNodeManager) HasEnoughSpace(ctx context.Context) bool {
 			return false
 		}
 	}
-	return true
+	return b.allocator.Load().(*allocator).canAllocForMode(proto.DiskTypeHDD, mode)
 }
 
 func (b *BlobNodeManager) GetModuleName() string {
 	return "DiskMgr" // never change this
+}
+
+// DisksSnapshot returns a point-in-time snapshot of every disk in the cluster.
+func (b *BlobNodeManager) DisksSnapshot() (all []clustermgr.BlobNodeDiskInfo, expired []clustermgr.BlobNodeDiskInfo) {
+	now := time.Now()
+	allDisks := b.getAllDisk()
+	all = make([]clustermgr.BlobNodeDiskInfo, 0, len(allDisks))
+	for _, disk := range allDisks {
+		var snap clustermgr.BlobNodeDiskInfo
+		var isExpired bool
+		disk.withRLocked(func() error {
+			snap.Idc = disk.info.Idc
+			snap.NodeID = disk.info.NodeID
+			snap.DiskID = disk.diskID
+			snap.Path = disk.info.Path
+			snap.Status = disk.info.Status
+			snap.Readonly = disk.info.Readonly
+			snap.DiskHeartBeatInfo = *disk.info.extraInfo.(*clustermgr.DiskHeartBeatInfo)
+			isExpired = disk.info.Status == proto.DiskStatusNormal && now.After(disk.expireTime)
+			return nil
+		})
+		all = append(all, snap)
+		if isExpired {
+			expired = append(expired, snap)
+		}
+	}
+	return
 }
 
 func (b *BlobNodeManager) LoadData(ctx context.Context) error {
@@ -930,6 +995,10 @@ func (b *BlobNodeManager) applyHeartBeatDiskInfo(ctx context.Context, infos []*c
 			disk.expireTime = expireTime
 			return nil
 		})
+
+		if info.Size > 0 && b.diskUsageCallback != nil {
+			b.diskUsageCallback(info.DiskID, float64(info.Used)/float64(info.Size))
+		}
 
 	}
 	return nil

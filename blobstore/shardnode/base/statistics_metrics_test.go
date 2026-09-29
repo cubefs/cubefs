@@ -216,7 +216,8 @@ func TestShardMetaStatusReporter_Report(t *testing.T) {
 		BlobSize:  4000,
 	}
 
-	reporter.Report(metaStats)
+	const reportUnix = int64(1700000000)
+	reporter.Report(metaStats, reportUnix)
 
 	// Verify metrics are set correctly
 	metrics := []struct {
@@ -243,6 +244,19 @@ func TestShardMetaStatusReporter_Report(t *testing.T) {
 		require.NotNil(t, dtoMetric.Gauge)
 		require.Equal(t, m.value, *dtoMetric.Gauge.Value)
 	}
+
+	reportUnixMetricCollector, err := reporter.gaugeVecReporter.gaugeVec.GetMetricWithLabelValues(
+		metaStats.ShardID.ToString(),
+		"report_unix",
+	)
+	require.NoError(t, err)
+	require.NotNil(t, reportUnixMetricCollector)
+
+	var reportUnixMetric dto.Metric
+	err = reportUnixMetricCollector.Write(&reportUnixMetric)
+	require.NoError(t, err)
+	require.NotNil(t, reportUnixMetric.Gauge)
+	require.Equal(t, float64(reportUnix), *reportUnixMetric.Gauge.Value)
 }
 
 func TestNewRaftStatusReporter(t *testing.T) {

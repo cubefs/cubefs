@@ -75,6 +75,10 @@ func (v *VolumeMgr) AllocVolumeUnit(ctx context.Context, args *cmapi.AllocVolume
 
 	nextEpoch := vol.vUnits[index].nextEpoch + 1
 	vol.lock.RUnlock()
+	if nextEpoch > proto.MaxEpoch {
+		span.Errorf("vuid[%d] nextEpoch[%d] overflow MaxEpoch[%d]", vuid, nextEpoch, proto.MaxEpoch)
+		return nil, ErrVolumeUnitEpochOverflow
+	}
 
 	pendingVuidKey := uuid.New().String()
 	v.pendingEntries.Store(pendingVuidKey, proto.Vuid(0))
@@ -333,6 +337,7 @@ func (v *VolumeMgr) applyChunkReport(ctx context.Context, chunks *cmapi.ReportCh
 			vol.vUnits[idx].vuInfo.Free = chunk.Free
 			vol.vUnits[idx].vuInfo.Used = chunk.Used
 			vol.vUnits[idx].vuInfo.Total = chunk.Total
+			vol.vUnits[idx].vuInfo.LogicSize = chunk.Size
 
 			dataChunkNum := uint64(v.codeMode[vol.volInfoBase.CodeMode].tactic.N)
 			volFree := vol.vUnits[idx].vuInfo.Free * dataChunkNum
@@ -371,7 +376,7 @@ func (v *VolumeMgr) applyChunkReport(ctx context.Context, chunks *cmapi.ReportCh
 		dirty := v.dirty.Load().(*shardedVolumes)
 		dirty.putVol(vol)
 		// stat volume writable space
-		v.stat.addSize(vol.vid, status, freeSize)
+		v.stat.addSize(vol.vid, vol.volInfoBase.CodeMode, status, freeSize)
 	}
 	return
 }

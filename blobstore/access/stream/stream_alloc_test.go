@@ -23,6 +23,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
 func TestAccessStreamAllocBase(t *testing.T) {
@@ -76,4 +77,70 @@ func TestAccessStreamAllocCanceled(t *testing.T) {
 	cancel()
 	_, err := streamer.Alloc(ctx, 1, 0, 0, 0)
 	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestAccessStreamAllocWithClusterIDAndCodeMode(t *testing.T) {
+	ctx := ctxWithName("TestAccessStreamAllocWithClusterIDAndCodeMode")
+	{
+		size := uint64(1 << 22)
+		_, err := streamer.Alloc(ctx(), size, 0, 0, codemode.EC16P20L2)
+		require.EqualError(t, errcode.ErrIllegalArguments, err.Error())
+	}
+	{
+		size := uint64(1 << 22)
+		_, err := streamer.Alloc(ctx(), size, 0, proto.ClusterID(2), codemode.CodeModeNone)
+		require.Error(t, err)
+	}
+	{
+		size := uint64(1 << 22)
+		_, err := streamer.Alloc(ctx(), size, 0, proto.ClusterID(2), codemode.EC15P12)
+		require.Error(t, err)
+	}
+	{
+		size := uint64(1 << 22)
+		_, err := streamer.Alloc(ctx(), size, 0, clusterID, codemode.EC15P12)
+		require.EqualError(t, errcode.ErrIllegalArguments, err.Error())
+	}
+	{
+		size := uint64(1 << 22)
+		_, err := streamer.Alloc(ctx(), size, 0, 0, codemode.EC15P12)
+		require.EqualError(t, errcode.ErrIllegalArguments, err.Error())
+	}
+	{
+		size := uint64(1 << 22)
+		_, err := streamer.Alloc(ctx(), size, 0, 0, codemode.CodeMode(0xff))
+		require.EqualError(t, errcode.ErrIllegalArguments, err.Error())
+	}
+	{
+		size := uint64(1 << 20)
+		loc, err := streamer.Alloc(ctx(), size, 0, 0, codemode.EC6P6)
+		require.NoError(t, err)
+		require.Equal(t, codemode.EC6P6, loc.CodeMode)
+		require.Equal(t, clusterID, loc.ClusterID)
+		require.Equal(t, 1, len(loc.Slices))
+		require.Equal(t, uint32(1), loc.Slices[0].Count)
+	}
+	{
+		size := uint64(1 << 22)
+		loc, err := streamer.Alloc(ctx(), size, 0, clusterID, codemode.EC6P6)
+		require.NoError(t, err)
+		require.Equal(t, codemode.EC6P6, loc.CodeMode)
+		require.Equal(t, clusterID, loc.ClusterID)
+		require.Equal(t, 1, len(loc.Slices))
+		require.Equal(t, uint32(1), loc.Slices[0].Count)
+	}
+	{
+		size := uint64(1 << 22)
+		loc, err := streamer.Alloc(ctx(), size, 0, clusterID, codemode.CodeModeNone)
+		require.NoError(t, err)
+		require.Equal(t, codemode.EC6P6, loc.CodeMode)
+		require.Equal(t, clusterID, loc.ClusterID)
+		require.Equal(t, 1, len(loc.Slices))
+		require.Equal(t, uint32(1), loc.Slices[0].Count)
+	}
+	{
+		loc, err := streamer.Alloc(ctx(), 1, 0, 0, codemode.EC6P6)
+		require.NoError(t, err)
+		require.Equal(t, codemode.EC6P6, loc.CodeMode)
+	}
 }

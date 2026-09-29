@@ -29,7 +29,7 @@ import (
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 )
 
-func BenchmarkKVDB_CoPut(b *testing.B) {
+func BenchmarkRunCIKVDB_CoPut(b *testing.B) {
 	testDir, err := os.MkdirTemp(os.TempDir(), "kvdbCoPut")
 	require.NoError(b, err)
 	defer os.RemoveAll(testDir)
@@ -74,7 +74,7 @@ func BenchmarkKVDB_CoPut(b *testing.B) {
 	require.NoError(b, err)
 }
 
-func BenchmarkKVDB_DirectPut(b *testing.B) {
+func BenchmarkRunCIKVDB_DirectPut(b *testing.B) {
 	testDir, err := os.MkdirTemp(os.TempDir(), "kvdbBenchmarkPut")
 	require.NoError(b, err)
 	defer os.RemoveAll(testDir)
@@ -119,7 +119,7 @@ func BenchmarkKVDB_DirectPut(b *testing.B) {
 	require.NoError(b, err)
 }
 
-func BenchmarkKVDB_CoDelete(b *testing.B) {
+func BenchmarkRunCIKVDB_CoDelete(b *testing.B) {
 	testDir, err := os.MkdirTemp(os.TempDir(), "kvdbCoDelete")
 	require.NoError(b, err)
 	defer os.RemoveAll(testDir)
@@ -175,7 +175,7 @@ func BenchmarkKVDB_CoDelete(b *testing.B) {
 	require.NoError(b, err)
 }
 
-func BenchmarkKVDB_DirectDelete(b *testing.B) {
+func BenchmarkRunCIKVDB_DirectDelete(b *testing.B) {
 	testDir, err := os.MkdirTemp(os.TempDir(), "kvdbDelete")
 	require.NoError(b, err)
 	defer os.RemoveAll(testDir)

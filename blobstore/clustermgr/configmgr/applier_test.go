@@ -27,6 +27,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	mock "github.com/cubefs/cubefs/blobstore/testing/mockclustermgr"
+	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
 func TestConfigMgr_Others(t *testing.T) {
@@ -50,10 +51,20 @@ func TestConfigMgr_Others(t *testing.T) {
 	module := configmgr.GetModuleName()
 	require.Equal(t, testModuleName, module)
 
+	err = configmgr.LoadData(ctx)
+	require.NoError(t, err)
+
+	configmgr.SetRaftServer(nil)
+
 	err = configmgr.Flush(ctx)
 	require.NoError(t, err)
 
 	configmgr.NotifyLeaderChange(ctx, 0, "")
+
+	// cover Get path when key is not in DB or default config
+	mockKvMgr.EXPECT().Get("unknown_key").Return(nil, errors.New("not found"))
+	_, err = configmgr.Get(ctx, "unknown_key")
+	require.Error(t, err)
 }
 
 func TestConfigMgr_Apply(t *testing.T) {
@@ -144,4 +155,28 @@ func TestConfigMgr_Apply(t *testing.T) {
 
 	err = configmgr.Apply(ctx, operTypes, datas, ctxs)
 	require.NoError(t, err)
+
+	// OperTypeSetConfig: Set returns error
+	{
+		ctr2 := gomock.NewController(t)
+		mockKvMgr2 := mock.NewMockKvMgrAPI(ctr2)
+		mockKvMgr2.EXPECT().Set(gomock.Any(), gomock.Any()).Return(errors.New("set error"))
+		cm2, err := New(mockKvMgr2, cfMap)
+		require.NoError(t, err)
+		data, _ := json.Marshal(&clustermgr.ConfigSetArgs{Key: "forbid_sync_config", Value: "true"})
+		err = cm2.Apply(ctx, []int32{OperTypeSetConfig}, [][]byte{data}, []base.ProposeContext{{ReqID: span.TraceID()}})
+		require.Error(t, err)
+	}
+
+	// OperTypeDeleteConfig: Delete returns error
+	{
+		ctr3 := gomock.NewController(t)
+		mockKvMgr3 := mock.NewMockKvMgrAPI(ctr3)
+		mockKvMgr3.EXPECT().Delete(gomock.Any()).Return(errors.New("delete error"))
+		cm3, err := New(mockKvMgr3, cfMap)
+		require.NoError(t, err)
+		data, _ := json.Marshal(&clustermgr.ConfigArgs{Key: "forbid_sync_config"})
+		err = cm3.Apply(ctx, []int32{OperTypeDeleteConfig}, [][]byte{data}, []base.ProposeContext{{ReqID: span.TraceID()}})
+		require.Error(t, err)
+	}
 }

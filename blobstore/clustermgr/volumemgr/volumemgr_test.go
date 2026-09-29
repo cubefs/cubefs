@@ -15,6 +15,7 @@
 package volumemgr
 
 import (
+	"container/list"
 	"context"
 	"errors"
 	"fmt"
@@ -22,6 +23,7 @@ import (
 	"os"
 	"path"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -55,10 +57,10 @@ var (
 		VolumeSliceMapNum:            32,
 		MinAllocableVolumeCount:      0,
 		AllocatableDiskLoadThreshold: 15,
-		CodeModePolicies: []codemode.Policy{{
-			ModeName: codemode.EC15P12.Name(),
-			Enable:   true,
-		}},
+		CodeModePolicies: []codemode.Policy{
+			{ModeName: codemode.EC15P12.Name(), Enable: true},
+			{ModeName: codemode.Replica3.Name(), Enable: false},
+		},
 		ShardNum: defaultShardNum,
 	}
 )
@@ -103,6 +105,7 @@ func initMockVolumeMgr(t testing.TB) (*VolumeMgr, func()) {
 	mockDiskMgr.EXPECT().Stat(gomock.Any(), proto.DiskTypeHDD).AnyTimes().Return(&clustermgr.SpaceStatInfo{TotalDisk: 35})
 	mockDiskMgr.EXPECT().IsDiskWritable(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockIsDiskWritable)
 	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockGetDiskInfo)
+	mockDiskMgr.EXPECT().RegisterDiskUsageCallback(gomock.Any()).Times(1)
 
 	mockVolumeMgr, err := NewVolumeMgr(testConfig, mockDiskMgr, mockScopeMgr, mockConfigMgr, volumeDB)
 	require.NoError(t, err)
@@ -316,7 +319,8 @@ func Test_NewVolumeMgr(t *testing.T) {
 	mockDiskMgr.EXPECT().Stat(gomock.Any(), proto.DiskTypeHDD).AnyTimes().Return(&clustermgr.SpaceStatInfo{TotalDisk: 100})
 	mockDiskMgr.EXPECT().IsDiskWritable(gomock.Any(), gomock.Any()).AnyTimes().Return(true, nil)
 	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockGetDiskInfo)
-	mockDiskMgr.EXPECT().HasEnoughSpace(gomock.Any()).AnyTimes().Return(true)
+	mockDiskMgr.EXPECT().HasEnoughSpace(gomock.Any(), gomock.Any()).AnyTimes().Return(true)
+	mockDiskMgr.EXPECT().RegisterDiskUsageCallback(gomock.Any()).Times(1)
 
 	mockVolumeMgr, err := NewVolumeMgr(volConfig, mockDiskMgr, mockScopeMgr, mockConfigMgr, volumeDB)
 	require.NoError(t, err)
@@ -360,6 +364,69 @@ func Test_NewVolumeMgr(t *testing.T) {
 	mockVolumeMgr.configMgr.Get(context.Background(), proto.VolumeReserveSizeKey)
 	mockVolumeMgr.configMgr.Set(context.Background(), proto.VolumeReserveSizeKey, "2097152")
 	mockVolumeMgr.configMgr.Delete(context.Background(), "key1")
+}
+
+func TestVolumeMgrLoop_EnabledCodeModeCreatesAtLeastOneVolume(t *testing.T) {
+	volumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
+
+	ctr := gomock.NewController(t)
+	raftServer := mocks.NewMockRaftServer(ctr)
+	scopeMgr := mock.NewMockScopeMgrAPI(ctr)
+	diskMgr := cluster.NewMockBlobNodeManagerAPI(ctr)
+
+	mode := codemode.Replica3
+	modeConfig := codeModeConf{
+		mode:   mode,
+		tactic: mode.Tactic(),
+		enable: true,
+	}
+	for codeMode, config := range volumeMgr.codeMode {
+		config.enable = false
+		volumeMgr.codeMode[codeMode] = config
+	}
+	volumeMgr.codeMode[mode] = modeConfig
+	volumeMgr.raftServer = raftServer
+	volumeMgr.scopeMgr = scopeMgr
+	volumeMgr.diskMgr = diskMgr
+
+	raftServer.EXPECT().IsLeader().AnyTimes().Return(true)
+	raftServer.EXPECT().Status().AnyTimes().Return(raftserver.Status{Id: 1})
+	scopeMgr.EXPECT().Alloc(gomock.Any(), vidScopeName, 1).Times(1).
+		Return(uint64(31), uint64(31), nil)
+	diskMgr.EXPECT().Stat(gomock.Any(), proto.DiskTypeHDD).
+		Return(&clustermgr.SpaceStatInfo{})
+	diskMgr.EXPECT().HasEnoughSpace(gomock.Any(), mode).Return(true)
+	diskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, policy cluster.AllocPolicy) ([]proto.DiskID, []proto.Vuid, error) {
+			require.Equal(t, mode, policy.CodeMode)
+			diskIDs := make([]proto.DiskID, len(policy.Vuids))
+			for i := range diskIDs {
+				diskIDs[i] = proto.DiskID(i + 1)
+			}
+			return diskIDs, policy.Vuids, nil
+		})
+	diskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().
+		DoAndReturn(mockGetDiskInfo)
+
+	created := make(chan struct{})
+	proposeCount := 0
+	raftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).Times(2).
+		DoAndReturn(func(context.Context, []byte) error {
+			proposeCount++
+			if proposeCount == 2 {
+				close(created)
+			}
+			return nil
+		})
+
+	go volumeMgr.loop()
+
+	select {
+	case <-created:
+	case <-time.After(3 * time.Second):
+		t.Fatal("enabled code mode did not create the initial volume")
+	}
 }
 
 func TestVolumeMgr_ListVolumeInfo(t *testing.T) {
@@ -1194,14 +1261,172 @@ func BenchmarkVolumeMgr_AllocVolume(b *testing.B) {
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			ret, err := mockVolumeMgr.AllocVolume(ctx, mode, len(args.Vids), args.Host)
-			require.NoError(b, err)
-			require.Equal(b, len(ret.AllocVolumeInfos), 2)
+			mockVolumeMgr.AllocVolume(ctx, mode, len(args.Vids), args.Host)
 		}
 	})
 }
 
-func BenchmarkVolumeMgr_PreAllocVolume(b *testing.B) {
+// TestPreAlloc_HighWatermarkFallback verifies the two-pass watermark behavior:
+//  1. When allocating 2 volumes from a pool of 4 high-watermark + 2 low-watermark
+//     volumes (all other conditions equal), the 2 low-watermark volumes are returned.
+//  2. When allocating all 6, the full set is returned via graceful fallback.
+func TestPreAlloc_HighWatermarkFallback(t *testing.T) {
+	testConfig.checkAndFix()
+	codeModes := make(map[codemode.CodeMode]codeModeConf)
+	for _, policy := range testConfig.CodeModePolicies {
+		cm := policy.ModeName.GetCodeMode()
+		codeModes[cm] = codeModeConf{
+			mode:      cm,
+			sizeRatio: policy.SizeRatio,
+			tactic:    cm.Tactic(),
+			enable:    policy.Enable,
+		}
+	}
+	mode := codemode.EC15P12
+
+	newAllocator := func() *volumeAllocator {
+		a := newVolumeAllocator(allocConfig{
+			codeModes:                    codeModes,
+			allocatableSize:              testConfig.AllocatableSize,
+			allocFactor:                  testConfig.AllocFactor,
+			allocatableDiskLoadThreshold: testConfig.AllocatableDiskLoadThreshold,
+			shardNum:                     testConfig.ShardNum,
+			diskUsageThreshold:           0.85,
+		})
+		// vid 1..4: high-watermark disks (ID <= 1000); vid 5..6: low-watermark disks (ID > 1000).
+		const watermarkBoundary = proto.DiskID(1000)
+		allVols := generateVolume(mode, 6, 1)
+		for i, vol := range allVols {
+			for j := range vol.vUnits {
+				if i < 4 {
+					vol.vUnits[j].vuInfo.DiskID = proto.DiskID(j + 1)
+				} else {
+					vol.vUnits[j].vuInfo.DiskID = watermarkBoundary + proto.DiskID(j+1)
+				}
+			}
+			vol.volInfoBase.Status = proto.VolumeStatusIdle
+			a.idles[mode].addAllocatable(vol)
+		}
+		// mark disks with ID <= watermarkBoundary as high-usage via the heartbeat-driven path.
+		for _, vol := range allVols {
+			for _, unit := range vol.vUnits {
+				var ratio float64
+				if unit.vuInfo.DiskID <= watermarkBoundary {
+					ratio = 0.9 // above threshold
+				} else {
+					ratio = 0.5 // below threshold
+				}
+				a.UpdateDiskHighUsage(unit.vuInfo.DiskID, ratio)
+			}
+		}
+		return a
+	}
+
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	lowWatermarkVids := map[proto.Vid]struct{}{5: {}, 6: {}}
+
+	t.Run("prefer low-watermark volumes", func(t *testing.T) {
+		ret, _ := newAllocator().PreAlloc(ctx, mode, 2)
+		require.Equal(t, 2, len(ret))
+		for _, vid := range ret {
+			require.Contains(t, lowWatermarkVids, vid, "expected only low-watermark vids, got vid=%d", vid)
+		}
+	})
+
+	t.Run("fallback allocates all volumes", func(t *testing.T) {
+		ret, _ := newAllocator().PreAlloc(ctx, mode, 6)
+		require.Equal(t, 6, len(ret))
+	})
+
+	t.Run("disabled when threshold is zero", func(t *testing.T) {
+		// diskUsageThreshold=0 → skipDiskUsageCheck=true from the start;
+		// even disks at 90% usage are eligible without fallback.
+		a := newVolumeAllocator(allocConfig{
+			codeModes:                    codeModes,
+			allocatableSize:              testConfig.AllocatableSize,
+			allocFactor:                  testConfig.AllocFactor,
+			allocatableDiskLoadThreshold: testConfig.AllocatableDiskLoadThreshold,
+			shardNum:                     testConfig.ShardNum,
+			diskUsageThreshold:           0,
+		})
+		vols := generateVolume(mode, 4, 1)
+		for _, vol := range vols {
+			vol.volInfoBase.Status = proto.VolumeStatusIdle
+			a.idles[mode].addAllocatable(vol)
+			for _, unit := range vol.vUnits {
+				a.UpdateDiskHighUsage(unit.vuInfo.DiskID, 0.9)
+			}
+		}
+		ret, _ := a.PreAlloc(ctx, mode, 2)
+		require.Equal(t, 2, len(ret))
+	})
+
+	t.Run("ratio at threshold is not high", func(t *testing.T) {
+		// ratio > threshold is strict; ratio == threshold must NOT be treated as high.
+		const threshold = 0.85
+		a := newVolumeAllocator(allocConfig{
+			codeModes:                    codeModes,
+			allocatableSize:              testConfig.AllocatableSize,
+			allocFactor:                  testConfig.AllocFactor,
+			allocatableDiskLoadThreshold: testConfig.AllocatableDiskLoadThreshold,
+			shardNum:                     testConfig.ShardNum,
+			diskUsageThreshold:           threshold,
+		})
+		vols := generateVolume(mode, 4, 1)
+		for _, vol := range vols {
+			vol.volInfoBase.Status = proto.VolumeStatusIdle
+			a.idles[mode].addAllocatable(vol)
+			for _, unit := range vol.vUnits {
+				a.UpdateDiskHighUsage(unit.vuInfo.DiskID, threshold)
+			}
+		}
+		ret, _ := a.PreAlloc(ctx, mode, 2)
+		require.Equal(t, 2, len(ret))
+	})
+
+	t.Run("disk usage update overrides previous state", func(t *testing.T) {
+		// EC15P12: count = N+M+L-PutQuorum = 27-24 = 3 (tolerance).
+		// hasHighUsageDisk returns true only when > count (i.e. ≥ 4) disks are high
+		// (count<0 condition), meaning fewer than PutQuorum disks remain available.
+		const threshold = 0.85
+		const (
+			diskA = proto.DiskID(9001)
+			diskB = proto.DiskID(9002)
+			diskC = proto.DiskID(9003)
+			diskD = proto.DiskID(9004)
+		)
+		a := newVolumeAllocator(allocConfig{
+			codeModes:                    codeModes,
+			allocatableSize:              testConfig.AllocatableSize,
+			allocFactor:                  testConfig.AllocFactor,
+			allocatableDiskLoadThreshold: testConfig.AllocatableDiskLoadThreshold,
+			shardNum:                     testConfig.ShardNum,
+			diskUsageThreshold:           threshold,
+		})
+		units := []*volumeUnit{
+			{vuInfo: &clustermgr.VolumeUnitInfo{DiskID: diskA}},
+			{vuInfo: &clustermgr.VolumeUnitInfo{DiskID: diskB}},
+			{vuInfo: &clustermgr.VolumeUnitInfo{DiskID: diskC}},
+			{vuInfo: &clustermgr.VolumeUnitInfo{DiskID: diskD}},
+		}
+
+		// 3 high disks == count(3): count reaches 0 but not <0, still allowed.
+		a.UpdateDiskHighUsage(diskA, 0.9)
+		a.UpdateDiskHighUsage(diskB, 0.9)
+		a.UpdateDiskHighUsage(diskC, 0.9)
+		require.False(t, a.hasHighUsageDisk(units, mode))
+
+		// 4th disk also high → count goes negative → blocked.
+		a.UpdateDiskHighUsage(diskD, 0.9)
+		require.True(t, a.hasHighUsageDisk(units, mode))
+
+		// Drop diskA below threshold: only 3 of 4 remain high → unblocked.
+		a.UpdateDiskHighUsage(diskA, 0.3)
+		require.False(t, a.hasHighUsageDisk(units, mode))
+	})
+}
+
+func BenchmarkRunCIVolumeMgr_PreAllocVolume(b *testing.B) {
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 	mode := codemode.EC15P12
 	testConfig.checkAndFix()
@@ -1276,46 +1501,743 @@ func TestVolumeStat(t *testing.T) {
 	sliceNum := uint32(4)
 	freezeSize := uint64(100)
 	allocatableSize := uint64(500)
+	mode := codemode.EC15P12
+	modeOther := codemode.EC6P6
 
 	stat := newVolumeStat(sliceNum, freezeSize, allocatableSize)
 	require.NotNil(t, stat)
 	require.Equal(t, sliceNum, stat.num)
 	require.Equal(t, freezeSize, stat.freezeSizeThreshold)
 	require.Equal(t, allocatableSize, stat.allocatableSizeThreshold)
-	require.Equal(t, uint64(0), stat.getWriteSpace())
+	require.Equal(t, uint64(0), stat.getWriteSpace(mode))
+	require.Equal(t, uint64(0), stat.getWriteSpace(codemode.Replica3))
+	require.Equal(t, uint64(0), stat.getTotalWriteSpace())
 
-	// test addSize: new vid with idle status and freeSize > allocatableSizeThreshold
 	vid1 := proto.Vid(1)
 	freeSize1 := uint64(1000)
-	stat.addSize(vid1, proto.VolumeStatusIdle, freeSize1)
-	require.Equal(t, freeSize1-freezeSize, stat.getWriteSpace())
+	stat.addSize(vid1, mode, proto.VolumeStatusIdle, freeSize1)
+	require.Equal(t, freeSize1-freezeSize, stat.getWriteSpace(mode))
 
-	// test addSize: same vid with idle status, freeSize increase
 	newFreeSize1 := uint64(1200)
-	stat.addSize(vid1, proto.VolumeStatusIdle, newFreeSize1)
-	require.Equal(t, freeSize1-freezeSize+(newFreeSize1-freeSize1), stat.getWriteSpace())
+	stat.addSize(vid1, mode, proto.VolumeStatusIdle, newFreeSize1)
+	require.Equal(t, freeSize1-freezeSize+(newFreeSize1-freeSize1), stat.getWriteSpace(mode))
 
-	// test addSize: same vid with idle status, freeSize decrease
 	decreasedFreeSize := uint64(1100)
-	expectedSpace := stat.getWriteSpace() - (newFreeSize1 - decreasedFreeSize)
-	stat.addSize(vid1, proto.VolumeStatusIdle, decreasedFreeSize)
-	require.Equal(t, expectedSpace, stat.getWriteSpace())
+	expectedSpace := stat.getWriteSpace(mode) - (newFreeSize1 - decreasedFreeSize)
+	stat.addSize(vid1, mode, proto.VolumeStatusIdle, decreasedFreeSize)
+	require.Equal(t, expectedSpace, stat.getWriteSpace(mode))
 
-	// test addSize: vid becomes non-idle (remove from stats)
-	currentSpace := stat.getWriteSpace()
-	stat.addSize(vid1, proto.VolumeStatusActive, decreasedFreeSize)
-	require.Equal(t, currentSpace-(decreasedFreeSize-freezeSize), stat.getWriteSpace())
+	currentSpace := stat.getWriteSpace(mode)
+	stat.addSize(vid1, mode, proto.VolumeStatusActive, decreasedFreeSize)
+	require.Equal(t, currentSpace-(decreasedFreeSize-freezeSize), stat.getWriteSpace(mode))
 
-	// test addSize: new vid with freeSize <= allocatableSizeThreshold (should not add)
+	stat.addSize(vid1, mode, proto.VolumeStatusIdle, decreasedFreeSize)
+	require.Equal(t, currentSpace, stat.getWriteSpace(mode))
+
 	vid2 := proto.Vid(2)
 	smallFreeSize := uint64(400)
-	spaceBeforeAdd := stat.getWriteSpace()
-	stat.addSize(vid2, proto.VolumeStatusIdle, smallFreeSize)
-	require.Equal(t, spaceBeforeAdd, stat.getWriteSpace())
+	spaceBeforeAdd := stat.getWriteSpace(mode)
+	stat.addSize(vid2, mode, proto.VolumeStatusIdle, smallFreeSize)
+	require.Equal(t, spaceBeforeAdd, stat.getWriteSpace(mode))
 
-	// test addSize: new vid with non-idle status (should not add)
 	vid3 := proto.Vid(3)
-	spaceBeforeAdd = stat.getWriteSpace()
-	stat.addSize(vid3, proto.VolumeStatusActive, freeSize1)
-	require.Equal(t, spaceBeforeAdd, stat.getWriteSpace())
+	spaceBeforeAdd = stat.getWriteSpace(mode)
+	stat.addSize(vid3, mode, proto.VolumeStatusActive, freeSize1)
+	require.Equal(t, spaceBeforeAdd, stat.getWriteSpace(mode))
+
+	stat.addSize(proto.Vid(4), modeOther, proto.VolumeStatusIdle, freeSize1)
+	require.Equal(t, currentSpace, stat.getWriteSpace(mode))
+	require.Equal(t, freeSize1-freezeSize, stat.getWriteSpace(modeOther))
+	require.Equal(t, currentSpace+(freeSize1-freezeSize), stat.getTotalWriteSpace())
+
+	allocator := newVolumeAllocator(allocConfig{
+		codeModes: map[codemode.CodeMode]codeModeConf{
+			mode:      {mode: mode, tactic: mode.Tactic()},
+			modeOther: {mode: modeOther, tactic: modeOther.Tactic()},
+		},
+		shardNum: 1,
+	})
+	vm := &VolumeMgr{stat: stat, allocator: allocator}
+	require.Equal(t, stat.getTotalWriteSpace(), vm.Stat(context.Background()).WritableSpace)
+}
+
+func TestGetCreateVolumeCount_PerCodeModeGap(t *testing.T) {
+	const minWritable = uint64(128) << 40
+	freeze := uint64(2 << 20)
+	chunkSize := uint64(16 << 30)
+	mode15 := codeModeConf{mode: codemode.EC15P12, sizeRatio: 0.3, tactic: codemode.EC15P12.Tactic(), enable: true}
+	mode6 := codeModeConf{mode: codemode.EC6P6, sizeRatio: 0.7, tactic: codemode.EC6P6.Tactic(), enable: true}
+
+	stat := newVolumeStat(1, freeze, 1<<30)
+	writable15 := uint64(20) << 40
+	writable6 := uint64(120) << 40
+	stat.addSize(1, mode15.mode, proto.VolumeStatusIdle, writable15+freeze)
+	stat.addSize(2, mode6.mode, proto.VolumeStatusIdle, writable6+freeze)
+	require.Equal(t, writable15, stat.getWriteSpace(mode15.mode))
+	require.Equal(t, writable6, stat.getWriteSpace(mode6.mode))
+	require.Greater(t, stat.getTotalWriteSpace(), minWritable)
+
+	ctr := gomock.NewController(t)
+	mockDiskMgr := cluster.NewMockBlobNodeManagerAPI(ctr)
+	mockDiskMgr.EXPECT().Stat(gomock.Any(), proto.DiskTypeHDD).AnyTimes().Return(&clustermgr.SpaceStatInfo{TotalDisk: 10})
+
+	vm := &VolumeMgr{
+		stat:    stat,
+		diskMgr: mockDiskMgr,
+		codeMode: map[codemode.CodeMode]codeModeConf{
+			mode15.mode: mode15,
+			mode6.mode:  mode6,
+		},
+		VolumeMgrConfig: VolumeMgrConfig{
+			MinWritableVolumeSpace:  minWritable,
+			MinAllocableVolumeCount: 5,
+			ChunkSize:               chunkSize,
+			FreezeThreshold:         freeze,
+		},
+	}
+
+	ctx := context.Background()
+	curVolCount := 10
+	volCount15 := vm.getCreateVolumeCount(ctx, mode15, 0)
+	volCount6 := vm.getCreateVolumeCount(ctx, mode6, 0)
+	perVol15 := chunkSize*uint64(mode15.tactic.N) - freeze
+	gap15 := uint64(float64(minWritable)*mode15.sizeRatio) - writable15
+	supplement15 := int(gap15/perVol15) + 1
+
+	got15 := vm.getCreateVolumeCount(ctx, mode15, curVolCount)
+	got6 := vm.getCreateVolumeCount(ctx, mode6, curVolCount)
+	require.Equal(t, curVolCount+supplement15, got15)
+	require.Greater(t, got15, volCount15)
+	require.Equal(t, volCount6, got6)
+}
+
+func TestGetCreateVolumeCount_ZeroPerVolWritable(t *testing.T) {
+	modeConf := codeModeConf{mode: codemode.EC15P12, sizeRatio: 1, tactic: codemode.EC15P12.Tactic(), enable: true}
+	stat := newVolumeStat(1, 0, 1<<30)
+
+	ctr := gomock.NewController(t)
+	mockDiskMgr := cluster.NewMockBlobNodeManagerAPI(ctr)
+	mockDiskMgr.EXPECT().Stat(gomock.Any(), proto.DiskTypeHDD).AnyTimes().Return(&clustermgr.SpaceStatInfo{TotalDisk: 10})
+
+	vm := &VolumeMgr{
+		stat:    stat,
+		diskMgr: mockDiskMgr,
+		codeMode: map[codemode.CodeMode]codeModeConf{
+			modeConf.mode: modeConf,
+		},
+		VolumeMgrConfig: VolumeMgrConfig{
+			MinWritableVolumeSpace:  1 << 40,
+			MinAllocableVolumeCount: 5,
+			ChunkSize:               0,
+			FreezeThreshold:         0,
+		},
+	}
+
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	volCount := vm.getCreateVolumeCount(ctx, modeConf, 0)
+	require.Equal(t, volCount, vm.getCreateVolumeCount(ctx, modeConf, 99))
+}
+
+func TestGetCreateVolumeCount_RemainderGapRoundsUp(t *testing.T) {
+	modeConf := codeModeConf{mode: codemode.EC15P12, sizeRatio: 1, tactic: codemode.EC15P12.Tactic(), enable: true}
+	stat := newVolumeStat(1, 0, 0)
+	stat.addSize(1, modeConf.mode, proto.VolumeStatusIdle, 9000)
+
+	ctr := gomock.NewController(t)
+	mockDiskMgr := cluster.NewMockBlobNodeManagerAPI(ctr)
+	mockDiskMgr.EXPECT().Stat(gomock.Any(), proto.DiskTypeHDD).AnyTimes().Return(&clustermgr.SpaceStatInfo{TotalDisk: 10})
+
+	vm := &VolumeMgr{
+		stat:    stat,
+		diskMgr: mockDiskMgr,
+		codeMode: map[codemode.CodeMode]codeModeConf{
+			modeConf.mode: modeConf,
+		},
+		VolumeMgrConfig: VolumeMgrConfig{
+			MinWritableVolumeSpace:  10000,
+			MinAllocableVolumeCount: 5,
+			ChunkSize:               100,
+			FreezeThreshold:         0,
+		},
+	}
+
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	curVolCount := 20
+	got := vm.getCreateVolumeCount(ctx, modeConf, curVolCount)
+	require.Equal(t, curVolCount+1, got)
+}
+
+func makeBenchVolumeMgr(n int) *VolumeMgr {
+	num := uint32(testConfig.VolumeSliceMapNum)
+	shards := &shardedVolumes{
+		num:   num,
+		m:     make(map[uint32]map[proto.Vid]*volume, num),
+		locks: make(map[uint32]*sync.RWMutex, num),
+	}
+	for i := uint32(0); i < num; i++ {
+		shards.m[i] = make(map[proto.Vid]*volume)
+		shards.locks[i] = &sync.RWMutex{}
+	}
+	v := &VolumeMgr{all: shards}
+	for _, vol := range generateVolume(codemode.EC12P9, n, 1) {
+		v.all.putVol(vol) //nolint:errcheck
+	}
+	return v
+}
+
+func BenchmarkRangeUpdateVolume(b *testing.B) {
+	cases := []struct {
+		name  string
+		count int
+	}{
+		{"1w", 10_000},
+		{"10w", 100_000},
+		{"100w", 1_000_000},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		b.Run(tc.name, func(b *testing.B) {
+			mgr := makeBenchVolumeMgr(tc.count)
+			ctx := context.Background()
+
+			cache := make(map[proto.Vid]*clustermgr.VolumeBasic, tc.count)
+			mgr.RangeUpdateVolume(ctx, cache)
+
+			b.ResetTimer()
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				mgr.RangeUpdateVolume(ctx, cache)
+			}
+		})
+	}
+}
+
+// ---- healths accounting ----
+
+// buildIdleVolumes constructs an idleVolumes for EC15P12 with the given shardNum.
+func buildIdleVolumes(shardNum int) *idleVolumes {
+	mode := codemode.EC15P12
+	tactic := mode.Tactic()
+	shards := make([]*list.List, shardNum)
+	for i := range shards {
+		shards[i] = list.New()
+	}
+	return &idleVolumes{
+		m:                 make(map[proto.Vid]idleItem),
+		allocatableShards: shards,
+		notAllocatable:    list.New(),
+		shardNum:          shardNum,
+		healths:           make([]int, mode.GetShardNum()-tactic.PutQuorum+1),
+	}
+}
+
+func makeVol(vid proto.Vid, health int) *volume {
+	return &volume{
+		vid: vid,
+		volInfoBase: clustermgr.VolumeInfoBase{
+			Vid:         vid,
+			HealthScore: health,
+			Status:      proto.VolumeStatusIdle,
+			Free:        defaultChunkSize * 12,
+		},
+	}
+}
+
+func TestHealthStat_AddAllocatable(t *testing.T) {
+	iv := buildIdleVolumes(defaultShardNum)
+
+	iv.addAllocatable(makeVol(1, 0))
+	iv.addAllocatable(makeVol(2, -1))
+	iv.addAllocatable(makeVol(3, 0))
+
+	require.Equal(t, 2, iv.healths[0]) // health=0: vid1, vid3
+	require.Equal(t, 1, iv.healths[1]) // health=-1: vid2
+	require.Equal(t, 3-0, iv.statAllocatableNum())
+}
+
+func TestHealthStat_AddNotAllocatable(t *testing.T) {
+	iv := buildIdleVolumes(defaultShardNum)
+
+	iv.addNotAllocatable(makeVol(1, 0))
+	iv.addNotAllocatable(makeVol(2, -2))
+
+	// healths only counts allocatable entries; notAllocatable must NOT be counted
+	require.Equal(t, 0, iv.healths[0])
+	require.Equal(t, 0, iv.healths[2])
+	require.Equal(t, 0, iv.statAllocatableNum())
+}
+
+func TestHealthStat_Delete(t *testing.T) {
+	iv := buildIdleVolumes(defaultShardNum)
+
+	iv.addAllocatable(makeVol(1, 0))
+	iv.addAllocatable(makeVol(2, 0))
+	iv.delete(proto.Vid(1))
+
+	require.Equal(t, 1, iv.healths[0])
+}
+
+func TestHealthStat_AllocFromOptions(t *testing.T) {
+	iv := buildIdleVolumes(defaultShardNum)
+
+	iv.addAllocatable(makeVol(1, 0))
+	iv.addAllocatable(makeVol(2, 0))
+	iv.addAllocatable(makeVol(3, -1))
+
+	// alloc vid1 and vid3
+	got := iv.allocFromOptions([]proto.Vid{1, 3}, 2)
+	require.Equal(t, []proto.Vid{1, 3}, got)
+
+	// healths must decrease for each allocated vid
+	require.Equal(t, 1, iv.healths[0]) // only vid2 remains
+	require.Equal(t, 0, iv.healths[1]) // vid3 removed
+	require.Equal(t, 1, iv.statAllocatableNum())
+}
+
+func TestHealthStat_MoveAllocatableToNotAllocatable(t *testing.T) {
+	iv := buildIdleVolumes(defaultShardNum)
+
+	iv.addAllocatable(makeVol(1, 0))
+	require.Equal(t, 1, iv.healths[0])
+
+	// health drops, volume moves to notAllocatable: healths must NOT count notAllocatable entries
+	iv.addNotAllocatable(makeVol(1, -1))
+	require.Equal(t, 0, iv.healths[0])
+	require.Equal(t, 0, iv.healths[1])
+	require.Equal(t, 0, iv.statAllocatableNum())
+
+	// calling addNotAllocatable again (idempotent): healths must not go negative
+	iv.addNotAllocatable(makeVol(1, -1))
+	require.Equal(t, 0, iv.healths[0])
+	require.Equal(t, 0, iv.healths[1])
+}
+
+func TestStatHealthyAllocatable_PrefixSum(t *testing.T) {
+	iv := buildIdleVolumes(defaultShardNum)
+
+	iv.addAllocatable(makeVol(1, 0))
+	iv.addAllocatable(makeVol(2, 0))
+	iv.addAllocatable(makeVol(3, -1))
+	iv.addAllocatable(makeVol(4, -2))
+
+	ps := iv.statHealthyAllocatable()
+	// ps[0] = count(health=0) = 2
+	require.Equal(t, 2, ps[0])
+	// ps[1] = count(health=0) + count(health=-1) = 3
+	require.Equal(t, 3, ps[1])
+	// ps[2] = 3 + count(health=-2) = 4
+	require.Equal(t, 4, ps[2])
+}
+
+// ---- PreRetainVolume F1 degraded retain ----
+
+func TestPreRetainVolume_DegradedRetain_NormalCase(t *testing.T) {
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+
+	// enough health=0 volumes → threshold stays at 0 → health=-1 volume NOT retained
+	mode := codemode.EC15P12
+	conf := mockVolumeMgr.codeMode[mode]
+	conf.sizeRatio = 1.0
+	mockVolumeMgr.codeMode[mode] = conf
+	mockVolumeMgr.MinAllocableHealthVolumeCount = 1
+	mockVolumeMgr.EnableDegradeRetain = true // feature enabled; no degradation because healthy volumes are sufficient
+
+	// vid=1 is active with health=-1
+	vol1 := mockVolumeMgr.all.getVol(proto.Vid(1))
+	vol1.lock.Lock()
+	vol1.volInfoBase.HealthScore = -1
+	vol1.lock.Unlock()
+
+	// ensure at least one health=0 allocatable idle volume exists
+	mockVolumeMgr.all.rangeVol(func(v *volume) error {
+		if v.volInfoBase.Status == proto.VolumeStatusIdle {
+			v.lock.Lock()
+			v.volInfoBase.HealthScore = 0
+			v.lock.Unlock()
+			mockVolumeMgr.allocator.idles[mode].addAllocatable(v)
+		}
+		return nil
+	})
+
+	tokens := []string{"127.0.0.1:8080;1"}
+	ret, err := mockVolumeMgr.PreRetainVolume(ctx, tokens, "127.0.0.1:8080")
+	require.NoError(t, err)
+	// health=-1 should NOT be retained when threshold=0 and ratio disables degradation
+	require.Nil(t, ret)
+}
+
+func TestPreRetainVolume_DegradedRetain_NoHealthyVolumes(t *testing.T) {
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+
+	mode := codemode.EC15P12
+	tactic := mode.Tactic()
+	degradedThreshold := tactic.PutQuorum - mode.GetShardNum() // -3 for EC15P12
+
+	conf := mockVolumeMgr.codeMode[mode]
+	conf.sizeRatio = 1.0
+	mockVolumeMgr.codeMode[mode] = conf
+	// set MinAllocableHealthVolumeCount higher than actual health=0 count (0 health=0 volumes)
+	mockVolumeMgr.MinAllocableHealthVolumeCount = 10
+	mockVolumeMgr.EnableDegradeRetain = true
+
+	// drain all health=0 from allocator by moving idle volumes to notAllocatable
+	iv := mockVolumeMgr.allocator.idles[mode]
+	iv.Lock()
+	iv.healths[0] = 0
+	iv.Unlock()
+
+	// vid=1: active, health=-2 (within quorum lower bound -3)
+	vol1 := mockVolumeMgr.all.getVol(proto.Vid(1))
+	vol1.lock.Lock()
+	vol1.volInfoBase.HealthScore = -2
+	vol1.lock.Unlock()
+
+	tokens := []string{"127.0.0.1:8080;1"}
+	ret, err := mockVolumeMgr.PreRetainVolume(ctx, tokens, "127.0.0.1:8080")
+	require.NoError(t, err)
+	require.NotNil(t, ret)
+	require.Equal(t, 1, len(ret.RetainVolTokens))
+
+	// verify degraded threshold is correct
+	require.Equal(t, degradedThreshold, -3)
+}
+
+func TestPreRetainVolume_DegradedRetain_HealthBelowQuorum(t *testing.T) {
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+
+	mode := codemode.EC15P12
+	conf := mockVolumeMgr.codeMode[mode]
+	conf.sizeRatio = 1.0
+	mockVolumeMgr.codeMode[mode] = conf
+	mockVolumeMgr.MinAllocableHealthVolumeCount = 10
+	mockVolumeMgr.EnableDegradeRetain = true
+
+	mockVolumeMgr.allocator.idles[mode].Lock()
+	mockVolumeMgr.allocator.idles[mode].healths[0] = 0
+	mockVolumeMgr.allocator.idles[mode].Unlock()
+
+	// vid=3: active, health=-4 (below quorum lower bound -3) → must NOT be retained
+	vol3 := mockVolumeMgr.all.getVol(proto.Vid(3))
+	vol3.lock.Lock()
+	vol3.volInfoBase.HealthScore = -4
+	vol3.lock.Unlock()
+
+	tokens := []string{"127.0.0.1:8080;3"}
+	ret, err := mockVolumeMgr.PreRetainVolume(ctx, tokens, "127.0.0.1:8080")
+	require.NoError(t, err)
+	require.Nil(t, ret)
+}
+
+func TestPreRetainVolume_DegradedRetain_FeatureDisabled(t *testing.T) {
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+
+	mode := codemode.EC15P12
+	conf := mockVolumeMgr.codeMode[mode]
+	conf.sizeRatio = 1.0
+	mockVolumeMgr.codeMode[mode] = conf
+	// EnableDegradeRetain=false → skip calculateThreshold entirely → F1 disabled
+	mockVolumeMgr.MinAllocableHealthVolumeCount = 10
+	mockVolumeMgr.EnableDegradeRetain = false
+
+	mockVolumeMgr.allocator.idles[mode].Lock()
+	mockVolumeMgr.allocator.idles[mode].healths[0] = 0
+	mockVolumeMgr.allocator.idles[mode].Unlock()
+
+	// health=-2 volume, would be retained if feature were on
+	vol1 := mockVolumeMgr.all.getVol(proto.Vid(1))
+	vol1.lock.Lock()
+	vol1.volInfoBase.HealthScore = -2
+	vol1.lock.Unlock()
+
+	// EnableDegradeRetain=false skips calculateThreshold,
+	// so threshold stays at RetainThreshold=0, health=-2 NOT retained
+	tokens := []string{"127.0.0.1:8080;1"}
+	ret, err := mockVolumeMgr.PreRetainVolume(ctx, tokens, "127.0.0.1:8080")
+	require.NoError(t, err)
+	require.Nil(t, ret)
+}
+
+// ---- StatHealthyAllocable used by F2/F3 ----
+
+func TestStatHealthyAllocable_AfterAlloc(t *testing.T) {
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
+
+	mode := codemode.EC15P12
+
+	// set all idle volumes to health=0, rebuild healths
+	mockVolumeMgr.all.rangeVol(func(v *volume) error {
+		if v.volInfoBase.Status == proto.VolumeStatusIdle {
+			v.lock.Lock()
+			v.volInfoBase.HealthScore = 0
+			v.lock.Unlock()
+			mockVolumeMgr.allocator.idles[mode].addAllocatable(v)
+		}
+		return nil
+	})
+
+	beforeCounts := mockVolumeMgr.allocator.StatHealthyAllocable()
+	before := beforeCounts[mode]
+	require.Greater(t, before, 0)
+
+	// simulate allocation: take two volumes via allocFromOptions
+	idleVols := mockVolumeMgr.allocator.idles[mode]
+	var twoVids []proto.Vid
+	idleVols.RLock()
+	for vid := range idleVols.m {
+		if idleVols.m[vid].head != idleVols.notAllocatable {
+			twoVids = append(twoVids, vid)
+			if len(twoVids) == 2 {
+				break
+			}
+		}
+	}
+	idleVols.RUnlock()
+
+	idleVols.allocFromOptions(twoVids, 2)
+
+	afterCounts := mockVolumeMgr.allocator.StatHealthyAllocable()
+	require.Equal(t, before-2, afterCounts[mode])
+}
+
+func TestStatHealthyAllocable_HealthDegraded(t *testing.T) {
+	// Use a standalone idleVolumes to avoid conflicts with initMockVolumeMgr state.
+	iv := buildIdleVolumes(defaultShardNum)
+
+	iv.addAllocatable(makeVol(1, -1))
+	iv.addAllocatable(makeVol(2, -1))
+	iv.addAllocatable(makeVol(3, -2))
+
+	// health=0 count must be 0
+	require.Equal(t, 0, iv.statHealthyAllocatableNum())
+
+	// StatHealthyAllocable via volumeAllocator
+	mode := codemode.EC15P12
+	cfg := allocConfig{
+		codeModes: map[codemode.CodeMode]codeModeConf{
+			mode: {mode: mode, tactic: mode.Tactic()},
+		},
+		allocatableSize: defaultChunkSize,
+		shardNum:        defaultShardNum,
+	}
+	alloc := newVolumeAllocator(cfg)
+	alloc.idles[mode].addAllocatable(makeVol(10, -1))
+	alloc.idles[mode].addAllocatable(makeVol(11, -2))
+
+	counts := alloc.StatHealthyAllocable()
+	require.Equal(t, 0, counts[mode])
+}
+
+// TestScenario_LargeCluster_DiskCutReadonly simulates a scaled-down (1:50) large-cluster scenario:
+//
+// Original scale: 30 machines, 1200+ disks (20T each), ~10000 EC15P12 volumes (analogous to 12+9),
+// ~5000 idle allocatable volumes (health=0), ~1000 active volumes.
+// Event: 80% of high-watermark disks are set to read-only, causing ~80% of idle volumes to
+// degrade from health=0 to health=-1, dropping the health=0 idle count below threshold.
+// F1 trigger condition: prefix_sum[abs(RetainThreshold)] = health=0 count < minCount.
+//
+// Verifies three behaviors:
+//   - F1: adaptive retention — prevents active vols from losing their lease (write cliff) when
+//     the retain threshold is too strict for degraded volumes
+//   - Allocator continuity: degraded volumes remain in the allocatable pool, writes can continue
+//   - F2/F3: health-aware volume creation — scarcity detection triggers supplementary creation
+func TestScenario_LargeCluster_DiskCutReadonly(t *testing.T) {
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
+
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	mode := codemode.EC15P12
+	tactic := mode.Tactic()
+	shardNum := tactic.N + tactic.M + tactic.L
+	// F1 degraded retain threshold = PutQuorum - ShardNum (lowest score still writable)
+	degradedThreshold := tactic.PutQuorum - shardNum
+
+	// Scale 1:50 from original cluster
+	const (
+		newIdleVols       = 100 // 5000/50
+		newActiveVols     = 20  // 1000/50
+		idleDegradedCount = 100 // all new idle vols degrade health=0 -> -1 when disks go read-only
+		healthThreshold   = 40  // MinAllocableHealthVolumeCount: F1/F2/F3 trigger threshold
+		existingActiveNum = 15  // initMockVolumeMgr seeds 15 active vols (odd vids), registered in actives.counts
+		startVidIdle      = 1000
+		startVidActive    = 1100
+		testHost          = "127.0.0.1:8080"
+	)
+
+	modeConf := mockVolumeMgr.codeMode[mode]
+	modeConf.sizeRatio = 1.0
+	mockVolumeMgr.codeMode[mode] = modeConf
+	mockVolumeMgr.MinAllocableHealthVolumeCount = healthThreshold
+	mockVolumeMgr.EnableDegradeRetain = false // F1 disabled initially
+	mockVolumeMgr.CheckHealthyVolumeIntervalS = 1
+	mockVolumeMgr.RetainThreshold = 0
+
+	// --- build initial state ---
+	// inject 100 idle volumes (health=0) into the allocator
+	for i := 0; i < newIdleVols; i++ {
+		vid := proto.Vid(startVidIdle + i)
+		vol := &volume{
+			vid: vid,
+			volInfoBase: clustermgr.VolumeInfoBase{
+				Vid:         vid,
+				CodeMode:    mode,
+				HealthScore: 0,
+				Status:      proto.VolumeStatusIdle,
+				Free:        defaultChunkSize * 12,
+				Total:       defaultChunkSize * 12,
+			},
+		}
+		require.NoError(t, mockVolumeMgr.all.putVol(vol))
+		mockVolumeMgr.allocator.idles[mode].addAllocatable(vol)
+	}
+
+	// inject 20 active volumes (health=0) with valid tokens, register in actives.counts
+	// via VolumeStatusActiveCallback so calculateThreshold sees the correct active count
+	for i := 0; i < newActiveVols; i++ {
+		vid := proto.Vid(startVidActive + i)
+		tok := proto.EncodeToken(testHost, vid)
+		vol := &volume{
+			vid: vid,
+			volInfoBase: clustermgr.VolumeInfoBase{
+				Vid:         vid,
+				CodeMode:    mode,
+				HealthScore: 0,
+				Status:      proto.VolumeStatusActive,
+				Free:        defaultChunkSize * 12,
+				Total:       defaultChunkSize * 12,
+			},
+			token: &token{
+				vid:        vid,
+				tokenID:    tok,
+				expireTime: time.Now().Add(time.Hour).UnixNano(),
+			},
+		}
+		require.NoError(t, mockVolumeMgr.all.putVol(vol))
+		require.NoError(t, mockVolumeMgr.allocator.VolumeStatusActiveCallback(ctx, vol))
+	}
+
+	// --- Phase 1: verify pre-cut state ---
+	// initMockVolumeMgr seeds 15 idle volumes (even vids 0,2,...,28), all health=0
+	existingIdle := volumeCount / 2 // 15
+	// total active after registration: 15 original + 20 new
+	totalActive := existingActiveNum + newActiveVols // 35
+	initialHealthy := mockVolumeMgr.allocator.StatHealthyAllocable()[mode]
+	require.Equal(t, existingIdle+newIdleVols, initialHealthy)
+	require.Greater(t, initialHealthy, healthThreshold,
+		"pre-cut: health=0 count must exceed threshold")
+	t.Logf("[Phase 1] Pre-cut: health=0 idle=%d > threshold=%d, active=%d — sufficient",
+		initialHealthy, healthThreshold, totalActive)
+
+	// --- Phase 2: simulate high-watermark disks going read-only ---
+	// All 100 new idle vols have units on affected disks; each loses one shard, health=0 -> -1.
+	// Only the 15 original idle vols remain health=0 (retain=15 < active=35 → F1 trigger condition).
+	for i := 0; i < idleDegradedCount; i++ {
+		vid := proto.Vid(startVidIdle + i)
+		vol := mockVolumeMgr.all.getVol(vid)
+		require.NotNil(t, vol)
+		vol.volInfoBase.HealthScore = -1
+		require.NoError(t, mockVolumeMgr.allocator.VolumeFreeHealthCallback(ctx, vol))
+	}
+	// 16 active vols on the same disks also degrade
+	activeDegradedCount := newActiveVols * 4 / 5 // 16
+	for i := 0; i < activeDegradedCount; i++ {
+		vid := proto.Vid(startVidActive + i)
+		vol := mockVolumeMgr.all.getVol(vid)
+		require.NotNil(t, vol)
+		vol.volInfoBase.HealthScore = -1
+	}
+
+	postCutHealthy := mockVolumeMgr.allocator.StatHealthyAllocable()[mode]
+	postCutAllocatable := mockVolumeMgr.allocator.StatAllocatable()[mode]
+
+	// retain = health=0 idle vols = only the 15 original idle vols
+	expectedHealthy := existingIdle // 15
+	require.Equal(t, expectedHealthy, postCutHealthy,
+		"post-cut: only original idle vols remain health=0")
+	require.Less(t, postCutHealthy, healthThreshold,
+		"post-cut: health=0 count must be below threshold to trigger F2/F3")
+	// F1 trigger: retain(15) <= active(35) and retain(15) <= minCount(40)
+	require.Less(t, postCutHealthy, totalActive,
+		"post-cut: retain < active, F1 degraded retain triggers")
+	// degraded vols: health=-1 >= allocatableThreshold(-3), still in the allocatable pool
+	require.Equal(t, existingIdle+newIdleVols, postCutAllocatable,
+		"post-cut: all idle vols remain allocatable (health=-1 still writable)")
+	t.Logf("[Phase 2] After disk cut: retain(health=0)=%d, active=%d, total_allocatable=%d — F1 triggers",
+		postCutHealthy, totalActive, postCutAllocatable)
+
+	// --- Phase 3a: without F1 — retention bottleneck (write cliff) ---
+	tokens := make([]string, newActiveVols)
+	for i := 0; i < newActiveVols; i++ {
+		tokens[i] = proto.EncodeToken(testHost, proto.Vid(startVidActive+i))
+	}
+
+	mockVolumeMgr.EnableDegradeRetain = false
+	ret, err := mockVolumeMgr.PreRetainVolume(ctx, tokens, testHost)
+	require.NoError(t, err)
+	retainedNoF1 := 0
+	if ret != nil {
+		retainedNoF1 = len(ret.RetainVolTokens)
+	}
+	activeHealthyCount := newActiveVols - activeDegradedCount // 4
+	require.Equal(t, activeHealthyCount, retainedNoF1,
+		"without F1: only health=0 active vols pass RetainThreshold=0")
+	t.Logf("[Phase 3a] Without F1: retained %d/%d active vols — WRITE CLIFF: %d vols dropped",
+		retainedNoF1, newActiveVols, activeDegradedCount)
+
+	// --- Phase 3b: F1 enabled — degraded threshold reduces the write cliff ---
+	// retain(15) <= active(35): ratio = (active-retain)/(active+retain) = 20/50 = 0.4 per vol.
+	// P(none of 16 health=-1 vols retained) = 0.6^16 ≈ 0.03%, reliable for CI.
+	mockVolumeMgr.EnableDegradeRetain = true
+	ret, err = mockVolumeMgr.PreRetainVolume(ctx, tokens, testHost)
+	require.NoError(t, err)
+	retainedF1 := 0
+	if ret != nil {
+		retainedF1 = len(ret.RetainVolTokens)
+	}
+	require.Greater(t, retainedF1, retainedNoF1,
+		"F1 must increase retention count when health>=-1 idle vols are scarce")
+	t.Logf("[Phase 3b] With F1: retained %d/%d active vols (vs %d without F1)",
+		retainedF1, newActiveVols, retainedNoF1)
+	t.Logf("  degraded threshold = %d (PutQuorum=%d, ShardNum=%d)",
+		degradedThreshold, tactic.PutQuorum, shardNum)
+
+	// --- Phase 4: verify allocator health accounting ---
+	// After disk cut: healths[0]=15 (original idle only), healths[1]=100 (all new idle)
+	// prefix_sum[0]=15, prefix_sum[1]=115
+	prefixSum := mockVolumeMgr.allocator.StatHealthyAllocables()[mode]
+	require.Equal(t, expectedHealthy, prefixSum[0],
+		"prefix_sum[0] must equal health=0 count (retain)")
+	require.Equal(t, existingIdle+newIdleVols, prefixSum[1],
+		"prefix_sum[1] must equal total allocatable (health=0 + health=-1)")
+	t.Logf("[Phase 4] Prefix sum: [0]=%d (retain/health=0), [1]=%d (all allocatable)",
+		prefixSum[0], prefixSum[1])
+
+	// --- Phase 5: F2/F3 supplementary creation trigger ---
+	healthyNow := mockVolumeMgr.allocator.StatHealthyAllocable()[mode]
+	supplement := mockVolumeMgr.MinAllocableHealthVolumeCount - healthyNow
+	require.Greater(t, supplement, 0, "F2: must trigger creation when health=0 < threshold")
+	require.Equal(t, healthThreshold-expectedHealthy, supplement,
+		"supplement = threshold - current_healthy")
+	t.Logf("[Phase 5] F2/F3: health=0=%d < threshold=%d → %d new vols scheduled (after %ds window)",
+		healthyNow, healthThreshold, supplement, mockVolumeMgr.CheckHealthyVolumeIntervalS)
+
+	t.Logf("\n=== Scenario Summary ===")
+	t.Logf("Scale 1:50 | EC15P12 | degradedThreshold=%d", degradedThreshold)
+	t.Logf("Pre-cut:  health=0 idle=%d | Post-cut: retain(health=0)=%d, active=%d",
+		initialHealthy, postCutHealthy, totalActive)
+	t.Logf("F1: ratio=(active-retain)/(active+retain)=(%d-%d)/(%d+%d)=%.2f",
+		totalActive, expectedHealthy, totalActive, expectedHealthy,
+		float64(totalActive-expectedHealthy)/float64(totalActive+expectedHealthy))
+	t.Logf("    without=%d retained, with=%d retained (+%d saved from write cliff)",
+		retainedNoF1, retainedF1, retainedF1-retainedNoF1)
+	t.Logf("F2/F3: supplement=%d vols creation triggered", supplement)
 }

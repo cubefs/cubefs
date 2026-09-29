@@ -42,8 +42,8 @@ function INIT()
          touch ./build/bin/blobstore/profile
        fi
        echo "export JAVA_HOME=$rootPath/build/bin/blobstore/jdk1.8.0_321" > ./build/bin/blobstore/profile
-       echo "export PATH=$JAVA_HOME/bin:$PATH" >> ./build/bin/blobstore/profile
-       echo "export CLASSPATH=$JAVA_HOME/lib/dt.jar:$JAVA_HOME/lib/tools.jar" >> ./build/bin/blobstore/profile
+       echo 'export PATH="$JAVA_HOME/bin:$PATH"' >> ./build/bin/blobstore/profile
+       echo 'export CLASSPATH="$JAVA_HOME/lib/dt.jar:$JAVA_HOME/lib/tools.jar"' >> ./build/bin/blobstore/profile
        source build/bin/blobstore/profile
     fi
 

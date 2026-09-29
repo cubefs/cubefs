@@ -16,10 +16,12 @@ package auditlog
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/textproto"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -31,6 +33,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 	"github.com/cubefs/cubefs/blobstore/util/largefile"
+	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 const (
@@ -113,11 +116,7 @@ func (a *AuditLog) ToJson() (b []byte) {
 	return
 }
 
-func Open(module string, cfg *Config) (ph interface {
-	rpc2.Interceptor
-	rpc.ProgressHandler
-}, logFile LogCloser, err error,
-) {
+func Open(module string, cfg *Config) (auditHandler AuditHandler, logFile LogCloser, err error) {
 	if cfg.BodyLimit < 0 {
 		cfg.BodyLimit = 0
 	} else if cfg.BodyLimit == 0 {
@@ -158,12 +157,12 @@ func Open(module string, cfg *Config) (ph interface {
 		logFilter:    logFilter,
 
 		logPool: sync.Pool{
-			New: func() interface{} {
+			New: func() any {
 				return new(bytes.Buffer)
 			},
 		},
 		bodyPool: sync.Pool{
-			New: func() interface{} {
+			New: func() any {
 				return make([]byte, cfg.BodyLimit)
 			},
 		},
@@ -172,10 +171,6 @@ func Open(module string, cfg *Config) (ph interface {
 }
 
 func (j *jsonAuditlog) Handler(w http.ResponseWriter, req *http.Request, f func(http.ResponseWriter, *http.Request)) {
-	var (
-		logBytes []byte
-		err      error
-	)
 	startTime := time.Now().UnixNano()
 
 	ctx := req.Context()
@@ -219,9 +214,6 @@ func (j *jsonAuditlog) Handler(w http.ResponseWriter, req *http.Request, f func(
 	decodeReq.Header["BodySize"] = bodySize
 
 	endTime := time.Now().UnixNano() / 1000
-	b := j.logPool.Get().(*bytes.Buffer)
-	defer j.logPool.Put(b)
-	b.Reset()
 
 	auditLog := &AuditLog{
 		ReqType:   "REQ",
@@ -265,33 +257,11 @@ func (j *jsonAuditlog) Handler(w http.ResponseWriter, req *http.Request, f func(
 	auditLog.RespLength = _w.getBodyWritten()
 	auditLog.Duration = endTime - startTime/1000
 
-	if j.logFile == nil || j.logFilter.Filter(auditLog) {
-		if !j.cfg.MetricsFilter {
-			j.metricSender.Send(auditLog.ToBytesWithTab(b))
-		}
-		return
-	}
-
-	j.metricSender.Send(auditLog.ToBytesWithTab(b))
-
-	switch j.cfg.LogFormat {
-	case LogFormatJSON:
-		logBytes = auditLog.ToJson()
-	default:
-		logBytes = b.Bytes() // *bytes.Buffer was filled with metricSender.Send
-	}
-	err = j.logFile.Log(logBytes)
-	if err != nil {
-		span.Errorf("jsonlog.Handler Log failed, err: %s", err.Error())
-		return
-	}
+	j.filterLogging(auditLog, false)
 }
 
 func (j *jsonAuditlog) Handle(w rpc2.ResponseWriter, req *rpc2.Request, f rpc2.Handle) error {
-	var (
-		logBytes []byte
-		err      error
-	)
+	var err error
 	startTime := time.Now().UnixNano()
 
 	span := req.Span()
@@ -318,12 +288,9 @@ func (j *jsonAuditlog) Handle(w rpc2.ResponseWriter, req *rpc2.Request, f rpc2.H
 	}
 
 	endTime := time.Now().UnixNano() / 1000
-	b := j.logPool.Get().(*bytes.Buffer)
-	defer j.logPool.Put(b)
-	b.Reset()
 
 	auditLog := &AuditLog{
-		ReqType:   "REQ",
+		ReqType:   "REQ2",
 		Module:    j.module,
 		StartTime: startTime / 100,
 		Method:    req.StreamCmd.String(),
@@ -356,7 +323,7 @@ func (j *jsonAuditlog) Handle(w rpc2.ResponseWriter, req *rpc2.Request, f rpc2.H
 	}
 	if _w.spanTags < newTagsN {
 		tags := make([]string, 0, newTagsN)
-		span.TagsRange(func(key string, val interface{}) bool {
+		span.TagsRange(func(key string, val any) bool {
 			tags = append(tags, key+":"+fmt.Sprint(val))
 			return true
 		})
@@ -371,25 +338,96 @@ func (j *jsonAuditlog) Handle(w rpc2.ResponseWriter, req *rpc2.Request, f rpc2.H
 
 	auditLog.Duration = endTime - startTime/1000
 
-	if j.logFile == nil || j.logFilter.Filter(auditLog) {
-		if !j.cfg.MetricsFilter {
-			j.metricSender.Send(auditLog.ToBytesWithTab(b))
-		}
-		return err
+	j.filterLogging(auditLog, true)
+	return err
+}
+
+func (j *jsonAuditlog) Audit(ctx context.Context, handler func(context.Context, *AuditLog) error) error {
+	span := trace.SpanFromContext(ctx)
+	var newSpan bool
+	if span == nil {
+		span, ctx = trace.StartSpanFromContext(ctx, j.module)
+		newSpan = true
 	}
 
-	j.metricSender.SendEntry(&auditLogEntry{log: auditLog})
+	auditLog := &AuditLog{
+		ReqType:    "AUDIT",
+		Module:     j.module,
+		ReqHeader:  make(M),
+		RespHeader: make(M),
+	}
 
+	startTime := time.Now()
+
+	err := handler(ctx, auditLog)
+
+	auditLog.StartTime = startTime.UnixMicro()
+	auditLog.Duration = time.Since(startTime).Microseconds()
+	auditLog.StatusCode = rpc.DetectStatusCode(err)
+	traceIDKey := textproto.CanonicalMIMEHeaderKey(trace.GetTraceIDKey())
+	auditLog.RespHeader[traceIDKey] = span.TraceID()
+
+	if trackN := span.TrackLogN(); trackN > 0 {
+		traceLogs := make([]string, 0, trackN)
+		span.TrackLogRange(func(b *bytes.Buffer) bool {
+			traceLogs = append(traceLogs, b.String())
+			return true
+		})
+		auditLog.RespHeader[rpc.HeaderTraceLog] = traceLogs
+	}
+	if tagsN := span.TagsN(); tagsN > 0 {
+		tags := make([]string, 0, tagsN)
+		span.TagsRange(func(key string, val any) bool {
+			tags = append(tags, key+":"+fmt.Sprint(val))
+			return true
+		})
+		auditLog.RespHeader[rpc.HeaderTraceTags] = tags
+	}
+
+	j.filterLogging(auditLog, true)
+
+	if newSpan {
+		span.Finish()
+	}
+	return err
+}
+
+func (j *jsonAuditlog) filterLogging(auditLog *AuditLog, entry bool) {
+	b := j.logPool.Get().(*bytes.Buffer)
+	defer j.logPool.Put(b)
+	b.Reset()
+
+	if j.logFile == nil || j.logFilter.Filter(auditLog) {
+		if !j.cfg.MetricsFilter {
+			if entry {
+				j.metricSender.SendEntry(&auditLogEntry{log: auditLog})
+			} else {
+				j.metricSender.Send(auditLog.ToBytesWithTab(b))
+			}
+		}
+		return
+	}
+
+	if entry {
+		j.metricSender.SendEntry(&auditLogEntry{log: auditLog})
+	} else {
+		j.metricSender.Send(auditLog.ToBytesWithTab(b))
+	}
+
+	var logBytes []byte
 	switch j.cfg.LogFormat {
 	case LogFormatJSON:
 		logBytes = auditLog.ToJson()
 	default:
-		logBytes = auditLog.ToBytesWithTab(b)
+		if entry {
+			logBytes = auditLog.ToBytesWithTab(b)
+		} else {
+			logBytes = b.Bytes() // *bytes.Buffer was filled with metricSender.Send
+		}
 	}
-	if errLog := j.logFile.Log(logBytes); errLog != nil {
-		span.Errorf("jsonlog.Handle logging failed, err: %s", errLog.Error())
+	if err := j.logFile.Log(logBytes); err != nil {
+		log.Errorf("audit logging failed, error: %s", err.Error())
 	}
-	return err
 }
 
 // ExtraHeader provides extra response header writes to the ResponseWriter.

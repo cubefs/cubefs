@@ -68,4 +68,17 @@ func TestAccessStreamCodeModePairs(t *testing.T) {
 			require.Equal(t, cs.mode, m.SelectCodeMode(cs.size))
 		}
 	}
+
+	verifyCases := []struct {
+		mode  codemode.CodeMode
+		valid bool
+	}{
+		{codemode.CodeModeNone, false},
+		{codemode.EC6P6, true},
+		{codemode.EC6P10L2, true},
+		{codemode.CodeMode(0xff), false},
+	}
+	for _, cs := range verifyCases {
+		require.Equal(t, cs.valid, m.VerifySelectCodeMode(cs.mode))
+	}
 }

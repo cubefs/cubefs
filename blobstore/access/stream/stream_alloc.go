@@ -60,9 +60,8 @@ func (h *Handler) Alloc(ctx context.Context, size uint64, blobSize uint32,
 	if codeMode == codemode.CodeModeNone {
 		codeMode = h.allCodeModes.SelectCodeMode(int64(size))
 		span.Debugf("select codemode:%d", codeMode)
-	}
-	if !codeMode.IsValid() {
-		span.Infof("invalid codemode:%d", codeMode)
+	} else if !h.allCodeModes.VerifySelectCodeMode(codeMode) {
+		span.Errorf("specify codemode %d not found in codemode policy", codeMode)
 		return nil, errcode.ErrIllegalArguments
 	}
 

@@ -422,7 +422,8 @@ func (cd *datafile) Read(ctx context.Context, shard *core.Shard, from, to uint32
 	iosr := cd.qosReaderAt(ctx, ra)
 
 	// new buffer
-	buffer := bytespool.Alloc(core.CrcBlockUnitSize)
+	buffSize := crc32block.DecoderBufferSize(int64(shard.Size))
+	buffer := bytespool.Alloc(int(buffSize))
 
 	// decode crc
 	decoder, err := crc32block.NewDecoderWithBlock(iosr, pos, int64(shard.Size), buffer, cd.conf.BlockBufferSize)

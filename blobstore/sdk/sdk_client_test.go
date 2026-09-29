@@ -19,6 +19,7 @@ import (
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/resourcepool"
+	"github.com/cubefs/cubefs/blobstore/common/rpc/auditlog"
 	"github.com/cubefs/cubefs/blobstore/common/security"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
@@ -60,6 +61,9 @@ func newSdkHandler(t *testing.T) *sdkHandler {
 		conf:    conf,
 		memPool: admin.MemPool,
 		closer:  closer.New(),
+
+		auditor:     auditlog.NoopAuditHandler,
+		auditCloser: auditlog.NoopLogCloser,
 	}
 }
 
@@ -79,6 +83,7 @@ func TestSdkBlobstore_New(t *testing.T) {
 func TestSdkHandler_Delete(t *testing.T) {
 	ctx := context.Background()
 	hd := newSdkHandler(t)
+	defer hd.Close()
 	_, err := hd.Delete(ctx, nil)
 	require.NotNil(t, err)
 	require.ErrorIs(t, err, errcode.ErrIllegalArguments)
@@ -137,6 +142,7 @@ func TestSdkHandler_Delete(t *testing.T) {
 func TestSdkHandler_Get(t *testing.T) {
 	ctx := context.Background()
 	hd := newSdkHandler(t)
+	defer hd.Close()
 
 	_, err := hd.Get(ctx, nil)
 	require.NotNil(t, err)
@@ -239,6 +245,7 @@ func TestSdkHandler_Get(t *testing.T) {
 func TestSdkHandler_Put(t *testing.T) {
 	ctx := context.Background()
 	hd := newSdkHandler(t)
+	defer hd.Close()
 
 	_, _, err := hd.Put(ctx, nil)
 	require.NotNil(t, err)
@@ -316,6 +323,7 @@ func TestSdkHandler_Put(t *testing.T) {
 func TestSdkHandler_Alloc(t *testing.T) {
 	ctx := context.Background()
 	hd := newSdkHandler(t)
+	defer hd.Close()
 
 	_, err := hd.alloc(ctx, nil)
 	require.NotNil(t, err)
@@ -350,6 +358,7 @@ func TestSdkHandler_Alloc(t *testing.T) {
 func TestSdkHandler_putParts(t *testing.T) {
 	ctx := context.Background()
 	hd := newSdkHandler(t)
+	defer hd.Close()
 
 	hd.conf.MaxSizePutOnce = 8
 	args := &acapi.PutArgs{Size: 12}
@@ -436,6 +445,7 @@ func TestSdkHandler_putParts(t *testing.T) {
 func TestSdkBlob_Get(t *testing.T) {
 	ctx := context.Background()
 	hd := newSdkHandler(t)
+	defer hd.Close()
 	hd.conf.ShardnodeConfig = &stream.ShardnodeConfig{}
 
 	// err
@@ -642,6 +652,7 @@ func TestSdkBlob_Get(t *testing.T) {
 func TestSdkBlob_List(t *testing.T) {
 	ctx := context.Background()
 	hd := newSdkHandler(t)
+	defer hd.Close()
 
 	hd.conf.ShardnodeConfig = &stream.ShardnodeConfig{}
 	_, err := hd.ListBlob(ctx, nil)
@@ -667,6 +678,7 @@ func TestSdkBlob_List(t *testing.T) {
 func TestSdkBlob_Create(t *testing.T) {
 	ctx := context.Background()
 	hd := newSdkHandler(t)
+	defer hd.Close()
 
 	hd.conf.ShardnodeConfig = &stream.ShardnodeConfig{}
 	_, err := hd.createBlob(ctx, nil)
@@ -699,6 +711,7 @@ func TestSdkBlob_Create(t *testing.T) {
 func TestSdkBlob_Seal(t *testing.T) {
 	ctx := context.Background()
 	hd := newSdkHandler(t)
+	defer hd.Close()
 
 	// nil args
 	hd.conf.ShardnodeConfig = &stream.ShardnodeConfig{}
@@ -735,6 +748,7 @@ func TestSdkBlob_Seal(t *testing.T) {
 func TestSdkBlob_Delete(t *testing.T) {
 	ctx := context.Background()
 	hd := newSdkHandler(t)
+	defer hd.Close()
 
 	hd.conf.ShardnodeConfig = &stream.ShardnodeConfig{}
 	err := hd.DeleteBlob(ctx, nil)
@@ -761,6 +775,7 @@ func TestSdkBlob_Delete(t *testing.T) {
 func TestSdkBlob_Put(t *testing.T) {
 	ctx := context.Background()
 	hd := newSdkHandler(t)
+	defer hd.Close()
 
 	hd.conf.ShardnodeConfig = &stream.ShardnodeConfig{}
 	args := &acapi.PutBlobArgs{}

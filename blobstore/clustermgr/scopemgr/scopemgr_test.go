@@ -20,6 +20,7 @@ import (
 	"math/rand"
 	"os"
 	"strconv"
+	"sync"
 	"testing"
 
 	base_ "github.com/cubefs/cubefs/blobstore/clustermgr/base"
@@ -120,5 +121,64 @@ func TestScopeMgr(t *testing.T) {
 		scopeMgr.SetModuleName(moduleName)
 		scopeMgr.NotifyLeaderChange(ctx, 1, "")
 		scopeMgr.Flush(ctx)
+	}
+}
+
+func TestScopeMgrStat(t *testing.T) {
+	tmpDBPath := "/tmp/tmpnormaldb" + strconv.Itoa(rand.Intn(10000000000))
+	defer os.RemoveAll(tmpDBPath)
+
+	db, err := normaldb.OpenNormalDB(tmpDBPath)
+	require.NoError(t, err)
+	defer db.Close()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockRaftServer := mocks.NewMockRaftServer(ctrl)
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+
+	scopeMgr, err := NewScopeMgr(db)
+	require.NoError(t, err)
+	scopeMgr.SetRaftServer(mockRaftServer)
+
+	{
+		got := scopeMgr.Stat()
+		require.Empty(t, got)
+	}
+	{
+		mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).Return(nil)
+
+		_, _, err := scopeMgr.Alloc(ctx, "vid", 100)
+		require.NoError(t, err)
+
+		got := scopeMgr.Stat()
+		require.Equal(t, 1, len(got))
+		require.Equal(t, scopeMgr.GetCurrent("vid"), got["vid"])
+	}
+	{
+		mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).Return(nil).Times(2)
+
+		_, _, err := scopeMgr.Alloc(ctx, "diskid", 50)
+		require.NoError(t, err)
+		_, _, err = scopeMgr.Alloc(ctx, "bid", 200)
+		require.NoError(t, err)
+
+		got := scopeMgr.Stat()
+		require.Equal(t, 3, len(got))
+		require.Equal(t, scopeMgr.GetCurrent("vid"), got["vid"])
+		require.Equal(t, scopeMgr.GetCurrent("diskid"), got["diskid"])
+		require.Equal(t, scopeMgr.GetCurrent("bid"), got["bid"])
+	}
+	{
+		var wg sync.WaitGroup
+		for range [20]struct{}{} {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				require.Equal(t, 3, len(scopeMgr.Stat()))
+			}()
+		}
+		wg.Wait()
 	}
 }

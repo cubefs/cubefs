@@ -41,4 +41,8 @@ func TestBlobnode(t *testing.T) {
 
 	err = cli.Delete(ctx, proto.VunitLocation{}, proto.BlobID(1))
 	require.NoError(t, err)
+
+	client.EXPECT().RepairShard(any, any, any).Return(nil)
+	err = cli.RepairShard(ctx, "127.0.0.1:xxx", proto.ShardRepairTask{})
+	require.NoError(t, err)
 }

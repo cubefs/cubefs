@@ -185,5 +185,6 @@ func (s *Service) releaseEpochChunk(ctx context.Context, cs core.VuidMeta, ds co
 		span.Errorf("release ChunkStorage(%s) form disk(%v) failed: %v", cs.ChunkID, ds.ID(), err)
 		return
 	}
+	s.inspectMgr.onChunkReleased(ds, cs.Vuid)
 	span.Infof("vuid(%v) have been release", cs.Vuid)
 }

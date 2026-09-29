@@ -35,8 +35,11 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/retry"
 )
 
-// Unit alias of clustermgr.Unit
-type Unit = clustermgr.Unit
+// VolumeUnitPhy is disk routing for one volume shard; Host is resolved via GetDiskHost.
+type VolumeUnitPhy struct {
+	Vuid   proto.Vuid
+	DiskID proto.DiskID
+}
 
 // VolumePhy volume physical info
 //
@@ -50,7 +53,7 @@ type VolumePhy struct {
 	IsPunish  bool
 	Version   uint64
 	Timestamp int64
-	Units     []Unit
+	Units     []VolumeUnitPhy
 }
 
 // VolumeGetter getter of volume physical location
@@ -324,14 +327,17 @@ func (v *volumeGetterImpl) getFromProxy(ctx context.Context, vid proto.Vid, flus
 		return nil, errors.Base(err, "get volume from proxy", cid, vid)
 	}
 
+	units := make([]VolumeUnitPhy, len(volume.Units))
+	for i := range volume.Units {
+		units[i] = VolumeUnitPhy{Vuid: volume.Units[i].Vuid, DiskID: volume.Units[i].DiskID}
+	}
 	phy := &VolumePhy{
 		Vid:       volume.Vid,
 		CodeMode:  volume.CodeMode,
 		Version:   uint64(volume.RouteVersion),
 		Timestamp: time.Now().UnixNano(),
-		Units:     make([]Unit, len(volume.Units)),
+		Units:     units,
 	}
-	copy(phy.Units, volume.Units[:])
 
 	span.Debugf("to update memcache on volume(%d-%d) %+v", cid, vid, phy)
 	v.setToLocalCache(ctx, id, phy)

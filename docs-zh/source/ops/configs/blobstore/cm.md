@@ -33,9 +33,7 @@ Clustermgr的配置是基于[公有配置](./base.md)，以下配置说明主要
   "readonly": "是否只读",
   "db_path": "元数据DB存储默认路径，以下的db没有额外配置，对应的DB数据将在此目录自动创建目录",
   "normal_db_path": "通用DB路径",
-  "normal_db_option": "通用DB选项配置，主要针对于rocksdb的调参",
   "kv_db_path": "kv DB存储的路径",
-  "kv_db_option": "kv DB选项配置，主要针对于rocksdb的调参",
   "code_mode_policies": [
     {
       "mode_name": "编码名称",
@@ -44,10 +42,10 @@ Clustermgr的配置是基于[公有配置](./base.md)，以下配置说明主要
       "size_ratio": "该模式占用的比例",
       "enable": "是否启用"
     }],
+  "code_mode_extends": "自定义编码模式，编号范围 [240, 255]，tactic 字段与内置编码模式相同。adapt_shard_size：数据大小小于 min_shard_size 时，按该粒度向上对齐分片大小，且不超过 min_shard_size。0 表示关闭。要求 min_shard_size > 0、adapt_shard_size <= min_shard_size，且 min_shard_size 能被 adapt_shard_size 整除",
   "raft_config": {
     "raft_db_path": "raft的DB路径",
     "snapshot_patch_num": "一个db的快照分成多个片，一个db的快照数据很大，需要分成多个片来发送",
-    "raft_db_option": "主要针对于rocksdb的调参",
     "server_config": {
       "nodeId": "raft节点ID",
       "listen_port": "raft专用端口",
@@ -63,7 +61,7 @@ Clustermgr的配置是基于[公有配置](./base.md)，以下配置说明主要
     
     "raft_node_config": {
       "flush_num_interval": "出发flush的日志数",
-      "FlushTimeIntervalS": "flush周期间隔",
+      "flush_time_interval_s": "flush周期间隔，默认300秒",
       "truncate_num_interval": "leader 保留最大的日志条目，服务启动初始加载日志条目的数目，又可以理解为leader和follower的日志条目的差额，超过这个值日志同步需要走快照同步，因而这个值一般保留10万以上",
       "node_protocol": "raft节点间同步协议，一般为 http:// 协议",
       "members": [{
@@ -78,7 +76,6 @@ Clustermgr的配置是基于[公有配置](./base.md)，以下配置说明主要
   "volume_mgr_config": {
     "blob_node_config": "参见rpc配置",
     "volume_db_path": "卷数据DB路径",
-    "volume_db_option": "选项配置",
     "retain_time_s": "续租时间，配合proxy的续租时间",
     "retain_threshold": "卷可续租的健康度，卷的健康段须大于这个值才能被续租",
     "flush_interval_s": "flush时间间隔",
@@ -87,7 +84,11 @@ Clustermgr的配置是基于[公有配置](./base.md)，以下配置说明主要
     "apply_concurrency": "应用wal日志并发",
     "min_allocable_volume_count": "最小可分配的卷数",
     "allocatable_disk_load_threshold": "卷可分配的对应磁盘的负载",
-    "allocatable_size": "卷可分配的最低容量阈值, 默认10G，如果卷容量较小建议调整到更低的一个值如10MB"
+    "allocatable_size": "卷可被分配所需的最小剩余容量，默认1GB。卷容量较小时可调低，例如10MB",
+    "alloc_disk_usage_threshold": "分配卷时判定磁盘高使用率的阈值。0 表示关闭。高使用率磁盘仅在没有更低使用率磁盘时才会被分配",
+    "min_allocable_health_vol_count": "健康可分配卷的最小数量，默认是 min_allocable_volume_count 的 2/3",
+    "check_healthy_volume_interval_s": "健康可分配卷持续低于阈值后才补建卷的时长，默认60秒",
+    "enable_degrade_retain": "健康可分配卷不足时降低续租健康度阈值，默认 false"
   },
   "disk_mgr_config": {
     "refresh_interval_s": "磁盘刷新时间间隔,用于刷新当前cluster的磁盘状态",
@@ -108,6 +109,8 @@ Clustermgr的配置是基于[公有配置](./base.md)，以下配置说明主要
   "max_heartbeat_notify_num": "最大心跳通知数目，默认2000",
   "metric_report_interval_m": "指标上报间隔（分钟），默认2分钟",
   "consistent_check_interval_m": "一致性检查间隔（分钟），默认360分钟",
+  "dashboard_fresh_interval_s": "dashboard 刷新间隔（秒），默认60",
+  "dashboard_fresh_volume_tick": "每 N 次 dashboard 刷新时更新全部卷统计，默认5",
   "broken_volume_unit_report_num": "损坏卷单元上报数量，默认3",
   "broken_shard_unit_report_num": "损坏分片单元上报数量，默认2",
   "db_cache_size": "数据库缓存大小（字节）",

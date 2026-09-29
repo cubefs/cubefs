@@ -89,6 +89,49 @@ func TestVolumes_Put(t *testing.T) {
 	require.False(t, ok)
 }
 
+func TestModeInfo_GetAny(t *testing.T) {
+	newVol := func(vid proto.Vid) *volume {
+		return &volume{AllocVolumeInfo: cm.AllocVolumeInfo{
+			VolumeInfo: cm.VolumeInfo{
+				VolumeInfoBase: cm.VolumeInfoBase{
+					Free: 10 * 16 * 1024 * 1024 * 1024,
+					Vid:  vid,
+				},
+			},
+			ExpireTime: 100,
+		}}
+	}
+
+	m := &modeInfo{current: &volumes{}, backup: &volumes{}}
+	m.Put(newVol(1), false)
+	m.Put(newVol(2), true)
+
+	vol, ok := m.GetAny(proto.Vid(1))
+	require.True(t, ok)
+	require.Equal(t, proto.Vid(1), vol.Vid)
+
+	vol, ok = m.GetAny(proto.Vid(2))
+	require.True(t, ok)
+	require.Equal(t, proto.Vid(2), vol.Vid)
+
+	_, ok = m.GetAny(proto.Vid(99))
+	require.False(t, ok)
+
+	// simulate current/backup swap during a retain RPC: the vol that used to
+	// be in current is now in backup; GetAny should still find it.
+	m.lock.Lock()
+	m.current, m.backup = m.backup, m.current
+	m.lock.Unlock()
+
+	vol, ok = m.GetAny(proto.Vid(1))
+	require.True(t, ok)
+	require.Equal(t, proto.Vid(1), vol.Vid)
+
+	vol, ok = m.GetAny(proto.Vid(2))
+	require.True(t, ok)
+	require.Equal(t, proto.Vid(2), vol.Vid)
+}
+
 func TestVolumes_Delete(t *testing.T) {
 	v := volumes{}
 	for _, i := range []int{1, 3, 2, 4} {

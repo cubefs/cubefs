@@ -125,6 +125,10 @@ func (vol *volume) canInsert() bool {
 	return vol.volInfoBase.Status == proto.VolumeStatusIdle
 }
 
+func (vol *volume) allocThreshHold() int {
+	return vol.volInfoBase.CodeMode.T().PutQuorum - vol.volInfoBase.CodeMode.GetShardNum()
+}
+
 func (vol *volume) canAlloc(allocatableSize uint64, allocatableScoreThreshold int) bool {
 	if vol.canInsert() && vol.volInfoBase.Free > allocatableSize && vol.volInfoBase.HealthScore >= allocatableScoreThreshold {
 		return true
@@ -188,6 +192,7 @@ func (vUnit *volumeUnit) ToVolumeUnitRecord() (ret *volumedb.VolumeUnitRecord) {
 		Used:       vUnit.vuInfo.Used,
 		Total:      vUnit.vuInfo.Total,
 		Compacting: vUnit.vuInfo.Compacting,
+		LogicSize:  vUnit.vuInfo.LogicSize,
 	}
 }
 
@@ -308,7 +313,7 @@ type volumeStat struct {
 	num                      uint32
 	allocatableSizeThreshold uint64
 	freezeSizeThreshold      uint64
-	writableSpace            uint64
+	writableSpaceByMode      [256]uint64
 }
 
 func newVolumeStat(sliceNum uint32, freezeSizeThreshold, allocatableSizeThreshold uint64) *volumeStat {
@@ -326,7 +331,7 @@ func newVolumeStat(sliceNum uint32, freezeSizeThreshold, allocatableSizeThreshol
 	return s
 }
 
-func (s *volumeStat) addSize(vid proto.Vid, status proto.VolumeStatus, freeSize uint64) {
+func (s *volumeStat) addSize(vid proto.Vid, mode codemode.CodeMode, status proto.VolumeStatus, freeSize uint64) {
 	idx := uint32(vid) % s.num
 	s.locks[idx].Lock()
 	defer s.locks[idx].Unlock()
@@ -334,26 +339,34 @@ func (s *volumeStat) addSize(vid proto.Vid, status proto.VolumeStatus, freeSize 
 	oldFreeSize, ok := s.reportedVols[idx][vid]
 	if !ok {
 		if status == proto.VolumeStatusIdle && freeSize > s.allocatableSizeThreshold {
-			atomic.AddUint64(&s.writableSpace, freeSize-s.freezeSizeThreshold)
+			atomic.AddUint64(&s.writableSpaceByMode[mode], freeSize-s.freezeSizeThreshold)
 			s.reportedVols[idx][vid] = freeSize
 		}
 		return
 	}
 	if status != proto.VolumeStatusIdle {
 		delete(s.reportedVols[idx], vid)
-		atomic.AddUint64(&s.writableSpace, ^(oldFreeSize - s.freezeSizeThreshold - 1))
+		atomic.AddUint64(&s.writableSpaceByMode[mode], ^(oldFreeSize - s.freezeSizeThreshold - 1))
 		return
 	}
 	s.reportedVols[idx][vid] = freeSize
 	if freeSize >= oldFreeSize {
-		atomic.AddUint64(&s.writableSpace, freeSize-oldFreeSize)
+		atomic.AddUint64(&s.writableSpaceByMode[mode], freeSize-oldFreeSize)
 	} else {
-		atomic.AddUint64(&s.writableSpace, ^(oldFreeSize - freeSize - 1))
+		atomic.AddUint64(&s.writableSpaceByMode[mode], ^(oldFreeSize - freeSize - 1))
 	}
 }
 
-func (s *volumeStat) getWriteSpace() uint64 {
-	return atomic.LoadUint64(&s.writableSpace)
+func (s *volumeStat) getWriteSpace(mode codemode.CodeMode) uint64 {
+	return atomic.LoadUint64(&s.writableSpaceByMode[mode])
+}
+
+func (s *volumeStat) getTotalWriteSpace() uint64 {
+	var total uint64
+	for i := range s.writableSpaceByMode {
+		total += atomic.LoadUint64(&s.writableSpaceByMode[i])
+	}
+	return total
 }
 
 type NotifyFunc func(ctx context.Context, vol *volume) error
@@ -425,6 +438,7 @@ func volumeUnitRecordToVolumeUnit(record *volumedb.VolumeUnitRecord) (ret *volum
 			Used:       record.Used,
 			Total:      record.Total,
 			Compacting: record.Compacting,
+			LogicSize:  record.LogicSize,
 		},
 	}
 }

@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sort"
 	"strings"
 	"time"
 
@@ -32,10 +33,13 @@ import (
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/kvdb"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/volumedb"
+	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/kvstore"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
+	"github.com/cubefs/cubefs/blobstore/util"
 	"github.com/cubefs/cubefs/blobstore/util/retry"
+	"github.com/cubefs/cubefs/blobstore/util/tablefmt"
 	"github.com/cubefs/cubefs/blobstore/util/task"
 )
 
@@ -46,6 +50,16 @@ func addCmdVolume(cmd *grumble.Command) {
 		LongHelp: "volume tools for clustermgr",
 	}
 	cmd.AddCommand(command)
+
+	command.AddCommand(&grumble.Command{
+		Name: "stats",
+		Help: "show volume statistics aggregated by codemode and health score",
+		Run:  cmdVolumeStats,
+		Flags: func(f *grumble.Flags) {
+			clusterFlags(f)
+			f.IntL("topn", 10, "top N load disks to show")
+		},
+	})
 
 	command.AddCommand(&grumble.Command{
 		Name: "getVolumeUnits",
@@ -128,8 +142,19 @@ func cmdListVolumes(c *grumble.Context) error {
 	if err != nil {
 		return err
 	}
+
+	rows := tablefmt.Table{
+		tablefmt.NewRow("Vid", "CodeMode", "Status", "HealthScore",
+			"Total", "Free", "Used", "Epoch", "RouteVersion"),
+	}
 	for _, vol := range volumes.Volumes {
-		fmt.Printf("%d: %+v\n", vol.Vid, vol.VolumeInfoBase)
+		rows = rows.Append(tablefmt.NewRow(
+			vol.Vid, vol.CodeMode.Name(), vol.Status.String(), vol.HealthScore,
+			vol.Total, vol.Free, vol.Used, vol.Epoch, vol.RouteVersion,
+		))
+	}
+	for _, line := range tablefmt.AlignWith([]tablefmt.Alignment{tablefmt.AlignRight}, rows...) {
+		fmt.Println(line)
 	}
 	return nil
 }
@@ -478,4 +503,253 @@ func mergeVids(listVolumeRets []clustermgr.ListVolumes) []proto.Vid {
 		ret = append(ret, k)
 	}
 	return ret
+}
+
+type volumeStatEntry struct {
+	Count int
+	Free  uint64
+	Used  uint64
+	Total uint64
+}
+
+func cmdVolumeStats(c *grumble.Context) error {
+	ctx := common.CmdContext()
+	cmClient := newCMClient(c.Flags)
+
+	allVolumes := make([]*clustermgr.VolumeInfo, 0)
+	listArgs := &clustermgr.ListVolumeArgs{Marker: 0, Count: 2000}
+	for {
+		volumes, err := cmClient.ListVolume(ctx, listArgs)
+		if err != nil {
+			return err
+		}
+		allVolumes = append(allVolumes, volumes.Volumes...)
+		listArgs.Marker = volumes.Marker
+		if volumes.Marker <= 0 || len(volumes.Volumes) < listArgs.Count {
+			break
+		}
+	}
+
+	fmt.Println("Volume Statistics Summary (by CodeMode, Status and Score)")
+	fmt.Printf("Total volumes: %d\n", len(allVolumes))
+
+	topn := c.Flags.Int("topn")
+	printVolumeStatsByScore(allVolumes)
+	if topn > 0 {
+		printDiskLoadStats(allVolumes, topn)
+	}
+	return nil
+}
+
+func printVolumeStatsByScore(volumes []*clustermgr.VolumeInfo) {
+	human := func(size uint64) string { return util.HumanIBytes(size, 3) }
+
+	freeGiB := make(map[codemode.CodeMode][]float64) // by codemode
+	// Aggregate by codemode -> status -> score
+	stats := make(map[codemode.CodeMode]map[proto.VolumeStatus]map[int]*volumeStatEntry)
+	for _, vol := range volumes {
+		if stats[vol.CodeMode] == nil {
+			stats[vol.CodeMode] = make(map[proto.VolumeStatus]map[int]*volumeStatEntry)
+		}
+		if stats[vol.CodeMode][vol.Status] == nil {
+			stats[vol.CodeMode][vol.Status] = make(map[int]*volumeStatEntry)
+		}
+		if stats[vol.CodeMode][vol.Status][vol.HealthScore] == nil {
+			stats[vol.CodeMode][vol.Status][vol.HealthScore] = &volumeStatEntry{}
+		}
+		entry := stats[vol.CodeMode][vol.Status][vol.HealthScore]
+		entry.Count++
+		entry.Free += vol.Free
+		entry.Used += vol.Used
+		entry.Total += vol.Total
+
+		freeGiB[vol.CodeMode] = append(freeGiB[vol.CodeMode], float64(vol.Free)/(1<<30))
+	}
+
+	for cm := range stats {
+		statuses := stats[cm]
+		fmt.Printf("\n[CodeMode: %s]\n", cm.Name())
+
+		for status := proto.VolumeStatusIdle; status <= proto.VolumeStatusUnlocking; status++ {
+			scores := statuses[status]
+			if len(scores) == 0 {
+				continue
+			}
+			fmt.Printf("  [Status: %s]\n", status.String())
+
+			scoreList := make([]int, 0, len(scores))
+			for score := range scores {
+				scoreList = append(scoreList, score)
+			}
+			sort.Ints(scoreList)
+
+			rows := tablefmt.Table{tablefmt.NewRow("Score", "Count", "Free", "Used", "Total")}
+
+			subtotal := &volumeStatEntry{}
+			for _, score := range scoreList {
+				entry := scores[score]
+				rows = rows.Append(tablefmt.NewRow(
+					score, entry.Count, human(entry.Free), human(entry.Used), human(entry.Total),
+				))
+				subtotal.Count += entry.Count
+				subtotal.Free += entry.Free
+				subtotal.Used += entry.Used
+				subtotal.Total += entry.Total
+			}
+			rows = rows.Append(tablefmt.NewRow(
+				"TOTAL", subtotal.Count, human(subtotal.Free), human(subtotal.Used), human(subtotal.Total),
+			))
+
+			lines := tablefmt.AlignWith([]tablefmt.Alignment{tablefmt.AlignRight}, rows...)
+			for _, line := range tablefmt.Summary(lines) {
+				fmt.Println("  " + line)
+			}
+			fmt.Println()
+		}
+
+		fmt.Println("  [Free Histogram (GiB)]")
+		for _, line := range tablefmt.HistogramRange(freeGiB[cm]) {
+			fmt.Println("    " + line)
+		}
+	}
+}
+
+// Count disk load for active volumes only
+func printDiskLoadStats(volumes []*clustermgr.VolumeInfo, topn int) {
+	diskLoad := make(map[proto.DiskID]int)
+	diskVolumes := make(map[proto.DiskID][]proto.Vid)
+	activeCount := 0
+
+	cmDiskLoad := make(map[codemode.CodeMode]map[proto.DiskID]int)
+	cmDiskVolumes := make(map[codemode.CodeMode]map[proto.DiskID][]proto.Vid)
+	cmActiveCount := make(map[codemode.CodeMode]int)
+
+	for _, vol := range volumes {
+		if vol.Status != proto.VolumeStatusActive {
+			continue
+		}
+		activeCount++
+		if cmDiskLoad[vol.CodeMode] == nil {
+			cmDiskLoad[vol.CodeMode] = make(map[proto.DiskID]int)
+			cmDiskVolumes[vol.CodeMode] = make(map[proto.DiskID][]proto.Vid)
+		}
+		cmActiveCount[vol.CodeMode]++
+		for _, unit := range vol.Units {
+			diskLoad[unit.DiskID]++
+			diskVolumes[unit.DiskID] = append(diskVolumes[unit.DiskID], vol.Vid)
+			cmDiskLoad[vol.CodeMode][unit.DiskID]++
+			cmDiskVolumes[vol.CodeMode][unit.DiskID] = append(cmDiskVolumes[vol.CodeMode][unit.DiskID], vol.Vid)
+		}
+	}
+	if len(diskLoad) == 0 {
+		fmt.Println("\nNo active volumes found")
+		return
+	}
+
+	type diskLoadEntry struct {
+		DiskID proto.DiskID
+		Load   int
+	}
+	entries := make([]diskLoadEntry, 0, len(diskLoad))
+	loads := make([]int, 0, len(diskLoad))
+	for diskID, load := range diskLoad {
+		entries = append(entries, diskLoadEntry{diskID, load})
+		loads = append(loads, load)
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Load > entries[j].Load
+	})
+
+	fmt.Printf("\n[Active Volume Disk Load]\n")
+	fmt.Printf("Active volumes: %d, Disks involved: %d\n", activeCount, len(diskLoad))
+
+	fmt.Println("\nLoad Distribution:")
+	for _, line := range tablefmt.HistogramRange(loads) {
+		fmt.Println("  " + line)
+	}
+
+	topn = util.Min(topn, len(entries))
+	volumeDiskN := make(map[proto.Vid]int)
+
+	fmt.Printf("\nTop %d Disk Load:\n", topn)
+	rows := tablefmt.Table{tablefmt.NewRow("Rank", "DiskID", "Load", "Volumes (max 10)")}
+	for i := 0; i < topn; i++ {
+		diskID := entries[i].DiskID
+		vids := diskVolumes[diskID]
+		for _, vid := range vids {
+			volumeDiskN[vid]++
+		}
+		if len(vids) > 10 {
+			vids = vids[len(vids)-10:]
+		}
+		rows = rows.Append(tablefmt.NewRow(i+1, diskID, entries[i].Load, vids))
+	}
+	for _, line := range tablefmt.AlignWith([]tablefmt.Alignment{tablefmt.AlignCenter}, rows...) {
+		fmt.Println("  " + line)
+	}
+
+	topVolume := make([]struct {
+		Vid proto.Vid
+		N   int
+	}, 0, len(volumeDiskN))
+	for vid, n := range volumeDiskN {
+		topVolume = append(topVolume, struct {
+			Vid proto.Vid
+			N   int
+		}{vid, n})
+	}
+	sort.Slice(topVolume, func(i, j int) bool {
+		return topVolume[i].N > topVolume[j].N
+	})
+	fmt.Printf("\nTop %d Disk Load Volumes:", topn)
+	for _, line := range topVolume[:util.Min(topn, len(topVolume))] {
+		fmt.Printf(" %d(%d)", line.Vid, line.N)
+	}
+	fmt.Println()
+
+	// Per-CodeMode disk load stats
+	cms := make([]codemode.CodeMode, 0, len(cmDiskLoad))
+	for cm := range cmDiskLoad {
+		cms = append(cms, cm)
+	}
+	sort.Slice(cms, func(i, j int) bool { return cms[i] < cms[j] })
+
+	fmt.Printf("\n[Active Volume Disk Load by CodeMode]\n")
+	for _, cm := range cms {
+		cmLoad := cmDiskLoad[cm]
+		cmVols := cmDiskVolumes[cm]
+
+		cmEntries := make([]diskLoadEntry, 0, len(cmLoad))
+		cmLoads := make([]int, 0, len(cmLoad))
+		for diskID, load := range cmLoad {
+			cmEntries = append(cmEntries, diskLoadEntry{diskID, load})
+			cmLoads = append(cmLoads, load)
+		}
+		sort.Slice(cmEntries, func(i, j int) bool {
+			return cmEntries[i].Load > cmEntries[j].Load
+		})
+
+		fmt.Printf("\n--- CodeMode: %s ---\n", cm.String())
+		fmt.Printf("Active volumes: %d, Disks involved: %d\n", cmActiveCount[cm], len(cmLoad))
+
+		fmt.Println("\nLoad Distribution:")
+		for _, line := range tablefmt.HistogramRange(cmLoads) {
+			fmt.Println("  " + line)
+		}
+
+		cmTopn := util.Min(topn, len(cmEntries))
+		fmt.Printf("\nTop %d Disk Load:\n", cmTopn)
+		rows := tablefmt.Table{tablefmt.NewRow("Rank", "DiskID", "Load", "Volumes (max 10)")}
+		for i := 0; i < cmTopn; i++ {
+			diskID := cmEntries[i].DiskID
+			vids := cmVols[diskID]
+			if len(vids) > 10 {
+				vids = vids[len(vids)-10:]
+			}
+			rows = rows.Append(tablefmt.NewRow(i+1, diskID, cmEntries[i].Load, vids))
+		}
+		for _, line := range tablefmt.AlignWith([]tablefmt.Alignment{tablefmt.AlignCenter}, rows...) {
+			fmt.Println("  " + line)
+		}
+	}
 }

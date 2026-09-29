@@ -675,7 +675,7 @@ func TestChunkData_BatchRead(t *testing.T) {
 	for i := 0; i < shardNum; i++ {
 		sharddata := make([]byte, 150*1024)
 		for k := range sharddata {
-			sharddata[k] = byte(rand.Intn(100)) // 填充0到99的随机数
+			sharddata[k] = byte(rand.Intn(100))
 		}
 		sharddata[0] = byte(i + 1)
 		body := bytes.NewBuffer(sharddata)

@@ -563,16 +563,15 @@ func (mgr *MigrateMgr) prepareTask() (err error) {
 		return base.ErrNoTaskInQueue
 	}
 
-	span, ctx := trace.StartSpanFromContext(context.Background(), "migrate.prepareTask")
+	migTask := task.(*proto.MigrateTask).Copy()
+	span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "migrate.prepareTask", migTask.TaskID)
 	defer span.Finish()
 
 	defer func() {
 		if err != nil {
-			mgr.prepareQueue.RetryTask(task.(*proto.MigrateTask).TaskID)
+			mgr.prepareQueue.RetryTask(migTask.TaskID)
 		}
 	}()
-
-	migTask := task.(*proto.MigrateTask).Copy()
 
 	span.Infof("prepare task phase: task_id[%s], state[%+v]", migTask.TaskID, migTask.State)
 
@@ -593,11 +592,13 @@ func (mgr *MigrateMgr) prepareTask() (err error) {
 		// 2. alloc chunk failed and VolTaskLockerInst().Unlock
 		// 3. this volume maybe execute other tasks, such as disk repair
 		// 4. then enter this branch and volume status is locked
-		err := mgr.clusterMgrCli.UnlockVolume(ctx, migTask.SourceVuid.Vid(), volInfo.Epoch)
-		if err != nil {
-			span.Errorf("before finish in advance try unlock volume failed: vid[%d], err[%+v]",
-				migTask.SourceVuid.Vid(), err)
-			return err
+		if volInfo.Status == proto.VolumeStatusLock {
+			err := mgr.clusterMgrCli.UnlockVolume(ctx, migTask.SourceVuid.Vid(), volInfo.Epoch)
+			if err != nil {
+				span.Errorf("before finish in advance try unlock volume failed: vid[%d], err[%+v]",
+					migTask.SourceVuid.Vid(), err)
+				return err
+			}
 		}
 
 		mgr.finishTaskInAdvance(ctx, migTask, "volume has migrated")
@@ -659,16 +660,15 @@ func (mgr *MigrateMgr) finishTask() (err error) {
 		return base.ErrNoTaskInQueue
 	}
 
-	span, ctx := trace.StartSpanFromContext(context.Background(), "migrate.finishTask")
+	migrateTask := task.(*proto.MigrateTask).Copy()
+	span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "migrate.finishTask", migrateTask.TaskID)
 	defer span.Finish()
 
 	defer func() {
 		if err != nil {
-			mgr.finishQueue.RetryTask(task.(*proto.MigrateTask).TaskID)
+			mgr.finishQueue.RetryTask(migrateTask.TaskID)
 		}
 	}()
-
-	migrateTask := task.(*proto.MigrateTask).Copy()
 	span.Infof("finish task phase: task_id[%s], state[%v]", migrateTask.TaskID, migrateTask.State)
 
 	if migrateTask.State != proto.MigrateStateWorkCompleted {
@@ -817,6 +817,7 @@ func (mgr *MigrateMgr) finishTaskInAdvance(ctx context.Context, task *proto.Migr
 	mgr.finishTaskCallback(task.SourceDiskID)
 
 	base.VolTaskLockerInst().Unlock(ctx, uint32(task.SourceVuid.Vid()))
+	mgr.deleteMigratingVuid(task.SourceDiskID, task.SourceVuid)
 }
 
 func (mgr *MigrateMgr) handleUpdateVolMappingFail(ctx context.Context, task *proto.MigrateTask, err error) error {
@@ -1251,7 +1252,7 @@ func checkTaskUpdated(ctx context.Context, task *proto.MigrateTask, diskGetter D
 		}
 		disk, ok := diskGetter.GetDisk(diskID)
 		if ok && host != disk.Host {
-			span.Debugf("disk info updated for destination of task[%s], old[%s], new[%s]",
+			span.Debugf("disk info updated for source of task[%s], old[%s], new[%s]",
 				task.TaskID, host, disk.Host)
 			task.Sources[idx].Host = disk.Host
 			updated = true

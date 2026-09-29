@@ -86,7 +86,7 @@ start blobstore service successfully, wait minutes for internal state preparatio
 $>
 ```
 
-纠删码子系统部署成功之后，修改 Master 配置文件中的 `ebsAddr` 配置项（[更多配置参考](../ops/configs/master.md)），配置为 Access 节点注册的 Consul 地址，默认为`http://localhost:8500`
+纠删码子系统部署成功之后，修改 Master 配置文件中的 `ebsAddr` 与 `ebsServicePath`（[更多配置参考](../ops/configs/master.md)）：`ebsAddr` 为 Access 节点注册的 Consul 地址，须与`access.conf` 里 `service_register.consul_addr` 一致，单机环境常见为 `127.0.0.1:8500`；`ebsServicePath` 为 Access 在 Consul 中注册的服务名，未显式配置时一般为 `access`。
 
 #### 停止集群
 + 使用脚本将会 stop server 和挂载点

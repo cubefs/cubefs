@@ -163,7 +163,7 @@ func SaveDiskFormatInfo(ctx context.Context, diskPath string, formatInfo *Format
 	_, err = file.Write(formatBytes)
 	if err != nil {
 		span.Errorf("Failed write. err:%v", err)
-		return nil
+		return err
 	}
 	file.Close()
 

@@ -102,6 +102,45 @@ var (
 	}
 )
 
+func TestConfigCheckAndFix_CodeModeSizeRatioSum(t *testing.T) {
+	cfg := *testServiceCfg
+	cfg.UnavailableIDC = "z0"
+	modes := []codemode.CodeMode{
+		codemode.EC6P6, codemode.EC15P12, codemode.EC16P20L2, codemode.EC6P10L2,
+		codemode.EC6P3L3, codemode.EC6P6Align0, codemode.EC6P6Align512, codemode.EC4P4L2,
+		codemode.EC12P4, codemode.EC16P4,
+	}
+	policies := make([]codemode.Policy, len(modes))
+	var minSize int64
+	for i, mode := range modes {
+		maxSize := minSize + 1048576
+		if i == len(modes)-1 {
+			maxSize = minSize + 2*1048576
+		}
+		policies[i] = codemode.Policy{
+			ModeName:  mode.Name(),
+			MinSize:   minSize,
+			MaxSize:   maxSize,
+			SizeRatio: 0.1,
+			Enable:    true,
+		}
+		minSize = maxSize + 1
+	}
+	cfg.VolumeCodeModePolicies = policies
+
+	sum := 0.0
+	for _, policy := range policies {
+		sum += policy.SizeRatio
+	}
+	require.NotEqual(t, 1.0, sum)
+	require.Less(t, math.Abs(sum-1), sizeRatioSumEpsilon)
+
+	require.NoError(t, cfg.checkAndFix())
+
+	cfg.VolumeCodeModePolicies[0].SizeRatio = 0.15
+	require.ErrorContains(t, cfg.checkAndFix(), "The sum of size ratio must be 1")
+}
+
 func TestMain(m *testing.M) {
 	exitCode := m.Run()
 	cleanWG.Wait()

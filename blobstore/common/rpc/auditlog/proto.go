@@ -15,8 +15,10 @@
 package auditlog
 
 import (
+	"context"
 	"net/http"
 
+	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 )
 
@@ -59,7 +61,7 @@ type LogCloser interface {
 
 type noopLogCloser struct{}
 
-var _ LogCloser = noopLogCloser{}
+var NoopLogCloser LogCloser = noopLogCloser{}
 
 func (noopLogCloser) Close() error     { return nil }
 func (noopLogCloser) Log([]byte) error { return nil }
@@ -76,4 +78,30 @@ type Decoder interface {
 
 type ResponseExtraHeader interface {
 	ExtraHeader() http.Header
+}
+
+type Auditor interface {
+	Audit(ctx context.Context, handler func(ctx context.Context, auditline *AuditLog) error) error
+}
+
+type AuditHandler interface {
+	rpc.ProgressHandler
+	rpc2.Interceptor
+	Auditor
+}
+
+type noopAuditHandler struct{}
+
+var NoopAuditHandler AuditHandler = noopAuditHandler{}
+
+func (noopAuditHandler) Handler(w http.ResponseWriter, req *http.Request, f func(http.ResponseWriter, *http.Request)) {
+	f(w, req)
+}
+
+func (noopAuditHandler) Handle(w rpc2.ResponseWriter, req *rpc2.Request, f rpc2.Handle) error {
+	return f(w, req)
+}
+
+func (noopAuditHandler) Audit(ctx context.Context, handler func(context.Context, *AuditLog) error) error {
+	return handler(ctx, &AuditLog{})
 }

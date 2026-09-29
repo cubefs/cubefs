@@ -503,6 +503,47 @@ func TestDiskRepairerCollectTask(t *testing.T) {
 	}
 }
 
+func TestGetUnRepairingDisk(t *testing.T) {
+	hostA1 := &client.DiskInfoSimple{DiskID: 10, Host: "host-a", Status: proto.DiskStatusBroken}
+	hostA2 := &client.DiskInfoSimple{DiskID: 11, Host: "host-a", Status: proto.DiskStatusBroken}
+	hostB1 := &client.DiskInfoSimple{DiskID: 20, Host: "host-b", Status: proto.DiskStatusBroken}
+	hostC1 := &client.DiskInfoSimple{DiskID: 30, Host: "host-c", Status: proto.DiskStatusBroken}
+
+	t.Run("all candidates already repairing: return nil", func(t *testing.T) {
+		mgr := newDiskRepairer(t)
+		mgr.repairingDisks.add(hostA1.DiskID, hostA1)
+		got := mgr.getUnRepairingDisk([]*client.DiskInfoSimple{hostA1})
+		require.Nil(t, got)
+	})
+
+	t.Run("prefer host not already busy", func(t *testing.T) {
+		mgr := newDiskRepairer(t)
+		mgr.repairingDisks.add(hostA1.DiskID, hostA1) // host-a is busy
+		// hostA2 is a candidate on host-a (busy), hostB1 on host-b (idle)
+		got := mgr.getUnRepairingDisk([]*client.DiskInfoSimple{hostA2, hostB1})
+		require.NotNil(t, got)
+		require.Equal(t, "host-b", got.Host)
+	})
+
+	t.Run("all hosts busy: fallback to any candidate", func(t *testing.T) {
+		mgr := newDiskRepairer(t)
+		mgr.repairingDisks.add(hostA1.DiskID, hostA1)
+		mgr.repairingDisks.add(hostB1.DiskID, hostB1)
+		// only hostA2 is not yet repairing, but host-a is already busy
+		got := mgr.getUnRepairingDisk([]*client.DiskInfoSimple{hostA2})
+		require.NotNil(t, got)
+		require.Equal(t, hostA2.DiskID, got.DiskID)
+	})
+
+	t.Run("multiple idle hosts: pick one of them", func(t *testing.T) {
+		mgr := newDiskRepairer(t)
+		mgr.repairingDisks.add(hostA1.DiskID, hostA1) // host-a busy
+		got := mgr.getUnRepairingDisk([]*client.DiskInfoSimple{hostA2, hostB1, hostC1})
+		require.NotNil(t, got)
+		require.NotEqual(t, "host-a", got.Host)
+	})
+}
+
 func TestDiskRepairerPopTaskAndPrepare(t *testing.T) {
 	{
 		mgr := newDiskRepairer(t)

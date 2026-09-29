@@ -17,6 +17,7 @@ package ec
 import (
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/resourcepool"
+	"github.com/cubefs/cubefs/blobstore/util"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
@@ -75,8 +76,11 @@ func newBuffer(dataSize, from, to int, tactic codemode.Tactic, pool *resourcepoo
 	}
 
 	shardSize := (dataSize + shardN - 1) / shardN
-	// align per shard with tactic MinShardSize
-	if shardSize < tactic.MinShardSize {
+	if dataSize < tactic.MinShardSize && tactic.AdaptShardSize > 0 {
+		// Adaptive path: align dataSize itself up to the nearest multiple of
+		// AdaptShardSize and use the result as shardSize, capped at MinShardSize.
+		shardSize = util.AlignedFull(dataSize, tactic.AdaptShardSize)
+	} else if shardSize < tactic.MinShardSize {
 		shardSize = tactic.MinShardSize
 	}
 

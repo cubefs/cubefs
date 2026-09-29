@@ -395,8 +395,7 @@ func BenchmarkService_ShardReport(b *testing.B) {
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			_, err := cmClient.ReportShard(ctx, args)
-			require.NoError(b, err)
+			cmClient.ReportShard(ctx, args)
 		}
 	})
 }

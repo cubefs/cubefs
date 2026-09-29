@@ -89,9 +89,15 @@ func (repairer *ShardRepairer) RepairShard(ctx context.Context, task *proto.Shar
 	}
 
 	shardInfos := repairer.listShardsInfo(ctx, task.Sources, task.Bid)
+	// crc-repair tasks must rebuild every BadIdx in place even if meta reports
+	// Normal; such tasks are identified by the inspect-crc reason.
+	var forceSet map[int]struct{}
+	if task.Reason == proto.ShardRepairReasonInspectCrc {
+		forceSet = uint8SliceToIntSet(task.BadIdxs)
+	}
 	// check missed shard has repaired
 	badIdxs := sliceUint8ToInt(task.BadIdxs)
-	repaired, err := hasRepaired(shardInfos, badIdxs)
+	repaired, err := hasRepaired(shardInfos, badIdxs, forceSet)
 	if err != nil {
 		return err
 	}
@@ -99,7 +105,7 @@ func (repairer *ShardRepairer) RepairShard(ctx context.Context, task *proto.Shar
 		return nil
 	}
 	// get repair shards:
-	shouldRepairIdxs, shardSize, err := getRepairShards(ctx, shardInfos, task.CodeMode, badIdxs)
+	shouldRepairIdxs, shardSize, err := getRepairShards(ctx, shardInfos, task.CodeMode, badIdxs, forceSet)
 	if err != nil {
 		span.Errorf("get repair shards failed: task[%+v], err[%+v]", err, task)
 		return err
@@ -156,7 +162,7 @@ func (repairer *ShardRepairer) RepairShard(ctx context.Context, task *proto.Shar
 	return err
 }
 
-func hasRepaired(shardInfos []*ShardInfoEx, repairIdxs []int) (bool, error) {
+func hasRepaired(shardInfos []*ShardInfoEx, repairIdxs []int, forceSet map[int]struct{}) (bool, error) {
 	var repairCnt int
 	for idx, shard := range shardInfos {
 		if !contains(idx, repairIdxs) {
@@ -165,6 +171,10 @@ func hasRepaired(shardInfos []*ShardInfoEx, repairIdxs []int) (bool, error) {
 
 		if shard.IsBad() {
 			return false, errcode.ErrDestReplicaBad
+		}
+		// crc-bad idx: Normal in meta but corrupt, never count as repaired.
+		if _, force := forceSet[idx]; force {
+			continue
 		}
 		if shard.Normal() {
 			repairCnt++
@@ -177,7 +187,7 @@ func hasRepaired(shardInfos []*ShardInfoEx, repairIdxs []int) (bool, error) {
 	return false, nil
 }
 
-func getRepairShards(ctx context.Context, shardInfos []*ShardInfoEx, mode codemode.CodeMode, repaireIdxs []int,
+func getRepairShards(ctx context.Context, shardInfos []*ShardInfoEx, mode codemode.CodeMode, repaireIdxs []int, forceSet map[int]struct{},
 ) (repairIdx []int, shardSize int64, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 	// step1:
@@ -204,8 +214,12 @@ func getRepairShards(ctx context.Context, shardInfos []*ShardInfoEx, mode codemo
 	}
 
 	// step2:check miss too many shards to repair
+	// exclude crc-bad idxs from the tally, else CanRecover is over-counted.
 	existStatus := workutils.NewBidExistStatus(mode)
-	for _, shard := range shardInfos {
+	for idx, shard := range shardInfos {
+		if _, force := forceSet[idx]; force {
+			continue
+		}
 		if shard.Normal() {
 			shardSize = shard.ShardSize()
 			existStatus.Exist(shard.info.Vuid.Index())
@@ -223,7 +237,8 @@ func getRepairShards(ctx context.Context, shardInfos []*ShardInfoEx, mode codemo
 		if !contains(idx, repaireIdxs) {
 			continue
 		}
-		if shard.NotExist() {
+		// missing shard, or crc-bad shard to rebuild in place.
+		if _, force := forceSet[idx]; shard.NotExist() || force {
 			shouldRepairIdx = append(shouldRepairIdx, idx)
 		}
 	}
@@ -301,4 +316,13 @@ func sliceUint8ToInt(s []uint8) []int {
 		ret = append(ret, int(e))
 	}
 	return ret
+}
+
+// uint8SliceToIntSet builds an int set from a uint8 slice.
+func uint8SliceToIntSet(s []uint8) map[int]struct{} {
+	set := make(map[int]struct{}, len(s))
+	for _, e := range s {
+		set[int(e)] = struct{}{}
+	}
+	return set
 }

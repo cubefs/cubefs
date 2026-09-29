@@ -58,12 +58,15 @@ func NewHandler(service *Service) *rpc.Router {
 
 	//=====================blobnode==========================
 	rpc.RegisterArgsParser(&clustermgr.NodeInfoArgs{}, "json")
+	rpc.RegisterArgsParser(&clustermgr.ListNodesArgs{}, "json")
 
 	rpc.POST("/node/add", service.NodeAdd, rpc.OptArgsBody())
 
 	rpc.POST("/node/drop", service.NodeDrop, rpc.OptArgsBody())
 
 	rpc.GET("/node/info", service.NodeInfo, rpc.OptArgsQuery())
+
+	rpc.GET("/node/list", service.NodeList, rpc.OptArgsQuery())
 
 	rpc.GET("/topo/info", service.TopoInfo)
 
@@ -191,6 +194,7 @@ func NewHandler(service *Service) *rpc.Router {
 
 	//==================manage==========================
 	rpc.RegisterArgsParser(&clustermgr.SetClusterReadonlyArgs{}, "json")
+	rpc.RegisterArgsParser(&clustermgr.DashboardArgs{}, "json")
 
 	rpc.POST("/member/add", service.MemberAdd, rpc.OptArgsBody())
 
@@ -203,6 +207,8 @@ func NewHandler(service *Service) *rpc.Router {
 	rpc.GET("/snapshot/dump", service.SnapshotDump)
 
 	rpc.POST("/cluster/set", service.ClusterSetReadonly, rpc.OptArgsQuery())
+	rpc.GET("/cluster/dashboard", service.Dashboard, rpc.OptArgsQuery())
+	rpc.POST("/cluster/simulate", service.Simulate, rpc.OptArgsBody())
 
 	//==================kv==========================
 	rpc.RegisterArgsParser(&clustermgr.ListKvOpts{}, "json")
