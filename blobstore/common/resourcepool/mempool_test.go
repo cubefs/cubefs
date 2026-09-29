@@ -19,6 +19,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -101,6 +102,159 @@ func TestMemPoolGetWaitAtCapacity(t *testing.T) {
 
 	require.NoError(t, pool.Put(buf))
 	<-done
+}
+
+func TestMemPoolAllocN(t *testing.T) {
+	pool := rp.NewMemPool(map[int]int{mb: 4}, true)
+
+	bufs, err := pool.AllocN(context.Background(), mb/2, 3)
+	require.NoError(t, err)
+	require.Len(t, bufs, 3)
+	for _, buf := range bufs {
+		require.Equal(t, mb/2, len(buf))
+		require.Equal(t, mb, cap(buf))
+	}
+	require.Equal(t, 3, pool.Status()[0].Running)
+	for _, buf := range bufs {
+		require.NoError(t, pool.Put(buf))
+	}
+	require.Equal(t, 0, pool.Status()[0].Running)
+
+	_, err = pool.AllocN(context.Background(), mb, 5)
+	require.ErrorIs(t, err, rp.ErrPoolLimit)
+	require.Equal(t, 0, pool.Status()[0].Running)
+
+	oversize, err := pool.AllocN(context.Background(), mb4, 4)
+	require.NoError(t, err)
+	require.Len(t, oversize, 4)
+	require.Equal(t, 0, pool.Status()[0].Running)
+	for _, buf := range oversize {
+		require.NoError(t, pool.Put(buf))
+	}
+	require.Equal(t, 0, pool.Status()[0].Running)
+}
+
+func TestMemPoolAllocNNoPartialDeadlock(t *testing.T) {
+	pool := rp.NewMemPool(map[int]int{mb: 4}, true)
+	var wg sync.WaitGroup
+	for range [8]struct{}{} {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			bufs, err := pool.AllocN(context.Background(), mb, 3)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			time.Sleep(time.Millisecond)
+			for _, buf := range bufs {
+				require.NoError(t, pool.Put(buf))
+			}
+		}()
+	}
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("deadlock: batch alloc held a partial set")
+	}
+}
+
+func TestMemPoolAllocNSmallerRequestFits(t *testing.T) {
+	pool := rp.NewMemPool(map[int]int{mb: 3}, true)
+	held, err := pool.AllocN(context.Background(), mb, 2)
+	require.NoError(t, err)
+
+	order := make(chan string, 2)
+	go func() {
+		bufs, err := pool.AllocN(context.Background(), mb, 2)
+		if err != nil {
+			order <- "b-err"
+			return
+		}
+		order <- "b"
+		for _, buf := range bufs {
+			require.NoError(t, pool.Put(buf))
+		}
+	}()
+	time.Sleep(50 * time.Millisecond)
+	go func() {
+		bufs, err := pool.AllocN(context.Background(), mb, 1)
+		if err != nil {
+			order <- "c-err"
+			return
+		}
+		order <- "c"
+		for _, buf := range bufs {
+			require.NoError(t, pool.Put(buf))
+		}
+	}()
+
+	// One free slot fits the later request. It is not queued behind the batch.
+	select {
+	case got := <-order:
+		require.Equal(t, "c", got)
+	case <-time.After(2 * time.Second):
+		t.Fatal("request that fits did not proceed")
+	}
+	select {
+	case got := <-order:
+		t.Fatalf("batch granted with one free slot: %s", got)
+	case <-time.After(80 * time.Millisecond):
+	}
+
+	require.NoError(t, pool.Put(held[0]))
+	select {
+	case got := <-order:
+		require.Equal(t, "b", got)
+	case <-time.After(2 * time.Second):
+		t.Fatal("batch was not granted after two slots were free")
+	}
+	require.NoError(t, pool.Put(held[1]))
+}
+
+func TestMemPoolAllocNCancelDoesNotLeak(t *testing.T) {
+	pool := rp.NewMemPool(map[int]int{mb: 2}, true)
+	held, err := pool.AllocN(context.Background(), mb, 2)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, err := pool.AllocN(ctx, mb, 2)
+		done <- err
+	}()
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+	for _, buf := range held {
+		require.NoError(t, pool.Put(buf))
+	}
+	require.ErrorIs(t, <-done, context.Canceled)
+	require.Equal(t, 0, pool.Status()[0].Running)
+
+	got := make(chan error, 1)
+	go func() {
+		bufs, err := pool.AllocN(context.Background(), mb, 2)
+		if err != nil {
+			got <- err
+			return
+		}
+		for _, buf := range bufs {
+			require.NoError(t, pool.Put(buf))
+		}
+		got <- nil
+	}()
+	select {
+	case err := <-got:
+		require.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("AllocN stuck after a canceled waiter")
+	}
+	require.Equal(t, 0, pool.Status()[0].Running)
 }
 
 func TestMemPoolChanAlloc(t *testing.T) {

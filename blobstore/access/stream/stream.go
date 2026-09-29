@@ -166,7 +166,9 @@ type StreamConfig struct {
 	repairRoundrobin              int64 `json:"-"`
 
 	MemPoolSizeClasses map[int]int `json:"mem_pool_size_classes"`
-	// MemPoolWaitOnLimit enables capacity backpressure for write EC buffers.
+	// MemPoolWaitOnLimit blocks allocation once a size class is at capacity.
+	// EC Get takes N+M+MinReadShardsX buffers in one AllocN, so a waiter holds
+	// nothing until the whole batch is free.
 	MemPoolWaitOnLimit bool `json:"mem_pool_wait_on_limit"`
 	// MemPool is filled in confCheck from MemPoolSizeClasses when nil.
 	// Set it to share one pool across same-process SDK/stream instances.

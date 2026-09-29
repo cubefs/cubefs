@@ -171,14 +171,17 @@ func (h *Handler) Get(ctx context.Context, w io.Writer, location proto.Location,
 		}
 
 		var spanpipe trace.Span
+		reqCtx := ctx
 		spanpipe, ctx = trace.StartSpanFromContextWithTraceID(context.Background(), "", span.TraceID())
 		defer spanpipe.Finish()
 
 		// data stream flow:
 		// client <--copy-- pipeline <--swap-- readBlob <--copy-- blobnode
 		//
-		// Alloc N+M shard buffers here, and release after written to client.
-		// Replace not-empty buffers in readBlob, need release old-buffers in that function.
+		// One AllocN of N+M+MinReadShardsX. The stripe needs N+M buffers, and
+		// up to MinReadShardsX reads can still be in flight holding one each.
+		// A read never asks the pool again, and never waits on a buffer the
+		// consumer would have to return.
 		closeCh := make(chan struct{})
 		pipeline := func() <-chan pipeBuffer {
 			ch := make(chan pipeBuffer, 1)
@@ -214,36 +217,26 @@ func (h *Handler) Get(ctx context.Context, w io.Writer, location proto.Location,
 					}
 
 					st := time.Now()
-					shards := make([][]byte, tactic.N+tactic.M)
-					for ii := range shards {
-						buf, allocErr := h.memPool.Alloc(ctx, blob.ShardSize)
-						if allocErr != nil {
-							spanpipe.Error("alloc shard buffer", blob.ID(), allocErr)
-							for _, allocated := range shards[:ii] {
-								h.memPool.Put(allocated)
-							}
-							ch <- pipeBuffer{err: allocErr}
-							return
-						}
-						shards[ii] = buf
+					nbuf := tactic.N + tactic.M + h.MinReadShardsX
+					shards, allocErr := h.memPool.AllocN(reqCtx, blob.ShardSize, nbuf)
+					if allocErr != nil {
+						spanpipe.Errorf("alloc %d shard buffers size %d: %s", nbuf, blob.ShardSize, allocErr)
+						ch <- pipeBuffer{err: allocErr}
+						return
 					}
 					getTime.IncA(time.Since(st))
 
 					err = h.readOneBlob(ctx, getTime, serviceController, blob, sortedVuids, shards)
 					if err != nil {
 						spanpipe.Error("read one blob", blob.ID(), err)
-						for _, buf := range shards {
-							h.memPool.Put(buf)
-						}
+						h.putBufs(shards)
 						ch <- pipeBuffer{err: err}
 						return
 					}
 
 					select {
 					case <-closeCh:
-						for _, buf := range shards {
-							h.memPool.Put(buf)
-						}
+						h.putBufs(shards)
 						return
 					case ch <- pipeBuffer{blob: blob, shards: shards}:
 					}
@@ -286,9 +279,7 @@ func (h *Handler) Get(ctx context.Context, w io.Writer, location proto.Location,
 
 			getTime.IncW(time.Since(startWrite))
 
-			for _, buf := range line.shards {
-				h.memPool.Put(buf)
-			}
+			h.putBufs(line.shards)
 			if err != nil {
 				close(closeCh)
 				break
@@ -298,9 +289,7 @@ func (h *Handler) Get(ctx context.Context, w io.Writer, location proto.Location,
 		// release buffer in pipeline if fail to write client
 		go func() {
 			for line := range pipeline {
-				for _, buf := range line.shards {
-					h.memPool.Put(buf)
-				}
+				h.putBufs(line.shards)
 			}
 		}()
 
@@ -338,53 +327,92 @@ func (h *Handler) readOneBlob(ctx context.Context, getTime *timeReadWrite,
 	}
 	shardSize, shardOffset, shardReadSize := blob.ShardSize, blob.ShardOffset, blob.ShardReadSize
 
+	// Hand the batch out locally. shards[i] stays nil until that index's bytes
+	// are installed, so a late ReadFull cannot write a buffer the client owns.
+	free := make([][]byte, 0, len(shards))
+	for i, buf := range shards {
+		free = append(free, buf)
+		shards[i] = nil
+	}
+	defer func() { h.putBufs(free) }()
+
 	stopChan := make(chan struct{})
-	nextChan := make(chan struct{}, len(sortedVuids))
-	shardPipe := func() <-chan shardData {
-		ch := make(chan shardData)
-		go func() {
-			wg := new(sync.WaitGroup)
-			defer func() {
-				wg.Wait()
-				close(ch)
-			}()
+	var stopOnce sync.Once
+	stop := func() { stopOnce.Do(func() { close(stopChan) }) }
 
-			for _, vuid := range sortedVuids[:minShardsRead] {
-				if _, ok := empties[vuid.index]; !ok {
-					wg.Add(1)
-					go func(vuid sortedVuid) {
-						ch <- h.readOneShard(ctx, serviceController, blob, vuid, stopChan)
-						wg.Done()
-					}(vuid)
-				}
-			}
-
-			for _, vuid := range sortedVuids[minShardsRead:] {
-				if _, ok := empties[vuid.index]; ok {
-					continue
-				}
-
-				select {
-				case <-stopChan:
-					return
-				case <-nextChan:
-				}
-
-				wg.Add(1)
-				go func(vuid sortedVuid) {
-					ch <- h.readOneShard(ctx, serviceController, blob, vuid, stopChan)
-					wg.Done()
-				}(vuid)
-			}
-		}()
-
-		return ch
+	var wg sync.WaitGroup
+	shardCh := make(chan shardData)
+	releaseLaunch := make(chan struct{})
+	go func() {
+		<-releaseLaunch
+		wg.Wait()
+		close(shardCh)
 	}()
 
 	received := make(map[int]bool, minShardsRead)
 	for idx := range empties {
+		buf := free[len(free)-1]
+		free = free[:len(free)-1]
+		h.memPool.Zero(buf)
+		shards[idx] = buf
 		received[idx] = true
-		h.memPool.Zero(shards[idx])
+	}
+
+	cursor := 0
+	inflight := 0
+	needOneMore := false
+	// 1 started a read, 0 skipped an empty index, -1 no buffer / stopped / done.
+	launchAtCursor := func() int {
+		if cursor >= len(sortedVuids) {
+			return -1
+		}
+		select {
+		case <-stopChan:
+			return -1
+		default:
+		}
+		vuid := sortedVuids[cursor]
+		if _, ok := empties[vuid.index]; ok {
+			cursor++
+			return 0
+		}
+		if len(free) == 0 {
+			return -1
+		}
+		buf := free[len(free)-1]
+		free = free[:len(free)-1]
+		cursor++
+		inflight++
+		wg.Add(1)
+		go func(vuid sortedVuid, buf []byte) {
+			defer wg.Done()
+			shardCh <- h.readOneShard(ctx, serviceController, blob, vuid, stopChan, buf)
+		}(vuid, buf)
+		return 1
+	}
+	// First wave is the first minShardsRead vuids (empties count toward that
+	// window). After that, start one shard at a time, same as nextChan.
+	pump := func() {
+		for cursor < minShardsRead {
+			if launchAtCursor() < 0 {
+				return
+			}
+		}
+		if !needOneMore {
+			return
+		}
+		for cursor < len(sortedVuids) {
+			switch launchAtCursor() {
+			case 0:
+				continue
+			case 1:
+				needOneMore = false
+				return
+			default:
+				return
+			}
+		}
+		needOneMore = false
 	}
 
 	errCodeCount := make(map[int]int)
@@ -392,7 +420,47 @@ func (h *Handler) readOneBlob(ctx context.Context, getTime *timeReadWrite,
 	startRead := time.Now()
 	reconstructed := false
 	got, mostTime := 0, 0
-	for shard := range shardPipe {
+	// A full stripe is N+M buffers. Each in-flight read holds one more, so the
+	// batch can fill every hole while MinReadShardsX reads are still running.
+	tryFill := func() bool {
+		need := 0
+		for i := 0; i < dataParityN; i++ {
+			if shards[i] == nil {
+				need++
+			}
+		}
+		if len(free) < need {
+			return false
+		}
+		for i := 0; i < dataParityN; i++ {
+			if shards[i] == nil {
+				shards[i] = free[len(free)-1]
+				free = free[:len(free)-1]
+			}
+		}
+		return true
+	}
+	recycleUnready := func() {
+		for i := 0; i < dataParityN; i++ {
+			if succ, ok := received[i]; ok && succ {
+				continue
+			}
+			if shards[i] == nil {
+				continue
+			}
+			free = append(free, shards[i])
+			shards[i] = nil
+		}
+	}
+
+	for {
+		pump()
+		if inflight == 0 {
+			break
+		}
+		shard := <-shardCh
+		inflight--
+
 		if got++; got == dataN-1 {
 			mostTime = shard.time
 		}
@@ -416,13 +484,14 @@ func (h *Handler) readOneBlob(ctx context.Context, getTime *timeReadWrite,
 				logvuid.host, logvuid.diskID, mostTime/1e6, shard.time/1e6, shardSpeed)
 		}
 
-		// swap shard buffer
 		if shard.status {
-			buf := shards[shard.index]
+			if cap(shards[shard.index]) > 0 {
+				free = append(free, shards[shard.index])
+			}
 			shards[shard.index] = shard.buffer
-			h.memPool.Put(buf)
+		} else if cap(shard.buffer) > 0 {
+			free = append(free, shard.buffer)
 		}
-
 		received[shard.index] = shard.status
 		if !shard.status && shard.errCode > 0 {
 			errCodeCount[shard.errCode]++
@@ -440,7 +509,6 @@ func (h *Handler) readOneBlob(ctx context.Context, getTime *timeReadWrite,
 		}
 		if len(badIdx) == 0 {
 			reconstructed = true
-			close(stopChan)
 			break
 		}
 
@@ -460,45 +528,47 @@ func (h *Handler) readOneBlob(ctx context.Context, getTime *timeReadWrite,
 		// it will not wait all the shards, cos has no enough shards to reconstruct
 		if badShards > dataParityN-dataN {
 			span.Infof("%s bad(%d) has no enough to reconstruct", blob.ID(), badShards)
-			close(stopChan)
 			break
 		}
 
-		// has bad shards, but have enough shards to reconstruct
-		if len(received) >= dataN+badShards {
+		// In-flight reads keep the buffer they were given. Fill only the holes
+		// from what is still free, then repair that stripe.
+		if len(received) >= dataN+badShards && tryFill() {
+			stripe := shards[:dataParityN]
 			var err error
 			if shardReadSize < shardSize {
 				span.Debugf("bid(%d) ready to segment ec reconstruct data", blob.Bid)
 				reportDownload(blob.Cid, "EC", "segment")
-				segments := make([][]byte, len(shards))
-				for idx := range shards {
-					segments[idx] = shards[idx][shardOffset : shardOffset+shardReadSize]
+				segments := make([][]byte, dataParityN)
+				for idx := 0; idx < dataParityN; idx++ {
+					segments[idx] = stripe[idx][shardOffset : shardOffset+shardReadSize]
 				}
 				err = h.encoder[blob.CodeMode].ReconstructData(segments, badIdx)
 			} else {
 				span.Debugf("bid(%d) ready to ec reconstruct data", blob.Bid)
-				err = h.encoder[blob.CodeMode].ReconstructData(shards, badIdx)
+				err = h.encoder[blob.CodeMode].ReconstructData(stripe, badIdx)
 			}
 			if err == nil {
 				reconstructed = true
-				close(stopChan)
 				break
 			}
+			recycleUnready()
 			span.Errorf("%s ec reconstruct data error:%s", blob.ID(), err.Error())
 		}
 
 		if len(received) >= len(sortedVuids) {
-			close(stopChan)
 			break
 		}
-		nextChan <- struct{}{}
+		needOneMore = true
 	}
+	stop()
 	getTime.IncR(time.Since(startRead))
 
-	// release buffer of delayed shards
+	// Late reads still hold their own buffers. Put those; the stripe stays in shards.
+	close(releaseLaunch)
 	go func() {
-		for shard := range shardPipe {
-			if shard.status {
+		for shard := range shardCh {
+			if cap(shard.buffer) > 0 {
 				h.memPool.Put(shard.buffer)
 			}
 		}
@@ -515,7 +585,7 @@ func (h *Handler) readOneBlob(ctx context.Context, getTime *timeReadWrite,
 }
 
 func (h *Handler) readOneShard(ctx context.Context, serviceController controller.ServiceController,
-	blob blobGetArgs, vuid sortedVuid, stopChan <-chan struct{},
+	blob blobGetArgs, vuid sortedVuid, stopChan <-chan struct{}, buf []byte,
 ) shardData {
 	clusterID, vid := blob.Cid, blob.Vid
 	shardOffset, shardReadSize := blob.ShardOffset, blob.ShardReadSize
@@ -523,6 +593,7 @@ func (h *Handler) readOneShard(ctx context.Context, serviceController controller
 	shardResult := shardData{
 		index:  vuid.index,
 		status: false,
+		buffer: buf,
 	}
 	shardStart := time.Now()
 
@@ -573,22 +644,20 @@ func (h *Handler) readOneShard(ctx context.Context, serviceController controller
 	}
 	defer body.Close()
 
-	buf, err := h.memPool.Alloc(ctx, blob.ShardSize)
-	if err != nil {
-		span.Warn(err)
+	select {
+	case <-stopChan:
 		return shardResult
+	default:
 	}
 
 	_, err = io.ReadFull(body, buf[shardOffset:shardOffset+shardReadSize])
 	if err != nil {
-		h.memPool.Put(buf)
 		span.Warnf("io read %s on %s: %s", blob.ID(), vuid.ID(), err.Error())
 		return shardResult
 	}
 	if h.ShardCrcReadEnable && crc > 0 {
 		newCrc := crc32.ChecksumIEEE(buf[shardOffset : shardOffset+shardReadSize])
 		if newCrc != crc {
-			h.memPool.Put(buf)
 			reportDownload(clusterID, "Download", "CrcMismatch")
 			span.Errorf("blob:%+v vuid:%s crc mismatch 0x%x(%d) != 0x%x(%d)",
 				blob, vuid.ID(), crc, crc, newCrc, newCrc)
@@ -598,9 +667,16 @@ func (h *Handler) readOneShard(ctx context.Context, serviceController controller
 	}
 
 	shardResult.status = true
-	shardResult.buffer = buf
 	shardResult.time = int(time.Since(shardStart))
 	return shardResult
+}
+
+func (h *Handler) putBufs(bufs [][]byte) {
+	for _, buf := range bufs {
+		if cap(buf) > 0 {
+			h.memPool.Put(buf)
+		}
+	}
 }
 
 func (h *Handler) getDataShardOnly(ctx context.Context, getTime *timeReadWrite,

@@ -104,6 +104,38 @@ func (p *MemPool) Alloc(ctx context.Context, size int) ([]byte, error) {
 	return buf, err
 }
 
+// AllocN returns n buffers of size. A size class that waits at its limit
+// grants the whole batch or none of it: callers that already hold some
+// buffers and block for the rest starve each other (each download needs a
+// full EC stripe before it can release anything).
+// Buffers larger than every size class are allocated with make and are not
+// counted against pool capacity.
+func (p *MemPool) AllocN(ctx context.Context, size, n int) ([][]byte, error) {
+	if n <= 0 {
+		return nil, nil
+	}
+	for idx, ps := range p.poolSize {
+		if size > ps {
+			continue
+		}
+		got, err := p.pool[idx].GetN(ctx, n)
+		if err != nil {
+			return nil, err
+		}
+		bufs := make([][]byte, len(got))
+		for i := range got {
+			bufs[i] = got[i].([]byte)[:size]
+		}
+		return bufs, nil
+	}
+
+	bufs := make([][]byte, n)
+	for i := range bufs {
+		bufs[i] = make([]byte, size)
+	}
+	return bufs, nil
+}
+
 // Put adds x to the pool, appropriately resize.
 // Buffers larger than the max size class (e.g. from Alloc oversize) are
 // discarded for GC and do not touch pool Len/concurrence.
