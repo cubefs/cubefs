@@ -107,6 +107,9 @@ Starting from v3.3.0, consumer groups are supported. For previous versions, plea
 * disk_concurrency, the maximum number of disks allowed to be balanced simultaneously, default is 1 (before v3.3.0, this value was balance_disk_cnt_limit, default is 100)
 * max_disk_free_chunk_cnt, when balancing, it will be judged whether there are disks with freechunk greater than or equal to this value in the current IDC. If not, no balance will be initiated. The default is 1024.
 * min_disk_free_chunk_cnt, disks with freechunk less than this value will be balanced, default is 20
+* disk_usage_threshold, disk usage ratio that also selects a disk for balance. 0 disables it. For example, 0.9 selects disks at or above 90% usage even when free chunks are enough
+* compact_migrate_hole_rate, hole rate that prioritizes a large chunk for migration. 0 disables it. For example, 0.6
+* compact_migrate_min_logic_size, minimum logical size in bytes for a chunk to be treated as large. Default is 16GiB when compact_migrate_hole_rate is greater than 0
 * prepare_queue_retry_delay_s, retry interval for the preparation queue when a task in the preparation queue fails to execute, default is 10
 * finish_queue_retry_delay_s, retry interval for the completion queue, default is 10
 * cancel_punish_duration_s, retry interval after task cancellation, default is 20
@@ -117,7 +120,10 @@ Starting from v3.3.0, consumer groups are supported. For previous versions, plea
 {
     "disk_concurrency": 700,    
     "max_disk_free_chunk_cnt": 500,    
-    "min_disk_free_chunk_cnt": 105,      
+    "min_disk_free_chunk_cnt": 105,
+    "disk_usage_threshold": 0.9,
+    "compact_migrate_hole_rate": 0.6,
+    "compact_migrate_min_logic_size": 17179869184,
     "prepare_queue_retry_delay_s": 60,    
     "finish_queue_retry_delay_s": 60,    
     "cancel_punish_duration_s": 60,    

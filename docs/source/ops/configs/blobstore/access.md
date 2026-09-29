@@ -39,6 +39,7 @@ Access configuration is based on the [public configuration](./base.md), and the 
 | alloc_retry_interval_ms   | Alloc volume retry to wait ms                            | No, default is 100ms                                                                                        |
 | shardnode_retry_times     | Shardnode retry times                                    | No, default is 3                                                                                            |
 |shardnode_retry_interval_ms| Shardnode retry to wait ms                               | No, default is 200ms                                                                                        |
+| repair_into_shardnode_percentage | Percentage of repair messages sent to shardnode, range 0-100. 0 sends all repairs to proxy | No, default is 0 |
 | blobnode_config           | Blobnode RPC configuration                               | Refer to the RPC configuration section [rpc](./rpc.md)                                                      |
 | proxy_config              | Proxy RPC configuration                                  | Refer to the RPC configuration section [rpc](./rpc.md)                                                      |
 | shardnode_config          | Shardnode RPC configuration                              | Refer to the shardnode configuration section [rpc2](./rpc2.md)                                              |

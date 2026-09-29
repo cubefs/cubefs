@@ -34,9 +34,7 @@ Clustermgr configuration is based on the [public configuration](./base.md), and 
   "readonly": "Whether it is read-only",
   "db_path": "Default path for storing metadata DB. The corresponding DB data will be automatically created in this directory if there is no additional configuration for the DB.",
   "normal_db_path": "Path for common DB",
-  "normal_db_option": "Common DB option configuration, mainly for tuning rocksdb",
   "kv_db_path": "Path for storing kv DB",
-  "kv_db_option": "KV DB option configuration, mainly for tuning rocksdb",
   "code_mode_policies": [
     {
       "mode_name": "Encoding name",
@@ -45,10 +43,10 @@ Clustermgr configuration is based on the [public configuration](./base.md), and 
       "size_ratio": "The proportion occupied by this mode",
       "enable": "Whether it is enabled"
     }],
+  "code_mode_extends": "custom code modes, id range [240, 255], tactic fields are the same as a built-in code mode. adapt_shard_size: when data size is below min_shard_size, round the shard size up to this granularity and cap it at min_shard_size. 0 disables it. Requires min_shard_size > 0, adapt_shard_size <= min_shard_size, and min_shard_size divisible by adapt_shard_size",
   "raft_config": {
     "raft_db_path": "Path for raft DB",
     "snapshot_patch_num": "A snapshot of a DB is divided into multiple patches. The snapshot data of a DB is very large and needs to be divided into multiple patches to be sent.",
-    "raft_db_option": "Mainly for tuning rocksdb",
     "server_config": {
       "nodeId": "Raft node ID",
       "listen_port": "Raft dedicated port",
@@ -64,7 +62,7 @@ Clustermgr configuration is based on the [public configuration](./base.md), and 
 
     "raft_node_config": {
       "flush_num_interval": "Number of logs that trigger flush",
-      "FlushTimeIntervalS": "Flush cycle interval",
+      "flush_time_interval_s": "Flush cycle interval, default 300s",
       "truncate_num_interval": "The leader retains the maximum number of log entries. The number of log entries loaded when the service starts can also be understood as the difference between the log entries of the leader and the follower. If it exceeds this value, log synchronization needs to go through snapshot synchronization, so this value is generally kept above 100,000.",
       "node_protocol": "Raft node synchronization protocol, generally http:// protocol",
       "members": [{
@@ -79,7 +77,6 @@ Clustermgr configuration is based on the [public configuration](./base.md), and 
   "volume_mgr_config": {
     "blob_node_config": "See rpc configuration",
     "volume_db_path": "Volume data DB path",
-    "volume_db_option": "Option configuration",
     "retain_time_s": "Renewal time, used in conjunction with the renewal time of the proxy",
     "retain_threshold": "The health of the volume that can be renewed. The health segment of the volume must be greater than this value to be renewed",
     "flush_interval_s": "Flush time interval",
@@ -88,7 +85,11 @@ Clustermgr configuration is based on the [public configuration](./base.md), and 
     "apply_concurrency": "Concurrency of applying wal logs",
     "min_allocable_volume_count": "Minimum number of allocatable volumes",
     "allocatable_disk_load_threshold": "Load of the corresponding disk that the volume can be allocated to",
-    "allocatable_size": "Minimum capacity threshold a volume can allocate, default 10G, if the volume capacity is small adjust it to a lower value such as 10MB."
+    "allocatable_size": "Minimum free size a volume must have before it can be allocated, default 1GB. Lower it when the volume capacity is small, for example to 10MB.",
+    "alloc_disk_usage_threshold": "Disk usage ratio above which a disk is treated as high usage during volume allocation. 0 disables the check. High-usage disks are used only when no lower-usage disk remains.",
+    "min_allocable_health_vol_count": "Minimum number of healthy allocatable volumes. Default is min_allocable_volume_count * 2 / 3.",
+    "check_healthy_volume_interval_s": "How long healthy allocatable volumes must stay below the threshold before extra volumes are created, default 60s.",
+    "enable_degrade_retain": "Lower the retain health threshold when healthy allocatable volumes are insufficient. Default is false."
   },
   "disk_mgr_config": {
     "refresh_interval_s": "Interval for refreshing disk status of the current cluster",
@@ -109,6 +110,8 @@ Clustermgr configuration is based on the [public configuration](./base.md), and 
   "max_heartbeat_notify_num": "Maximum number of heartbeat notifications, default 2000",
   "metric_report_interval_m": "Interval for metric reporting (minutes), default 2",
   "consistent_check_interval_m": "Interval for consistency check (minutes), default 360",
+  "dashboard_fresh_interval_s": "Dashboard refresh interval in seconds, default 60",
+  "dashboard_fresh_volume_tick": "Refresh all volume stats every N dashboard ticks, default 5",
   "broken_volume_unit_report_num": "Number of broken volume units to report, default 3",
   "broken_shard_unit_report_num": "Number of broken shard units to report, default 2",
   "db_cache_size": "Database cache size (bytes)",

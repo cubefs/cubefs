@@ -105,6 +105,9 @@ v3.3.0版本开始支持消费组，之前版本请参考对应版本配置文�
 * disk_concurrency，允许同时执行均衡的最大磁盘数，默认1（release-3.2.2版本之前该值为balance_disk_cnt_limit，默认100）
 * max_disk_free_chunk_cnt，均衡时会判断本idc内是否存在freechunk大于等于该值的磁盘，如果不存在则不会发起均衡，默认1024
 * min_disk_free_chunk_cnt，均衡freechunk数小于该值的磁盘，默认20
+* disk_usage_threshold，按磁盘使用率触发均衡的阈值。0 表示关闭。例如 0.9 表示使用率达到 90% 的磁盘也会被选中，即使 freechunk 仍然充足
+* compact_migrate_hole_rate，大块 chunk 优先迁移的空洞率阈值。0 表示关闭。例如 0.6
+* compact_migrate_min_logic_size，视为大块 chunk 的最小逻辑大小，单位字节。compact_migrate_hole_rate 大于 0 时默认 16GiB
 * prepare_queue_retry_delay_s，准备队列重试时间间隔，当准备队列中的任务执行失败后的重试时间间隔，默认10
 * finish_queue_retry_delay_s，完成队列重试时间间隔，默认10
 * cancel_punish_duration_s，任务取消之后重试时间间隔，默认20
@@ -115,7 +118,10 @@ v3.3.0版本开始支持消费组，之前版本请参考对应版本配置文�
 {
     "disk_concurrency": 700,    
     "max_disk_free_chunk_cnt": 500,    
-    "min_disk_free_chunk_cnt": 105,      
+    "min_disk_free_chunk_cnt": 105,
+    "disk_usage_threshold": 0.9,
+    "compact_migrate_hole_rate": 0.6,
+    "compact_migrate_min_logic_size": 17179869184,
     "prepare_queue_retry_delay_s": 60,    
     "finish_queue_retry_delay_s": 60,    
     "cancel_punish_duration_s": 60,    

@@ -83,9 +83,36 @@ BlobNode的配置是基于[公有配置](./base.md)，以下配置说明主要�
 		"delete_queue_depth": "删除队列深度, 默认值32",
 		"background_queue_depth": "后台队列深度, 默认值32",
 		"data_qos": {
-			"read_mbps": "单盘普通读业务IO带宽",
-			"write_mbps": "单盘普通写业务IO带宽",
-			"background_mbps": "单盘后台任务IO带宽"
+			"level": {
+				"read": {
+					"mbps": "读带宽，单位MB/s，默认200",
+					"concurrency": "读并发，默认64",
+					"bid_concurrency": "bid并发，默认32。仅read可配置为非1",
+					"busy_factor": "磁盘繁忙时的限速系数，范围(0, 1]，默认1.0",
+					"idle_factor": "磁盘空闲时的限速系数，须>=1，默认1.0"
+				},
+				"write": {
+					"mbps": "写带宽，单位MB/s，默认120",
+					"concurrency": "写并发，默认64",
+					"bid_concurrency": "固定为1",
+					"busy_factor": "范围(0, 1]，默认1.0",
+					"idle_factor": "须>=1，默认1.2"
+				},
+				"delete": {
+					"mbps": "删除带宽，单位MB/s，默认60",
+					"concurrency": "删除并发，默认32",
+					"bid_concurrency": "固定为1",
+					"busy_factor": "范围(0, 1]，默认0.8",
+					"idle_factor": "须>=1，默认1.25"
+				},
+				"background": {
+					"mbps": "后台带宽，单位MB/s，默认20",
+					"concurrency": "后台并发，默认32",
+					"bid_concurrency": "固定为1",
+					"busy_factor": "范围(0, 1]，默认0.5",
+					"idle_factor": "须>=1，默认3.0"
+				}
+			}
 		}
 	},
 	"meta_config": {
@@ -103,6 +130,16 @@ BlobNode的配置是基于[公有配置](./base.md)，以下配置说明主要�
 	},
 	"scheduler": {
 		"host_sync_interval_ms": "后台任务用到的scheduler client的后端节点同步时间"
+	},
+	"inspect_conf": {
+		"interval_sec": "巡检轮次间隔，默认90秒",
+		"rate_limit": "巡检读限速，单位字节/秒，默认4MB/s",
+		"batch_read_size": "单次批量读取的最大字节数，默认16MB",
+		"cycle_days": "一轮完整巡检的天数，默认90",
+		"record": {
+			"dir": "巡检记录目录",
+			"chunkbits": "记录文件大小，2^n 字节"
+		}
 	},
 	"heartbeat_interval_S": "向clustermgr发送心跳的时间间隔, 默认值30秒",
 	"chunk_report_interval_S": "chunk上报的时间间隔, 默认值60秒",
@@ -139,9 +176,12 @@ BlobNode的配置是基于[公有配置](./base.md)，以下配置说明主要�
       "set_default_switch": true,
       "must_mount_point": true,
       "data_qos": {
-        "read_mbps": 100,
-        "write_mbps": 60,
-        "background_mbps": 20
+        "level": {
+            "read": {"mbps": 100, "concurrency": 64, "bid_concurrency": 32, "busy_factor": 1.0, "idle_factor": 1.0},
+            "write": {"mbps": 60, "concurrency": 64, "bid_concurrency": 1, "busy_factor": 1.0, "idle_factor": 1.2},
+            "delete": {"mbps": 60, "concurrency": 32, "bid_concurrency": 1, "busy_factor": 0.8, "idle_factor": 1.25},
+            "background": {"mbps": 20, "concurrency": 32, "bid_concurrency": 1, "busy_factor": 0.5, "idle_factor": 3.0}
+        }
       }
     },
     "meta_config": {
