@@ -19,6 +19,7 @@ BlobNode configuration is based on the [public configuration](./base.md), and th
 | data_qos             | Data QoS hierarchical flow control. It is recommended to enable this in production environments.                  | No       |
 | meta_config          | Metadata-related configuration, including the cache size of RocksDB.                                              | No       |
 | clustermgr           | Clustermgr service address information, etc.                                                                      | Yes      |
+| max_cluster_bad_disk_nodes | Host limit for broken and repairing disks when a data-file EIO marks a disk broken. Default is 3. Meta EIO is not restricted | No       |
 
 ### Complete Configuration
 
@@ -84,9 +85,40 @@ BlobNode configuration is based on the [public configuration](./base.md), and th
     "delete_queue_depth": "delete queue depth, default 32",
     "background_queue_depth": "background queue depth, default 32",
     "data_qos": {
-      "read_mbps": "per disk normal read IO bandwidth",
-      "write_mbps": "per disk normal write IO bandwidth",
-      "background_mbps": "per disk background IO bandwidth"
+      "disk_iops": "per-disk IOPS limit, default 2000",
+      "disk_bandwidth_mb": "per-disk total bandwidth limit in MB/s, default 250",
+      "update_interval_ms": "refresh interval of the dynamic limiter, default 500ms",
+      "disk_idle_factor": "factor that raises the limit when the disk is idle, range (0, 1], default 0.2",
+      "level": {
+        "read": {
+          "mbps": "read bandwidth, MB/s, default 200",
+          "concurrency": "read concurrency, default 64",
+          "bid_concurrency": "concurrent bids, default 32. Only read accepts a value other than 1",
+          "busy_factor": "rate factor when the disk is busy, range (0, 1], default 1.0",
+          "idle_factor": "rate factor when the disk is idle, must be >= 1, default 1.0"
+        },
+        "write": {
+          "mbps": "write bandwidth, MB/s, default 120",
+          "concurrency": "write concurrency, default 64",
+          "bid_concurrency": "fixed to 1",
+          "busy_factor": "range (0, 1], default 1.0",
+          "idle_factor": "must be >= 1, default 1.2"
+        },
+        "delete": {
+          "mbps": "delete bandwidth, MB/s, default 60",
+          "concurrency": "delete concurrency, default 32",
+          "bid_concurrency": "fixed to 1",
+          "busy_factor": "range (0, 1], default 0.8",
+          "idle_factor": "must be >= 1, default 1.25"
+        },
+        "background": {
+          "mbps": "background bandwidth, MB/s, default 20",
+          "concurrency": "background concurrency, default 32",
+          "bid_concurrency": "fixed to 1",
+          "busy_factor": "range (0, 1], default 0.5",
+          "idle_factor": "must be >= 1, default 3.0"
+        }
+      }
     }
   },
   "meta_config": {
@@ -94,18 +126,29 @@ BlobNode configuration is based on the [public configuration](./base.md), and th
     "support_inline": "whether to enable inline writing of small files to metadata storage RocksDB",
     "tinyfile_threshold_B": "threshold for small files, can be set to less than or equal to 128k",
     "sync": "whether to enable disk sync",
-    "cache_size": "lru cache size",
-    "batch_process_count": "number of batch processing requests for metadata, including deletion and writing",
-    "write_pri_ratio": "ratio of write requests for metadata batch processing. The specific number is batch_process_count*write_pri_ratio"
+    "cache_size": "lru cache size"
   },
   "clustermgr": {
     "hosts": "clustermgr service address"
   },
   "blobnode": {
-    "client_timeout_ms": "timeout for blobnode client used in background tasks"
+    "client_timeout_ms": "timeout for blobnode client used in background tasks, default 1000ms",
+    "batch_read_timeout_ms": "batch read timeout, default 20000ms"
   },
   "scheduler": {
     "host_sync_interval_ms": "backend node synchronization time for scheduler client used in background tasks"
+  },
+  "inspect_conf": {
+    "interval_sec": "interval between inspect rounds, default 90 seconds",
+    "rate_limit": "inspect read rate limit in bytes per second, default 4MB/s",
+    "batch_read_size": "maximum bytes of one batch read, default 16MB",
+    "cycle_days": "length of a full inspect cycle in days, default 90",
+    "proxy": "see rpc configuration, used to send crc repair messages",
+    "record": {
+      "dir": "directory of inspect records",
+      "chunkbits": "record file size, 2^n bytes, default 27 (128MB)",
+      "backup": "number of record files to keep, default 2"
+    }
   },
   "heartbeat_interval_S": "heartbeat interval to clustermgr, default 30 seconds",
   "chunk_report_interval_S": "chunk report interval, default 60 seconds",
@@ -114,8 +157,24 @@ BlobNode configuration is based on the [public configuration](./base.md), and th
   "clean_expired_stat_interval_S": "clean expired stat interval, default 60 minutes",
   "disk_status_check_interval_S": "disk status check interval, default 2 minutes",
   "max_cluster_bad_disk_nodes": "max number of hosts holding broken or repairing disks allowed when a data-file EIO marks a disk broken; the mark is retried later once the host count drops back within the limit. Meta EIO is not restricted. Default 3",
-  "delete_qps_limit_per_disk": "concurrency control for single-disk deletions",
-  "shard_repair_concurrency": "concurrency control for background task shard repair",
+  "start_mode": "start mode. BOTH_BLOBNODE_WORKER runs storage and background tasks, BLOBNODE runs storage only, WORKER runs background tasks only. Default is BOTH_BLOBNODE_WORKER",
+  "acquire_interval_ms": "interval for the worker to acquire tasks, default 500ms",
+  "enable_batch_read": "whether migrate and repair read shards in batches, default false",
+  "max_task_runner_cnt": "number of disk repair, balance, and drop tasks running at once, default 1",
+  "repair_concurrency": "shard concurrency of one repair task, default 1",
+  "balance_concurrency": "shard concurrency of one balance task, default 1",
+  "disk_drop_concurrency": "shard concurrency of one disk drop task, default 1",
+  "manual_migrate_concurrency": "shard concurrency of one manual migrate task, default 10",
+  "shard_repair_concurrency": "shard repair concurrency, default 1",
+  "inspect_concurrency": "volume inspect task concurrency, default 1",
+  "download_shard_concurrency": "concurrent shard downloads inside one task, default 10",
+  "buf_pool_conf": {
+    "migrate_buf_size": "migrate buffer size, default 16MB",
+    "migrate_buf_capacity": "number of migrate buffers, default 100",
+    "repair_buf_size": "repair buffer size, default 4MB",
+    "repair_buf_capacity": "number of repair buffers, default 500"
+  },
+  "shardnode": "shardnode client used by background tasks, see rpc2 configuration",
   "flock_filename": "process file lock path"
 }
 ```
@@ -143,11 +202,18 @@ BlobNode configuration is based on the [public configuration](./base.md), and th
   "disk_config": {
     "set_default_switch": true,
     "must_mount_point": true,
-    "data_qos": {
-      "read_mbps": 100,
-      "write_mbps": 60,
-      "background_mbps": 20
-    }
+      "data_qos": {
+        "disk_iops": 2000,
+        "disk_bandwidth_mb": 250,
+        "update_interval_ms": 500,
+        "disk_idle_factor": 0.2,
+        "level": {
+            "read": {"mbps": 100, "concurrency": 64, "bid_concurrency": 32, "busy_factor": 1.0, "idle_factor": 1.0},
+            "write": {"mbps": 60, "concurrency": 64, "bid_concurrency": 1, "busy_factor": 1.0, "idle_factor": 1.2},
+            "delete": {"mbps": 60, "concurrency": 32, "bid_concurrency": 1, "busy_factor": 0.8, "idle_factor": 1.25},
+            "background": {"mbps": 20, "concurrency": 32, "bid_concurrency": 1, "busy_factor": 0.5, "idle_factor": 3.0}
+        }
+      }
   },
   "meta_config": {
     "sync": false
@@ -174,7 +240,6 @@ BlobNode configuration is based on the [public configuration](./base.md), and th
   },
   "chunk_protection_period_S": 600,
   "max_cluster_bad_disk_nodes": 3,
-  "delete_qps_limit_per_disk": 64,
   "shard_repair_concurrency": 100,
   "flock_filename": "/home/service/ebs-blobnode/_package/run/blobnode.0.flock",
   "auditlog": {
