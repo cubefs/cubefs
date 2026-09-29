@@ -38,6 +38,9 @@ type Pool interface {
 	// Implementations may block when wait-on-limit is enabled until a resource
 	// is available, the pool is closed, or ctx is done.
 	Get(ctx context.Context) (interface{}, error)
+	// GetN returns n resources. A waiting implementation blocks until the whole
+	// batch fits and holds none of it in the meantime.
+	GetN(ctx context.Context, n int) ([]interface{}, error)
 	Put(x interface{})
 	Cap() int
 	Len() int
@@ -68,6 +71,24 @@ func (p *pool) Get(ctx context.Context) (interface{}, error) {
 		return nil, ErrPoolLimit
 	}
 	return p.sp.Get(), nil
+}
+
+func (p *pool) GetN(ctx context.Context, n int) ([]interface{}, error) {
+	if n <= 0 {
+		return nil, nil
+	}
+	bufs := make([]interface{}, n)
+	for i := range bufs {
+		buf, err := p.Get(ctx)
+		if err != nil {
+			for _, allocated := range bufs[:i] {
+				p.Put(allocated)
+			}
+			return nil, err
+		}
+		bufs[i] = buf
+	}
+	return bufs, nil
 }
 
 func (p *pool) Put(x interface{}) {

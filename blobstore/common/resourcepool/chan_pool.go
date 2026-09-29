@@ -54,6 +54,12 @@ type chPool struct {
 
 	closeCh   chan struct{}
 	closeOnce sync.Once
+
+	// mu guards wait-on-limit updates of concurrence. A caller that cannot
+	// fit holds the lock and sleeps on cond; it does not sit in a waiter queue
+	// and it does not own any slot until the whole request fits.
+	mu   sync.Mutex
+	cond *sync.Cond
 }
 
 // NewChanPool return Pool with capacity.
@@ -75,6 +81,7 @@ func NewChanPool(newFunc func() []byte, capacity int, waitOnLimit bool) Pool {
 		waitOnLimit: waitOnLimit,
 		closeCh:     make(chan struct{}),
 	}
+	pool.cond = sync.NewCond(&pool.mu)
 	runtime.SetFinalizer(pool, func(p *chPool) {
 		p.closeOnce.Do(func() {
 			close(p.closeCh)
@@ -142,26 +149,130 @@ func (p *chPool) loopRelease() {
 }
 
 func (p *chPool) Get(ctx context.Context) (interface{}, error) {
-	current := atomic.AddInt32(&p.concurrence, 1)
+	if !p.waitOnLimit {
+		return p.getImmediate()
+	}
+	if err := p.reserve(ctx, 1); err != nil {
+		return nil, err
+	}
+	return p.takeBuf(), nil
+}
 
+// GetN reserves n buffers under the pool lock. With wait-on-limit the caller
+// sleeps until all n fit, and owns none of them while asleep.
+func (p *chPool) GetN(ctx context.Context, n int) ([]interface{}, error) {
+	if n <= 0 {
+		return nil, nil
+	}
+	if !p.waitOnLimit {
+		bufs := make([]interface{}, n)
+		for i := range bufs {
+			buf, err := p.getImmediate()
+			if err != nil {
+				for _, allocated := range bufs[:i] {
+					p.Put(allocated)
+				}
+				return nil, err
+			}
+			bufs[i] = buf
+		}
+		return bufs, nil
+	}
+	if err := p.reserve(ctx, n); err != nil {
+		return nil, err
+	}
+	bufs := make([]interface{}, n)
+	for i := range bufs {
+		bufs[i] = p.takeBuf()
+	}
+	return bufs, nil
+}
+
+func (p *chPool) getImmediate() (interface{}, error) {
+	atomic.AddInt32(&p.concurrence, 1)
+	return p.takeBuf(), nil
+}
+
+func (p *chPool) takeBuf() []byte {
 	select {
 	case buf := <-p.chBuffer:
-		return buf, nil
+		return buf
 	default:
-		if p.waitOnLimit && p.capacity > 0 && current > int32(p.capacity) {
-			select {
-			case buf := <-p.chBuffer:
-				return buf, nil
-			case <-p.closeCh:
-				atomic.AddInt32(&p.concurrence, -1)
-				return nil, ErrPoolClosed
-			case <-ctx.Done():
-				atomic.AddInt32(&p.concurrence, -1)
-				return nil, ctx.Err()
-			}
-		}
-		return p.newBuffer(), nil
+		return p.newBuffer()
 	}
+}
+
+// reserve owns n slots, or returns before taking any.
+// The caller holds mu and sleeps on cond until the batch fits. A later
+// request that already fits is not lined up behind it.
+func (p *chPool) reserve(ctx context.Context, n int) error {
+	if n <= 0 {
+		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if p.capacity > 0 && n > p.capacity {
+		return ErrPoolLimit
+	}
+
+	p.mu.Lock()
+	if err := p.waitLocked(ctx, n); err != nil {
+		p.mu.Unlock()
+		return err
+	}
+	atomic.AddInt32(&p.concurrence, int32(n))
+	p.mu.Unlock()
+	return nil
+}
+
+// waitLocked sleeps until n slots fit. The caller holds mu.
+// ctx cancel and pool close wake the sleep; neither path keeps the slots.
+func (p *chPool) waitLocked(ctx context.Context, n int) error {
+	if p.slotsFree(n) {
+		return p.closedOrCanceled(ctx)
+	}
+
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		select {
+		case <-ctx.Done():
+		case <-p.closeCh:
+		case <-done:
+			return
+		}
+		p.mu.Lock()
+		p.cond.Broadcast()
+		p.mu.Unlock()
+	}()
+
+	for !p.slotsFree(n) {
+		if err := p.closedOrCanceled(ctx); err != nil {
+			return err
+		}
+		p.cond.Wait()
+	}
+	return p.closedOrCanceled(ctx)
+}
+
+func (p *chPool) closedOrCanceled(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	select {
+	case <-p.closeCh:
+		return ErrPoolClosed
+	default:
+		return nil
+	}
+}
+
+func (p *chPool) slotsFree(n int) bool {
+	if p.capacity <= 0 {
+		return true
+	}
+	return int(atomic.LoadInt32(&p.concurrence))+n <= p.capacity
 }
 
 func (p *chPool) Put(x interface{}) {
@@ -174,7 +285,14 @@ func (p *chPool) Put(x interface{}) {
 	case p.chBuffer <- buf:
 	default:
 	}
+	if !p.waitOnLimit {
+		atomic.AddInt32(&p.concurrence, -1)
+		return
+	}
+	p.mu.Lock()
 	atomic.AddInt32(&p.concurrence, -1)
+	p.cond.Broadcast()
+	p.mu.Unlock()
 }
 
 func (p *chPool) Cap() int {
