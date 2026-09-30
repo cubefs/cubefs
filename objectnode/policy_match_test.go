@@ -36,6 +36,27 @@ func TestRegexp(t *testing.T) {
 		require.NoError(t, err)
 		require.False(t, ok)
 	}
+
+	// metacharacters in the raw pattern must be treated literally: a '.' only
+	// matches a '.', not any character. Otherwise an allowed CORS origin such
+	// as "https://api.example.com" would also match the attacker-registrable
+	// origin "https://apiaexample.com".
+	pattern = makeRegexPattern("https://api.example.com")
+	ok, err := regexp.MatchString(pattern, "https://api.example.com")
+	require.NoError(t, err)
+	require.True(t, ok)
+	ok, err = regexp.MatchString(pattern, "https://apiaexample.com")
+	require.NoError(t, err)
+	require.False(t, ok)
+
+	// wildcards keep working after the escaping change
+	pattern = makeRegexPattern("https://*.example.com")
+	ok, err = regexp.MatchString(pattern, "https://a.example.com")
+	require.NoError(t, err)
+	require.True(t, ok)
+	ok, err = regexp.MatchString(pattern, "https://a.example.cn")
+	require.NoError(t, err)
+	require.False(t, ok)
 }
 
 func TestResourceMatch(t *testing.T) {

@@ -231,8 +231,13 @@ func (r ResourceElementType) match(keyname string) bool {
 }
 
 func makeRegexPattern(raw string) string {
-	pattern := strings.Replace(raw, "?", ".", -1)
-	pattern = strings.Replace(pattern, "*", ".*", -1)
+	// Escape regex metacharacters so only the glob wildcards '*' and '?' are
+	// special; without this a literal '.' in an allowed CORS origin or a policy
+	// resource matches any character, e.g. origin "https://api.example.com"
+	// would also match the attacker-registrable "https://apiaexample.com".
+	pattern := regexp.QuoteMeta(raw)
+	pattern = strings.Replace(pattern, `\?`, ".", -1)
+	pattern = strings.Replace(pattern, `\*`, ".*", -1)
 	pattern = "^" + pattern + "$"
 	return pattern
 }
