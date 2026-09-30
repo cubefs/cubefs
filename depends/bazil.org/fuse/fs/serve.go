@@ -1018,6 +1018,12 @@ type serveRequest struct {
 	Request fuse.Request
 	cancel  func()
 	index   int
+	// doneOnce guards the unregister step in done(); without it, a second
+	// done() on the same request (reachable via serveWithTimeOut: the timeout
+	// path unregisters, then a late-successful handler unregisters again with
+	// a stale index) would delete a *different* live request from the reqs
+	// slice, breaking InterruptRequest lookup and hanging requests.
+	doneOnce sync.Once
 }
 
 type serveNode struct {
@@ -1457,15 +1463,21 @@ func (c *Server) done(r *serveRequest, hdr *fuse.Header) func(resp interface{}) 
 		// delete(c.req, hdr.ID)
 		// c.meta.Unlock()
 
-		c.reqMux.Lock()
-		this := r.index
-		last := len(c.reqs) - 1
-		if last != this {
-			c.reqs[this] = c.reqs[last]
-			c.reqs[this].index = this
-		}
-		c.reqs = c.reqs[:last]
-		c.reqMux.Unlock()
+		// Unregister the request exactly once. A second done() on the same
+		// request (reachable via serveWithTimeOut timeout + late handler)
+		// would otherwise delete a *different* live request using a stale
+		// index, breaking InterruptRequest lookup and hanging requests.
+		r.doneOnce.Do(func() {
+			c.reqMux.Lock()
+			this := r.index
+			last := len(c.reqs) - 1
+			if last != this {
+				c.reqs[this] = c.reqs[last]
+				c.reqs[this].index = this
+			}
+			c.reqs = c.reqs[:last]
+			c.reqMux.Unlock()
+		})
 	}
 	return done
 }
