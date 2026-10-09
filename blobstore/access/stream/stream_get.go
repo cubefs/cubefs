@@ -390,11 +390,23 @@ func (h *Handler) readOneBlob(ctx context.Context, getTime *timeReadWrite,
 		}(vuid, buf)
 		return 1
 	}
-	// First wave is the first minShardsRead vuids (empties count toward that
-	// window). After that, start one shard at a time, same as nextChan.
+	// Empty data shards are already success. The first wave launches
+	// (N+MinReadShardsX)-empties real reads and skips empties without
+	// counting them, wherever they sit in IDC order. After that, start
+	// one shard at a time, same as nextChan.
+	firstWave := dataN + h.MinReadShardsX - len(empties)
+	if firstWave < 0 {
+		firstWave = 0
+	}
+	launched := 0
 	pump := func() {
-		for cursor < minShardsRead {
-			if launchAtCursor() < 0 {
+		for launched < firstWave {
+			switch launchAtCursor() {
+			case 0:
+				continue
+			case 1:
+				launched++
+			default:
 				return
 			}
 		}
