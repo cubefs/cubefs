@@ -740,6 +740,10 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 		errorCode = KeyTooLong
 		return
 	}
+	if hasInvalidPathComponent(param.Object()) {
+		errorCode = InvalidKey
+		return
+	}
 	var vol *Volume
 	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("copyObjectHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
@@ -1265,6 +1269,10 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 		errorCode = KeyTooLong
 		return
 	}
+	if hasInvalidPathComponent(param.Object()) {
+		errorCode = InvalidKey
+		return
+	}
 	var vol *Volume
 	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("putObjectHandler: load volume fail: requestID(%v)  volume(%v) err(%v)",
@@ -1494,6 +1502,11 @@ func (o *ObjectNode) postObjectHandler(w http.ResponseWriter, r *http.Request) {
 	if !utf8.ValidString(key) || len(key) > MaxKeyLength {
 		errorCode = MalformedPOSTRequest.Copy()
 		errorCode.ErrorMessage = fmt.Sprintf("%s (%s)", errorCode.ErrorMessage, "Invalid utf8 string or the key is too long")
+		return
+	}
+	if hasInvalidPathComponent(key) {
+		errorCode = MalformedPOSTRequest.Copy()
+		errorCode.ErrorMessage = fmt.Sprintf("%s (%s)", errorCode.ErrorMessage, "Key must not contain '.' or '..' path components")
 		return
 	}
 
@@ -1937,6 +1950,10 @@ func (o *ObjectNode) putObjectXAttrHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if len(param.Object()) == 0 {
+		errorCode = InvalidKey
+		return
+	}
+	if hasInvalidPathComponent(param.Object()) {
 		errorCode = InvalidKey
 		return
 	}
