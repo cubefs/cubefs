@@ -40,12 +40,25 @@ var (
 		},
 		[]string{"cluster_id", "idc", "host", "node", "api", "io_type"},
 	)
+
+	// pendingBrokenDiskMetric is the number of local disks whose data-file EIO is
+	// not promoted to broken yet
+	pendingBrokenDiskMetric = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: "blobstore",
+			Subsystem: "blobnode",
+			Name:      "pending_broken_disk",
+			Help:      "Number of local disks with data-file EIO waiting to be marked broken",
+		},
+		[]string{"cluster_id", "idc", "rack", "host"},
+	)
 )
 
 func init() {
 	prometheus.MustRegister(readBadShardVec)
 	prometheus.MustRegister(diskHealthMetric)
 	prometheus.MustRegister(networkMetric)
+	prometheus.MustRegister(pendingBrokenDiskMetric)
 }
 
 // when find the lost disk, set value 1
@@ -86,4 +99,18 @@ func reportReadBadShard(info clustermgr.BlobNodeDiskInfo) {
 		info.ClusterID.ToString(),
 		info.DiskID.ToString(),
 	).Inc()
+}
+
+func (s *Service) reportPendingBrokenDisks() {
+	s.pendingBrokenDisksMu.RLock()
+	pending := len(s.pendingBrokenDisks)
+	s.pendingBrokenDisksMu.RUnlock()
+
+	node := s.Conf.HostInfo
+	pendingBrokenDiskMetric.WithLabelValues(
+		node.ClusterID.ToString(),
+		node.IDC,
+		node.Rack,
+		node.Host,
+	).Set(float64(pending))
 }

@@ -76,6 +76,7 @@ type Config struct {
 	ChunkProtectionPeriodSec    int `json:"chunk_protection_period_S"`
 	CleanExpiredStatIntervalSec int `json:"clean_expired_stat_interval_S"`
 	DiskStatusCheckIntervalSec  int `json:"disk_status_check_interval_S"`
+	MaxClusterBadDiskNodes      int `json:"max_cluster_bad_disk_nodes"`
 
 	InspectConf DataInspectConf `json:"inspect_conf"`
 	StartMode   StartMode       `json:"start_mode"`
@@ -105,6 +106,7 @@ func configInit(config *Config) {
 	if config.DiskStatusCheckIntervalSec <= 0 {
 		config.DiskStatusCheckIntervalSec = DefaultDiskStatusCheckIntervalSec
 	}
+	defaulter.IntegerLessOrEqual(&config.MaxClusterBadDiskNodes, 3)
 
 	if config.ChunkReportIntervalSec <= 0 {
 		config.ChunkReportIntervalSec = DefaultChunkReportIntervalSec

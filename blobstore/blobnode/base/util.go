@@ -40,6 +40,33 @@ func IsEIO(err error) bool {
 		strings.Contains(errMsg, syscall.ENOMEM.Error())
 }
 
+// DataIOError wraps an EIO from a chunk data file.
+// A data EIO may affect only part of the disk, so the disk is marked broken
+// only when bad disks still span no more than the EC failure-domain limit.
+// Meta EIO is not wrapped and marks the disk broken immediately.
+type DataIOError struct {
+	Err error
+}
+
+func (e *DataIOError) Error() string {
+	if e == nil || e.Err == nil {
+		return ""
+	}
+	return e.Err.Error()
+}
+
+func (e *DataIOError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
+
+func IsDataIOError(err error) bool {
+	var target *DataIOError
+	return err1.As(err, &target)
+}
+
 func IsFileExists(filename string) (bool, error) {
 	absPath, err := filepath.Abs(filename)
 	if err != nil {

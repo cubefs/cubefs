@@ -110,6 +110,7 @@ BlobNode的配置是基于[公有配置](./base.md)，以下配置说明主要�
 	"chunk_protection_period_S": "过期epoch chunk判断创建时间的保护周期, 默认值48小时",
 	"clean_expired_stat_interval_S": "清理过期统计的时间间隔, 默认值60分钟",
 	"disk_status_check_interval_S": "磁盘状态检查的时间间隔, 默认值2分钟",
+	"max_cluster_bad_disk_nodes": "数据文件EIO置坏盘时, 允许集群内坏盘和修复中磁盘所在机器数(含本机)的上限, 超出则延后重试, 待机器数回落到限制内再置坏。meta EIO不受此限制。默认值3",
 	"delete_qps_limit_per_disk": "单盘删除的并发数控制",
 	"shard_repair_concurrency": "后台任务shard repair的并发数控制",
 	"flock_filename": "进程文件锁路径"
@@ -168,6 +169,7 @@ BlobNode的配置是基于[公有配置](./base.md)，以下配置说明主要�
         "host_sync_interval_ms": 3600000
     },
     "chunk_protection_period_S": 600,
+    "max_cluster_bad_disk_nodes": 3,
     "delete_qps_limit_per_disk": 64,
     "shard_repair_concurrency": 100,
     "flock_filename": "/home/service/ebs-blobnode/_package/run/blobnode.0.flock",

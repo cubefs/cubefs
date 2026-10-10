@@ -87,7 +87,6 @@ func (ef *blobFile) ReadAtCtx(ctx context.Context, b []byte, off int64) (n int, 
 		},
 	}
 	err = ef.ioPools[bnapi.GetIoType(ctx)].Submit(task)
-
 	ef.handleError(err)
 	return
 }
@@ -175,7 +174,8 @@ func (ef *blobFile) Close() error {
 
 func (ef *blobFile) handleError(err error) {
 	if base.IsEIO(err) && ef.handleIOError != nil {
-		ef.handleIOError(err)
+		// Chunk data EIO is partial. Meta EIO is reported by the meta db without this wrap.
+		ef.handleIOError(&base.DataIOError{Err: err})
 	}
 }
 

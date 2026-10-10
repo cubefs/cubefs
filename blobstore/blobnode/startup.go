@@ -61,6 +61,8 @@ func NewService(conf Config) (svr *Service, err error) {
 		Disks:            make(map[proto.DiskID]core.DiskAPI),
 		Conf:             &conf,
 		closeCh:          make(chan struct{}),
+
+		pendingBrokenDisks: make(map[proto.DiskID]error),
 	}
 	svr.ctx, svr.cancel = context.WithCancel(context.Background())
 
@@ -99,6 +101,19 @@ func NewService(conf Config) (svr *Service, err error) {
 func (s *Service) handleDiskIOError(ctx context.Context, diskID proto.DiskID, diskErr error) {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("start to handle broken diskID:%d diskErr: %v", diskID, diskErr)
+
+	if base.IsDataIOError(diskErr) {
+		s.handleDataIOError(ctx, diskID, diskErr)
+		return
+	}
+
+	// Meta EIO and other non-data errors mark the disk broken immediately.
+	s.removePendingBrokenDisk(diskID)
+	s.markDiskBroken(ctx, diskID, diskErr)
+}
+
+func (s *Service) markDiskBroken(ctx context.Context, diskID proto.DiskID, diskErr error) {
+	span := trace.SpanFromContextSafe(ctx)
 
 	// limit once. May be used by callback func, when concurrently read/write shard in datafile.go.
 	err := s.BrokenLimitPerDisk.Acquire(diskID)
@@ -683,6 +698,7 @@ func startBlobnodeService(ctx context.Context, svr *Service, conf Config) (err e
 	go svr.loopGcRubbishChunkFile()
 	go svr.loopCleanExpiredStatFile()
 	go svr.inspectMgr.loopDataInspect()
+	go svr.loopPendingBrokenDisks()
 
 	return
 }

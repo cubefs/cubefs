@@ -18,6 +18,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 
 	"github.com/golang/mock/gomock"
@@ -271,6 +272,23 @@ func TestBlobFile_doTaskFnCtxCancel(t *testing.T) {
 	ioPool.EXPECT().Submit(gomock.Any()).Return(context.Canceled)
 	err = ef.Sync()
 	require.ErrorIs(t, err, context.Canceled)
+
+	// Chunk data EIO, including user reads and writes, is reported as DataIOError.
+	var dataEIO int
+	ef.handleIOError = func(err error) {
+		require.True(t, base.IsDataIOError(err))
+		dataEIO++
+	}
+	ioPool.EXPECT().Submit(gomock.Any()).Return(syscall.EIO).Times(2)
+
+	ctx = bnapi.SetIoType(context.Background(), bnapi.ReadIO)
+	_, err = ef.ReadAtCtx(ctx, buf, 0)
+	require.ErrorIs(t, err, syscall.EIO)
+
+	ctx = bnapi.SetIoType(context.Background(), bnapi.WriteIO)
+	_, err = ef.WriteAtCtx(ctx, data, 0)
+	require.ErrorIs(t, err, syscall.EIO)
+	require.Equal(t, 2, dataEIO)
 
 	// Test 10: Panic case for invalid IO type
 	require.Panics(t, func() {

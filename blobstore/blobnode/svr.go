@@ -60,6 +60,11 @@ type Service struct {
 	globalConfig sync.Map
 	singleFlight singleflight.Group
 
+	// pendingBrokenDisks keeps data-file EIOs that must not mark the disk yet.
+	// It is in-memory only: a restart drops it, and the next data EIO records the disk again.
+	pendingBrokenDisksMu sync.RWMutex
+	pendingBrokenDisks   map[proto.DiskID]error
+
 	// ctx is used for initiated requests that
 	// may need to be canceled on server shutdown.
 	ctx    context.Context

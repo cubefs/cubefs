@@ -113,6 +113,7 @@ BlobNode configuration is based on the [public configuration](./base.md), and th
   "chunk_protection_period_S": "protection period for expired epoch chunks based on creation time, default 48 hours",
   "clean_expired_stat_interval_S": "clean expired stat interval, default 60 minutes",
   "disk_status_check_interval_S": "disk status check interval, default 2 minutes",
+  "max_cluster_bad_disk_nodes": "max number of hosts holding broken or repairing disks allowed when a data-file EIO marks a disk broken; the mark is retried later once the host count drops back within the limit. Meta EIO is not restricted. Default 3",
   "delete_qps_limit_per_disk": "concurrency control for single-disk deletions",
   "shard_repair_concurrency": "concurrency control for background task shard repair",
   "flock_filename": "process file lock path"
@@ -172,6 +173,7 @@ BlobNode configuration is based on the [public configuration](./base.md), and th
     "host_sync_interval_ms": 3600000
   },
   "chunk_protection_period_S": 600,
+  "max_cluster_bad_disk_nodes": 3,
   "delete_qps_limit_per_disk": 64,
   "shard_repair_concurrency": 100,
   "flock_filename": "/home/service/ebs-blobnode/_package/run/blobnode.0.flock",
