@@ -134,6 +134,20 @@ func TestMemPoolAllocN(t *testing.T) {
 	require.Equal(t, 0, pool.Status()[0].Running)
 }
 
+func TestMemPoolPutN(t *testing.T) {
+	pool := rp.NewMemPool(map[int]int{mb: 4}, true)
+
+	bufs, err := pool.AllocN(context.Background(), mb/2, 3)
+	require.NoError(t, err)
+	require.Equal(t, 3, pool.Status()[0].Running)
+
+	require.NoError(t, pool.PutN(bufs))
+	require.Equal(t, 0, pool.Status()[0].Running)
+
+	require.NoError(t, pool.PutN(nil))
+	require.NoError(t, pool.PutN([][]byte{nil, {}, make([]byte, 0)}))
+}
+
 func TestMemPoolAllocNNoPartialDeadlock(t *testing.T) {
 	pool := rp.NewMemPool(map[int]int{mb: 4}, true)
 	var wg sync.WaitGroup

@@ -15,8 +15,10 @@
 package ec_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
+	"io"
 	mrand "math/rand"
 	"testing"
 	"time"
@@ -43,6 +45,21 @@ func init() {
 	mrand.Seed(time.Now().Unix())
 }
 
+func poolRunning(p *rp.MemPool) int {
+	n := 0
+	for _, st := range p.Status() {
+		n += st.Running
+	}
+	return n
+}
+
+func newTestEncoder(t *testing.T, tactic codemode.Tactic) ec.Encoder {
+	t.Helper()
+	enc, err := ec.NewEncoder(ec.Config{CodeMode: tactic})
+	require.NoError(t, err)
+	return enc
+}
+
 func TestNewBuffer(t *testing.T) {
 	cm := codemode.EC6P6.Tactic()
 	buffer, err := ec.NewBuffer(context.Background(), kb, cm, memPool)
@@ -51,24 +68,6 @@ func TestNewBuffer(t *testing.T) {
 	require.Equal(t, kb, len(buffer.DataBuf))
 	require.Equal(t, kb64, cap(buffer.DataBuf))
 	require.Equal(t, cap(buffer.ECDataBuf), cap(buffer.DataBuf))
-
-	// mb pool
-	cm = codemode.EC16P20L2.Tactic()
-	buffer, err = ec.NewBuffer(context.Background(), kb64, cm, memPool)
-	require.NoError(t, err)
-	defer buffer.Release()
-	require.Equal(t, kb64, len(buffer.DataBuf))
-	require.Equal(t, mb, cap(buffer.DataBuf))
-	require.Equal(t, cap(buffer.ECDataBuf), cap(buffer.DataBuf))
-
-	// alloc new bytes when no suitable pool, do not put back
-	buffer, err = ec.NewBuffer(context.Background(), kb512, cm, memPool)
-	shardSize := (kb512 + cm.N - 1) / cm.N
-	require.NoError(t, err)
-	require.Equal(t, kb512, len(buffer.DataBuf))
-	require.Equal(t, shardSize*(cm.N+cm.M+cm.L), cap(buffer.DataBuf))
-	require.Equal(t, shardSize*cm.N, len(buffer.ECDataBuf))
-	require.Equal(t, shardSize*(cm.N+cm.M+cm.L), cap(buffer.ECDataBuf))
 }
 
 func TestNewBufferWaitOnLimit(t *testing.T) {
@@ -107,17 +106,8 @@ func TestNewBufferWaitOnLimit(t *testing.T) {
 }
 
 func TestNewRangedBuffer(t *testing.T) {
-	cm := codemode.EC6P6.Tactic()
-	buffer, err := ec.NewBuffer(context.Background(), kb, cm, memPool)
-	require.NoError(t, err)
-	require.Equal(t, kb, len(buffer.DataBuf))
-	require.NotNil(t, buffer.ECDataBuf)
-	require.Equal(t, kb64, cap(buffer.DataBuf))
-	buffer.Release()
-
-	// kb pool in ranged
-	cm = codemode.EC16P20L2.Tactic()
-	buffer, err = ec.NewRangeBuffer(context.Background(), kb4, kb, 2*kb+2, cm, memPool)
+	cm := codemode.EC16P20L2.Tactic()
+	buffer, err := ec.NewRangeBuffer(context.Background(), kb4, kb, 2*kb+2, cm, memPool)
 	require.NoError(t, err)
 	require.Equal(t, kb+2, len(buffer.DataBuf))
 	require.Nil(t, buffer.ECDataBuf)
@@ -179,32 +169,73 @@ func TestBufferResize(t *testing.T) {
 	// _, err = ec.NewBuffer(context.Background(), kb, cm, memPool)
 	// require.ErrorIs(t, err, rp.ErrPoolLimit)
 
-	// mb pool, release kb64 pool
-	err = buffer.Resize(context.Background(), kb64)
+	// still single-block after resize (12KiB ECSize < 128KiB)
+	const data12k = 12 * kb
+	err = buffer.Resize(context.Background(), data12k)
 	require.NoError(t, err)
-	require.Equal(t, kb64, len(buffer.DataBuf))
-	require.Equal(t, mb, cap(buffer.DataBuf))
+	require.NotNil(t, buffer.DataBuf)
+	require.Equal(t, data12k, len(buffer.DataBuf))
+	require.Equal(t, kb64, cap(buffer.DataBuf))
 
-	// old kb64 pool was released
 	buff, err := ec.NewBuffer(context.Background(), kb, cm, memPool)
 	require.NoError(t, err)
 	buff.Release()
 }
 
 func TestBufferRelease(t *testing.T) {
-	{
-		var buffer *ec.Buffer
-		require.NoError(t, buffer.Release())
-	}
-	{
-		buffer := &ec.Buffer{}
-		require.NoError(t, buffer.Release())
-	}
-	{
-		buffer, err := ec.NewBuffer(context.Background(), kb, codemode.EC6P6.Tactic(), memPool)
+	t.Run("NilReceiver", func(t *testing.T) {
+		var nilBuf *ec.Buffer
+		require.NoError(t, nilBuf.Release())
+	})
+
+	t.Run("EmptyBuffer", func(t *testing.T) {
+		empty := &ec.Buffer{}
+		require.NoError(t, empty.Release())
+	})
+
+	t.Run("SingleBlock", func(t *testing.T) {
+		pool := rp.NewMemPool(map[int]int{128 << 10: 4}, false)
+		cm := codemode.EC6P6.Tactic()
+		const data12k = 12 * kb
+
+		before := poolRunning(pool)
+		buf, err := ec.NewBuffer(context.Background(), data12k, cm, pool)
 		require.NoError(t, err)
-		require.NoError(t, buffer.Release())
-	}
+		require.NotNil(t, buf.DataBuf)
+		require.Equal(t, before+1, poolRunning(pool))
+
+		enc := newTestEncoder(t, cm)
+		_, err = buf.Split(enc)
+		require.NoError(t, err)
+		require.NoError(t, buf.ReleaseShard(0))
+		require.Equal(t, before+1, poolRunning(pool))
+
+		require.NoError(t, buf.Release())
+		require.Equal(t, before, poolRunning(pool))
+		require.NoError(t, buf.Release())
+		require.Equal(t, before, poolRunning(pool))
+	})
+
+	t.Run("PerShard", func(t *testing.T) {
+		pool := rp.NewMemPool(map[int]int{16 << 10: 20}, false)
+		cm := codemode.EC6P6.Tactic()
+		const data64k = 64 * kb
+		nShards := cm.N + cm.M + cm.L
+
+		before := poolRunning(pool)
+		buf, err := ec.NewBuffer(context.Background(), data64k, cm, pool)
+		require.NoError(t, err)
+		require.Nil(t, buf.DataBuf)
+		require.Equal(t, before+nShards, poolRunning(pool))
+
+		require.NoError(t, buf.ReleaseShard(0))
+		require.Equal(t, before+nShards-1, poolRunning(pool))
+		require.NoError(t, buf.ReleaseShard(0))
+		require.Equal(t, before+nShards-1, poolRunning(pool))
+
+		require.NoError(t, buf.Release())
+		require.Equal(t, before, poolRunning(pool))
+	})
 }
 
 func TestBufferDataPadding(t *testing.T) {
@@ -232,10 +263,94 @@ func TestBufferDataPadding(t *testing.T) {
 		buf[buffer.DataSize:buffer.ShardSize*cm.N])
 
 	for ii := 0; ii < 100; ii++ {
-		err = buffer.Resize(context.Background(), mrand.Intn(mb*6)+1)
+		// Keep ECSize below per-shard threshold (single-block padding path).
+		nextSize := mrand.Intn(8*kb) + 1
+		err = buffer.Resize(context.Background(), nextSize)
 		require.NoError(t, err)
+		require.NotNil(t, buffer.DataBuf)
 		buf = buffer.DataBuf[:cap(buffer.DataBuf)]
 		require.Equal(t, zero[:buffer.ShardSize*cm.N-buffer.DataSize],
 			buf[buffer.DataSize:buffer.ShardSize*cm.N])
+	}
+}
+
+func TestBufferPerShardAllocNFailure(t *testing.T) {
+	cm := codemode.EC6P6.Tactic()
+	const data64k = 64 * kb
+	pool := rp.NewMemPool(map[int]int{16 << 10: cm.N + cm.M + cm.L - 1}, true)
+
+	before := poolRunning(pool)
+	_, err := ec.NewBuffer(context.Background(), data64k, cm, pool)
+	require.Error(t, err)
+	require.Equal(t, before, poolRunning(pool))
+}
+
+func legacySingleBlockEncode(t *testing.T, pool *rp.MemPool, enc ec.Encoder, tactic codemode.Tactic, payload []byte) [][]byte {
+	t.Helper()
+	sizes, err := ec.GetBufferSizes(len(payload), tactic)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	buf, err := pool.Get(ctx, sizes.ECSize)
+	if err == rp.ErrNoSuitableSizeClass {
+		buf, err = pool.Alloc(ctx, sizes.ECSize)
+	}
+	require.NoError(t, err)
+	defer pool.Put(buf)
+
+	pool.Zero(buf[sizes.DataSize:sizes.ECDataSize])
+	_, err = io.ReadFull(bytes.NewReader(payload), buf[:sizes.DataSize])
+	require.NoError(t, err)
+
+	shards, err := enc.Split(buf[:sizes.ECDataSize])
+	require.NoError(t, err)
+	require.NoError(t, enc.Encode(shards))
+	return shards
+}
+
+func TestBufferReadSplitEncodeMatchesSingleBlock(t *testing.T) {
+	cases := []struct {
+		name     string
+		tactic   codemode.Tactic
+		dataSize int
+	}{
+		{"ec6p6-12k", codemode.EC6P6.Tactic(), 12 * kb},
+		{"ec6p6-64k", codemode.EC6P6.Tactic(), 64 * kb},
+		{"ec16p20l2-12k", codemode.EC16P20L2.Tactic(), 12 * kb},
+		{"ec16p20l2-64k", codemode.EC16P20L2.Tactic(), 64 * kb},
+	}
+
+	pool := rp.NewMemPool(map[int]int{
+		2 << 10:   64,
+		16 << 10:  64,
+		128 << 10: 64,
+		512 << 10: 64,
+		1 << 20:   64,
+	}, false)
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			payload := make([]byte, tc.dataSize)
+			_, err := rand.Read(payload)
+			require.NoError(t, err)
+
+			enc := newTestEncoder(t, tc.tactic)
+			refShards := legacySingleBlockEncode(t, pool, enc, tc.tactic, payload)
+
+			buf, err := ec.NewBuffer(context.Background(), tc.dataSize, tc.tactic, pool)
+			require.NoError(t, err)
+			defer buf.Release()
+			n, err := buf.Read(bytes.NewReader(payload))
+			require.NoError(t, err)
+			require.Equal(t, tc.dataSize, n)
+			shards, err := buf.Split(enc)
+			require.NoError(t, err)
+			require.NoError(t, enc.Encode(shards))
+
+			require.Len(t, shards, len(refShards))
+			for i := range shards {
+				require.Equal(t, refShards[i], shards[i])
+			}
+		})
 	}
 }

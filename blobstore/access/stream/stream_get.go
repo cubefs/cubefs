@@ -229,14 +229,14 @@ func (h *Handler) Get(ctx context.Context, w io.Writer, location proto.Location,
 					err = h.readOneBlob(ctx, getTime, serviceController, blob, sortedVuids, shards)
 					if err != nil {
 						spanpipe.Error("read one blob", blob.ID(), err)
-						h.putBufs(shards)
+						h.memPool.PutN(shards)
 						ch <- pipeBuffer{err: err}
 						return
 					}
 
 					select {
 					case <-closeCh:
-						h.putBufs(shards)
+						h.memPool.PutN(shards)
 						return
 					case ch <- pipeBuffer{blob: blob, shards: shards}:
 					}
@@ -258,10 +258,15 @@ func (h *Handler) Get(ctx context.Context, w io.Writer, location proto.Location,
 			idx := 0
 			off := line.blob.Offset
 			toReadSize := line.blob.ReadSize
+			putCopiedShard := func() {
+				_ = h.memPool.Put(line.shards[idx])
+				line.shards[idx] = nil
+			}
 			for toReadSize > 0 {
 				buf := line.shards[idx]
 				l := uint64(len(buf))
 				if off >= l {
+					putCopiedShard()
 					idx++
 					off -= l
 					continue
@@ -272,6 +277,7 @@ func (h *Handler) Get(ctx context.Context, w io.Writer, location proto.Location,
 					err = errors.Info(e, "write to response")
 					break
 				}
+				putCopiedShard()
 				idx++
 				off = 0
 				toReadSize -= toRead
@@ -279,7 +285,7 @@ func (h *Handler) Get(ctx context.Context, w io.Writer, location proto.Location,
 
 			getTime.IncW(time.Since(startWrite))
 
-			h.putBufs(line.shards)
+			h.memPool.PutN(line.shards)
 			if err != nil {
 				close(closeCh)
 				break
@@ -289,7 +295,7 @@ func (h *Handler) Get(ctx context.Context, w io.Writer, location proto.Location,
 		// release buffer in pipeline if fail to write client
 		go func() {
 			for line := range pipeline {
-				h.putBufs(line.shards)
+				h.memPool.PutN(line.shards)
 			}
 		}()
 
@@ -334,7 +340,7 @@ func (h *Handler) readOneBlob(ctx context.Context, getTime *timeReadWrite,
 		free = append(free, buf)
 		shards[i] = nil
 	}
-	defer func() { h.putBufs(free) }()
+	defer func() { h.memPool.PutN(free) }()
 
 	stopChan := make(chan struct{})
 	var stopOnce sync.Once
@@ -681,14 +687,6 @@ func (h *Handler) readOneShard(ctx context.Context, serviceController controller
 	shardResult.status = true
 	shardResult.time = int(time.Since(shardStart))
 	return shardResult
-}
-
-func (h *Handler) putBufs(bufs [][]byte) {
-	for _, buf := range bufs {
-		if cap(buf) > 0 {
-			h.memPool.Put(buf)
-		}
-	}
 }
 
 func (h *Handler) getDataShardOnly(ctx context.Context, getTime *timeReadWrite,

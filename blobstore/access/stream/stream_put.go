@@ -135,14 +135,8 @@ func (h *Handler) Put(ctx context.Context,
 		}
 		empties := emptyDataShardIndexes(buffer.BufferSizes)
 
-		readBuff := buffer.DataBuf[:bsize]
-		shards, err := encoder.Split(buffer.ECDataBuf)
-		if err != nil {
-			return nil, err
-		}
-
 		startRead := time.Now()
-		n, err := io.ReadFull(limitReader, readBuff)
+		n, err := buffer.Read(limitReader)
 		putTime.IncR(time.Since(startRead))
 		if err != nil && err != io.EOF {
 			span.Infof("read blob data failed want:%d read:%d %s", bsize, n, err.Error())
@@ -153,7 +147,11 @@ func (h *Handler) Put(ctx context.Context,
 			return nil, errcode.ErrAccessReadRequestBody
 		}
 
-		// ec encode
+		shards, err := buffer.Split(encoder)
+		if err != nil {
+			return nil, err
+		}
+
 		if err = encoder.Encode(shards); err != nil {
 			return nil, err
 		}
@@ -166,7 +164,7 @@ func (h *Handler) Put(ctx context.Context,
 		buffer = nil
 		<-ready
 		startWrite := time.Now()
-		err = h.writeToBlobnodesWithHystrix(ctx, blobident, shards, empties, func() {
+		err = h.writeToBlobnodesWithHystrix(ctx, blobident, shards, empties, takeoverBuffer, func() {
 			takeoverBuffer.Release()
 			ready <- struct{}{}
 		})
@@ -181,12 +179,12 @@ func (h *Handler) Put(ctx context.Context,
 }
 
 func (h *Handler) writeToBlobnodesWithHystrix(ctx context.Context,
-	blob blobIdent, shards [][]byte, empties map[int]struct{}, callback func(),
+	blob blobIdent, shards [][]byte, empties map[int]struct{}, ecBuf *ec.Buffer, callback func(),
 ) error {
 	safe := make(chan struct{}, 1)
 	err := hystrix.Do(rwCommand, func() error {
 		safe <- struct{}{}
-		return h.writeToBlobnodes(ctx, blob, shards, empties, callback)
+		return h.writeToBlobnodes(ctx, blob, shards, empties, ecBuf, callback)
 	}, nil)
 
 	select {
@@ -206,7 +204,7 @@ type shardPutStatus struct {
 // takeover ec buffer release by callback.
 // return if had quorum successful shards, then wait all shards in background.
 func (h *Handler) writeToBlobnodes(ctx context.Context,
-	blob blobIdent, shards [][]byte, empties map[int]struct{}, callback func(),
+	blob blobIdent, shards [][]byte, empties map[int]struct{}, ecBuf *ec.Buffer, callback func(),
 ) (err error) {
 	clusterID, vid, bid := blob.cid, blob.vid, blob.bid
 
@@ -257,6 +255,9 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 			status := shardPutStatus{index: index}
 			defer func() {
 				statusCh <- status
+				if ecBuf != nil {
+					_ = ecBuf.ReleaseShard(index)
+				}
 				wg.Done()
 			}()
 

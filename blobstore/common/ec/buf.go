@@ -16,11 +16,15 @@ package ec
 
 import (
 	"context"
+	"io"
 
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/resourcepool"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
+
+// putPerShardECSizeThreshold: ECSize >= 128KiB uses one MemPool buffer per shard.
+const putPerShardECSizeThreshold = 128 << 10
 
 // Buffer one ec blob's reused buffer
 // Manually manage the DataBuf in Ranged mode, do not Split it
@@ -39,10 +43,15 @@ type Buffer struct {
 	tactic codemode.Tactic
 	pool   *resourcepool.MemPool
 
+	perShard bool
+	// shardBufs holds N+M+L pool buffers when perShard is true.
+	// nil slot means the shard was already returned to the pool.
+	shardBufs [][]byte
+
 	// DataBuf real data buffer
 	DataBuf []byte
 	// ECDataBuf ec data buffer to Split,
-	// is nil if Buffer is Ranged mode
+	// is nil if Buffer is Ranged mode or perShard
 	ECDataBuf []byte
 	// BufferSizes all sizes
 	BufferSizes
@@ -85,6 +94,31 @@ func newBuffer(ctx context.Context, dataSize, from, to int, tactic codemode.Tact
 	ecDataSize := shardSize * tactic.N
 	ecSize := shardSize * (tactic.N + tactic.M + tactic.L)
 
+	sizes := BufferSizes{
+		ShardSize:  shardSize,
+		DataSize:   dataSize,
+		ECDataSize: ecDataSize,
+		ECSize:     ecSize,
+		From:       from,
+		To:         to,
+	}
+
+	perShard := hasParity && pool != nil && ecSize >= putPerShardECSizeThreshold
+	if perShard {
+		nShards := tactic.N + tactic.M + tactic.L
+		shardBufs, err := pool.AllocN(ctx, shardSize, nShards)
+		if err != nil {
+			return nil, err
+		}
+		return &Buffer{
+			tactic:      tactic,
+			pool:        pool,
+			perShard:    true,
+			shardBufs:   shardBufs,
+			BufferSizes: sizes,
+		}, nil
+	}
+
 	var (
 		err error
 
@@ -119,18 +153,11 @@ func newBuffer(ctx context.Context, dataSize, from, to int, tactic codemode.Tact
 	}
 
 	return &Buffer{
-		tactic:    tactic,
-		pool:      pool,
-		DataBuf:   dataBuf,
-		ECDataBuf: ecDataBuf,
-		BufferSizes: BufferSizes{
-			ShardSize:  shardSize,
-			DataSize:   dataSize,
-			ECDataSize: ecDataSize,
-			ECSize:     ecSize,
-			From:       from,
-			To:         to,
-		},
+		tactic:      tactic,
+		pool:        pool,
+		DataBuf:     dataBuf,
+		ECDataBuf:   ecDataBuf,
+		BufferSizes: sizes,
 	}, nil
 }
 
@@ -153,6 +180,61 @@ func GetBufferSizes(dataSize int, tactic codemode.Tactic) (BufferSizes, error) {
 	return buf.BufferSizes, nil
 }
 
+// Read reads blob data into the buffer. Per-shard mode fills data shards and zeroes padding.
+func (b *Buffer) Read(r io.Reader) (int, error) {
+	if b.perShard {
+		return b.readPerShard(r)
+	}
+	return io.ReadFull(r, b.DataBuf)
+}
+
+func (b *Buffer) readPerShard(r io.Reader) (int, error) {
+	n := b.tactic.N
+	shardSize := b.ShardSize
+	remaining := b.DataSize
+	total := 0
+
+	for i := 0; i < n && remaining > 0; i++ {
+		chunk := shardSize
+		if chunk > remaining {
+			chunk = remaining
+		}
+		shard := b.shardBufs[i]
+		readN, err := io.ReadFull(r, shard[:chunk])
+		total += readN
+		if err != nil {
+			return total, err
+		}
+		if chunk < shardSize {
+			b.pool.Zero(shard[chunk:shardSize])
+		}
+		remaining -= chunk
+	}
+	if remaining > 0 {
+		return total, io.ErrUnexpectedEOF
+	}
+	// Per-shard Put (ECSize >= 128KiB): all N data shards carry payload; no trailing all-empty data shards to zero.
+	return total, nil
+}
+
+// Split returns EC shards. Single-block mode splits ECDataBuf; per-shard mode returns AllocN buffers.
+func (b *Buffer) Split(enc Encoder) ([][]byte, error) {
+	if b.perShard {
+		return b.shardBufs, nil
+	}
+	return enc.Split(b.ECDataBuf)
+}
+
+// ReleaseShard returns one per-shard buffer to the pool. No-op in single-block mode.
+func (b *Buffer) ReleaseShard(i int) error {
+	if !b.perShard || b.shardBufs[i] == nil {
+		return nil
+	}
+	buf := b.shardBufs[i]
+	b.shardBufs[i] = nil
+	return b.pool.Put(buf)
+}
+
 // Resize re-calculate ec buffer, alloc a new buffer if oversize
 func (b *Buffer) Resize(ctx context.Context, dataSize int) error {
 	if dataSize == b.BufferSizes.DataSize {
@@ -164,8 +246,11 @@ func (b *Buffer) Resize(ctx context.Context, dataSize int) error {
 		return err
 	}
 
-	// buffer is enough
-	if sizes.ECSize <= cap(b.DataBuf) {
+	canReuseCap := !b.perShard &&
+		sizes.ECSize < putPerShardECSizeThreshold &&
+		sizes.ECSize <= cap(b.DataBuf)
+
+	if canReuseCap {
 		buf := b.DataBuf[:cap(b.DataBuf)]
 		// zero the padding bytes of data section
 		b.pool.Zero(buf[sizes.DataSize:sizes.ECDataSize])
@@ -191,6 +276,14 @@ func (b *Buffer) Release() error {
 	if b == nil {
 		return nil
 	}
+	if b.perShard {
+		pool := b.pool
+		shards := b.shardBufs
+		b.pool = nil
+		b.shardBufs = nil
+		return pool.PutN(shards)
+	}
+
 	if b.DataBuf == nil {
 		b.pool = nil
 		return nil

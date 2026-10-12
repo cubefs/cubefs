@@ -66,13 +66,8 @@ func (h *Handler) PutAt(ctx context.Context, rc io.Reader,
 		putTime.Report(clusterID.ToString(), h.IDC, true)
 	}()
 
-	shards, err := encoder.Split(buffer.ECDataBuf)
-	if err != nil {
-		return err
-	}
-
 	startRead := time.Now()
-	n, err := io.ReadFull(rc, buffer.DataBuf)
+	n, err := buffer.Read(rc)
 	putTime.IncR(time.Since(startRead))
 	if err != nil && err != io.EOF {
 		span.Info("read blob data from request body", err)
@@ -81,6 +76,11 @@ func (h *Handler) PutAt(ctx context.Context, rc io.Reader,
 	if n != readSize {
 		span.Infof("want to read %d, but %d", readSize, n)
 		return errcode.ErrAccessReadRequestBody
+	}
+
+	shards, err := buffer.Split(encoder)
+	if err != nil {
+		return err
 	}
 
 	if err = encoder.Encode(shards); err != nil {
@@ -93,7 +93,7 @@ func (h *Handler) PutAt(ctx context.Context, rc io.Reader,
 	takeoverBuffer := buffer
 	buffer = nil
 	startWrite := time.Now()
-	err = h.writeToBlobnodesWithHystrix(ctx, blobident, shards, empties, func() {
+	err = h.writeToBlobnodesWithHystrix(ctx, blobident, shards, empties, takeoverBuffer, func() {
 		takeoverBuffer.Release()
 	})
 	putTime.IncW(time.Since(startWrite))

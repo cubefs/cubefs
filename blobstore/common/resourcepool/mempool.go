@@ -162,6 +162,18 @@ func (p *MemPool) Put(b []byte) error {
 	return ErrNoSuitableSizeClass
 }
 
+// PutN returns each buffer to the pool. Buffers with cap 0 are skipped.
+// When multiple puts fail, the last error is returned.
+func (p *MemPool) PutN(bufs [][]byte) error {
+	var err error
+	for _, buf := range bufs {
+		if cap(buf) > 0 {
+			err = p.Put(buf)
+		}
+	}
+	return err
+}
+
 // Zero clean up the buffer b to zero bytes
 func (p *MemPool) Zero(b []byte) {
 	Zero(b)
