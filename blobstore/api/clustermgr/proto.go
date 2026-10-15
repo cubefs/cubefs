@@ -96,6 +96,7 @@ type APIBlobnode interface {
 	AddDisk(ctx context.Context, info *BlobNodeDiskInfo) (err error)
 	DiskInfo(ctx context.Context, id proto.DiskID) (ret *BlobNodeDiskInfo, err error)
 	SetDisk(ctx context.Context, id proto.DiskID, status proto.DiskStatus) (err error)
+	SetReadonlyDisk(ctx context.Context, id proto.DiskID, readonly bool) (err error)
 	AllocDiskID(ctx context.Context) (proto.DiskID, error)
 	SetCompactChunk(ctx context.Context, args *SetCompactChunkArgs) (err error)
 	ListVolumeUnit(ctx context.Context, args *ListVolumeUnitArgs) ([]*VolumeUnitInfo, error)

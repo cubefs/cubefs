@@ -29,7 +29,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
-	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 /*
@@ -290,11 +289,11 @@ func (s *Service) handleDataIOError(ctx context.Context, diskID proto.DiskID, di
 	allow, err := s.allowBrokenDisk(ctx, diskID)
 	if err != nil {
 		trace.SpanFromContextSafe(ctx).Errorf("check data broken diskID:%d err:%v", diskID, err)
-		s.addPendingBrokenDisk(diskID, diskErr)
+		s.addPendingBrokenDisk(ctx, diskID, diskErr)
 		return
 	}
 	if !allow {
-		s.addPendingBrokenDisk(diskID, diskErr)
+		s.addPendingBrokenDisk(ctx, diskID, diskErr)
 		return
 	}
 
@@ -309,7 +308,14 @@ func (s *Service) isPendingBrokenDisk(diskID proto.DiskID) bool {
 	return ok
 }
 
-func (s *Service) addPendingBrokenDisk(diskID proto.DiskID, diskErr error) {
+func (s *Service) addPendingBrokenDisk(ctx context.Context, diskID proto.DiskID, diskErr error) {
+	span := trace.SpanFromContextSafe(ctx)
+	// Request CM to mark the disk readonly before queueing it. This keeps the disk
+	// status normal, while new allocations stop landing on it.
+	if err := s.ClusterMgrClient.SetReadonlyDisk(ctx, diskID, true); err != nil {
+		span.Errorf("set disk readonly before pending, diskID:%d err:%v", diskID, err)
+	}
+
 	s.pendingBrokenDisksMu.Lock()
 	if s.pendingBrokenDisks == nil {
 		s.pendingBrokenDisks = make(map[proto.DiskID]error)
@@ -324,7 +330,7 @@ func (s *Service) addPendingBrokenDisk(diskID proto.DiskID, diskErr error) {
 		return
 	}
 	s.reportPendingBrokenDisks()
-	log.Warnf("pending broken disk, diskID:%d err:%v", diskID, diskErr)
+	span.Warnf("pending broken disk, diskID:%d err:%v", diskID, diskErr)
 }
 
 func (s *Service) removePendingBrokenDisk(diskID proto.DiskID) {
