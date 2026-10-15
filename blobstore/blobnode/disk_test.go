@@ -339,6 +339,7 @@ func newMarkableBrokenDisk(t *testing.T, limit int) (*Service, *mocks.MockClient
 		return diskID
 	}).AnyTimes()
 	cm := mocks.NewMockClientAPI(ctrl)
+	cm.EXPECT().SetReadonlyDisk(gomock.Any(), diskID, true).Return(nil).AnyTimes()
 	cm.EXPECT().SetDisk(gomock.Any(), diskID, proto.DiskStatusBroken).Return(nil)
 	s := newPendingBrokenDisksService(map[proto.DiskID]core.DiskAPI{diskID: ds}, cm, limit)
 	return s, cm, diskID, started

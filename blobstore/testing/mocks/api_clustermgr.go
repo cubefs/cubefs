@@ -383,6 +383,20 @@ func (m *MockClientAPI) SetDisk(arg0 context.Context, arg1 proto.DiskID, arg2 pr
 	return ret0
 }
 
+// SetReadonlyDisk mocks base method.
+func (m *MockClientAPI) SetReadonlyDisk(arg0 context.Context, arg1 proto.DiskID, arg2 bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetReadonlyDisk", arg0, arg1, arg2)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetReadonlyDisk indicates an expected call of SetReadonlyDisk.
+func (mr *MockClientAPIMockRecorder) SetReadonlyDisk(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetReadonlyDisk", reflect.TypeOf((*MockClientAPI)(nil).SetReadonlyDisk), arg0, arg1, arg2)
+}
+
 // SetDisk indicates an expected call of SetDisk.
 func (mr *MockClientAPIMockRecorder) SetDisk(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
