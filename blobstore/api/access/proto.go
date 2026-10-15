@@ -249,7 +249,7 @@ func (args *PutAtArgs) IsValid() bool {
 	return args.ClusterID > proto.ClusterID(0) &&
 		args.Vid > proto.Vid(0) &&
 		args.BlobID > proto.BlobID(0) &&
-		args.Size > 0
+		args.Size > 0 && args.Size <= int64(MaxBlobSize)
 }
 
 // PutAtResp putat response result
@@ -340,7 +340,7 @@ func (args *DeleteBlobArgs) IsValid() bool {
 	return args.ClusterID > proto.ClusterID(0) &&
 		args.Vid > proto.Vid(0) &&
 		args.BlobID > proto.BlobID(0) &&
-		args.Size > 0
+		args.Size > 0 && args.Size <= int64(MaxBlobSize)
 }
 
 // SignArgs for service /sign
