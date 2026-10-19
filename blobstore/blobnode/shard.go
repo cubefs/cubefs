@@ -218,6 +218,18 @@ func (s *Service) ShardsGet(c *rpc.Context) {
 		return
 	}
 
+	qosLmt, exist := ds.GetIoQos().GetQueueQos(ctx)
+	if !exist {
+		span.Errorf("fail to get qos mgr, disk:%d", cs.Disk().ID())
+		c.RespondError(bloberr.ErrInternal)
+		return
+	}
+	if err := qosLmt.AcquireBatch(); err != nil {
+		c.RespondError(err)
+		return
+	}
+	defer qosLmt.ReleaseBatch()
+
 	// build shard reader
 	shard, err := core.NewBatchShardReader(args.Bids, args.Vuid, w, ds.GetConfig().BatchBufferSize)
 	if err != nil {

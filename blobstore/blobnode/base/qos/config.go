@@ -26,11 +26,12 @@ import (
 )
 
 const (
-	defaultMaxIops        = 2000
-	defaultMaxMBps        = 250
-	defaultIntervalMs     = 500
-	defaultIdleFactor     = 0.2
-	defaultBidConcurrency = 1
+	defaultMaxIops          = 2000
+	defaultMaxMBps          = 250
+	defaultIntervalMs       = 500
+	defaultIdleFactor       = 0.2
+	defaultBidConcurrency   = 1
+	defaultBatchConcurrency = 4
 )
 
 var (
@@ -57,6 +58,7 @@ type CommonDiskConfig struct {
 	DiskBandwidthMB  int64   `json:"disk_bandwidth_mb"`  // disk total bandwidth MB/s
 	UpdateIntervalMs int64   `json:"update_interval_ms"` // dynamic update limiter interval
 	DiskIdleFactor   float64 `json:"disk_idle_factor"`   // disk is idle, raise rate factor
+	BatchConcurrency int64   `json:"batch_concurrency"`  // disk-level ShardsGet concurrency, shared by all io types
 
 	DiskID proto.DiskID `json:"-"`
 }
@@ -100,6 +102,7 @@ func initAndFixQosConfig(conf *Config, fillEmpty bool) error {
 		defaulter.IntegerLessOrEqual(&conf.DiskBandwidthMB, defaultMaxMBps)
 		defaulter.IntegerLessOrEqual(&conf.UpdateIntervalMs, defaultIntervalMs)
 		defaulter.FloatLessOrEqual(&conf.DiskIdleFactor, defaultIdleFactor)
+		defaulter.IntegerLessOrEqual(&conf.BatchConcurrency, defaultBatchConcurrency)
 	}
 
 	for ioTypeStr := range conf.Level {
@@ -175,6 +178,9 @@ func (c *CommonDiskConfig) resetDisk(conf CommonDiskConfig) {
 	}
 	if conf.DiskIops > 0 {
 		c.DiskIops = conf.DiskIops
+	}
+	if conf.BatchConcurrency > 0 {
+		c.BatchConcurrency = conf.BatchConcurrency
 	}
 }
 

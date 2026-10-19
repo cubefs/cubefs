@@ -70,9 +70,10 @@ type LimiterStat struct {
 
 // IoLimiterStats single level qos type limiter stats
 type IoLimiterStats struct {
-	Concurrency    LimiterStat `json:"concurrency"`
-	BidConcurrency LimiterStat `json:"bid_concurrency"`
-	Bandwidth      LimiterStat `json:"bandwidth"`
+	Concurrency      LimiterStat `json:"concurrency"`
+	BidConcurrency   LimiterStat `json:"bid_concurrency"`
+	BatchConcurrency LimiterStat `json:"batch_concurrency,omitempty"` // disk-wide Batch; only background reports it
+	Bandwidth        LimiterStat `json:"bandwidth"`
 }
 
 type QosStatArgs struct {

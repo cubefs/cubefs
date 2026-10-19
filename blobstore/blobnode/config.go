@@ -217,6 +217,8 @@ func (s *Service) resetQosDiskConf(ctx context.Context, diskKey, diskVal string)
 		diskConf.DiskBandwidthMB, err = parseQosArgsInt(diskVal)
 	case "disk_idle_factor":
 		diskConf.DiskIdleFactor, err = parseQosArgsFloat(diskVal)
+	case "batch_concurrency":
+		diskConf.BatchConcurrency, err = parseQosArgsInt(diskVal)
 	default:
 		return ErrNotSupportKey
 	}

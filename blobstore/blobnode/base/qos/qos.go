@@ -36,6 +36,7 @@ import (
 
 const (
 	limitConcurrencyKey = 0xffffffff
+	limitBatchKey       = 0xffffffff
 	emaMultiple         = 1000
 	reasonBusy          = "busy"
 	reasonIdle          = "idle"
@@ -52,15 +53,18 @@ type QosAPI interface {
 	Release()
 	AcquireBid(uint64) error
 	ReleaseBid(uint64)
+	AcquireBatch() error
+	ReleaseBatch()
 	Delete(ctx context.Context, size int64, fn func() error) error
 }
 
 // QosMgr manages QoS for different IO types
 type QosMgr struct {
-	qos    map[bnapi.IOType]*queueQos
-	conf   Config
-	lck    sync.Mutex // lock conf, for hot update config
-	closed closer.Closer
+	qos        map[bnapi.IOType]*queueQos
+	conf       Config
+	lck        sync.Mutex // lock conf, for hot update config
+	closed     closer.Closer
+	limitBatch limit.ResettableLimiter
 }
 
 // NewQosMgr creates a QoS manager with specified configuration(per disk)
@@ -71,8 +75,9 @@ func NewQosMgr(conf Config) (*QosMgr, error) {
 	closed := closer.New()
 
 	mgr := &QosMgr{
-		conf:   conf,
-		closed: closed,
+		conf:       conf,
+		closed:     closed,
+		limitBatch: keycount.New(int(conf.BatchConcurrency)),
 	}
 	mgr.qos = map[bnapi.IOType]*queueQos{
 		bnapi.ReadIO:       newQueueQos(bnapi.ReadIO, conf, closed, mgr),
@@ -112,6 +117,10 @@ func (mgr *QosMgr) GetConfig() FlowConfig {
 // ResetDiskConfig updates QosMgr config and level common disk limits based on new configuration
 func (mgr *QosMgr) ResetDiskConfig(diskConf CommonDiskConfig) {
 	mgr.setDiskConfig(diskConf)
+
+	if diskConf.BatchConcurrency > 0 {
+		mgr.limitBatch.Reset(int(diskConf.BatchConcurrency))
+	}
 }
 
 // ResetLevelConfig updates QosMgr config and level flow limits configuration
@@ -146,8 +155,13 @@ func (mgr *QosMgr) getDiskConfig() CommonDiskConfig {
 	return mgr.conf.CommonDiskConfig
 }
 
+func (mgr *QosMgr) getBatchLimit() limit.ResettableLimiter {
+	return mgr.limitBatch
+}
+
 type diskConfigGetter interface {
 	getDiskConfig() CommonDiskConfig
+	getBatchLimit() limit.ResettableLimiter
 }
 
 // queueQos limit disk bandwidth rate, iops rate and iops total rate, dynamic adjust rate
@@ -252,6 +266,17 @@ func (q *queueQos) AcquireBid(bid uint64) (err error) {
 // ReleaseBid frees a bid-specific concurrency slot
 func (q *queueQos) ReleaseBid(bid uint64) {
 	q.limitBid.Release(bid)
+}
+
+func (q *queueQos) AcquireBatch() (err error) {
+	if err = q.getter.getBatchLimit().Acquire(limitBatchKey); err != nil {
+		return errcode.ErrOverload
+	}
+	return nil
+}
+
+func (q *queueQos) ReleaseBatch() {
+	q.getter.getBatchLimit().Release(limitBatchKey)
 }
 
 // ReserveN reserves n tokens from bandwidth limiter
@@ -405,11 +430,23 @@ func (q *queueQos) getLimiterStats() bnapi.IoLimiterStats {
 	bidCap := int(q.conf.BidConcurrency)
 	// maxCapacityBps := q.limitBps.Burst() // max limiter token capacity
 	// remainBps := int(q.limitBps.Tokens()) // current remain limiter tokens
-	return bnapi.IoLimiterStats{
+	stat := bnapi.IoLimiterStats{
 		Concurrency:    bnapi.LimiterStat{Running: conRunning, Capacity: conCap, Remaining: util.Max(conCap-conRunning, 0)},
 		BidConcurrency: bnapi.LimiterStat{Running: bidRunning, Capacity: bidCap, Remaining: util.Max(bidCap-bidRunning, 0)},
 		Bandwidth:      bnapi.LimiterStat{Running: -1, Capacity: int(q.limitBps.Limit()), Remaining: -1},
 	}
+
+	// Batch is background IO. Other levels leave this nil so the field is omitted from the stat output.
+	if q.conf.IOType == bnapi.BackgroundIO {
+		batchRunning := q.getter.getBatchLimit().Running()
+		batchCap := int(q.getter.getDiskConfig().BatchConcurrency)
+		stat.BatchConcurrency = bnapi.LimiterStat{
+			Running:   batchRunning,
+			Capacity:  batchCap,
+			Remaining: util.Max(batchCap-batchRunning, 0),
+		}
+	}
+	return stat
 }
 
 // initLimiter creates a new rate limiter with specified bandwidth

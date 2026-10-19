@@ -49,6 +49,20 @@ func (mr *MockQosAPIMockRecorder) Acquire() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Acquire", reflect.TypeOf((*MockQosAPI)(nil).Acquire))
 }
 
+// AcquireBatch mocks base method.
+func (m *MockQosAPI) AcquireBatch() error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AcquireBatch")
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AcquireBatch indicates an expected call of AcquireBatch.
+func (mr *MockQosAPIMockRecorder) AcquireBatch() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AcquireBatch", reflect.TypeOf((*MockQosAPI)(nil).AcquireBatch))
+}
+
 // AcquireBid mocks base method.
 func (m *MockQosAPI) AcquireBid(arg0 uint64) error {
 	m.ctrl.T.Helper()
@@ -115,6 +129,18 @@ func (m *MockQosAPI) Release() {
 func (mr *MockQosAPIMockRecorder) Release() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Release", reflect.TypeOf((*MockQosAPI)(nil).Release))
+}
+
+// ReleaseBatch mocks base method.
+func (m *MockQosAPI) ReleaseBatch() {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "ReleaseBatch")
+}
+
+// ReleaseBatch indicates an expected call of ReleaseBatch.
+func (mr *MockQosAPIMockRecorder) ReleaseBatch() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReleaseBatch", reflect.TypeOf((*MockQosAPI)(nil).ReleaseBatch))
 }
 
 // ReleaseBid mocks base method.

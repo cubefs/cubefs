@@ -614,11 +614,48 @@ func TestQueueQos_ResetQosLimit(t *testing.T) {
 		cur := qos.(*queueQos).getLevelConf()
 		require.Equal(t, int64(50), cur.Concurrency)
 
-		diskConf := CommonDiskConfig{DiskBandwidthMB: 13, DiskIdleFactor: 0.4}
+		diskConf := CommonDiskConfig{DiskBandwidthMB: 13, DiskIdleFactor: 0.4, BatchConcurrency: 5}
 		mgr.ResetDiskConfig(diskConf)
 		require.Equal(t, diskConf.DiskBandwidthMB, mgr.conf.DiskBandwidthMB)
 		require.Equal(t, diskConf.DiskIdleFactor, mgr.conf.DiskIdleFactor)
+		require.Equal(t, diskConf.BatchConcurrency, mgr.conf.BatchConcurrency)
 	})
+}
+
+func TestQueueQos_DiskBatchReadLimit(t *testing.T) {
+	ioStat, _ := iostat.StatInit("", 0, true)
+	iom := &flow.IOFlowStat{}
+	for i := range bnapi.GetAllIOType() {
+		iom[i] = ioStat
+	}
+	mgr, err := NewQosMgr(Config{
+		StatGetter: iom,
+		FlowConfig: FlowConfig{
+			CommonDiskConfig: CommonDiskConfig{BatchConcurrency: 2},
+		},
+	})
+	require.NoError(t, err)
+	defer mgr.Close()
+
+	ctx := bnapi.SetIoType(context.Background(), bnapi.BackgroundIO)
+	qos, ok := mgr.GetQueueQos(ctx)
+	require.True(t, ok)
+	bg := qos.(*queueQos)
+
+	require.NoError(t, bg.AcquireBatch())
+	require.Equal(t, 1, bg.getter.getBatchLimit().Running())
+	require.NoError(t, bg.AcquireBatch())
+	require.Equal(t, 2, bg.getter.getBatchLimit().Running())
+	require.Error(t, bg.AcquireBatch())
+
+	bg.ReleaseBatch()
+	require.Equal(t, 1, bg.getter.getBatchLimit().Running())
+	require.NoError(t, bg.AcquireBatch())
+	require.Error(t, bg.AcquireBatch())
+
+	bg.ReleaseBatch()
+	bg.ReleaseBatch()
+	require.Equal(t, 0, bg.getter.getBatchLimit().Running())
 }
 
 func TestQueueQos_Concurrency(t *testing.T) {
@@ -703,10 +740,12 @@ func TestThreshold_Reset(t *testing.T) {
 			DiskBandwidthMB:  20,
 			UpdateIntervalMs: 30,
 			DiskIdleFactor:   0.4,
+			BatchConcurrency: 5,
 		}
 		oldDiskConf.resetDisk(newDiskConf)
 		require.Equal(t, newDiskConf.DiskBandwidthMB, oldDiskConf.DiskBandwidthMB)
 		require.Equal(t, newDiskConf.DiskIdleFactor, oldDiskConf.DiskIdleFactor)
+		require.Equal(t, newDiskConf.BatchConcurrency, oldDiskConf.BatchConcurrency)
 	})
 }
 
@@ -786,6 +825,7 @@ func TestQosMgr_GetLimiterStats(t *testing.T) {
 				DiskBandwidthMB:  100,
 				UpdateIntervalMs: 200,
 				DiskIdleFactor:   0.5,
+				BatchConcurrency: 5,
 			},
 			Level: LevelConfigMap{
 				bnapi.ReadIO.String():       {Concurrency: 100, BidConcurrency: 50, MBPS: 50},
@@ -830,6 +870,16 @@ func TestQosMgr_GetLimiterStats(t *testing.T) {
 			Bandwidth:      bnapi.LimiterStat{Running: -1, Capacity: 30 * humanize.MiByte, Remaining: -1},
 		}
 		require.Equal(t, expect, writeStats)
+
+		// Verify BackgroundIO statistics
+		backgroundStats := stats[bnapi.BackgroundIO.String()]
+		expect = bnapi.IoLimiterStats{
+			Concurrency:      bnapi.LimiterStat{Running: 0, Capacity: 40, Remaining: 40},
+			BidConcurrency:   bnapi.LimiterStat{Running: 0, Capacity: 1, Remaining: 1},
+			Bandwidth:        bnapi.LimiterStat{Running: -1, Capacity: 5 * humanize.MiByte, Remaining: -1},
+			BatchConcurrency: bnapi.LimiterStat{Running: 0, Capacity: 5, Remaining: 5},
+		}
+		require.Equal(t, expect, backgroundStats)
 	})
 
 	t.Run("get limiter stats after acquire and release", func(t *testing.T) {
