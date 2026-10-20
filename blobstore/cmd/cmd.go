@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/common/config"
+	"github.com/cubefs/cubefs/blobstore/common/metrics"
 	"github.com/cubefs/cubefs/blobstore/common/profile"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/rpc/auditlog"
@@ -52,6 +53,7 @@ type Config struct {
 
 	AuditLog auditlog.Config   `json:"auditlog"`
 	Auth     auth_proto.Config `json:"auth"`
+	Metrics  metrics.Config    `json:"metrics"`
 
 	Rpc2Server *rpc2.Server `json:"rpc2_server,omitempty"`
 }
@@ -116,12 +118,23 @@ func Main(args []string) {
 	// new profile handler firstly
 	profileHandler := profile.NewProfileHandler(cfg.BindAddr)
 
+	var metricsHandler interface {
+		rpc2.Interceptor
+		rpc.ProgressHandler
+	}
+	if mod.SetUp != nil || mod.SetUp2 != nil {
+		metricsHandler, err = metrics.New(&cfg.Metrics)
+		if err != nil {
+			log.Fatalf("init metrics handler: %v", err)
+		}
+	}
+
 	if mod.SetUp != nil && mod.graceful {
 		programEntry := func(state *graceful.State) {
 			router, handlers := mod.SetUp()
 			httpServer := &http.Server{
 				Addr:         cfg.BindAddr,
-				Handler:      reorderMiddleWareHandlers(router, lh, profileHandler, cfg.Auth, handlers),
+				Handler:      reorderMiddleWareHandlers(router, lh, metricsHandler, profileHandler, cfg.Auth, handlers),
 				ReadTimeout:  5 * time.Minute,
 				WriteTimeout: 5 * time.Minute,
 			}
@@ -152,10 +165,11 @@ func Main(args []string) {
 	}
 
 	var shutdowns []func(context.Context)
+
 	if mod.SetUp2 != nil {
 		router, interceptors := mod.SetUp2()
 		rpc2Server := cfg.Rpc2Server
-		rpc2Server.Handler = rpc2Handler(router, lh, cfg.Auth, interceptors)
+		rpc2Server.Handler = rpc2Handler(router, lh, metricsHandler, cfg.Auth, interceptors)
 		log.Info("rpc2 Server is running at", rpc2Server.Addresses)
 		go func() {
 			if err := rpc2Server.Serve(); err != nil && err != rpc2.ErrServerClosed {
@@ -169,7 +183,7 @@ func Main(args []string) {
 		router, handlers := mod.SetUp()
 		httpServer := &http.Server{
 			Addr:         cfg.BindAddr,
-			Handler:      reorderMiddleWareHandlers(router, lh, profileHandler, cfg.Auth, handlers),
+			Handler:      reorderMiddleWareHandlers(router, lh, metricsHandler, profileHandler, cfg.Auth, handlers),
 			ReadTimeout:  5 * time.Minute,
 			WriteTimeout: 5 * time.Minute,
 		}
@@ -204,13 +218,18 @@ func Main(args []string) {
 //	the order of handlers in MiddlewareHandler has some constraints:
 //	1. the first is router,
 //	2. the second is AuditLog handler,
-//	3. the third is profile handler if config,
-//	4. the fourth is Auth handler if config,
-//	5. others self define handlers by modules.
-func reorderMiddleWareHandlers(r *rpc.Router, lh, profileHandler rpc.ProgressHandler,
+//	3. the third is metrics handler,
+//	4. the fourth is profile handler if config,
+//	5. the fifth is Auth handler if config,
+//	6. others self define handlers by modules.
+func reorderMiddleWareHandlers(r *rpc.Router, lh, metricsHandler, profileHandler rpc.ProgressHandler,
 	authCfg auth_proto.Config, handlers []rpc.ProgressHandler,
 ) (mux http.Handler) {
-	hs := []rpc.ProgressHandler{lh}
+	hs := make([]rpc.ProgressHandler, 0, len(handlers)+4)
+	hs = append(hs, lh)
+	if metricsHandler != nil {
+		hs = append(hs, metricsHandler)
+	}
 	if profileHandler != nil {
 		hs = append(hs, profileHandler)
 	}
@@ -222,9 +241,12 @@ func reorderMiddleWareHandlers(r *rpc.Router, lh, profileHandler rpc.ProgressHan
 }
 
 func rpc2Handler(r *rpc2.Router, auditlogIc rpc2.Interceptor,
-	authCfg auth_proto.Config, interceptors []rpc2.Interceptor,
+	metricsIc rpc2.Interceptor, authCfg auth_proto.Config, interceptors []rpc2.Interceptor,
 ) rpc2.Handle {
 	r.Interceptor(auditlogIc)
+	if metricsIc != nil {
+		r.Interceptor(metricsIc)
+	}
 	if authCfg.EnableAuth && authCfg.Secret != "" {
 		r.Interceptor(auth.New(&authCfg))
 	}
