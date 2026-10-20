@@ -173,6 +173,7 @@ func randomLocalServer() {
 	}
 
 	addr := fmt.Sprintf("127.0.0.1:%d", ln.Addr().(*net.TCPAddr).Port)
+	// Legacy metric_exporter yaml; drop after dual-run with metrics.port is verified.
 	genMetricExporter("http://" + addr)
 	genDumpScript("http://" + addr)
 
@@ -203,6 +204,7 @@ func NewProfileHandler(addr string) rpc.ProgressHandler {
 	// do not gen files in `go test`
 	if !strings.HasSuffix(os.Args[0], ".test") {
 		genListenAddr(profileAddr)
+		// Legacy metric_exporter yaml; drop after dual-run with metrics.port is verified.
 		genMetricExporter(profileAddr)
 		genDumpScript(profileAddr)
 	}
