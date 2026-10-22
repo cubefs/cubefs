@@ -157,7 +157,8 @@ func TestVolumeMgr_Apply(t *testing.T) {
 				},
 			},
 		}
-		data, err := args.Encode()
+		data := make([]byte, args.Size())
+		err := args.Encode(data)
 		require.NoError(t, err)
 		operTypes = append(operTypes, OperTypeChunkReport)
 		datas = append(datas, data)

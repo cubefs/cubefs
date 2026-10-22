@@ -405,6 +405,32 @@ func TestService_ChunkReport(t *testing.T) {
 	}
 }
 
+func TestService_ChunkReportVer(t *testing.T) {
+	testService, clean := initServiceWithData()
+	defer clean()
+	cmClient := initTestClusterClient(testService)
+	ctx := newCtx()
+
+	const dataChunkNum = 15
+	vuid := proto.EncodeVuid(proto.EncodeVuidPrefix(proto.Vid(1), 2), 1)
+	err := cmClient.ReportChunk(ctx, &clustermgr.ReportChunkArgs{
+		ChunkInfos: []clustermgr.ChunkInfo{{
+			Vuid:  vuid,
+			Total: 300,
+			Used:  200,
+			Free:  100,
+			Size:  180,
+		}},
+	})
+	require.NoError(t, err)
+
+	vol, err := cmClient.GetVolumeInfo(ctx, &clustermgr.GetVolumeArgs{Vid: 1})
+	require.NoError(t, err)
+	require.Equal(t, uint64(100*dataChunkNum), vol.Free)
+	require.Equal(t, uint64(200*dataChunkNum), vol.Used)
+	require.Equal(t, uint64(300*dataChunkNum), vol.Total)
+}
+
 func TestService_VolumeAllocatedList(t *testing.T) {
 	cleanWG.Wait()
 

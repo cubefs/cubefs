@@ -15,18 +15,11 @@
 package clustermgr
 
 import (
-	"bytes"
 	"context"
-	"encoding/binary"
-	"errors"
 	"fmt"
-	"io"
-	"net/http"
-	"unsafe"
 
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"github.com/cubefs/cubefs/blobstore/common/rpc"
 )
 
 type GetVolumeArgs struct {
@@ -207,116 +200,6 @@ func (c *Client) ListVolumeUnit(ctx context.Context, args *ListVolumeUnitArgs) (
 	ret := &ListVolumeUnitInfos{}
 	err := c.GetWith(ctx, "/volume/unit/list?disk_id="+args.DiskID.ToString(), &ret)
 	return ret.VolumeUnitInfos, err
-}
-
-type ReportChunkArgs struct {
-	ChunkInfos []ChunkInfo `json:"chunk_infos"`
-}
-
-func (r *ReportChunkArgs) Encode() ([]byte, error) {
-	count := uint32(len(r.ChunkInfos))
-	if count == 0 {
-		return nil, errors.New("chunk infos is empty")
-	}
-	size := uint32(unsafe.Sizeof(r.ChunkInfos[0]))
-	w := bytes.NewBuffer(make([]byte, 0, size*count+8))
-	var retErr error
-	write := func(field interface{}) {
-		if retErr != nil {
-			return
-		}
-		retErr = binary.Write(w, binary.BigEndian, field)
-	}
-
-	write(count)
-	for _, chunkInfo := range r.ChunkInfos {
-		raw, err := chunkInfo.Id.Marshal()
-		if err != nil {
-			return nil, err
-		}
-		w.Write(raw)
-		write(chunkInfo.Vuid)
-		write(chunkInfo.DiskID)
-		write(chunkInfo.Total)
-		write(chunkInfo.Used)
-		write(chunkInfo.Free)
-		write(chunkInfo.Size)
-		write(chunkInfo.Status)
-		write(chunkInfo.Compacting)
-		if retErr != nil {
-			return nil, retErr
-		}
-	}
-	return w.Bytes(), nil
-}
-
-func (r *ReportChunkArgs) Decode(reader io.Reader) error {
-	count := uint32(0)
-	var retErr error
-	read := func(field interface{}) {
-		if retErr != nil {
-			return
-		}
-		retErr = binary.Read(reader, binary.BigEndian, field)
-	}
-
-	read(&count)
-	if count > 1<<20 {
-		return fmt.Errorf("chunks is too much %d, limit: %d", count, 1<<20)
-	}
-	r.ChunkInfos = make([]ChunkInfo, count)
-	for i := range r.ChunkInfos {
-		raw := make([]byte, ChunkIDEncodeLen)
-		n, err := io.ReadFull(reader, raw)
-		if n != ChunkIDEncodeLen || err != nil {
-			return fmt.Errorf("invalid source reader, err: %v", err)
-		}
-		r.ChunkInfos[i].Id.Unmarshal(raw)
-		read(&r.ChunkInfos[i].Vuid)
-		read(&r.ChunkInfos[i].DiskID)
-		read(&r.ChunkInfos[i].Total)
-		read(&r.ChunkInfos[i].Used)
-		read(&r.ChunkInfos[i].Free)
-		read(&r.ChunkInfos[i].Size)
-		read(&r.ChunkInfos[i].Status)
-		read(&r.ChunkInfos[i].Compacting)
-		if retErr != nil {
-			return retErr
-		}
-	}
-	return nil
-}
-
-func (c *Client) ReportChunk(ctx context.Context, args *ReportChunkArgs) (err error) {
-	b, err := args.Encode()
-	if err != nil {
-		return err
-	}
-	request, err := http.NewRequest(http.MethodPost, "/chunk/report", bytes.NewReader(b))
-	if err != nil {
-		return err
-	}
-	request.ContentLength = int64(len(b))
-	request.Header.Set(rpc.HeaderContentType, rpc.MIMEStream)
-	resp, err := c.Do(ctx, request)
-	if err != nil {
-		return
-	}
-	if resp.StatusCode/100 != 2 {
-		err = rpc.ParseResponseErr(resp)
-	}
-	resp.Body.Close()
-	return
-}
-
-type SetCompactChunkArgs struct {
-	Vuid       proto.Vuid `json:"vuid"`
-	Compacting bool       `json:"compact"`
-}
-
-func (c *Client) SetCompactChunk(ctx context.Context, args *SetCompactChunkArgs) (err error) {
-	err = c.PostWith(ctx, "/chunk/set/compact", nil, args)
-	return
 }
 
 type ListAllocatedVolumeArgs struct {
