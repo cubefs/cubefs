@@ -37,7 +37,6 @@ import (
 
 const (
 	DefaultHeartbeatIntervalSec        = 30           // 30 s
-	DefaultChunkReportIntervalSec      = 60           // 1 min
 	DefaultCleanExpiredStatIntervalSec = 60 * 60      // 60 min
 	DefaultChunkGcIntervalSec          = 30 * 60      // 30 min
 	DefaultChunkProtectionPeriodSec    = 48 * 60 * 60 // 48 hour
@@ -72,6 +71,9 @@ type Config struct {
 
 	HeartbeatIntervalSec        int `json:"heartbeat_interval_S"`
 	ChunkReportIntervalSec      int `json:"chunk_report_interval_S"`
+	ChunkReportSizeRatio        int `json:"chunk_report_size_ratio"` // percent of chunk total, <0 disables
+	ChunkReportMaxTimeSec       int `json:"chunk_report_max_time_S"` // seconds, <0 disables
+	ChunkReportHighUsed         int `json:"chunk_report_high_used"`  // percent of chunk total, <0 disables
 	ChunkGcIntervalSec          int `json:"chunk_gc_interval_S"`
 	ChunkProtectionPeriodSec    int `json:"chunk_protection_period_S"`
 	CleanExpiredStatIntervalSec int `json:"clean_expired_stat_interval_S"`
@@ -108,9 +110,10 @@ func configInit(config *Config) {
 	}
 	defaulter.IntegerLessOrEqual(&config.MaxClusterBadDiskNodes, 3)
 
-	if config.ChunkReportIntervalSec <= 0 {
-		config.ChunkReportIntervalSec = DefaultChunkReportIntervalSec
-	}
+	defaulter.IntegerLessOrEqual(&config.ChunkReportIntervalSec, 60) // 1 min
+	defaulter.Equal(&config.ChunkReportSizeRatio, 5)                 // 5% of chunk total, < 0 disables it
+	defaulter.Equal(&config.ChunkReportMaxTimeSec, 60*60)            // 1 hour, < 0 disables it
+	defaulter.Equal(&config.ChunkReportHighUsed, 95)                 // 95% of chunk total, < 0 disables it
 
 	if config.CleanExpiredStatIntervalSec <= 0 {
 		config.CleanExpiredStatIntervalSec = DefaultCleanExpiredStatIntervalSec
