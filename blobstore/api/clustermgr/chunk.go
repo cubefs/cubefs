@@ -15,12 +15,18 @@
 package clustermgr
 
 import (
+	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
+	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/rpc"
+	"github.com/cubefs/cubefs/blobstore/util/bytespool"
 )
 
 type ChunkInfo struct {
@@ -33,6 +39,24 @@ type ChunkInfo struct {
 	Size       uint64       `json:"size"`   // Chunk File Size (logic size)
 	Status     ChunkStatus  `json:"status"` // normal, readonly
 	Compacting bool         `json:"compacting"`
+}
+
+type ChunkReported struct {
+	Vuid  proto.Vuid
+	Total uint64
+	Used  uint64
+	Free  uint64
+	Size  uint64
+}
+
+func (ci *ChunkInfo) Reported() ChunkReported {
+	return ChunkReported{
+		Vuid:  ci.Vuid,
+		Total: ci.Total,
+		Used:  ci.Used,
+		Free:  ci.Free,
+		Size:  ci.Size,
+	}
 }
 
 const (
@@ -178,4 +202,238 @@ func (s *ChunkStatus) String() string {
 	default:
 		return "unkown"
 	}
+}
+
+const (
+	// magic = base + version. base is above the legacy count limit (1<<20).
+	chunkReportMagicBase   uint32 = 0xfffefff9
+	chunkReportVersionSpan uint32 = 1 << 16
+	chunkReportHeaderSize         = 8
+	maxChunkReportCount           = 1 << 20
+
+	chunkReportVersion1     uint32 = 1
+	chunkReportV1RecordSize        = 8 + 8 + 8 + 8 + 8 // vuid, total, used, free, size
+)
+
+func chunkReportVersion(magic uint32) (uint32, bool) {
+	if magic <= chunkReportMagicBase {
+		return 0, false
+	}
+	ver := magic - chunkReportMagicBase
+	if ver >= chunkReportVersionSpan {
+		return 0, false
+	}
+	return ver, true
+}
+
+type ReportChunkArgs struct {
+	ChunkInfos []ChunkInfo `json:"chunk_infos"`
+}
+
+func (r *ReportChunkArgs) Size() int {
+	return r.chunkReportSizeV1()
+}
+
+func (r *ReportChunkArgs) Encode(buf []byte) error {
+	return r.encodeChunkReportV1(buf)
+}
+
+func (r *ReportChunkArgs) chunkReportSizeV1() int {
+	return chunkReportHeaderSize + len(r.ChunkInfos)*chunkReportV1RecordSize
+}
+
+func (r *ReportChunkArgs) encodeChunkReportV1(buf []byte) error {
+	count, err := r.chunkReportCount()
+	if err != nil {
+		return err
+	}
+	if len(buf) < r.chunkReportSizeV1() {
+		return fmt.Errorf("chunk_report: buffer too short %d", len(buf))
+	}
+	binary.BigEndian.PutUint32(buf[0:4], chunkReportMagicBase+chunkReportVersion1)
+	binary.BigEndian.PutUint32(buf[4:8], count)
+	off := chunkReportHeaderSize
+	for i := range r.ChunkInfos {
+		binary.BigEndian.PutUint64(buf[off:], uint64(r.ChunkInfos[i].Vuid))
+		binary.BigEndian.PutUint64(buf[off+8:], r.ChunkInfos[i].Total)
+		binary.BigEndian.PutUint64(buf[off+16:], r.ChunkInfos[i].Used)
+		binary.BigEndian.PutUint64(buf[off+24:], r.ChunkInfos[i].Free)
+		binary.BigEndian.PutUint64(buf[off+32:], r.ChunkInfos[i].Size)
+		off += chunkReportV1RecordSize
+	}
+	return nil
+}
+
+func (r *ReportChunkArgs) legacyChunkReportSize() int {
+	return chunkReportLegacySize(len(r.ChunkInfos))
+}
+
+func chunkReportLegacySize(count int) int {
+	const recordSize = 8 + 4 + 8 + 8 + 8 + 8 + 1 + 1 // vuid, diskID, total, used, free, size, status, compacting
+	return 4 + count*(ChunkIDEncodeLen+recordSize)
+}
+
+func (r *ReportChunkArgs) encodeLegacyChunkReport(buf []byte) error {
+	count, err := r.chunkReportCount()
+	if err != nil {
+		return err
+	}
+	if len(buf) < r.legacyChunkReportSize() {
+		return fmt.Errorf("chunk_report: buffer too short %d", len(buf))
+	}
+	binary.BigEndian.PutUint32(buf[0:4], count)
+	off := 4
+	for i := range r.ChunkInfos {
+		info := &r.ChunkInfos[i]
+		raw, err := info.Id.Marshal()
+		if err != nil {
+			return err
+		}
+		off += copy(buf[off:], raw)
+		binary.BigEndian.PutUint64(buf[off:], uint64(info.Vuid))
+		off += 8
+		binary.BigEndian.PutUint32(buf[off:], uint32(info.DiskID))
+		off += 4
+		binary.BigEndian.PutUint64(buf[off:], info.Total)
+		off += 8
+		binary.BigEndian.PutUint64(buf[off:], info.Used)
+		off += 8
+		binary.BigEndian.PutUint64(buf[off:], info.Free)
+		off += 8
+		binary.BigEndian.PutUint64(buf[off:], info.Size)
+		off += 8
+		buf[off] = byte(info.Status)
+		off++
+		if info.Compacting {
+			buf[off] = 1
+		} else {
+			buf[off] = 0
+		}
+		off++
+	}
+	return nil
+}
+
+func (r *ReportChunkArgs) chunkReportCount() (uint32, error) {
+	count := uint32(len(r.ChunkInfos))
+	if count == 0 {
+		return 0, errors.New("chunk_report: chunk infos is empty")
+	}
+	if count > maxChunkReportCount {
+		return 0, fmt.Errorf("chunk_report: chunks is too much %d, limit %d", count, maxChunkReportCount)
+	}
+	return count, nil
+}
+
+func (r *ReportChunkArgs) Decode(buf []byte) error {
+	if len(buf) < 4 {
+		return errors.New("chunk_report: buffer too short")
+	}
+	magic := binary.BigEndian.Uint32(buf[:4])
+	if ver, ok := chunkReportVersion(magic); ok {
+		switch ver {
+		case chunkReportVersion1:
+			return r.decodeChunkReportV1(buf)
+		default:
+			return fmt.Errorf("chunk_report: unsupported version %d", ver)
+		}
+	}
+	return r.decodeLegacyChunkReport(buf)
+}
+
+func (r *ReportChunkArgs) decodeChunkReportV1(buf []byte) error {
+	if len(buf) < chunkReportHeaderSize {
+		return errors.New("chunk_report: buffer too short")
+	}
+	count := binary.BigEndian.Uint32(buf[4:8])
+	if count == 0 {
+		return errors.New("chunk_report: chunk infos is empty")
+	}
+	if count > maxChunkReportCount {
+		return fmt.Errorf("chunk_report: chunks is too much %d, limit %d", count, maxChunkReportCount)
+	}
+	expect := chunkReportHeaderSize + int(count)*chunkReportV1RecordSize
+	if len(buf) != expect {
+		return fmt.Errorf("chunk_report: length mismatch, got %d expect %d", len(buf), expect)
+	}
+	r.ChunkInfos = make([]ChunkInfo, count)
+	off := chunkReportHeaderSize
+	for i := range r.ChunkInfos {
+		r.ChunkInfos[i].Vuid = proto.Vuid(binary.BigEndian.Uint64(buf[off:]))
+		r.ChunkInfos[i].Total = binary.BigEndian.Uint64(buf[off+8:])
+		r.ChunkInfos[i].Used = binary.BigEndian.Uint64(buf[off+16:])
+		r.ChunkInfos[i].Free = binary.BigEndian.Uint64(buf[off+24:])
+		r.ChunkInfos[i].Size = binary.BigEndian.Uint64(buf[off+32:])
+		off += chunkReportV1RecordSize
+	}
+	return nil
+}
+
+func (r *ReportChunkArgs) decodeLegacyChunkReport(buf []byte) error {
+	count := binary.BigEndian.Uint32(buf[:4])
+	if count > maxChunkReportCount {
+		return fmt.Errorf("chunk_report: chunks is too much %d, limit %d", count, maxChunkReportCount)
+	}
+	expect := chunkReportLegacySize(int(count))
+	if len(buf) < expect {
+		return fmt.Errorf("chunk_report: length mismatch, got %d expect %d", len(buf), expect)
+	}
+	r.ChunkInfos = make([]ChunkInfo, count)
+	off := 4
+	for i := range r.ChunkInfos {
+		if err := r.ChunkInfos[i].Id.Unmarshal(buf[off : off+ChunkIDEncodeLen]); err != nil {
+			return err
+		}
+		off += ChunkIDEncodeLen
+		r.ChunkInfos[i].Vuid = proto.Vuid(binary.BigEndian.Uint64(buf[off:]))
+		off += 8
+		r.ChunkInfos[i].DiskID = proto.DiskID(binary.BigEndian.Uint32(buf[off:]))
+		off += 4
+		r.ChunkInfos[i].Total = binary.BigEndian.Uint64(buf[off:])
+		off += 8
+		r.ChunkInfos[i].Used = binary.BigEndian.Uint64(buf[off:])
+		off += 8
+		r.ChunkInfos[i].Free = binary.BigEndian.Uint64(buf[off:])
+		off += 8
+		r.ChunkInfos[i].Size = binary.BigEndian.Uint64(buf[off:])
+		off += 8
+		r.ChunkInfos[i].Status = ChunkStatus(buf[off])
+		off++
+		r.ChunkInfos[i].Compacting = buf[off] != 0
+		off++
+	}
+	return nil
+}
+
+func (c *Client) ReportChunk(ctx context.Context, args *ReportChunkArgs) (err error) {
+	b := bytespool.Alloc(args.Size())
+	defer bytespool.Free(b)
+	if err = args.Encode(b); err != nil {
+		return err
+	}
+	request, err := http.NewRequest(http.MethodPost, "/chunk/report", bytes.NewReader(b))
+	if err != nil {
+		return err
+	}
+	request.ContentLength = int64(len(b))
+	request.Header.Set(rpc.HeaderContentType, rpc.MIMEStream)
+	resp, err := c.Do(ctx, request)
+	if err != nil {
+		return
+	}
+	if resp.StatusCode/100 != 2 {
+		err = rpc.ParseResponseErr(resp)
+	}
+	resp.Body.Close()
+	return
+}
+
+type SetCompactChunkArgs struct {
+	Vuid       proto.Vuid `json:"vuid"`
+	Compacting bool       `json:"compact"`
+}
+
+func (c *Client) SetCompactChunk(ctx context.Context, args *SetCompactChunkArgs) (err error) {
+	err = c.PostWith(ctx, "/chunk/set/compact", nil, args)
+	return
 }

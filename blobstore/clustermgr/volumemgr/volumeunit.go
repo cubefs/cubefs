@@ -316,7 +316,8 @@ func (v *VolumeMgr) applyAllocVolumeUnit(ctx context.Context, args *allocVolumeU
 func (v *VolumeMgr) applyChunkReport(ctx context.Context, chunks *cmapi.ReportChunkArgs) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
-	for _, chunk := range chunks.ChunkInfos {
+	for _, chunkInfo := range chunks.ChunkInfos {
+		chunk := chunkInfo.Reported()
 		vol := v.all.getVol(chunk.Vuid.Vid())
 		if vol == nil {
 			span.Warnf("vid not found, vid: %d, vuid: %d", chunk.Vuid.Vid(), chunk.Vuid)

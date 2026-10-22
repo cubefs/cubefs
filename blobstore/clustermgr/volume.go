@@ -15,7 +15,6 @@
 package clustermgr
 
 import (
-	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -29,6 +28,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util/bytespool"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
@@ -318,26 +318,29 @@ func (s *Service) ChunkReport(c *rpc.Context) {
 	ctx := c.Request.Context()
 	span := trace.SpanFromContextSafe(ctx)
 
-	if c.Request.ContentLength > maxReportChunkBodyLength {
-		span.Warnf("chunk report body length exceed max limit[%d], body length %d", maxReportChunkBodyLength, c.Request.ContentLength)
+	if c.Request.ContentLength <= 0 || c.Request.ContentLength > maxReportChunkBodyLength {
+		span.Warnf("chunk report content length invalid[%d], max limit[%d]", c.Request.ContentLength, maxReportChunkBodyLength)
 		c.RespondError(apierrors.ErrIllegalArguments)
 		return
 	}
-	args := &clustermgr.ReportChunkArgs{}
-	writer := bytes.NewBuffer(make([]byte, 0, c.Request.ContentLength))
-	reader := io.TeeReader(c.Request.Body, writer)
-
-	if err := args.Decode(reader); err != nil {
-		span.Errorf("decode report chunk arguments failed, err: %v", err)
+	body := bytespool.Alloc(int(c.Request.ContentLength))
+	defer bytespool.Free(body)
+	if _, err := io.ReadFull(c.Request.Body, body); err != nil {
+		span.Errorf("read chunk report body failed, err: %v", err)
 		c.RespondError(apierrors.ErrCMUnexpect)
 		return
 	}
 
+	args := &clustermgr.ReportChunkArgs{}
+	if err := args.Decode(body); err != nil {
+		span.Errorf("decode report chunk arguments failed, err: %v", err)
+		c.RespondError(apierrors.ErrCMUnexpect)
+		return
+	}
 	span.Debugf("accept ChunkReport request, args: %v", args)
 
-	proposeInfo := base.EncodeProposeInfo(s.VolumeMgr.GetModuleName(), volumemgr.OperTypeChunkReport, writer.Bytes(), base.ProposeContext{ReqID: span.TraceID()})
-	err := s.raftNode.Propose(ctx, proposeInfo)
-	if err != nil {
+	proposeInfo := base.EncodeProposeInfo(s.VolumeMgr.GetModuleName(), volumemgr.OperTypeChunkReport, body, base.ProposeContext{ReqID: span.TraceID()})
+	if err := s.raftNode.Propose(ctx, proposeInfo); err != nil {
 		span.Error(err)
 		c.RespondError(apierrors.ErrRaftPropose)
 		return

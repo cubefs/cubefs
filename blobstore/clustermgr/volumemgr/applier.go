@@ -15,7 +15,6 @@
 package volumemgr
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -242,7 +241,7 @@ func (v *VolumeMgr) Apply(ctx context.Context, operTypes []int32, datas [][]byte
 		case OperTypeChunkReport:
 			start := time.Now()
 			args := &clustermgr.ReportChunkArgs{}
-			err := args.Decode(bytes.NewReader(datas[idx]))
+			err := args.Decode(datas[idx])
 			if err != nil {
 				errs[idx] = errors.Info(err, t, datas[idx]).Detail(err)
 				wg.Done()

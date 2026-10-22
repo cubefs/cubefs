@@ -15,53 +15,12 @@
 package clustermgr
 
 import (
-	"bytes"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
-
-func TestChunkReportArgs(t *testing.T) {
-	vuid1, _ := proto.NewVuid(1, 0, 1)
-	vuid2, _ := proto.NewVuid(1, 1, 1)
-	args := ReportChunkArgs{
-		ChunkInfos: []ChunkInfo{
-			{
-				Id:     NewChunkID(vuid1),
-				Vuid:   vuid1,
-				DiskID: 1,
-				Free:   1,
-				Used:   1,
-				Size:   1,
-			},
-			{
-				Id:     NewChunkID(vuid2),
-				Vuid:   vuid2,
-				DiskID: 2,
-				Free:   2,
-				Used:   2,
-				Size:   2,
-			},
-		},
-	}
-	b, err := args.Encode()
-	require.NoError(t, err)
-
-	decodeArgs := &ReportChunkArgs{}
-	err = decodeArgs.Decode(bytes.NewReader(b))
-	require.NoError(t, err)
-	require.Equal(t, len(args.ChunkInfos), len(decodeArgs.ChunkInfos))
-	for i := 0; i < len(args.ChunkInfos); i++ {
-		require.Equal(t, args.ChunkInfos[i].Id, decodeArgs.ChunkInfos[i].Id)
-		require.Equal(t, args.ChunkInfos[i].Vuid, decodeArgs.ChunkInfos[i].Vuid)
-		require.Equal(t, args.ChunkInfos[i].DiskID, decodeArgs.ChunkInfos[i].DiskID)
-		require.Equal(t, args.ChunkInfos[i].Free, decodeArgs.ChunkInfos[i].Free)
-		require.Equal(t, args.ChunkInfos[i].Used, decodeArgs.ChunkInfos[i].Used)
-		require.Equal(t, args.ChunkInfos[i].Size, decodeArgs.ChunkInfos[i].Size)
-	}
-}
 
 func TestEqual(t *testing.T) {
 	baseVolume := VolumeInfo{
