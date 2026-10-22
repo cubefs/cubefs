@@ -23,6 +23,34 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestDecoderBufferSize(t *testing.T) {
+	testData := []struct {
+		shardSize   int64
+		description string
+		expected    int64
+	}{
+		{shardSize: 1, description: "very small shard size", expected: baseBlockLen},
+		{shardSize: int64(baseBlockLen - crc32Len), description: "shard smaller than baseBlockLen after accounting for CRC", expected: baseBlockLen},
+		{shardSize: int64(baseBlockLen - crc32Len + 1), description: "shard equal to baseBlockLen after accounting for CRC", expected: baseBlockLen * 2},
+		{shardSize: gBlockSize - crc32Len, description: "shard equal to gBlockSize after accounting for CRC (should be limited)", expected: gBlockSize},
+		{shardSize: gBlockSize - crc32Len + 1, description: "shard larger than gBlockSize after accounting for CRC (should be limited)", expected: gBlockSize},
+	}
+
+	for _, tc := range testData {
+		t.Run(tc.description, func(t *testing.T) {
+			result := DecoderBufferSize(tc.shardSize)
+
+			require.GreaterOrEqual(t, result, int64(baseBlockLen))
+			require.LessOrEqual(t, result, gBlockSize)
+			require.Equal(t, int64(0), result%int64(baseBlockLen))
+
+			require.Equal(t, tc.expected, result,
+				"Expected %d for shardSize %d, but got %d",
+				tc.expected, tc.shardSize, result)
+		})
+	}
+}
+
 func TestDecodeSize(t *testing.T) {
 	datas := []struct {
 		blockLen   int64

@@ -19,6 +19,7 @@ BlobNode的配置是基于[公有配置](./base.md)，以下配置说明主要�
 | data_qos         | 数据qos分层限流，生产环境建议打开                        | 否   |
 | meta_config      | 元数据相关配置，包含rocksdb的cache大小等                | 否   |
 | clustermgr       | clustermgr的服务地址信息等                        | 是   |
+| max_cluster_bad_disk_nodes | 数据文件 EIO 置坏盘时，集群内坏盘和修复中磁盘所在机器数上限，默认 3。meta EIO 不受此限制 | 否   |
 
 ### 全部配置
 ```json
@@ -83,9 +84,40 @@ BlobNode的配置是基于[公有配置](./base.md)，以下配置说明主要�
 		"delete_queue_depth": "删除队列深度, 默认值32",
 		"background_queue_depth": "后台队列深度, 默认值32",
 		"data_qos": {
-			"read_mbps": "单盘普通读业务IO带宽",
-			"write_mbps": "单盘普通写业务IO带宽",
-			"background_mbps": "单盘后台任务IO带宽"
+			"disk_iops": "单盘 IOPS 上限，默认 2000",
+			"disk_bandwidth_mb": "单盘总带宽上限，单位 MB/s，默认 250",
+			"update_interval_ms": "动态限速的刷新间隔，默认 500ms",
+			"disk_idle_factor": "磁盘空闲时抬升限速的系数，范围 (0, 1]，默认 0.2",
+			"level": {
+				"read": {
+					"mbps": "读带宽，单位MB/s，默认200",
+					"concurrency": "读并发，默认64",
+					"bid_concurrency": "bid并发，默认32。仅read可配置为非1",
+					"busy_factor": "磁盘繁忙时的限速系数，范围(0, 1]，默认1.0",
+					"idle_factor": "磁盘空闲时的限速系数，须>=1，默认1.0"
+				},
+				"write": {
+					"mbps": "写带宽，单位MB/s，默认120",
+					"concurrency": "写并发，默认64",
+					"bid_concurrency": "固定为1",
+					"busy_factor": "范围(0, 1]，默认1.0",
+					"idle_factor": "须>=1，默认1.2"
+				},
+				"delete": {
+					"mbps": "删除带宽，单位MB/s，默认60",
+					"concurrency": "删除并发，默认32",
+					"bid_concurrency": "固定为1",
+					"busy_factor": "范围(0, 1]，默认0.8",
+					"idle_factor": "须>=1，默认1.25"
+				},
+				"background": {
+					"mbps": "后台带宽，单位MB/s，默认20",
+					"concurrency": "后台并发，默认32",
+					"bid_concurrency": "固定为1",
+					"busy_factor": "范围(0, 1]，默认0.5",
+					"idle_factor": "须>=1，默认3.0"
+				}
+			}
 		}
 	},
 	"meta_config": {
@@ -99,10 +131,23 @@ BlobNode的配置是基于[公有配置](./base.md)，以下配置说明主要�
 		"hosts": "clustermgr服务地址"
 	},
 	"blobnode": {
-		"client_timeout_ms": "后台任务用到的blobnode client的超时时间"
+		"client_timeout_ms": "后台任务用到的blobnode client的超时时间，默认1000ms",
+		"batch_read_timeout_ms": "批量读超时，默认20000ms"
 	},
 	"scheduler": {
 		"host_sync_interval_ms": "后台任务用到的scheduler client的后端节点同步时间"
+	},
+	"inspect_conf": {
+		"interval_sec": "巡检轮次间隔，默认90秒",
+		"rate_limit": "巡检读限速，单位字节/秒，默认4MB/s",
+		"batch_read_size": "单次批量读取的最大字节数，默认16MB",
+		"cycle_days": "一轮完整巡检的天数，默认90",
+		"proxy": "参见rpc配置，用于发送 crc 修复消息",
+		"record": {
+			"dir": "巡检记录目录",
+			"chunkbits": "记录文件大小，2^n 字节，默认27（128MB）",
+			"backup": "保留文件个数，默认2"
+		}
 	},
 	"heartbeat_interval_S": "向clustermgr发送心跳的时间间隔, 默认值30秒",
 	"chunk_report_interval_S": "chunk上报的时间间隔, 默认值60秒",
@@ -110,8 +155,25 @@ BlobNode的配置是基于[公有配置](./base.md)，以下配置说明主要�
 	"chunk_protection_period_S": "过期epoch chunk判断创建时间的保护周期, 默认值48小时",
 	"clean_expired_stat_interval_S": "清理过期统计的时间间隔, 默认值60分钟",
 	"disk_status_check_interval_S": "磁盘状态检查的时间间隔, 默认值2分钟",
-	"delete_qps_limit_per_disk": "单盘删除的并发数控制",
-	"shard_repair_concurrency": "后台任务shard repair的并发数控制",
+	"max_cluster_bad_disk_nodes": "数据文件EIO置坏盘时, 允许集群内坏盘和修复中磁盘所在机器数(含本机)的上限, 超出则延后重试, 待机器数回落到限制内再置坏。meta EIO不受此限制。默认值3",
+	"start_mode": "启动模式。BOTH_BLOBNODE_WORKER 同时启动存储和后台任务，BLOBNODE 只启动存储，WORKER 只启动后台任务。默认 BOTH_BLOBNODE_WORKER",
+	"acquire_interval_ms": "worker 领取任务的间隔，默认 500ms",
+	"enable_batch_read": "迁移和修复时是否批量读 shard，默认 false",
+	"max_task_runner_cnt": "磁盘修复、均衡、下线同时执行的任务数，默认 1",
+	"repair_concurrency": "单个修复任务的分片并发，默认 1",
+	"balance_concurrency": "单个均衡任务的分片并发，默认 1",
+	"disk_drop_concurrency": "单个下线任务的分片并发，默认 1",
+	"manual_migrate_concurrency": "单个手工迁移任务的分片并发，默认 10",
+	"shard_repair_concurrency": "shard repair 并发，默认 1",
+	"inspect_concurrency": "卷巡检任务并发，默认 1",
+	"download_shard_concurrency": "单个任务内批量下载 shard 的并发，默认 10",
+	"buf_pool_conf": {
+		"migrate_buf_size": "迁移缓冲区大小，默认 16MB",
+		"migrate_buf_capacity": "迁移缓冲区个数，默认 100",
+		"repair_buf_size": "修复缓冲区大小，默认 4MB",
+		"repair_buf_capacity": "修复缓冲区个数，默认 500"
+	},
+	"shardnode": "后台任务用到的 shardnode 客户端，参见 rpc2 配置",
 	"flock_filename": "进程文件锁路径"
 }
 ```
@@ -139,9 +201,16 @@ BlobNode的配置是基于[公有配置](./base.md)，以下配置说明主要�
       "set_default_switch": true,
       "must_mount_point": true,
       "data_qos": {
-        "read_mbps": 100,
-        "write_mbps": 60,
-        "background_mbps": 20
+        "disk_iops": 2000,
+        "disk_bandwidth_mb": 250,
+        "update_interval_ms": 500,
+        "disk_idle_factor": 0.2,
+        "level": {
+            "read": {"mbps": 100, "concurrency": 64, "bid_concurrency": 32, "busy_factor": 1.0, "idle_factor": 1.0},
+            "write": {"mbps": 60, "concurrency": 64, "bid_concurrency": 1, "busy_factor": 1.0, "idle_factor": 1.2},
+            "delete": {"mbps": 60, "concurrency": 32, "bid_concurrency": 1, "busy_factor": 0.8, "idle_factor": 1.25},
+            "background": {"mbps": 20, "concurrency": 32, "bid_concurrency": 1, "busy_factor": 0.5, "idle_factor": 3.0}
+        }
       }
     },
     "meta_config": {
@@ -168,7 +237,7 @@ BlobNode的配置是基于[公有配置](./base.md)，以下配置说明主要�
         "host_sync_interval_ms": 3600000
     },
     "chunk_protection_period_S": 600,
-    "delete_qps_limit_per_disk": 64,
+    "max_cluster_bad_disk_nodes": 3,
     "shard_repair_concurrency": 100,
     "flock_filename": "/home/service/ebs-blobnode/_package/run/blobnode.0.flock",
     "auditlog": {

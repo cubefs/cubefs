@@ -90,11 +90,11 @@ $> ./bin/blobstore-cli -c conf/blobstore-cli.conf
 # 上传一个文件，成功后会返回存储位置 (-d 参数后跟实际数据)
 $> access put -v -d "test -data-"
 #"code_mode":11 编码模式，对应EC3P3
-{"cluster_id":1,"code_mode":10,"size":11,"blob_size":8388608,"crc":2359314771,"blobs":[{"min_bid":1844899,"vid":158458,"count":1}]}
+{"cluster_id":1,"code_mode":11,"size":11,"blob_size":4194304,"crc":2169337493,"blobs":[{"min_bid":2,"vid":7,"count":1}]}
 
 # 下载文件
-$> access get -v -l '{"cluster_id":1,"code_mode":10,"size":11,"blob_size":8388608,"crc":2359314771,"blobs":[{"min_bid":1844899,"vid":158458,"count":1}]}'
+$> access get -v -l '{"cluster_id":1,"code_mode":11,"size":11,"blob_size":4194304,"crc":2169337493,"blobs":[{"min_bid":2,"vid":7,"count":1}]}'
 
 # 删除文件
-$> access del -v -l '{"cluster_id":1,"code_mode":10,"size":11,"blob_size":8388608,"crc":2359314771,"blobs":[{"min_bid":1844899,"vid":158458,"count":1}]}'
+$> access del -v -l '{"cluster_id":1,"code_mode":11,"size":11,"blob_size":4194304,"crc":2169337493,"blobs":[{"min_bid":2,"vid":7,"count":1}]}'
 ```

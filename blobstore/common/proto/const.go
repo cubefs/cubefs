@@ -74,9 +74,10 @@ func (status DiskStatus) String() string {
 
 // node status
 const (
-	NodeStatusNormal  = NodeStatus(iota + 1) // 1
-	NodeStatusDropped                        // 2
-	NodeStatusMax                            // 3
+	NodeStatusInvalid = NodeStatus(iota) // 0
+	NodeStatusNormal                     // 1
+	NodeStatusDropped                    // 2
+	NodeStatusMax                        // 3
 )
 
 // disk type

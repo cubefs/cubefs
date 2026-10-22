@@ -49,7 +49,7 @@ func TestMayChunkLost(t *testing.T) {
 		NotifyCompacting: setChunkCompactFn,
 		HandleIOError:    handleIOErrorFn,
 	}
-	ds, err := NewDiskStorage(ctx, diskConfig)
+	ds, err := NewDiskStorage(ctx, testInspectConfig(diskConfig))
 	require.NoError(t, err)
 	require.NotNil(t, ds)
 	defer ds.ResetChunks(ctx)
@@ -112,7 +112,7 @@ func TestMaybeCleanRubbishChunk(t *testing.T) {
 		NotifyCompacting: setChunkCompactFn,
 		HandleIOError:    handleIOErrorFn,
 	}
-	ds, err := NewDiskStorage(ctx, diskConfig)
+	ds, err := NewDiskStorage(ctx, testInspectConfig(diskConfig))
 	require.NoError(t, err)
 	require.NotNil(t, ds)
 	defer ds.ResetChunks(ctx)
@@ -165,7 +165,7 @@ func TestGcRubbishChunk(t *testing.T) {
 		NotifyCompacting: setChunkCompactFn,
 		HandleIOError:    handleIOErrorFn,
 	}
-	ds, err := NewDiskStorage(ctx, diskConfig)
+	ds, err := NewDiskStorage(ctx, testInspectConfig(diskConfig))
 	require.NoError(t, err)
 	require.NotNil(t, ds)
 	defer ds.ResetChunks(ctx)

@@ -25,6 +25,7 @@ message VolumeUnitInfoBase {
   uint64 used = 5;
   bool compact = 6 [(gogoproto.customname) = "Compacting"];
   string host = 7;
+  uint64 logic_size = 8 [(gogoproto.customname) = "LogicSize"];
 }
 
 message VolumeInfoBasePB {

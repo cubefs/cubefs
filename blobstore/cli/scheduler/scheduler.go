@@ -84,6 +84,7 @@ func Register(app *grumble.App) {
 	addCmdMigrateTask(schedulerCommand)
 	addCmdVolumeInspectCheckpointTask(schedulerCommand)
 	addCmdKafkaConsumer(schedulerCommand)
+	addCmdVolumeDegradeStats(schedulerCommand)
 }
 
 func leaderStat(c *grumble.Context) error {

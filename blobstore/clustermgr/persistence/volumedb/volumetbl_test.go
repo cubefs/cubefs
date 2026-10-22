@@ -15,6 +15,8 @@
 package volumedb
 
 import (
+	"bytes"
+	"encoding/gob"
 	"errors"
 	"testing"
 
@@ -22,6 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
+	"github.com/cubefs/cubefs/blobstore/common/kvstore"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
@@ -481,6 +484,202 @@ func TestVolumeTable_PutVolumeAndTask(t *testing.T) {
 	require.NoError(t, err)
 	err = volumeTable.PutVolumeAndTask(nil, taskRecord1)
 	require.NoError(t, err)
+}
+
+// oldVolumeUnitRecord mirrors VolumeUnitRecord before LogicSize was added,
+// used across upgrade/rollback compatibility tests.
+type oldVolumeUnitRecord struct {
+	VuidPrefix proto.VuidPrefix
+	Epoch      uint32
+	NextEpoch  uint32
+	DiskID     proto.DiskID
+	Free       uint64
+	Total      uint64
+	Used       uint64
+	Compacting bool
+}
+
+func encodeOldVolumeUnitRecord(r oldVolumeUnitRecord) ([]byte, error) {
+	var buf bytes.Buffer
+	err := gob.NewEncoder(&buf).Encode(r)
+	return buf.Bytes(), err
+}
+
+func decodeOldVolumeUnitRecord(data []byte) (oldVolumeUnitRecord, error) {
+	var r oldVolumeUnitRecord
+	return r, gob.NewDecoder(bytes.NewReader(data)).Decode(&r)
+}
+
+// TestVolumeUnitRecord_GobCompatibility verifies gob codec compatibility
+// at the serialization layer when LogicSize is added to VolumeUnitRecord.
+func TestVolumeUnitRecord_GobCompatibility(t *testing.T) {
+	t.Run("upgrade: old record decoded by new code, LogicSize defaults to 0", func(t *testing.T) {
+		old := oldVolumeUnitRecord{
+			VuidPrefix: 4294967296,
+			Epoch:      1,
+			NextEpoch:  2,
+			DiskID:     10,
+			Free:       100,
+			Total:      1000,
+			Used:       50,
+			Compacting: true,
+		}
+		data, err := encodeOldVolumeUnitRecord(old)
+		require.NoError(t, err)
+		got, err := decodeVolumeUnitRecord(data)
+		require.NoError(t, err)
+		require.Equal(t, proto.VuidPrefix(4294967296), got.VuidPrefix)
+		require.Equal(t, uint32(1), got.Epoch)
+		require.Equal(t, uint32(2), got.NextEpoch)
+		require.Equal(t, proto.DiskID(10), got.DiskID)
+		require.Equal(t, uint64(100), got.Free)
+		require.Equal(t, uint64(1000), got.Total)
+		require.Equal(t, uint64(50), got.Used)
+		require.True(t, got.Compacting)
+		require.Equal(t, uint64(0), got.LogicSize)
+	})
+
+	t.Run("rollback: new record decoded by old code, LogicSize field ignored", func(t *testing.T) {
+		newRec := &VolumeUnitRecord{
+			VuidPrefix: 4294967296,
+			Epoch:      1,
+			NextEpoch:  2,
+			DiskID:     10,
+			Free:       100,
+			Total:      1000,
+			Used:       50,
+			Compacting: true,
+			LogicSize:  999,
+		}
+		data, err := encodeVolumeUnitRecord(newRec)
+		require.NoError(t, err)
+		got, err := decodeOldVolumeUnitRecord(data)
+		require.NoError(t, err)
+		require.Equal(t, proto.VuidPrefix(4294967296), got.VuidPrefix)
+		require.Equal(t, uint32(1), got.Epoch)
+		require.Equal(t, uint32(2), got.NextEpoch)
+		require.Equal(t, proto.DiskID(10), got.DiskID)
+		require.Equal(t, uint64(100), got.Free)
+		require.Equal(t, uint64(1000), got.Total)
+		require.Equal(t, uint64(50), got.Used)
+		require.True(t, got.Compacting)
+	})
+}
+
+// TestVolumeUnitTable_UpgradeRollbackCompatibility verifies DB-level compatibility
+// when LogicSize is added to VolumeUnitRecord: data written by old binary can be
+// read by new binary, and vice versa, without data loss or corruption.
+func TestVolumeUnitTable_UpgradeRollbackCompatibility(t *testing.T) {
+	const vuidPrefix1 = proto.VuidPrefix(1 << 32) // vid=1, index=0
+	const vuidPrefix2 = proto.VuidPrefix(2 << 32) // vid=2, index=0
+	const vuidPrefix3 = proto.VuidPrefix(3 << 32) // vid=3, index=0
+
+	t.Run("upgrade: old binary writes to DB, new binary reads back with LogicSize=0", func(t *testing.T) {
+		initVolumeDB()
+		defer closeVolumeDB()
+
+		// simulate old binary: encode without LogicSize and write raw bytes to unitTbl
+		old := oldVolumeUnitRecord{
+			VuidPrefix: vuidPrefix1,
+			Epoch:      3,
+			NextEpoch:  4,
+			DiskID:     100,
+			Free:       512,
+			Total:      2048,
+			Used:       256,
+			Compacting: false,
+		}
+		data, err := encodeOldVolumeUnitRecord(old)
+		require.NoError(t, err)
+		err = volumeTable.unitTbl.Put(kvstore.KV{Key: encodeVuidPrefix(vuidPrefix1), Value: data})
+		require.NoError(t, err)
+
+		// new binary reads via GetVolumeUnit
+		got, err := volumeTable.GetVolumeUnit(vuidPrefix1)
+		require.NoError(t, err)
+		require.Equal(t, vuidPrefix1, got.VuidPrefix)
+		require.Equal(t, uint32(3), got.Epoch)
+		require.Equal(t, uint32(4), got.NextEpoch)
+		require.Equal(t, proto.DiskID(100), got.DiskID)
+		require.Equal(t, uint64(512), got.Free)
+		require.Equal(t, uint64(2048), got.Total)
+		require.Equal(t, uint64(256), got.Used)
+		require.False(t, got.Compacting)
+		require.Equal(t, uint64(0), got.LogicSize, "LogicSize missing from old record should default to 0")
+	})
+
+	t.Run("rollback: new binary writes to DB, old binary reads back with other fields intact", func(t *testing.T) {
+		initVolumeDB()
+		defer closeVolumeDB()
+
+		// new binary writes via PutVolumeUnit with LogicSize set
+		newRec := &VolumeUnitRecord{
+			VuidPrefix: vuidPrefix2,
+			Epoch:      5,
+			NextEpoch:  6,
+			DiskID:     200,
+			Free:       1024,
+			Total:      4096,
+			Used:       512,
+			Compacting: true,
+			LogicSize:  8192,
+		}
+		err := volumeTable.PutVolumeUnit(vuidPrefix2, newRec)
+		require.NoError(t, err)
+
+		// simulate old binary: read raw bytes and decode with old struct
+		raw, err := volumeTable.unitTbl.Get(encodeVuidPrefix(vuidPrefix2))
+		require.NoError(t, err)
+		got, err := decodeOldVolumeUnitRecord(raw)
+		require.NoError(t, err)
+		require.Equal(t, vuidPrefix2, got.VuidPrefix)
+		require.Equal(t, uint32(5), got.Epoch)
+		require.Equal(t, uint32(6), got.NextEpoch)
+		require.Equal(t, proto.DiskID(200), got.DiskID)
+		require.Equal(t, uint64(1024), got.Free)
+		require.Equal(t, uint64(4096), got.Total)
+		require.Equal(t, uint64(512), got.Used)
+		require.True(t, got.Compacting)
+		// LogicSize silently dropped — old struct has no such field
+	})
+
+	t.Run("RangeVolumeUnits: mixed old/new format records all iterated correctly", func(t *testing.T) {
+		initVolumeDB()
+		defer closeVolumeDB()
+
+		// write one old-format record directly
+		old := oldVolumeUnitRecord{VuidPrefix: vuidPrefix1, Epoch: 1, NextEpoch: 1, DiskID: 10, Free: 10, Total: 100, Used: 5}
+		data, err := encodeOldVolumeUnitRecord(old)
+		require.NoError(t, err)
+		require.NoError(t, volumeTable.unitTbl.Put(kvstore.KV{Key: encodeVuidPrefix(vuidPrefix1), Value: data}))
+
+		// write one new-format record via PutVolumeUnit
+		require.NoError(t, volumeTable.PutVolumeUnit(vuidPrefix2, &VolumeUnitRecord{
+			VuidPrefix: vuidPrefix2, Epoch: 2, NextEpoch: 2, DiskID: 20, Free: 20, Total: 200, Used: 10, LogicSize: 500,
+		}))
+
+		// write another new-format record
+		require.NoError(t, volumeTable.PutVolumeUnit(vuidPrefix3, &VolumeUnitRecord{
+			VuidPrefix: vuidPrefix3, Epoch: 3, NextEpoch: 3, DiskID: 30, Free: 30, Total: 300, Used: 15, LogicSize: 600,
+		}))
+
+		seen := make(map[proto.VuidPrefix]*VolumeUnitRecord)
+		err = volumeTable.RangeVolumeUnits(func(r *VolumeUnitRecord) error {
+			seen[r.VuidPrefix] = r
+			return nil
+		})
+		require.NoError(t, err)
+		require.Len(t, seen, 3)
+
+		require.Equal(t, proto.DiskID(10), seen[vuidPrefix1].DiskID)
+		require.Equal(t, uint64(0), seen[vuidPrefix1].LogicSize, "old record LogicSize should be 0")
+
+		require.Equal(t, proto.DiskID(20), seen[vuidPrefix2].DiskID)
+		require.Equal(t, uint64(500), seen[vuidPrefix2].LogicSize)
+
+		require.Equal(t, proto.DiskID(30), seen[vuidPrefix3].DiskID)
+		require.Equal(t, uint64(600), seen[vuidPrefix3].LogicSize)
+	})
 }
 
 func TestVolumeTable_Route(t *testing.T) {

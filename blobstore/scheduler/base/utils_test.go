@@ -95,3 +95,60 @@ func TestGenTaskID(t *testing.T) {
 	id := GenTaskID(prefix, proto.Vid(1))
 	require.True(t, strings.HasPrefix(id, prefix))
 }
+
+func TestSubSuids(t *testing.T) {
+	a := []proto.Suid{1, 2, 3, 4, 5}
+	b := []proto.Suid{1, 2, 3}
+	c := SubSuids(a, b)
+	require.Equal(t, []proto.Suid{4, 5}, c)
+
+	// b is empty
+	require.Equal(t, a, SubSuids(a, nil))
+
+	// a is empty
+	require.Nil(t, SubSuids(nil, b))
+}
+
+func TestShouldAllocShardUnitAndRedo(t *testing.T) {
+	require.True(t, ShouldAllocShardUnitAndRedo(errcode.CodeNewSuidNotMatch))
+	require.True(t, ShouldAllocShardUnitAndRedo(errcode.CodeCMGetShardFailed))
+	require.False(t, ShouldAllocShardUnitAndRedo(0))
+	require.False(t, ShouldAllocShardUnitAndRedo(999))
+}
+
+func TestAllocShardUnitSafe(t *testing.T) {
+	ctx := context.Background()
+	errMock := errors.New("alloc shard unit error")
+
+	// allocation failed
+	cli := &mockAllocShardUnit{err: errMock}
+	_, err := AllocShardUnitSafe(ctx, cli, proto.ShardUnitInfoSimple{DiskID: 1}, proto.ShardUnitInfoSimple{DiskID: 2}, nil)
+	require.True(t, errors.Is(err, errMock))
+
+	// success: newly allocated disk does not overlap with src/dest
+	newSuid := proto.EncodeSuid(1, 0, 1)
+	cli = &mockAllocShardUnit{
+		ret: &client.AllocShardUnitInfo{
+			ShardUnitInfoSimple: proto.ShardUnitInfoSimple{
+				Suid:   newSuid,
+				DiskID: 10,
+			},
+		},
+	}
+	ret, err := AllocShardUnitSafe(ctx, cli, proto.ShardUnitInfoSimple{DiskID: 1}, proto.ShardUnitInfoSimple{DiskID: 2}, nil)
+	require.NoError(t, err)
+	require.Equal(t, proto.DiskID(10), ret.DiskID)
+
+	// panic: newly allocated disk is the same as src
+	cli = &mockAllocShardUnit{
+		ret: &client.AllocShardUnitInfo{
+			ShardUnitInfoSimple: proto.ShardUnitInfoSimple{
+				Suid:   newSuid,
+				DiskID: 1,
+			},
+		},
+	}
+	require.Panics(t, func() {
+		AllocShardUnitSafe(ctx, cli, proto.ShardUnitInfoSimple{DiskID: 1}, proto.ShardUnitInfoSimple{DiskID: 2}, nil)
+	})
+}

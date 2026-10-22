@@ -19,6 +19,8 @@ Scheduler的配置是基于[公有配置](./base.md)，以下配置说明主要�
 | balance                        | 均衡任务参数配置                                  | 否                                                         |
 | disk_drop                      | 磁盘下线任务参数配置                                | 否                                                         |
 | disk_repair                    | 磁盘修复任务参数配置                                | 否                                                         |
+| manual_migrate                 | 手工迁移任务参数配置，字段与 disk_repair 相同            | 否                                                         |
+| shard_disk_repair              | shard 磁盘修复任务参数配置                         | 否                                                         |
 | volume_inspect                 | 卷巡检任务参数配置（这个卷指纠删码子系统中的卷）                  | 否                                                         |
 | shard_repair                   | 修补任务参数配置                                  | 是，需要配置孤本数据日志存放目录                                          |
 | blob_delete                    | 删除任务参数配置                                  | 是，需要配置删除日志存放目录                                            |
@@ -105,6 +107,9 @@ v3.3.0版本开始支持消费组，之前版本请参考对应版本配置文�
 * disk_concurrency，允许同时执行均衡的最大磁盘数，默认1（release-3.2.2版本之前该值为balance_disk_cnt_limit，默认100）
 * max_disk_free_chunk_cnt，均衡时会判断本idc内是否存在freechunk大于等于该值的磁盘，如果不存在则不会发起均衡，默认1024
 * min_disk_free_chunk_cnt，均衡freechunk数小于该值的磁盘，默认20
+* disk_usage_threshold，按磁盘使用率触发均衡的阈值。0 表示关闭。例如 0.9 表示使用率达到 90% 的磁盘也会被选中，即使 freechunk 仍然充足
+* compact_migrate_hole_rate，大块 chunk 优先迁移的空洞率阈值。0 表示关闭。例如 0.6
+* compact_migrate_min_logic_size，视为大块 chunk 的最小逻辑大小，单位字节。compact_migrate_hole_rate 大于 0 时默认 16GiB
 * prepare_queue_retry_delay_s，准备队列重试时间间隔，当准备队列中的任务执行失败后的重试时间间隔，默认10
 * finish_queue_retry_delay_s，完成队列重试时间间隔，默认10
 * cancel_punish_duration_s，任务取消之后重试时间间隔，默认20
@@ -115,7 +120,10 @@ v3.3.0版本开始支持消费组，之前版本请参考对应版本配置文�
 {
     "disk_concurrency": 700,    
     "max_disk_free_chunk_cnt": 500,    
-    "min_disk_free_chunk_cnt": 105,      
+    "min_disk_free_chunk_cnt": 105,
+    "disk_usage_threshold": 0.9,
+    "compact_migrate_hole_rate": 0.6,
+    "compact_migrate_min_logic_size": 17179869184,
     "prepare_queue_retry_delay_s": 60,    
     "finish_queue_retry_delay_s": 60,    
     "cancel_punish_duration_s": 60,    
@@ -178,22 +186,55 @@ v3.3.0版本开始支持并发修复磁盘。
 }
 ```
 
+### manual_migrate示例
+
+字段与 [disk_repair](#disk_repair示例) 相同，包括准备队列、完成队列、取消惩罚、工作队列以及 `disk_concurrency`。
+
+### shard_disk_repair示例
+
+队列相关字段与 disk_repair 相同。
+
+* applied_index_threshold，目标 shard 的 applied index 允许落后 leader 的最大条目数。差值不超过该值才继续迁移，默认 10
+```json
+{
+    "applied_index_threshold": 10,
+    "prepare_queue_retry_delay_s": 60,
+    "finish_queue_retry_delay_s": 60,
+    "cancel_punish_duration_s": 60,
+    "work_queue_size": 600,
+    "collect_task_interval_s": 10,
+    "check_task_interval_s": 1,
+    "disk_concurrency": 1
+}
+```
+
 ### volume_inspect示例
 
 * inspect_interval_s，巡检时间间隔，默认1s
 * inspect_batch，批量巡检卷大小，默认1000
 * list_vol_step，请求clustermgr列举卷大小，可控制请求clustermgr的qps，默认100
 * list_vol_interval_ms，请求clustermgr列举卷的时间间隔，默认10ms
-* timeout_ms，检查一批巡检任务是否完成的时间间隔，默认10000ms
+* timeout_ms，单个巡检任务的超时时间，默认10000ms
+* check_task_timeout_interval_ms，检查一批巡检任务是否完成的时间间隔，默认10000ms
+* degrade_stats，降级状态统计
+  * enable，是否启用 volume 降级统计功能，默认false
+  * batch，批量统计大小，默认10000，最好是inspect_batch的倍数
+
 ```json
 {
-    "inspect_interval_s": 100,     
-    "inspect_batch": 10,    
-    "list_vol_step": 20,    
-    "list_vol_interval_ms": 10,    
-    "timeout_ms": 10000   
+    "inspect_interval_s": 100,
+    "inspect_batch": 10,
+    "list_vol_step": 20,
+    "list_vol_interval_ms": 10,
+    "timeout_ms": 10000,
+    "check_task_timeout_interval_ms": 10000,
+    "degrade_stats": {
+        "enable": true,
+        "batch": 10000
+    }
 }
 ```
+
 ### shard_repair示例
 
 * task_pool_size，修补任务的并发度，默认10

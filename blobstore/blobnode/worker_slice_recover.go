@@ -169,7 +169,7 @@ type repairStripe struct {
 	badIdxes []uint8
 }
 
-// duties：repair shard data
+// duties: repair shard data
 // if get shard data directly fail,
 // for global stripe chunks(N+M) will do next step
 //   step1:repair use local stripe ,if success return
@@ -179,15 +179,15 @@ type repairStripe struct {
 //   step2:repair other global chunks in same az use global stripe
 //   step3:repair use local stripe
 
-// data layout view：
-// bid1：shard11 shard12 shard13
-// bid2：shard21 shard22 shard23
-// bid2：shard31 shard32 shard33
-// ShardsBuf:record of download shards data from same chunk({shard11，shard21，shard31})
+// data layout view:
+// bid1: shard11 shard12 shard13
+// bid2: shard21 shard22 shard23
+// bid2: shard31 shard32 shard33
+// ShardsBuf: record of download shards data from same chunk({shard11, shard21, shard31})
 // ShardRecover.chunksShardsBuf:is a list of chunksShardsBuf, every ele in list is record a chunk shard data,
 // the order of chunks in list is keep some with volume replicas
 
-// usage：
+// usage:
 // first call RecoverShards to repair shard
 // then call GetShard to get assign shard data
 

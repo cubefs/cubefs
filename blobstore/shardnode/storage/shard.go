@@ -163,7 +163,9 @@ func newShard(ctx context.Context, cfg shardConfig) (s *shard, err error) {
 		keyDecoder: cfg.ShardBaseConfig.KeyDecoder,
 	}
 	s.shardInfoMu.shardInfo = cfg.shardInfo
-	s.metaStats = newShardMetaStatsRecorder(cfg.ShardBaseConfig.MetaStatsConfig)
+	metaStatsCfg := cfg.ShardBaseConfig.MetaStatsConfig
+	metaStatsCfg.RangeCount = len(cfg.shardInfo.Range.Subs)
+	s.metaStats = newShardMetaStatsRecorder(metaStatsCfg)
 	if err := s.initMetaStats(ctx); err != nil {
 		span.Errorf("init meta stats failed: %s", err)
 		return nil, err
@@ -1193,7 +1195,9 @@ func (s *shard) initMetaStats(ctx context.Context) error {
 	if err := metaStats.Unmarshal(raw); err != nil {
 		return errors.Info(err, "unmarshal meta stats from db failed")
 	}
-	s.metaStats.load(metaStats)
+	if err := s.metaStats.load(metaStats); err != nil {
+		return errors.Info(err, "load meta stats failed")
+	}
 	return nil
 }
 

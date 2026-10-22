@@ -431,13 +431,6 @@ func initMockData() {
 			return serviceController, nil
 		})
 	c.EXPECT().GetVolumeGetter(gomock.Any()).AnyTimes().Return(volumeGetter, nil)
-	c.EXPECT().ChangeChooseAlg(gomock.Any()).AnyTimes().DoAndReturn(
-		func(alg controller.AlgChoose) error {
-			if alg < 10 {
-				return nil
-			}
-			return controller.ErrInvalidChooseAlg
-		})
 	cc = c
 
 	ctr = gomock.NewController(&testing.T{})

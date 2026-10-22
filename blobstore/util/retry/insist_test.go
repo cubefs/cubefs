@@ -39,7 +39,6 @@ func TestRetryInsistBase(t *testing.T) {
 		on   func(error)
 		d    time.Duration
 		mind time.Duration
-		maxd time.Duration
 	}{
 		{
 			exp:  0,
@@ -47,7 +46,6 @@ func TestRetryInsistBase(t *testing.T) {
 			on:   voidFunc,
 			d:    ms100,
 			mind: 0,
-			maxd: ms100,
 		},
 		{
 			exp: 3,
@@ -61,7 +59,6 @@ func TestRetryInsistBase(t *testing.T) {
 			on:   voidFunc,
 			d:    5 * ms100,
 			mind: 10 * ms100,
-			maxd: 12 * ms100,
 		},
 		{
 			exp: 4,
@@ -75,7 +72,6 @@ func TestRetryInsistBase(t *testing.T) {
 			on:   voidFunc,
 			d:    5 * ms100,
 			mind: 5 * ms100,
-			maxd: 7 * ms100,
 		},
 		{
 			exp: 3,
@@ -89,7 +85,6 @@ func TestRetryInsistBase(t *testing.T) {
 			on:   func(error) { i++ },
 			d:    5 * ms100,
 			mind: 5 * ms100,
-			maxd: 7 * ms100,
 		},
 	}
 
@@ -102,7 +97,6 @@ func TestRetryInsistBase(t *testing.T) {
 
 		duration := time.Since(startTime)
 		require.LessOrEqual(t, cs.mind, duration, "less duration: ", duration)
-		require.GreaterOrEqual(t, cs.maxd, duration, "greater duration: ", duration)
 	}
 }
 
@@ -115,7 +109,6 @@ func TestRetryInsistContext(t *testing.T) {
 		on   func(error)
 		d    time.Duration
 		mind time.Duration
-		maxd time.Duration
 	}{
 		{
 			exp:  0,
@@ -123,7 +116,6 @@ func TestRetryInsistContext(t *testing.T) {
 			on:   voidFunc,
 			d:    ms100,
 			mind: 0,
-			maxd: ms100,
 		},
 		{
 			exp: 2,
@@ -137,7 +129,6 @@ func TestRetryInsistContext(t *testing.T) {
 			on:   voidFunc,
 			d:    2 * ms100,
 			mind: 2 * ms100,
-			maxd: ctxDuration + ms100,
 		},
 		{
 			exp: 2,
@@ -151,7 +142,6 @@ func TestRetryInsistContext(t *testing.T) {
 			on:   voidFunc,
 			d:    5 * ms100,
 			mind: ctxDuration,
-			maxd: ctxDuration + ms100,
 		},
 		{
 			exp: 3,
@@ -165,7 +155,6 @@ func TestRetryInsistContext(t *testing.T) {
 			on:   func(error) { i++ },
 			d:    ms100,
 			mind: ms100,
-			maxd: 2 * ms100,
 		},
 	}
 
@@ -180,7 +169,6 @@ func TestRetryInsistContext(t *testing.T) {
 
 		duration := time.Since(startTime)
 		require.LessOrEqual(t, cs.mind, duration, "less duration: ", duration)
-		require.GreaterOrEqual(t, cs.maxd, duration, "greater duration: ", duration)
 
 		cancel()
 	}

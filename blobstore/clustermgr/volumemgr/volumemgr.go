@@ -17,6 +17,7 @@ package volumemgr
 import (
 	"context"
 	"encoding/json"
+	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -78,6 +79,7 @@ var (
 	ErrInvalidVolume            = errors.New(" volume is invalid ")
 	ErrInvalidToken             = errors.New("retain token is invalid")
 	ErrRepeatUpdateUnit         = errors.New("repeat update volume unit")
+	ErrVolumeUnitEpochOverflow  = errors.New("volume unit epoch overflow")
 )
 
 // VolumeMgr defines volume manager interface
@@ -119,6 +121,8 @@ type VolumeMgrAPI interface {
 
 	// Stat return volume statistic info
 	Stat(ctx context.Context) (stat cm.VolumeStatInfo)
+	// RangeUpdateVolume thread unsafe to update basic volume cache
+	RangeUpdateVolume(ctx context.Context, volumeCache map[proto.Vid]*cm.VolumeBasic)
 }
 
 // volumeMgr implements VolumeMgr interface.
@@ -148,6 +152,8 @@ type VolumeMgr struct {
 	pendingEntries sync.Map
 	codeMode       map[codemode.CodeMode]codeModeConf
 	stat           *volumeStat
+
+	healthVolumeChecker map[codemode.CodeMode]time.Time
 
 	VolumeMgrConfig
 }
@@ -237,6 +243,8 @@ func (v *VolumeMgr) PreRetainVolume(ctx context.Context, tokens []string, host s
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("start preRetain volume, tokens is %#v,host is %s", tokens, host)
 
+	statHealthyAllocable := v.allocator.StatHealthyAllocables()
+	activeCounts := v.allocator.ActiveVolumeCount()
 	var retainVolumes []cm.RetainVolume
 	var errCnt int
 	for _, tok := range tokens {
@@ -261,7 +269,12 @@ func (v *VolumeMgr) PreRetainVolume(ctx context.Context, tokens []string, host s
 			errCnt++
 			continue
 		}
-		if vol.canRetain(v.FreezeThreshold, v.RetainThreshold) {
+		threshHold := v.RetainThreshold
+		if v.EnableDegradeRetain && vol.volInfoBase.HealthScore < threshHold {
+			threshHold = v.calculateThreshold(vol, statHealthyAllocable[vol.volInfoBase.CodeMode][abs(threshHold)],
+				activeCounts[vol.volInfoBase.CodeMode])
+		}
+		if vol.canRetain(v.FreezeThreshold, threshHold) {
 			retainVolume := cm.RetainVolume{
 				Token:      tok,
 				ExpireTime: time.Now().UnixNano() + int64(time.Duration(v.RetainTimeS)*time.Second),
@@ -553,9 +566,39 @@ func (v *VolumeMgr) Stat(ctx context.Context) (stat cm.VolumeStatInfo) {
 	stat.IdleVolume = statusNumM[proto.VolumeStatusIdle]
 	stat.LockVolume = statusNumM[proto.VolumeStatusLock]
 	stat.UnlockingVolume = statusNumM[proto.VolumeStatusUnlocking]
-	stat.WritableSpace = v.stat.getWriteSpace()
+	stat.WritableSpace = v.stat.getTotalWriteSpace()
 
 	return
+}
+
+func (v *VolumeMgr) RangeUpdateVolume(ctx context.Context, volumeCache map[proto.Vid]*cm.VolumeBasic) {
+	if volumeCache == nil {
+		span := trace.SpanFromContextSafe(ctx)
+		span.Warn("update volume basic cache is nil")
+		return
+	}
+
+	v.all.rangeVol(func(vol *volume) error {
+		vol.lock.RLock()
+		basicVol, cached := volumeCache[vol.vid]
+		if !cached {
+			basicVol = &cm.VolumeBasic{
+				CodeMode: vol.volInfoBase.CodeMode,
+				DiskIDs:  make([]proto.DiskID, vol.volInfoBase.CodeMode.GetShardNum()),
+			}
+			volumeCache[vol.vid] = basicVol
+		}
+		basicVol.Score = vol.volInfoBase.HealthScore
+		basicVol.Free = vol.volInfoBase.Free
+		basicVol.Used = vol.volInfoBase.Used
+		basicVol.Total = vol.volInfoBase.Total
+		basicVol.Status = vol.volInfoBase.Status
+		for idx, vu := range vol.vUnits {
+			basicVol.DiskIDs[idx] = vu.vuInfo.DiskID
+		}
+		vol.lock.RUnlock()
+		return nil
+	})
 }
 
 func (v *VolumeMgr) Report(ctx context.Context, region string, clusterID proto.ClusterID) {
@@ -808,6 +851,7 @@ func (v *VolumeMgr) loop() {
 			span_.Infof("leader node start create volume")
 
 			allocatableVolCounts := v.allocator.StatAllocatable()
+			healthyAllocatableVolCounts := v.allocator.StatHealthyAllocable()
 
 		CREATE:
 			for _, modeConfig := range v.codeMode {
@@ -815,20 +859,20 @@ func (v *VolumeMgr) loop() {
 				if !modeConfig.enable {
 					continue
 				}
-				// do not create new volume when diskMgr has not enough space
-				if hasEnoughSpace := v.diskMgr.HasEnoughSpace(ctx); !hasEnoughSpace {
-					continue
-				}
 
 				curVolCount := allocatableVolCounts[modeConfig.mode]
-				minVolCount := v.getCreateVolumeCount(ctx_, modeConfig, curVolCount)
+				healthyCount := healthyAllocatableVolCounts[modeConfig.mode]
+				minVolCount := util.Max(v.createVolumeCount(ctx_, modeConfig, curVolCount, healthyCount), 1)
 				for i := curVolCount; i < minVolCount; i++ {
 					select {
 					case <-ctx.Done():
 						break CREATE
 					default:
 					}
-
+					if !v.diskMgr.HasEnoughSpace(ctx, modeConfig.mode) {
+						span.Warnf("cluster[%d] has no allocatable nodes for mode %s", v.ClusterID, modeConfig.mode)
+						break
+					}
 					err := v.createVolume(ctx, modeConfig.mode)
 					if err != nil {
 						span_.Errorf("create volume failed ==> %s", errors.Detail(err))
@@ -907,19 +951,8 @@ func (v *VolumeMgr) refreshHealth(ctx context.Context, vid proto.Vid) error {
 }
 
 func (v *VolumeMgr) getModeUnitCount(mode codemode.CodeMode) int {
-	unitCount := v.codeMode[mode].tactic.N + v.codeMode[mode].tactic.M + v.codeMode[mode].tactic.L
+	unitCount := v.codeMode[mode].mode.GetShardNum()
 	return unitCount
-}
-
-func (v *VolumeMgr) getWeightedDataUnitCount() float64 {
-	var weightedUnitCount float64
-	for _, modeConf := range v.codeMode {
-		if !modeConf.enable {
-			continue
-		}
-		weightedUnitCount += float64(modeConf.tactic.N) * modeConf.sizeRatio
-	}
-	return weightedUnitCount
 }
 
 func (v *VolumeMgr) getCreateVolumeCount(ctx context.Context, modeConf codeModeConf, curVolCount int) int {
@@ -928,16 +961,64 @@ func (v *VolumeMgr) getCreateVolumeCount(ctx context.Context, modeConf codeModeC
 	diskNums := v.diskMgr.Stat(ctx, proto.DiskTypeHDD).TotalDisk
 	count := v.getModeUnitCount(modeConf.mode)
 	volCount := int(util.Max(float64(diskNums)*modeConf.sizeRatio/float64(count), float64(v.MinAllocableVolumeCount)*modeConf.sizeRatio))
-	writableSpace := v.stat.getWriteSpace()
-	if writableSpace >= v.MinWritableVolumeSpace {
+	modeWritable := v.stat.getWriteSpace(modeConf.mode)
+	modeMinSpace := uint64(float64(v.MinWritableVolumeSpace) * modeConf.sizeRatio)
+	if modeWritable >= modeMinSpace {
 		span.Infof("code mode %v, min allocatable volume count is %d, current count is %d", modeConf.mode, v.MinAllocableVolumeCount, curVolCount)
 		return volCount
 	}
-	weightedUnitCount := v.getWeightedDataUnitCount()
-	writableSpaceVolCount := int(float64(v.MinWritableVolumeSpace-writableSpace) / weightedUnitCount / float64(v.ChunkSize) * modeConf.sizeRatio)
-	span.Infof("code mode %v, writable space vol count %d, min writable vol space %d, current space %d", modeConf.mode, writableSpaceVolCount, v.MinWritableVolumeSpace, writableSpace)
+	gap := modeMinSpace - modeWritable
+	perVolWritable := v.ChunkSize*uint64(modeConf.tactic.N) - v.FreezeThreshold
+	if perVolWritable == 0 {
+		return volCount
+	}
+	supplement := int(gap/perVolWritable) + 1
+	span.Infof("code mode %v, writable space vol count %d, min writable vol space %d, current space %d", modeConf.mode, supplement, modeMinSpace, modeWritable)
 
-	return util.Max(volCount, curVolCount+writableSpaceVolCount)
+	return util.Max(volCount, curVolCount+supplement)
+}
+
+func (v *VolumeMgr) createVolumeCount(ctx context.Context, modeConfig codeModeConf, curVolCount int, healthyCount int) int {
+	span := trace.SpanFromContextSafe(ctx)
+
+	minVolCount := v.getCreateVolumeCount(ctx, modeConfig, curVolCount)
+	minHealthyCount := int(v.codeMode[modeConfig.mode].sizeRatio * float64(v.MinAllocableHealthVolumeCount))
+	span.Debugf("current allocable volume[%d], healthy allocable volume[%d]", curVolCount, healthyCount)
+	if healthyCount < minHealthyCount {
+		if val, ok := v.healthVolumeChecker[modeConfig.mode]; !ok || val.IsZero() {
+			v.healthVolumeChecker[modeConfig.mode] = time.Now()
+			return minVolCount
+		}
+		onset := v.healthVolumeChecker[modeConfig.mode]
+		window := time.Duration(v.CheckHealthyVolumeIntervalS) * time.Second
+		if window > 0 && time.Since(onset) >= window {
+			supplement := minHealthyCount - healthyCount
+			minVolCount = util.Max(minVolCount, curVolCount+supplement)
+			delete(v.healthVolumeChecker, modeConfig.mode)
+			span.Warnf("healthy and allocatble volume not enough, create new volume count[%d]",
+				minVolCount-curVolCount)
+		}
+		return minVolCount
+	}
+	// reset time
+	v.healthVolumeChecker[modeConfig.mode] = time.Unix(0, 0)
+	return minVolCount
+}
+
+func (v *VolumeMgr) calculateThreshold(vol *volume, retain, active int) int {
+	threshHold := v.RetainThreshold
+	mode := vol.volInfoBase.CodeMode
+	minCount := int(float64(v.MinAllocableHealthVolumeCount) * v.codeMode[mode].sizeRatio)
+	// if healthy volume more than active or minCount, no need degrade
+	if retain > active || retain > minCount {
+		return threshHold
+	}
+	// when lots of volumes are active, and no more allocable volume should degrade
+	ratio := float64(active-retain) / float64(retain+active)
+	if ratio > rand.Float64() {
+		threshHold = mode.Tactic().PutQuorum - mode.GetShardNum()
+	}
+	return threshHold
 }
 
 func (v *VolumeMgr) routeLoop() {

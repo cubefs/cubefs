@@ -17,10 +17,9 @@ package cfmt
 import (
 	"fmt"
 
-	"github.com/dustin/go-humanize"
-
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/cli/common"
+	"github.com/cubefs/cubefs/blobstore/util"
 )
 
 // VolumeInfoJoin volume info
@@ -41,9 +40,9 @@ func VolumeInfoF(vol *clustermgr.VolumeInfo) []string {
 		fmt.Sprintf("CodeMode   : %-12d (%s)", vol.CodeMode, vol.CodeMode.String()),
 		fmt.Sprintf("Status     : %-12d (%s)", vol.Status, vol.Status.String()),
 		fmt.Sprintf("HealthScore: %d", vol.HealthScore),
-		fmt.Sprintf("Total      : %-16d (%s)", vol.Total, humanize.IBytes(vol.Total)),
-		fmt.Sprintf("Free       : %-16d (%s)", vol.Free, freeC.Sprint(humanize.IBytes(vol.Free))),
-		fmt.Sprintf("Used       : %-16d (%s)", vol.Used, usedC.Sprint(humanize.IBytes(vol.Used))),
+		fmt.Sprintf("Total      : %-16d (%s)", vol.Total, util.HumanIBytes(vol.Total, 2)),
+		fmt.Sprintf("Free       : %-16d (%s)", vol.Free, freeC.Sprint(util.HumanIBytes(vol.Free, 2))),
+		fmt.Sprintf("Used       : %-16d (%s)", vol.Used, usedC.Sprint(util.HumanIBytes(vol.Used, 2))),
 		fmt.Sprintf("CreateBy   : %d", vol.CreateByNodeID),
 		fmt.Sprintf("Epoch      : %d", vol.Epoch),
 		fmt.Sprintf("RouteVer   : %d", vol.RouteVersion),
@@ -101,8 +100,8 @@ func ClusterInfoF(info *clustermgr.ClusterInfo) []string {
 		fmt.Sprintf("Region    : %s", info.Region),
 		fmt.Sprintf("ClusterID : %d", info.ClusterID),
 		fmt.Sprintf("Readonly  : %v", info.Readonly),
-		fmt.Sprintf("Capacity  : %-16d (%s)", info.Capacity, humanize.IBytes(uint64(info.Capacity))),
-		fmt.Sprintf("Available : %-16d (%s)", info.Available, avaiC.Sprint(humanize.IBytes(uint64(info.Available)))),
+		fmt.Sprintf("Capacity  : %-16d (%s)", info.Capacity, util.HumanIBytes(info.Capacity, 3)),
+		fmt.Sprintf("Available : %-16d (%s)", info.Available, avaiC.Sprint(util.HumanIBytes(info.Available, 3))),
 		fmt.Sprintf("Nodes: (%d) [", len(info.Nodes)),
 	}...)
 	for _, node := range info.Nodes {

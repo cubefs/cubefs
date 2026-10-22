@@ -404,3 +404,81 @@ func TestRaftServer(t *testing.T) {
 	}
 	rs.Stop()
 }
+
+func TestApplySnapshotBeforeEntries(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	walDir := "/tmp/raftserver-apply-snapshot-entries"
+	os.RemoveAll(walDir)
+	defer os.RemoveAll(walDir)
+
+	sm := NewMockStateMachine(ctrl)
+	applied := make(chan struct{})
+	var got [][]byte
+	var gotIndex uint64
+	sm.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(func(datas [][]byte, index uint64) error {
+		got = datas
+		gotIndex = index
+		close(applied)
+		return nil
+	}).AnyTimes()
+
+	store, err := NewRaftStorage(walDir, true, false, 1, 0, sm, nil)
+	require.Nil(t, err)
+	defer store.Close()
+
+	const (
+		snapIndex = uint64(10)
+		snapTerm  = uint64(2)
+	)
+	entries := []pb.Entry{
+		{Index: 11, Term: snapTerm, Type: pb.EntryNormal, Data: normalEntryEncode(1, []byte("after-snap-1"))},
+		{Index: 12, Term: snapTerm, Type: pb.EntryNormal, Data: normalEntryEncode(1, []byte("after-snap-2"))},
+	}
+	require.Nil(t, store.Save(pb.HardState{Term: snapTerm, Commit: 12}, entries))
+
+	s := &raftServer{
+		sm:        sm,
+		store:     store,
+		applyc:    make(chan apply, 1),
+		snapshotC: make(chan Snapshot),
+		snapMsgc:  make(chan pb.Message, 1),
+		stopc:     make(chan struct{}),
+		applyWait: NewTimeList(),
+	}
+	go s.raftApply()
+	defer close(s.stopc)
+
+	snapDone := make(chan struct{})
+	s.applyc <- apply{
+		snapshot: pb.Snapshot{Metadata: pb.SnapshotMetadata{
+			Index: snapIndex,
+			Term:  snapTerm,
+		}},
+		snapFinishCh: snapDone,
+	}
+	<-snapDone
+
+	_, err = store.Term(12)
+	require.NotNil(t, err)
+	require.Equal(t, snapIndex, s.store.Applied())
+	require.Nil(t, got)
+
+	require.Nil(t, store.Save(pb.HardState{Term: snapTerm, Commit: 12}, entries))
+	term, err := store.Term(12)
+	require.Nil(t, err)
+	require.Equal(t, snapTerm, term)
+
+	s.applyc <- apply{entries: entries}
+	<-applied
+	require.Equal(t, uint64(12), s.store.Applied())
+	require.Equal(t, uint64(12), gotIndex)
+	require.Equal(t, [][]byte{[]byte("after-snap-1"), []byte("after-snap-2")}, got)
+	term, err = store.Term(12)
+	require.Nil(t, err)
+	require.Equal(t, snapTerm, term)
+	term, err = store.Term(11)
+	require.Nil(t, err)
+	require.Equal(t, snapTerm, term)
+}

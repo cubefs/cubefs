@@ -31,7 +31,9 @@ func Register(app *grumble.App) {
 	addCmdDisk(blobnodeCommand)
 	addCmdChunk(blobnodeCommand)
 	addCmdShard(blobnodeCommand)
+	addCmdInspect(blobnodeCommand)
 	addCmdIOStat(blobnodeCommand)
+	addCmdMigrateVerify(blobnodeCommand)
 }
 
 func blobnodeFlags(f *grumble.Flags) {

@@ -332,6 +332,7 @@ func (s *service) executeShardTask(ctx context.Context, task clustermgr.ShardTas
 
 func (s *service) shardReports(ctx context.Context, shards []storage.ShardHandler, shardReports []clustermgr.ShardUnitInfo, sync bool, taskTypes ...proto.ShardTaskType) error {
 	span, ctx := trace.StartSpanFromContext(ctx, "")
+	reportUnix := time.Now().Unix()
 	disks := s.getAllDisks()
 	readIndex := !sync
 	for _, disk := range disks {
@@ -361,14 +362,17 @@ func (s *service) shardReports(ctx context.Context, shards []storage.ShardHandle
 				RouteVersion: stats.RouteVersion,
 			})
 
-			// metrics report
+			// metrics report: shard-level meta stats are replicated, report from leader only
+			s.shardRaftStatusReporter.Report(stats)
+			if !shard.IsLeader() {
+				continue
+			}
 			metaStats, err := shard.MetaStats(ctx)
 			if err != nil {
 				span.Errorf("get shard[%d] meta stats err: %s", shard.GetSuid().ShardID(), err.Error())
 				continue
 			}
-			s.shardMetaStatusReporter.Report(metaStats)
-			s.shardRaftStatusReporter.Report(stats)
+			s.shardMetaStatusReporter.Report(metaStats, reportUnix)
 		}
 	}
 

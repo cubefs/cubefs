@@ -339,7 +339,7 @@ func ParseData(resp *http.Response, data interface{}) (err error) {
 func ParseResponseErr(resp *http.Response) (err error) {
 	// wrap the error with HttpError for StatusCode is not 2XX
 	if resp.StatusCode > 299 && resp.ContentLength != 0 {
-		errR := &errorResponse{}
+		errR := &ErrorResponse{}
 		if err := json.NewDecoder(resp.Body).Decode(errR); err != nil {
 			return NewError(decodeStatus, "JSONDecode",
 				fmt.Errorf("%d response decode %s", resp.StatusCode, err.Error()))

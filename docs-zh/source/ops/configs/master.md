@@ -17,7 +17,8 @@ CubeFS 使用 **JSON** 作为配置文件的格式.
 | walDir                              | string | raft wal日志存储目录.                                                                                              | 是       |            |
 | storeDir                            | string | RocksDB数据存储目录.此目录必须存在，如果目录不存在，无法启动服务                                                                         | 是       |            |
 | clusterName                         | string | 集群名字                                                                                                         | 是       |            |
-| ebsAddr                             | string | 纠删码子系统的地址，使用纠删码子系统时需配置                                                                                       | 否       |            |
+| ebsAddr                             | string | Access 所使用的 Consul Agent 地址（`host:port`），客户端经此发现 Access。使用 BlobStore 卷时需与 `ebsServicePath` 同时配置。                                                 | 否       |            |
+| ebsServicePath                      | string | Access 在 Consul 中注册的服务名，未显式配置时一般为 `access`。                                       | 否       |            |
 | exporterPort                        | int    | prometheus获取监控数据端口                                                                                           | 否       |            |
 | consulAddr                          | string | consul注册地址，供prometheus exporter使用                                                                            | 否       |            |
 | metaNodeReservedMem                 | string | 元数据节点预留内存大小，单位：字节                                                                                            | 否       | 1073741824 |

@@ -400,6 +400,8 @@ func (svr *Service) HTTPManualMigrateTaskAdd(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
+	span := trace.SpanFromContextSafe(ctx)
+	span.Debugf("accept HTTPManualMigrateTaskAdd request, args: %v", args)
 
 	if !args.Valid() {
 		c.RespondError(errcode.ErrIllegalArguments)
@@ -407,6 +409,10 @@ func (svr *Service) HTTPManualMigrateTaskAdd(c *rpc.Context) {
 	}
 
 	err := svr.manualMigMgr.AddManualTask(ctx, args.Vuid, !args.DirectDownload)
+	if err != nil {
+		span.Errorf("add manual migrate task failed, err: %s", err)
+		err = errcode.ErrRequestNotAllow
+	}
 	c.RespondError(rpc.Error2HTTPError(err))
 }
 

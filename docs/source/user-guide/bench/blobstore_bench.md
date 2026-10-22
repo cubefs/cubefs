@@ -11,9 +11,13 @@ USAGE: build/bin/blobstore/blobstore-bench [OPTIONS]
 
 OPTIONS:
   -b string
-        Storage backend. 'blobstore' or 'dummy' (default "blobstore")
+        Storage backend. 'blobstore', 'diskchunk' or 'dummy' (default "blobstore")
   -c string
         Conf file of blobstore
+  -cc int
+        Number of chunks to create (default 1024)
+  -cs int
+        Chunk size in GiB (default 16)
   -d int
         Maximum test duration in seconds <-1 for unlimited> (default 60)
   -db string
@@ -112,6 +116,57 @@ Run the test:
 2025/07/12 21:29:03 Running Loop 1 Del Test
 2025/07/12 21:29:04 Loop: 1, Int: 0, Dur(s): 1.0, Mode: DEL, Ops: 2880, MB/s: 27.47, IO/s: 2880, Lat(ms): [ min: 0.4, avg: 0.6, 99%: 1.1, max: 1.7 ], Slowdowns: 0
 2025/07/12 21:29:04 Loop: 1, Int: TOTAL, Dur(s): 1.3, Mode: DEL, Ops: 3706, MB/s: 27.38, IO/s: 2871, Lat(ms): [ min: 0.4, avg: 0.6, 99%: 1.2, max: 2.4 ], Slowdowns: 0
+```
+
+### Testing diskchunk Performance
+
+Prepare the configuration file dc.conf:
+
+```json
+{
+  "auto_format": true,
+  "disable_sync": true,
+  "max_chunks": 4096,
+  "path": "/work/redundancer/build/bench"
+}
+```
+
+Run the test:
+
+```text
+# mkdir /work/redundancer/build/bench
+# build/bin/blobstore/blobstore-bench -b diskchunk -c dc.conf -r build/db/ -d 5 -m pgd -pr mybench -s 1M -t 2 -cc 2 -cs 1
+2026/04/17 15:18:43 DataSize=1000000 MD5=e231b877951da6c1583c9bc0fc821d3c
+2026/04/17 15:18:43 BlobStore Benchmark
+2026/04/17 15:18:43 Parameters:
+2026/04/17 15:18:43 backend=diskchunk
+2026/04/17 15:18:43 database=
+2026/04/17 15:18:43 conf=dc.conf
+2026/04/17 15:18:43 runName=mybench
+2026/04/17 15:18:43 poolName=
+2026/04/17 15:18:43 objSize=1M
+2026/04/17 15:18:43 maxObjCnt=-1
+2026/04/17 15:18:43 chunkSize=1
+2026/04/17 15:18:43 chunkCount=2
+2026/04/17 15:18:43 durationSecs=5
+2026/04/17 15:18:43 threads=2
+2026/04/17 15:18:43 loops=1
+2026/04/17 15:18:43 interval=1.000000
+2026/04/17 15:18:43 dbDir=build/db/
+2026/04/17 15:18:43 Running Loop 1 Put Test
+2026/04/17 15:18:44 Loop: 1, Int: 0, Dur(s): 1.0, Mode: PUT, Ops: 389, MB/s: 370.98, IO/s: 389, Lat(ms): [min: 0.3, avg: 5.1, 99%: 22.9, max: 32.9], Slowdowns: 0
+2026/04/17 15:18:45 Loop: 1, Int: 1, Dur(s): 1.0, Mode: PUT, Ops: 151, MB/s: 144.00, IO/s: 151, Lat(ms): [min: 0.5, avg: 13.2, 99%: 29.8, max: 31.5], Slowdowns: 0
+2026/04/17 15:18:46 Loop: 1, Int: 2, Dur(s): 1.0, Mode: PUT, Ops: 149, MB/s: 142.10, IO/s: 149, Lat(ms): [min: 1.4, avg: 13.3, 99%: 30.3, max: 31.5], Slowdowns: 0
+2026/04/17 15:18:47 Loop: 1, Int: 3, Dur(s): 1.0, Mode: PUT, Ops: 153, MB/s: 145.91, IO/s: 153, Lat(ms): [min: 0.4, avg: 13.2, 99%: 30.9, max: 32.3], Slowdowns: 0
+2026/04/17 15:18:48 Loop: 1, Int: 4, Dur(s): 1.0, Mode: PUT, Ops: 151, MB/s: 144.00, IO/s: 151, Lat(ms): [min: 0.4, avg: 13.2, 99%: 31.5, max: 32.7], Slowdowns: 0
+2026/04/17 15:18:48 Loop: 1, Int: TOTAL, Dur(s): 5.0, Mode: PUT, Ops: 995, MB/s: 189.48, IO/s: 199, Lat(ms): [min: 0.3, avg: 10.0, 99%: 30.9, max: 32.9], Slowdowns: 0
+2026/04/17 15:18:48 The subsequent '-m g' or '-m d' test should be specified with '-n 995'
+2026/04/17 15:18:48 Running Loop 1 Get Test
+2026/04/17 15:18:49 Loop: 1, Int: 0, Dur(s): 1.0, Mode: GET, Ops: 628, MB/s: 598.91, IO/s: 628, Lat(ms): [min: 0.2, avg: 3.2, 99%: 26.9, max: 35.0], Slowdowns: 0
+2026/04/17 15:18:50 Loop: 1, Int: 1, Dur(s): 1.0, Mode: GET, Ops: 210, MB/s: 200.27, IO/s: 210, Lat(ms): [min: 0.2, avg: 9.5, 99%: 31.0, max: 47.5], Slowdowns: 0
+2026/04/17 15:18:51 Loop: 1, Int: TOTAL, Dur(s): 2.8, Mode: GET, Ops: 995, MB/s: 344.45, IO/s: 361, Lat(ms): [min: 0.2, avg: 5.5, 99%: 28.2, max: 47.5], Slowdowns: 0
+2026/04/17 15:18:51 Running Loop 1 Del Test
+2026/04/17 15:18:52 Loop: 1, Int: TOTAL, Dur(s): 0.8, Mode: DEL, Ops: 995, MB/s: 1179.79, IO/s: 1237, Lat(ms): [min: 0.1, avg: 1.6, 99%: 11.2, max: 17.8], Slowdowns: 0
 ```
 
 ### Testing Overhead

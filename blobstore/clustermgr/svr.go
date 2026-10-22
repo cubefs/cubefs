@@ -19,6 +19,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	httpproxy "net/http/httputil"
 	"net/url"
@@ -74,6 +75,8 @@ const (
 	MaxBidCount              = 100000
 	DefaultChunkSize         = 17179869184
 	DefaultVolumeReserveSize = 10485760
+	// sizeRatioSumEpsilon is the tolerance for validating enabled code mode size ratio sum.
+	sizeRatioSumEpsilon = 1e-9
 )
 
 const (
@@ -130,6 +133,8 @@ type Config struct {
 	ChunkSize                uint64                    `json:"chunk_size"`
 	MetricReportIntervalM    int                       `json:"metric_report_interval_m"`
 	ConsistentCheckIntervalM int                       `json:"consistent_check_interval_m"`
+	DashboardFreshIntervalS  int                       `json:"dashboard_fresh_interval_s"`
+	DashboardFreshVolumeTick int                       `json:"dashboard_fresh_volume_tick"`
 
 	BrokenVolumeUnitReportNum int `json:"broken_volume_unit_report_num"`
 	BrokenShardUnitReportNum  int `json:"broken_shard_unit_report_num"`
@@ -166,6 +171,8 @@ type Service struct {
 	closeCh                chan interface{}
 	consulClient           *api.Client
 	*Config
+
+	dashboardMgr *dashboardMgr
 }
 
 func init() {
@@ -363,6 +370,9 @@ func New(cfg *Config) (*Service, error) {
 	// start raft node background progress
 	go raftNode.Start()
 
+	service.dashboardMgr = newDashboardMgr(service)
+	go service.dashboardMgr.loopFresh()
+
 	// start service background loop
 	go service.loop()
 
@@ -495,7 +505,7 @@ func (c *Config) checkAndFix() (err error) {
 		if sortedPolicies[0].MinSize != 0 {
 			return errors.New("min size range must be started with 0")
 		}
-		if sizeRatioSum != 1 {
+		if math.Abs(sizeRatioSum-1) >= sizeRatioSumEpsilon {
 			return errors.New("The sum of size ratio must be 1")
 		}
 	} else {
@@ -810,6 +820,7 @@ func (s *Service) metricReport(ctx context.Context) {
 	s.report(ctx)
 	s.VolumeMgr.Report(ctx, s.Region, s.ClusterID)
 	s.BlobNodeMgr.Report(ctx, s.Region, s.ClusterID, isLeader)
+	s.ServiceMgr.Report(ctx, s.Region, s.ClusterID)
 }
 
 func (s *Service) checkVolInfos(ctx context.Context, clis []*clustermgr.Client) ([]proto.Vid, error) {

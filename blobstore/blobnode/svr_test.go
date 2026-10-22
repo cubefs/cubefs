@@ -622,6 +622,14 @@ func runTestServer(svr *Service) string {
 	return testServer.URL
 }
 
+func newTestBlobNodeClient() bnapi.StorageAPI {
+	return bnapi.New(&bnapi.Config{
+		Config: rpc.Config{
+			Tc: rpc.TransportConfig{DialTimeoutMs: 3000},
+		},
+	})
+}
+
 func runMockClusterMgr(mcm *mockClusterMgr) string {
 	r := mockClusterMgrRouter(mcm)
 	testServer := httptest.NewServer(r)
@@ -1278,7 +1286,7 @@ func TestStartBlobnodeService_LostMountPoint(t *testing.T) {
 	})
 	defer patchesMP.Reset()
 
-	// cm return disk list: pathBroken， Broken; pathUnknown, not found
+	// cm return disk list: pathBroken, Broken; pathUnknown, not found
 	diskBrokenInfo1 := &cmapi.BlobNodeDiskInfo{
 		DiskInfo:          cmapi.DiskInfo{Path: pathData1, Status: proto.DiskStatusBroken},
 		DiskHeartBeatInfo: cmapi.DiskHeartBeatInfo{DiskID: proto.DiskID(1000)},
@@ -1330,7 +1338,7 @@ func TestStartBlobnodeService_LostMountPoint(t *testing.T) {
 	)
 	defer patchesClean.Reset()
 
-	// do start：3 unmount disk，pathBroken is broken in cm -> online++；pathUnknown not in cm -> lost++
+	// do start：3 unmount disk, pathBroken is broken in cm -> online++；pathUnknown not in cm -> lost++
 	err = startBlobnodeService(ctx, svr, conf)
 	require.NoError(t, err)
 	require.Equal(t, int32(1), atomic.LoadInt32(&lostCount))
@@ -1525,13 +1533,16 @@ func TestService_OnlyBlobnode_OpenOldDisk(t *testing.T) {
 func TestService_DataInspect(t *testing.T) {
 	ctr := gomock.NewController(t)
 	ds1 := NewMockDiskAPI(ctr)
+	ds2 := NewMockDiskAPI(ctr)
+	vuid, err := proto.NewVuid(1001, 1, 1)
+	require.NoError(t, err)
 	svr := &Service{
-		Disks: map[proto.DiskID]core.DiskAPI{2: ds1},
+		Disks: map[proto.DiskID]core.DiskAPI{2: ds1, 3: ds2},
 	}
 	testServer := httptest.NewServer(NewHandler(svr))
 
 	{
-		ds1.EXPECT().ID().Return(proto.DiskID(2))
+		ds1.EXPECT().ID().Return(proto.DiskID(2)).AnyTimes()
 		ds1.EXPECT().DiskInfo().Return(cmapi.BlobNodeDiskInfo{
 			DiskInfo: cmapi.DiskInfo{
 				ClusterID: 1,
@@ -1551,16 +1562,13 @@ func TestService_DataInspect(t *testing.T) {
 	{
 		// get inspect stats
 		getter := mocks.NewMockAccessor(ctr)
-		getter.EXPECT().GetConfig(any, any).AnyTimes().Return("", nil)
+		getter.EXPECT().GetConfig(gomock.Any(), gomock.Any()).AnyTimes().Return("", nil)
 		ts, err := taskswitch.NewSwitchMgr(getter).AddSwitch(proto.TaskSwitchDataInspect.String())
 		require.NoError(t, err)
 		svr.inspectMgr = &DataInspectMgr{
-			// progress:   map[proto.DiskID]int{101: 85, 202: 95},
 			taskSwitch: ts,
 			conf:       DataInspectConf{RateLimit: 4096},
 		}
-		svr.inspectMgr.progress.Store(proto.DiskID(101), 88)
-		svr.inspectMgr.progress.Store(proto.DiskID(202), 99)
 
 		totalUrl := testServer.URL + "/inspect/stat"
 		resp, err := HTTPRequest(http.MethodGet, totalUrl)
@@ -1573,8 +1581,217 @@ func TestService_DataInspect(t *testing.T) {
 		var data DataInspectStat
 		err = json.Unmarshal(body, &data)
 		require.NoError(t, err)
+		require.Equal(t, 4096, data.RateLimit)
 		log.Infof("inspect stat: %+v\n", data)
 	}
+
+	{
+		getter := mocks.NewMockAccessor(ctr)
+		getter.EXPECT().GetConfig(gomock.Any(), gomock.Any()).AnyTimes().Return("", nil)
+		ts, err := taskswitch.NewSwitchMgr(getter).AddSwitch(proto.TaskSwitchDataInspect.String())
+		require.NoError(t, err)
+		svr.inspectMgr = &DataInspectMgr{
+			taskSwitch: ts,
+			conf:       DataInspectConf{RateLimit: 4096},
+		}
+
+		expectedDiskSt := InspectDiskState{
+			DiskID:       2,
+			CycleStartAt: 123456789,
+			CycleID:      7,
+		}
+		ds1.EXPECT().IsClosing().Return(false).Times(1)
+		ds1.EXPECT().LoadInspectDiskState(gomock.Any()).Return(expectedDiskSt, nil).Times(1)
+
+		totalUrl := testServer.URL + "/inspect/stat/diskid/2"
+		resp, err := HTTPRequest(http.MethodGet, totalUrl)
+		require.Nil(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		var data map[proto.DiskID]InspectDiskState
+		err = json.Unmarshal(body, &data)
+		require.NoError(t, err)
+		require.Equal(t, map[proto.DiskID]InspectDiskState{2: expectedDiskSt}, data)
+	}
+
+	{
+		expectedDiskStates := map[proto.DiskID]InspectDiskState{
+			2: {DiskID: 2, CycleStartAt: 123456789, CycleID: 7},
+			3: {DiskID: 3, CycleStartAt: 987654321, CycleID: 8},
+		}
+		ds2.EXPECT().ID().Return(proto.DiskID(3)).AnyTimes()
+		ds1.EXPECT().IsClosing().Return(false).Times(1)
+		ds1.EXPECT().LoadInspectDiskState(gomock.Any()).Return(expectedDiskStates[2], nil).Times(1)
+		ds2.EXPECT().IsClosing().Return(false).Times(1)
+		ds2.EXPECT().LoadInspectDiskState(gomock.Any()).Return(expectedDiskStates[3], nil).Times(1)
+
+		totalUrl := testServer.URL + "/inspect/stat/diskid/0"
+		resp, err := HTTPRequest(http.MethodGet, totalUrl)
+		require.Nil(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		var data map[proto.DiskID]InspectDiskState
+		err = json.Unmarshal(body, &data)
+		require.NoError(t, err)
+		require.Equal(t, expectedDiskStates, data)
+	}
+
+	{
+		expectedChunkSt := InspectChunkState{
+			Vuid:         vuid,
+			Cursor:       456,
+			CycleMaxBid:  456,
+			CycleCnt:     8,
+			CycleScanned: 6,
+			BadBids:      badBidSet(88),
+		}
+		ds1.EXPECT().IsClosing().Return(false).Times(1)
+		ds1.EXPECT().LoadInspectChunkState(gomock.Any(), vuid).Return(expectedChunkSt, nil).Times(1)
+
+		totalUrl := testServer.URL + "/inspect/stat/diskid/2/vuid/" + vuid.ToString()
+		resp, err := HTTPRequest(http.MethodGet, totalUrl)
+		require.Nil(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		var data map[proto.Vuid]InspectChunkState
+		err = json.Unmarshal(body, &data)
+		require.NoError(t, err)
+		require.Len(t, data, 1)
+		require.Equal(t, expectedChunkSt, data[vuid])
+	}
+
+	{
+		st1 := InspectChunkState{
+			Vuid:         proto.Vuid(1003),
+			Cursor:       200,
+			CycleMaxBid:  300,
+			CycleID:      9,
+			CycleCnt:     12,
+			CycleScanned: 5,
+			BadBids:      badBidSet(9),
+		}
+		st2 := InspectChunkState{
+			Vuid:         proto.Vuid(1002),
+			Cursor:       301,
+			CycleMaxBid:  301,
+			CycleID:      9,
+			CycleCnt:     13,
+			CycleScanned: 6,
+			BadBids:      badBidSet(8),
+		}
+		ds1.EXPECT().IsClosing().Return(false).Times(1)
+		ds1.EXPECT().RangeInspectChunkState(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, fn func(st *core.InspectChunkState) bool) error {
+				fn(&st1)
+				fn(&st2)
+				return nil
+			},
+		)
+		totalUrl := testServer.URL + "/inspect/stat/diskid/2/vuid/0"
+		resp, err := HTTPRequest(http.MethodGet, totalUrl)
+		require.Nil(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		var data map[proto.Vuid]InspectChunkState
+		err = json.Unmarshal(body, &data)
+		require.NoError(t, err)
+		require.Len(t, data, 2)
+		require.Equal(t, st2, data[proto.Vuid(1002)])
+		require.Equal(t, st1, data[proto.Vuid(1003)])
+	}
+}
+
+func TestService_SetInspectCycle(t *testing.T) {
+	ctr := gomock.NewController(t)
+	getter := mocks.NewMockAccessor(ctr)
+	getter.EXPECT().GetConfig(gomock.Any(), gomock.Any()).AnyTimes().Return("", nil)
+	ts, err := taskswitch.NewSwitchMgr(getter).AddSwitch(proto.TaskSwitchDataInspect.String())
+	require.NoError(t, err)
+
+	svr := &Service{
+		inspectMgr: &DataInspectMgr{
+			taskSwitch: ts,
+			conf:       DataInspectConf{CycleDays: 90},
+		},
+	}
+	router := NewHandler(svr)
+
+	do := func(method, path string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, path, nil)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		return rec
+	}
+
+	getStat := func(t *testing.T) DataInspectStat {
+		rec := do(http.MethodGet, "http://blobnode/inspect/stat")
+		require.Equal(t, http.StatusOK, rec.Code)
+		var stat DataInspectStat
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &stat))
+		return stat
+	}
+
+	require.Equal(t, 90, getStat(t).CycleDays)
+
+	// valid online update takes effect immediately
+	rec := do(http.MethodPost, "http://blobnode/inspect/cycle/30")
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 30, getStat(t).CycleDays)
+
+	// invalid value is rejected and the previous value is kept
+	rec = do(http.MethodPost, "http://blobnode/inspect/cycle/0")
+	require.Equal(t, int(bloberr.ErrInvalidParam), rec.Code)
+	require.Equal(t, 30, getStat(t).CycleDays)
+
+	// values above the old 365-day cap are accepted
+	rec = do(http.MethodPost, "http://blobnode/inspect/cycle/1000")
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 1000, getStat(t).CycleDays)
+}
+
+func TestService_SetInspectRate(t *testing.T) {
+	ctr := gomock.NewController(t)
+	getter := mocks.NewMockAccessor(ctr)
+	getter.EXPECT().GetConfig(gomock.Any(), gomock.Any()).AnyTimes().Return("", nil)
+	ts, err := taskswitch.NewSwitchMgr(getter).AddSwitch(proto.TaskSwitchDataInspect.String())
+	require.NoError(t, err)
+
+	svr := &Service{
+		inspectMgr: &DataInspectMgr{
+			taskSwitch: ts,
+			conf:       DataInspectConf{CycleDays: 90},
+		},
+	}
+	router := NewHandler(svr)
+
+	do := func(method, path string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, path, nil)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		return rec
+	}
+
+	// valid update takes effect immediately
+	rec := do(http.MethodPost, "http://blobnode/inspect/rate/1048576")
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 1048576, svr.inspectMgr.inspectRateLimit())
+
+	// below minRateLimit is rejected and keeps the previous value
+	rec = do(http.MethodPost, "http://blobnode/inspect/rate/1024")
+	require.Equal(t, int(bloberr.ErrInvalidParam), rec.Code)
+	require.Equal(t, 1048576, svr.inspectMgr.inspectRateLimit())
 }
 
 func TestService_Blobnode_registerNode(t *testing.T) {

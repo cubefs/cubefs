@@ -98,6 +98,16 @@ func (s *ScopeMgr) GetCurrent(name string) uint64 {
 	return s.scopeItems[name]
 }
 
+func (s *ScopeMgr) Stat() map[string]uint64 {
+	s.lock.RLock()
+	items := make(map[string]uint64, len(s.scopeItems))
+	for name, cur := range s.scopeItems {
+		items[name] = cur
+	}
+	s.lock.RUnlock()
+	return items
+}
+
 func (s *ScopeMgr) applyCommit(ctx context.Context, args *allocCtx) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()

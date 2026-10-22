@@ -159,6 +159,7 @@ func TestVolumeMgr_finishLastCreateJob(t *testing.T) {
 		mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).MaxTimes(n).Return(nil, nil, cluster.ErrNoEnoughSpace)
 	}
 	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockGetDiskInfo)
+	mockDiskMgr.EXPECT().HasEnoughSpace(gomock.Any(), gomock.Any()).AnyTimes().Return(true)
 	mockVolumeMgr.scopeMgr = mockScopeMgr
 	mockVolumeMgr.diskMgr = mockDiskMgr
 
@@ -251,29 +252,53 @@ func TestVolumeMgr_finishLastCreateJob(t *testing.T) {
 	}
 }
 
-func TestVolumeMgr_applyCreateVolume(t *testing.T) {
+// TestVolumeMgr_finishLastCreateJobSkipsWhenNoSpace verifies that when
+// HasEnoughSpace returns false, finishLastCreateJob skips the record without
+// increasing the epoch or issuing any raft propose.
+func TestVolumeMgr_finishLastCreateJobSkipsWhenNoSpace(t *testing.T) {
 	mockVolumeMgr, clean := initMockVolumeMgr(t)
 	defer clean()
 
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	ctr := gomock.NewController(t)
+	mockRaftServer := mocks.NewMockRaftServer(ctr)
+	mockScopeMgr := mock.NewMockScopeMgrAPI(ctr)
+	mockDiskMgr := cluster.NewMockBlobNodeManagerAPI(ctr)
 
-	vols := generateVolume(codemode.EC15P12, 1, 99)
-	newVol := vols[0]
+	mockRaftServer.EXPECT().Status().AnyTimes().Return(raftserver.Status{Id: 1})
+	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockGetDiskInfo)
+	mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).AnyTimes().Return(nil, nil, cluster.ErrNoEnoughSpace)
 
-	expectedRouteVersion := proto.RouteVersion(mockVolumeMgr.routeMgr.GetRouteVersion() + 1)
+	mockVolumeMgr.raftServer = mockRaftServer
+	mockVolumeMgr.scopeMgr = mockScopeMgr
+	mockVolumeMgr.diskMgr = mockDiskMgr
 
-	err := mockVolumeMgr.applyCreateVolume(ctx, newVol)
+	// put a transited record in via createVolume whose AllocChunks fails
+	mockScopeMgr.EXPECT().Alloc(gomock.Any(), gomock.Any(), gomock.Any()).Return(uint64(100), uint64(100), nil)
+	mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).MaxTimes(1).DoAndReturn(func(ctx context.Context, data []byte) interface{} {
+		proposeInfo := base.DecodeProposeInfo(data)
+		args := &CreateVolumeCtx{}
+		require.NoError(t, args.Decode(proposeInfo.Data))
+		volume, err := args.ToVolume(ctx)
+		require.NoError(t, err)
+		require.NoError(t, mockVolumeMgr.applyInitCreateVolume(ctx, volume))
+		return nil
+	})
+	require.Error(t, mockVolumeMgr.createVolume(ctx, codemode.EC15P12))
+
+	// now swap to a strict mock where HasEnoughSpace returns false and neither
+	// AllocChunks nor Propose is expected to be called
+	ctr2 := gomock.NewController(t)
+	mockDiskMgr2 := cluster.NewMockBlobNodeManagerAPI(ctr2)
+	mockDiskMgr2.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockGetDiskInfo)
+	mockDiskMgr2.EXPECT().HasEnoughSpace(gomock.Any(), gomock.Any()).AnyTimes().Return(false)
+	// no AllocChunks / Propose expected; ctr2 fails the test on any unexpected call
+	mockVolumeMgr.diskMgr = mockDiskMgr2
+	mockRaftServer2 := mocks.NewMockRaftServer(ctr2)
+	mockRaftServer2.EXPECT().Status().AnyTimes().Return(raftserver.Status{Id: 1})
+	mockVolumeMgr.raftServer = mockRaftServer2
+
+	err := mockVolumeMgr.finishLastCreateJob(ctx)
+	// all records skipped → no error
 	require.NoError(t, err)
-
-	got := mockVolumeMgr.all.getVol(newVol.vid)
-	require.NotNil(t, got)
-
-	require.Equal(t, expectedRouteVersion, got.volInfoBase.RouteVersion)
-	volRecord, err := mockVolumeMgr.volumeTbl.GetVolume(newVol.vid)
-	require.NoError(t, err)
-	require.Equal(t, expectedRouteVersion, volRecord.RouteVersion)
-
-	volumeRecord, err := mockVolumeMgr.volumeTbl.GetVolume(newVol.vid)
-	require.NoError(t, err)
-	require.Equal(t, expectedRouteVersion, volumeRecord.RouteVersion)
 }

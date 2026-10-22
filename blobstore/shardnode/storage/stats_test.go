@@ -33,6 +33,7 @@ func TestNewShardMetaStatsRecorder(t *testing.T) {
 
 	recorder := newShardMetaStatsRecorder(cfg)
 	require.NotNil(t, recorder)
+	require.Equal(t, cfg, recorder.cfg)
 	require.Equal(t, 5, len(recorder.r))
 	for i := range recorder.r {
 		require.NotNil(t, recorder.r[i])
@@ -79,10 +80,22 @@ func TestShardMetaStatsRecorder_Load(t *testing.T) {
 	require.Equal(t, uint64(500), loadedStats.BlobSize)
 	require.Equal(t, uint64(10), loadedStats.AppliedIndex)
 
-	// Test load with mismatched tdigests count
+	// Test load with tdigest count != range count (upgrade scenario)
+	upgradeStats := snproto.ShardMetaStats{
+		ItemCount:        200,
+		PositiveTdigests: nil,
+		NegativeTdigests: nil,
+	}
+	err = recorder.load(upgradeStats)
+	require.NoError(t, err)
+	loadedStats = recorder.get()
+	require.Equal(t, uint64(200), loadedStats.ItemCount)
+
+	// Test load with mismatched positive/negative tdigests count
 	invalidStats := snproto.ShardMetaStats{
 		ItemCount: 100,
 		PositiveTdigests: []statistic.TDigestSnapshot{
+			statistic.NewTDigest(100).Snapshot(),
 			statistic.NewTDigest(100).Snapshot(),
 		},
 		NegativeTdigests: []statistic.TDigestSnapshot{
@@ -93,6 +106,9 @@ func TestShardMetaStatsRecorder_Load(t *testing.T) {
 	err = recorder.load(invalidStats)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "tdigests snapshot count mismatch")
+	// Failed load must not overwrite previously loaded stats.
+	loadedStats = recorder.get()
+	require.Equal(t, uint64(200), loadedStats.ItemCount)
 }
 
 // TestShardMetaStatsRecorder_Set tests setting stats
@@ -217,19 +233,21 @@ func TestShard_HandleInsertOp(t *testing.T) {
 	require.Equal(t, uint64(1), stats.SpaceMetaStats[200].BlobCount)
 	require.Equal(t, uint64(220), stats.SpaceMetaStats[200].BlobSize)
 
-	// Test insert with spaceID = 0 (should be ignored)
+	// Test insert with spaceID = 0 (should be ignored, including tdigest sampling)
 	mou = &metaOpUnit{
 		op:           metaOpInsert,
 		dataType:     metaDataTypeItem,
 		spaceID:      0,
 		keySize:      10,
 		newValueSize: 100,
-		hashValues:   []uint64{},
+		hashValues:   []uint64{0xDEADBEEF},
 	}
 
 	prevItemCount := stats.ItemCount
+	quantileBefore := s.metaStats.r[0].Quantile(1.0)
 	s.handleInsertOp(&stats, mou)
 	require.Equal(t, prevItemCount, stats.ItemCount) // Should not change
+	require.Equal(t, quantileBefore, s.metaStats.r[0].Quantile(1.0))
 }
 
 // TestShard_HandleUpdateOp tests handling update operations
@@ -261,6 +279,7 @@ func TestShard_HandleUpdateOp(t *testing.T) {
 
 	s.handleUpdateOp(&stats, mou)
 	require.Equal(t, uint64(150), stats.SpaceMetaStats[100].ItemSize)
+	require.Equal(t, uint64(150), stats.ItemSize)
 
 	// Test update item with size decrease
 	mou = &metaOpUnit{
@@ -273,6 +292,7 @@ func TestShard_HandleUpdateOp(t *testing.T) {
 
 	s.handleUpdateOp(&stats, mou)
 	require.Equal(t, uint64(50), stats.SpaceMetaStats[100].ItemSize)
+	require.Equal(t, uint64(50), stats.ItemSize)
 
 	// Test update blob with size increase
 	mou = &metaOpUnit{
@@ -285,6 +305,7 @@ func TestShard_HandleUpdateOp(t *testing.T) {
 
 	s.handleUpdateOp(&stats, mou)
 	require.Equal(t, uint64(200), stats.SpaceMetaStats[200].BlobSize)
+	require.Equal(t, uint64(200), stats.BlobSize)
 
 	// Test update blob with size decrease
 	mou = &metaOpUnit{
@@ -297,6 +318,21 @@ func TestShard_HandleUpdateOp(t *testing.T) {
 
 	s.handleUpdateOp(&stats, mou)
 	require.Equal(t, uint64(80), stats.SpaceMetaStats[200].BlobSize)
+	require.Equal(t, uint64(80), stats.BlobSize)
+
+	// Test update with size decrease below zero (should not underflow global stats)
+	stats.ItemSize = 30
+	stats.SpaceMetaStats[100] = snproto.SpaceMetaStats{ItemSize: 30}
+	mou = &metaOpUnit{
+		op:           metaOpUpdate,
+		dataType:     metaDataTypeItem,
+		spaceID:      100,
+		oldValueSize: 100,
+		newValueSize: 0,
+	}
+	s.handleUpdateOp(&stats, mou)
+	require.Equal(t, uint64(0), stats.ItemSize)
+	require.Equal(t, uint64(0), stats.SpaceMetaStats[100].ItemSize)
 
 	// Test update with spaceID = 0 (should be ignored)
 	mou = &metaOpUnit{
@@ -623,4 +659,187 @@ func TestShard_HandleDeleteOpWithDifferentDataTypes(t *testing.T) {
 
 	s.handleDeleteOp(&stats, mou)
 	require.Equal(t, uint64(1), stats.ItemCount) // Should not have changed
+}
+
+// TestShardMetaStatsRecorder_SetResizesTDigestSlices verifies set handles wrong-length slices.
+func TestShardMetaStatsRecorder_SetResizesTDigestSlices(t *testing.T) {
+	cfg := MetaStatsConfig{
+		RangeCount:         2,
+		TDigestCompression: 100,
+	}
+	recorder := newShardMetaStatsRecorder(cfg)
+	recorder.r[0].Add(12345)
+
+	stats := snproto.ShardMetaStats{
+		ItemCount:        1,
+		PositiveTdigests: []statistic.TDigestSnapshot{},
+		NegativeTdigests: nil,
+	}
+
+	require.NotPanics(t, func() {
+		recorder.set(stats)
+	})
+
+	retrieved := recorder.get()
+	require.Len(t, retrieved.PositiveTdigests, 2)
+	require.Len(t, retrieved.NegativeTdigests, 2)
+}
+
+// TestShard_HandleInsertOpHashTDigestSampling verifies large hash values use sub-range index.
+func TestShard_HandleInsertOpHashTDigestSampling(t *testing.T) {
+	mockShard, cleanup := newMockShard(t)
+	defer cleanup()
+
+	s := mockShard.shard
+	const hash0 = uint64(0xDEADBEEFCAFEBABE)
+	const hash1 = uint64(0x123456789ABCDEF0)
+
+	s.metaStats = newShardMetaStatsRecorder(MetaStatsConfig{
+		RangeCount:         2,
+		RequestSampleRatio: 1.0,
+		TDigestCompression: 100,
+	})
+
+	stats := snproto.ShardMetaStats{
+		SpaceMetaStats: make(map[uint64]snproto.SpaceMetaStats),
+	}
+	mou := &metaOpUnit{
+		op:           metaOpInsert,
+		dataType:     metaDataTypeItem,
+		spaceID:      100,
+		keySize:      10,
+		newValueSize: 100,
+		hashValues:   []uint64{hash0, hash1},
+	}
+
+	require.NotPanics(t, func() {
+		s.handleInsertOp(&stats, mou)
+	})
+	require.Equal(t, hash0, s.metaStats.r[0].Quantile(1.0))
+	require.Equal(t, hash1, s.metaStats.r[1].Quantile(1.0))
+}
+
+// TestShard_HandleInsertOpHashTDigestSamplingSkipsZero verifies hash value 0 is not sampled.
+func TestShard_HandleInsertOpHashTDigestSamplingSkipsZero(t *testing.T) {
+	mockShard, cleanup := newMockShard(t)
+	defer cleanup()
+
+	s := mockShard.shard
+	s.metaStats = newShardMetaStatsRecorder(MetaStatsConfig{
+		RangeCount:         1,
+		RequestSampleRatio: 1.0,
+		TDigestCompression: 100,
+	})
+
+	stats := snproto.ShardMetaStats{
+		SpaceMetaStats: make(map[uint64]snproto.SpaceMetaStats),
+	}
+	mou := &metaOpUnit{
+		op:           metaOpInsert,
+		dataType:     metaDataTypeItem,
+		spaceID:      100,
+		keySize:      10,
+		newValueSize: 100,
+		hashValues:   []uint64{0},
+	}
+
+	s.handleInsertOp(&stats, mou)
+	require.Equal(t, uint64(0), s.metaStats.r[0].Quantile(1.0))
+}
+
+// TestShard_HandleInsertOpHashTDigestTruncatesExtraValues verifies extra hash values are ignored.
+func TestShard_HandleInsertOpHashTDigestTruncatesExtraValues(t *testing.T) {
+	mockShard, cleanup := newMockShard(t)
+	defer cleanup()
+
+	s := mockShard.shard
+	s.metaStats = newShardMetaStatsRecorder(MetaStatsConfig{
+		RangeCount:         1,
+		RequestSampleRatio: 1.0,
+		TDigestCompression: 100,
+	})
+
+	stats := snproto.ShardMetaStats{
+		SpaceMetaStats: make(map[uint64]snproto.SpaceMetaStats),
+	}
+	const hash0 = uint64(100)
+	const hashExtra = uint64(200)
+	mou := &metaOpUnit{
+		op:           metaOpInsert,
+		dataType:     metaDataTypeItem,
+		spaceID:      100,
+		keySize:      10,
+		newValueSize: 100,
+		hashValues:   []uint64{hash0, hashExtra},
+	}
+
+	require.NotPanics(t, func() {
+		s.handleInsertOp(&stats, mou)
+	})
+	require.Equal(t, hash0, s.metaStats.r[0].Quantile(1.0))
+}
+
+// TestShard_HandleDeleteOpHashTDigestNoPanic verifies delete with large hash values does not panic.
+func TestShard_HandleDeleteOpHashTDigestNoPanic(t *testing.T) {
+	mockShard, cleanup := newMockShard(t)
+	defer cleanup()
+
+	s := mockShard.shard
+	const hash0 = uint64(0xDEADBEEFCAFEBABE)
+
+	s.metaStats = newShardMetaStatsRecorder(MetaStatsConfig{
+		RangeCount:         1,
+		RequestSampleRatio: 1.0,
+		TDigestCompression: 100,
+	})
+
+	stats := snproto.ShardMetaStats{
+		ItemCount: 1,
+		ItemSize:  100,
+		SpaceMetaStats: map[uint64]snproto.SpaceMetaStats{
+			100: {ItemCount: 1, ItemSize: 100},
+		},
+	}
+	mou := &metaOpUnit{
+		op:           metaOpDelete,
+		dataType:     metaDataTypeItem,
+		spaceID:      100,
+		keySize:      10,
+		oldValueSize: 100,
+		hashValues:   []uint64{hash0},
+	}
+
+	require.NotPanics(t, func() {
+		s.handleDeleteOp(&stats, mou)
+	})
+	require.Equal(t, uint64(0), stats.ItemCount)
+}
+
+// TestShardMetaStatsRecorder_RequestSampleRatioZero disables tdigest sampling.
+func TestShardMetaStatsRecorder_RequestSampleRatioZero(t *testing.T) {
+	mockShard, cleanup := newMockShard(t)
+	defer cleanup()
+
+	s := mockShard.shard
+	s.metaStats = newShardMetaStatsRecorder(MetaStatsConfig{
+		RangeCount:         1,
+		RequestSampleRatio: 0,
+		TDigestCompression: 100,
+	})
+
+	stats := snproto.ShardMetaStats{
+		SpaceMetaStats: make(map[uint64]snproto.SpaceMetaStats),
+	}
+	mou := &metaOpUnit{
+		op:           metaOpInsert,
+		dataType:     metaDataTypeItem,
+		spaceID:      100,
+		keySize:      10,
+		newValueSize: 100,
+		hashValues:   []uint64{0xDEADBEEF},
+	}
+
+	s.handleInsertOp(&stats, mou)
+	require.Equal(t, uint64(0), s.metaStats.r[0].Quantile(1.0))
+	require.Equal(t, uint64(1), stats.ItemCount)
 }

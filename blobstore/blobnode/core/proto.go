@@ -40,7 +40,7 @@ type VuidMeta struct {
 	Ctime       int64                  `json:"ctime"` // nsec
 	Mtime       int64                  `json:"mtime"` // nsec
 	Compacting  bool                   `json:"compacting"`
-	Status      clustermgr.ChunkStatus `json:"status"` // normal、release
+	Status      clustermgr.ChunkStatus `json:"status"` // normal, release
 	Reason      string                 `json:"reason"`
 }
 
@@ -60,6 +60,15 @@ type DiskStats struct {
 	Reserved      int64 `json:"reserved"`        // reserve space on the disk
 	TotalDiskSize int64 `json:"total_disk_size"` // total actual disk size
 }
+
+type (
+	// InspectDiskState / InspectChunkState / BadBidMeta are defined in the blobnode
+	// API package so HTTP/CLI and the disk engine share one persisted layout.
+	// SuperBlock stores them via the shared kv meta store.
+	InspectDiskState  = bnapi.InspectDiskState
+	InspectChunkState = bnapi.InspectChunkState
+	BadBidMeta        = bnapi.BadBidMeta
+)
 
 type StorageStat struct {
 	FileSize   int64              `json:"file_size"`
@@ -169,6 +178,10 @@ type DiskAPI interface {
 	GetIoQos() (ioQos *qos.QosMgr)
 	GetDataPath() (path string)
 	GetMetaPath() (path string)
+
+	// InspectState returns the per-disk inspect progress store
+	InspectState() InspectStateStore
+
 	SetStatus(status proto.DiskStatus)
 	LoadDiskInfo(ctx context.Context) (dm DiskMeta, err error)
 	UpdateDiskStatus(ctx context.Context, status proto.DiskStatus) (err error)

@@ -291,6 +291,9 @@ func TestPutAtArgs(t *testing.T) {
 		{1, 0, 0, 1, false},
 		{1, 1, 0, 1, false},
 		{1, 1, 1, 1, true},
+		{1, 1, 1, int64(access.MaxBlobSize), true},
+		{1, 1, 1, int64(access.MaxBlobSize) + 1, false},
+		{1, 1, 1, int64(access.MaxBlobSize) + (1 << 32), false},
 	}
 	for _, cs := range cases {
 		args := access.PutAtArgs{
@@ -314,12 +317,14 @@ func TestAllocArgs(t *testing.T) {
 		{0, 0, 0, 0, false},
 		{0, 0, 0, 1, false},
 		{1, 0, 0, 0, true},
-		{1, 1, 0, 0, false},
-		{1, 1, 1, 0, false},
+		{1, 1, 0, 0, true},
+		{1, 1, 1, 0, true},
 		{1, 1, 1, 1, true},
 		{1, 1, 1, 3, true},
 		{1, 1, 1, 0xff, false},
-		{1, 1, 0, 2, false},
+		{1, 1, 0, 2, true},
+		{1, 0, 0, 0xff, false},
+		{1, 0, 0, 2, true},
 		{1, 0, access.MaxBlobSize, 0, true},
 		{1, 1, access.MaxBlobSize, 2, true},
 		{1, 0, access.MaxBlobSize + 1, 0, false},
@@ -381,6 +386,12 @@ func TestDeleteBlobArgs(t *testing.T) {
 	require.False(t, args.IsValid())
 	args.Size = 1
 	require.True(t, args.IsValid())
+	args.Size = int64(access.MaxBlobSize)
+	require.True(t, args.IsValid())
+	args.Size = int64(access.MaxBlobSize) + 1
+	require.False(t, args.IsValid())
+	args.Size = int64(access.MaxBlobSize) + (1 << 32)
+	require.False(t, args.IsValid())
 }
 
 func TestSignArgs(t *testing.T) {

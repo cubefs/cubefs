@@ -291,6 +291,126 @@ func (mr *MockDiskAPIMockRecorder) PrepareClose(arg0 interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PrepareClose", reflect.TypeOf((*MockDiskAPI)(nil).PrepareClose), arg0)
 }
 
+// InspectState returns the mock itself as InspectStateStore so existing
+// Load/Store/Flush expectations on MockDiskAPI keep working.
+func (m *MockDiskAPI) InspectState() core.InspectStateStore {
+	return m
+}
+
+// RangeInspectChunkState mocks base method.
+func (m *MockDiskAPI) RangeInspectChunkState(arg0 context.Context, arg1 func(*core.InspectChunkState) bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RangeInspectChunkState", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteBadBid mocks base method.
+func (m *MockDiskAPI) DeleteBadBid(arg0 context.Context, arg1 proto.Vuid, arg2 proto.BlobID) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteBadBid", arg0, arg1, arg2)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DeleteBadBid indicates an expected call of DeleteBadBid.
+func (mr *MockDiskAPIMockRecorder) DeleteBadBid(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteBadBid", reflect.TypeOf((*MockDiskAPI)(nil).DeleteBadBid), arg0, arg1, arg2)
+}
+
+// AddBadBid mocks base method.
+func (m *MockDiskAPI) AddBadBid(arg0 context.Context, arg1 proto.Vuid, arg2 proto.BlobID, arg3 core.BadBidMeta) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AddBadBid", arg0, arg1, arg2, arg3)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AddBadBid indicates an expected call of AddBadBid.
+func (mr *MockDiskAPIMockRecorder) AddBadBid(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddBadBid", reflect.TypeOf((*MockDiskAPI)(nil).AddBadBid), arg0, arg1, arg2, arg3)
+}
+
+// FlushInspectState mocks base method.
+func (m *MockDiskAPI) FlushInspectState(arg0 context.Context) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "FlushInspectState", arg0)
+}
+
+// FlushInspectState indicates an expected call of FlushInspectState.
+func (mr *MockDiskAPIMockRecorder) FlushInspectState(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FlushInspectState", reflect.TypeOf((*MockDiskAPI)(nil).FlushInspectState), arg0)
+}
+
+// RangeInspectChunkState indicates an expected call of RangeInspectChunkState.
+func (mr *MockDiskAPIMockRecorder) RangeInspectChunkState(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RangeInspectChunkState", reflect.TypeOf((*MockDiskAPI)(nil).RangeInspectChunkState), arg0, arg1)
+}
+
+// LoadInspectChunkState mocks base method.
+func (m *MockDiskAPI) LoadInspectChunkState(arg0 context.Context, arg1 proto.Vuid) (core.InspectChunkState, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LoadInspectChunkState", arg0, arg1)
+	ret0, _ := ret[0].(core.InspectChunkState)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// LoadInspectChunkState indicates an expected call of LoadInspectChunkState.
+func (mr *MockDiskAPIMockRecorder) LoadInspectChunkState(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadInspectChunkState", reflect.TypeOf((*MockDiskAPI)(nil).LoadInspectChunkState), arg0, arg1)
+}
+
+// LoadInspectDiskState mocks base method.
+func (m *MockDiskAPI) LoadInspectDiskState(arg0 context.Context) (core.InspectDiskState, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LoadInspectDiskState", arg0)
+	ret0, _ := ret[0].(core.InspectDiskState)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// LoadInspectDiskState indicates an expected call of LoadInspectDiskState.
+func (mr *MockDiskAPIMockRecorder) LoadInspectDiskState(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadInspectDiskState", reflect.TypeOf((*MockDiskAPI)(nil).LoadInspectDiskState), arg0)
+}
+
+// StoreInspectChunkState mocks base method.
+func (m *MockDiskAPI) StoreInspectChunkState(arg0 context.Context, arg1 core.InspectChunkState) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "StoreInspectChunkState", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// StoreInspectChunkState indicates an expected call of StoreInspectChunkState.
+func (mr *MockDiskAPIMockRecorder) StoreInspectChunkState(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StoreInspectChunkState", reflect.TypeOf((*MockDiskAPI)(nil).StoreInspectChunkState), arg0, arg1)
+}
+
+// StoreInspectDiskState mocks base method.
+func (m *MockDiskAPI) StoreInspectDiskState(arg0 context.Context, arg1 core.InspectDiskState) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "StoreInspectDiskState", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// StoreInspectDiskState indicates an expected call of StoreInspectDiskState.
+func (mr *MockDiskAPIMockRecorder) StoreInspectDiskState(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StoreInspectDiskState", reflect.TypeOf((*MockDiskAPI)(nil).StoreInspectDiskState), arg0, arg1)
+}
+
 // ReleaseChunk mocks base method.
 func (m *MockDiskAPI) ReleaseChunk(arg0 context.Context, arg1 proto.Vuid, arg2 bool) error {
 	m.ctrl.T.Helper()

@@ -56,6 +56,12 @@ func (v *VolumeMgr) finishLastCreateJob(ctx context.Context) error {
 		return nil
 	})
 	for _, rec := range volumeRecs {
+		if !v.diskMgr.HasEnoughSpace(ctx, rec.CodeMode) {
+			span.Warnf("skip finish create job for vid[%d], cluster has no allocatable nodes for mode %s",
+				rec.Vid, rec.CodeMode)
+			continue
+		}
+
 		span.Debugf("finish create volume job, volume: %+v", rec)
 		unitRecs := make([]*volumedb.VolumeUnitRecord, 0, len(rec.VuidPrefixs))
 		volumeUnits := make([]*clustermgr.VolumeUnitInfo, 0, len(rec.VuidPrefixs))
@@ -63,6 +69,11 @@ func (v *VolumeMgr) finishLastCreateJob(ctx context.Context) error {
 			unitRec, err := v.transitedTbl.GetVolumeUnit(vuidPrefix)
 			if err != nil {
 				return errors.Info(err, "get transited volume unit failed").Detail(err)
+			}
+			if uint64(unitRec.Epoch)+IncreaseEpochInterval > uint64(proto.MaxEpoch) {
+				span.Errorf("vid[%d] vuidPrefix[%d] epoch[%d] would overflow MaxEpoch[%d], abandoning vid",
+					rec.Vid, vuidPrefix, unitRec.Epoch, proto.MaxEpoch)
+				break
 			}
 			// must increase epoch of volume unit firstly
 			unitRec.Epoch += IncreaseEpochInterval

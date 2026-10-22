@@ -61,6 +61,8 @@ func NewService(conf Config) (svr *Service, err error) {
 		Disks:            make(map[proto.DiskID]core.DiskAPI),
 		Conf:             &conf,
 		closeCh:          make(chan struct{}),
+
+		pendingBrokenDisks: make(map[proto.DiskID]error),
 	}
 	svr.ctx, svr.cancel = context.WithCancel(context.Background())
 
@@ -69,8 +71,16 @@ func NewService(conf Config) (svr *Service, err error) {
 		span.Fatalf("load extend codemode from clusterMgr error:%+v", err)
 	}
 	for _, ecmode := range codemode.GetECCodeModes() {
-		if alignedSize := ecmode.Tactic().MinShardSize; alignedSize > 0 {
-			client.NopdataSize(alignedSize)
+		tactic := ecmode.Tactic()
+		if tactic.MinShardSize <= 0 {
+			continue
+		}
+		if tactic.AdaptShardSize > 0 {
+			for size := tactic.AdaptShardSize; size <= tactic.MinShardSize; size += tactic.AdaptShardSize {
+				client.NopdataSize(size)
+			}
+		} else {
+			client.NopdataSize(tactic.MinShardSize)
 		}
 	}
 
@@ -91,6 +101,19 @@ func NewService(conf Config) (svr *Service, err error) {
 func (s *Service) handleDiskIOError(ctx context.Context, diskID proto.DiskID, diskErr error) {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("start to handle broken diskID:%d diskErr: %v", diskID, diskErr)
+
+	if base.IsDataIOError(diskErr) {
+		s.handleDataIOError(ctx, diskID, diskErr)
+		return
+	}
+
+	// Meta EIO and other non-data errors mark the disk broken immediately.
+	s.removePendingBrokenDisk(diskID)
+	s.markDiskBroken(ctx, diskID, diskErr)
+}
+
+func (s *Service) markDiskBroken(ctx context.Context, diskID proto.DiskID, diskErr error) {
+	span := trace.SpanFromContextSafe(ctx)
 
 	// limit once. May be used by callback func, when concurrently read/write shard in datafile.go.
 	err := s.BrokenLimitPerDisk.Acquire(diskID)
@@ -223,6 +246,9 @@ func (s *Service) waitRepairAndClose(ctx context.Context, disk core.DiskAPI) {
 	delete(s.Disks, disk.ID())
 	s.lock.Unlock()
 
+	// clean inspect metrics when disk dropped
+	s.inspectMgr.cleanDiskInspectMetric(disk, diskID)
+
 	disk.PrepareClose(ctx)
 
 	span.Infof("diskID:%d will gc close", diskID)
@@ -260,6 +286,14 @@ func (s *Service) handleDiskDrop(ctx context.Context, ds core.DiskAPI) {
 		s.lock.Lock()
 		delete(s.Disks, diskID)
 		s.lock.Unlock()
+
+		// 4. clean up Prometheus metrics for this disk: the dropped disk will be
+		// replaced, so the old disk_id label series must be cleared.
+		// Blobnode service always wires inspectMgr before disk cleanup runs.
+		s.inspectMgr.cleanDiskInspectMetric(ds, diskID)
+
+		// 5. even chunks clean, we still need to PrepareClose for loopOut break out
+		ds.PrepareClose(ctx)
 
 		span.Debugf("diskID:%d dropped, end check clean", diskID)
 	}()
@@ -634,6 +668,10 @@ func startBlobnodeService(ctx context.Context, svr *Service, conf Config) (err e
 	}
 	wg.Wait()
 
+	// reconcile persisted bad bids once in background coroutine, gauges are
+	// refreshed per disk as each disk's reconcile finishes.
+	go svr.inspectMgr.reconcileBadBidsAtStartup(svr.ctx)
+
 	if err = setDefaultIOStat(conf.DiskConfig.IOStatFileDryRun); err != nil {
 		span.Errorf("Failed set default iostat file, err:%v", err)
 		return err
@@ -660,6 +698,7 @@ func startBlobnodeService(ctx context.Context, svr *Service, conf Config) (err e
 	go svr.loopGcRubbishChunkFile()
 	go svr.loopCleanExpiredStatFile()
 	go svr.inspectMgr.loopDataInspect()
+	go svr.loopPendingBrokenDisks()
 
 	return
 }

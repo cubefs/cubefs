@@ -44,8 +44,11 @@ var (
 
 // BalanceMgrConfig balance task manager config
 type BalanceMgrConfig struct {
-	MaxDiskFreeChunkCnt int64 `json:"max_disk_free_chunk_cnt"`
-	MinDiskFreeChunkCnt int64 `json:"min_disk_free_chunk_cnt"`
+	MaxDiskFreeChunkCnt        int64   `json:"max_disk_free_chunk_cnt"`
+	MinDiskFreeChunkCnt        int64   `json:"min_disk_free_chunk_cnt"`
+	DiskUsageThreshold         float64 `json:"disk_usage_threshold"`           // 0 means disabled, e.g. 0.9
+	CompactMigrateHoleRate     float64 `json:"compact_migrate_hole_rate"`      // hole rate threshold for large chunks, e.g. 0.6
+	CompactMigrateMinLogicSize uint64  `json:"compact_migrate_min_logic_size"` // bytes, large chunk boundary, default 16GiB
 	MigrateConfig
 }
 
@@ -55,6 +58,7 @@ type BalanceMgr struct {
 
 	clusterTopology IClusterTopology
 	clusterMgrCli   client.ClusterMgrAPI
+	priorityVuids   map[proto.Vuid]*client.DiskInfoSimple
 
 	cfg *BalanceMgrConfig
 }
@@ -67,6 +71,7 @@ func NewBalanceMgr(clusterMgrCli client.ClusterMgrAPI, volumeUpdater client.Task
 		clusterTopology: clusterTopology,
 		clusterMgrCli:   clusterMgrCli,
 		cfg:             conf,
+		priorityVuids:   make(map[proto.Vuid]*client.DiskInfoSimple),
 	}
 	conf.MigrateConfig.IsBalanceAlloc = true
 	mgr.IMigrator = NewMigrateMgr(clusterMgrCli, volumeUpdater, taskSwitch, taskLogger,
@@ -117,32 +122,51 @@ func (mgr *BalanceMgr) collectionTask() (err error) {
 		return ErrTooManyBalancingTasks
 	}
 
-	// select balance disks
-	disks := mgr.selectDisks(mgr.cfg.MaxDiskFreeChunkCnt, mgr.cfg.MinDiskFreeChunkCnt)
-	span.Debugf("select balance disks: len[%d]", len(disks))
-
 	balanceDiskCnt := 0
-	for _, disk := range disks {
-		err = mgr.genOneBalanceTask(ctx, disk)
-		if err != nil {
+	for vuid, disk := range mgr.priorityVuids {
+		if mgr.IMigrator.IsMigratingDisk(disk.DiskID) {
 			continue
 		}
-
+		volInfo, err := mgr.clusterMgrCli.GetVolumeInfo(ctx, vuid.Vid())
+		if err != nil {
+			span.Errorf("get volume info failed: vid[%d], err[%+v]", vuid.Vid(), err)
+			continue
+		}
+		if !volInfo.IsIdle() {
+			continue
+		}
+		if err = mgr.generateTask(ctx, vuid, disk); err != nil {
+			continue
+		}
+		span.Debugf("add balance task from priority vuid[%d] success, disk[%d]", vuid, disk.DiskID)
 		balanceDiskCnt++
 		if balanceDiskCnt >= needBalanceDiskCnt {
-			break
+			return nil
 		}
 	}
-	// if balanceDiskCnt==0, means there is no balance volume unit on disk and need to do collect task later
+
+	// select balance disks
+	disks := mgr.selectDisks(ctx, mgr.cfg.MaxDiskFreeChunkCnt, mgr.cfg.MinDiskFreeChunkCnt)
+	span.Debugf("select balance disks: len[%d]", len(disks))
+
+	for _, disk := range disks {
+		if err = mgr.genOneBalanceTask(ctx, disk); err != nil {
+			continue
+		}
+		balanceDiskCnt++
+		if balanceDiskCnt >= needBalanceDiskCnt {
+			return nil
+		}
+	}
 	if balanceDiskCnt == 0 {
 		span.Infof("select disks has no balance volume unit on disk: len[%d]", len(disks))
 		return ErrNoBalanceVunit
 	}
-
 	return nil
 }
 
-func (mgr *BalanceMgr) selectDisks(maxFreeChunkCnt, minFreeChunkCnt int64) []*client.DiskInfoSimple {
+func (mgr *BalanceMgr) selectDisks(ctx context.Context, maxFreeChunkCnt, minFreeChunkCnt int64) []*client.DiskInfoSimple {
+	span := trace.SpanFromContextSafe(ctx)
 	var allDisks []*client.DiskInfoSimple
 	for idcName := range mgr.clusterTopology.GetIDCs() {
 		maxFreeChunksDisk := mgr.clusterTopology.MaxFreeChunksDisk(idcName)
@@ -154,15 +178,19 @@ func (mgr *BalanceMgr) selectDisks(maxFreeChunkCnt, minFreeChunkCnt int64) []*cl
 
 	var selected []*client.DiskInfoSimple
 	for _, disk := range allDisks {
-		if !disk.IsHealth() {
-			continue
-		}
-		if ok := mgr.IMigrator.IsMigratingDisk(disk.DiskID); ok {
+		if !disk.IsHealth() || mgr.IMigrator.IsMigratingDisk(disk.DiskID) {
 			continue
 		}
 		if disk.FreeChunkCnt < minFreeChunkCnt {
 			selected = append(selected, disk)
+			span.Debugf("select balance disk for free chunk count, disk[%d], free[%d]", disk.DiskID, disk.FreeChunkCnt)
+			continue
 		}
+		if mgr.cfg.DiskUsageThreshold > 0 && disk.UsageRatio() >= mgr.cfg.DiskUsageThreshold {
+			selected = append(selected, disk)
+			span.Debugf("select balance disk for disk usage, disk[%d], usage[%f]", disk.DiskID, disk.UsageRatio())
+		}
+
 	}
 	return selected
 }
@@ -170,45 +198,107 @@ func (mgr *BalanceMgr) selectDisks(maxFreeChunkCnt, minFreeChunkCnt int64) []*cl
 func (mgr *BalanceMgr) genOneBalanceTask(ctx context.Context, diskInfo *client.DiskInfoSimple) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
-	vuid, err := mgr.selectBalanceVunit(ctx, diskInfo.DiskID)
+	vuid, err := mgr.selectBalanceVunit(ctx, diskInfo)
 	if err != nil {
 		span.Errorf("generate task source failed: disk_id[%d], err[%+v]", diskInfo.DiskID, err)
 		return
 	}
+	return mgr.generateTask(ctx, vuid, diskInfo)
+}
 
+func (mgr *BalanceMgr) generateTask(ctx context.Context, vuid proto.Vuid, disk *client.DiskInfoSimple) (err error) {
+	span := trace.SpanFromContextSafe(ctx)
+	if mgr.IMigrator.IsTaskExist(disk.DiskID, vuid) {
+		delete(mgr.priorityVuids, vuid)
+		return nil
+	}
 	span.Debugf("select balance volume unit; vuid[%d], volume_id[%v]", vuid, vuid.Vid())
 	task := &proto.MigrateTask{
-		TaskID:       client.GenMigrateTaskID(proto.TaskTypeBalance, diskInfo.DiskID, uint32(vuid.Vid())),
+		TaskID:       client.GenMigrateTaskID(proto.TaskTypeBalance, disk.DiskID, uint32(vuid.Vid())),
 		TaskType:     proto.TaskTypeBalance,
 		State:        proto.MigrateStateInited,
-		SourceIDC:    diskInfo.Idc,
-		SourceDiskID: diskInfo.DiskID,
+		SourceIDC:    disk.Idc,
+		SourceDiskID: disk.DiskID,
 		SourceVuid:   vuid,
 	}
 	err = mgr.IMigrator.AddTask(ctx, task)
+	if err == nil {
+		delete(mgr.priorityVuids, vuid)
+	}
 	return
 }
 
-func (mgr *BalanceMgr) selectBalanceVunit(ctx context.Context, diskID proto.DiskID) (vuid proto.Vuid, err error) {
+// meetsCompactMigrateThreshold reports whether vunit is a large chunk whose hole rate
+// reaches the configured threshold and should be prioritised for migration.
+func (mgr *BalanceMgr) meetsCompactMigrateThreshold(v *client.VunitInfoSimple) bool {
+	if mgr.cfg.CompactMigrateHoleRate <= 0 || v.LogicSize < mgr.cfg.CompactMigrateMinLogicSize {
+		return false
+	}
+	holeRate := 1.0 - float64(v.Used)/float64(v.LogicSize)
+	return holeRate >= mgr.cfg.CompactMigrateHoleRate
+}
+
+// vunitLessHighUsage compares two vunits for ordering under high disk usage.
+// Priority order (descending):
+//  1. Large chunks (LogicSize >= minLogicSize) with hole rate >= holeRateThreshold, sorted by hole rate desc
+//  2. Large chunks with hole rate < holeRateThreshold, sorted by LogicSize desc
+//  3. Small chunks (LogicSize < minLogicSize), sorted by LogicSize desc
+func (mgr *BalanceMgr) vunitLessHighUsage(vi, vj *client.VunitInfoSimple) bool {
+	iLarge := mgr.cfg.CompactMigrateHoleRate > 0 && vi.LogicSize >= mgr.cfg.CompactMigrateMinLogicSize
+	jLarge := mgr.cfg.CompactMigrateHoleRate > 0 && vj.LogicSize >= mgr.cfg.CompactMigrateMinLogicSize
+
+	if iLarge != jLarge {
+		return iLarge // large chunks always before small chunks
+	}
+	if !iLarge {
+		return vi.LogicSize > vj.LogicSize // both small: larger size first
+	}
+	holeI := 1.0 - float64(vi.Used)/float64(vi.LogicSize)
+	holeJ := 1.0 - float64(vj.Used)/float64(vj.LogicSize)
+	iAbove := holeI >= mgr.cfg.CompactMigrateHoleRate
+	jAbove := holeJ >= mgr.cfg.CompactMigrateHoleRate
+
+	if iAbove != jAbove {
+		return iAbove
+	}
+	if iAbove {
+		return holeI > holeJ
+	}
+	return vi.LogicSize > vj.LogicSize
+}
+
+func (mgr *BalanceMgr) selectBalanceVunit(ctx context.Context, diskInfo *client.DiskInfoSimple) (vuid proto.Vuid, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
-	vunits, err := mgr.clusterMgrCli.ListDiskVolumeUnits(ctx, diskID)
+	vunits, err := mgr.clusterMgrCli.ListDiskVolumeUnits(ctx, diskInfo.DiskID)
 	if err != nil {
 		return
 	}
 
-	sort.Slice(vunits, func(i, j int) bool {
+	highUsage := mgr.cfg.DiskUsageThreshold > 0 && diskInfo.UsageRatio() >= mgr.cfg.DiskUsageThreshold
+	sort.SliceStable(vunits, func(i, j int) bool {
+		if highUsage {
+			return mgr.vunitLessHighUsage(vunits[i], vunits[j])
+		}
 		return vunits[i].Used < vunits[j].Used
 	})
 
-	for i := range vunits {
-		volInfo, err := mgr.clusterMgrCli.GetVolumeInfo(ctx, vunits[i].Vuid.Vid())
+	first := true
+	for _, v := range vunits {
+		if v.Compacting {
+			continue
+		}
+		volInfo, err := mgr.clusterMgrCli.GetVolumeInfo(ctx, v.Vuid.Vid())
 		if err != nil {
-			span.Errorf("get volume info failed: vid[%d], err[%+v]", vunits[i].Vuid.Vid(), err)
+			span.Errorf("get volume info failed: vid[%d], err[%+v]", v.Vuid.Vid(), err)
 			continue
 		}
 		if volInfo.IsIdle() {
-			return vunits[i].Vuid, nil
+			return v.Vuid, nil
+		}
+		if first && mgr.meetsCompactMigrateThreshold(v) {
+			mgr.priorityVuids[v.Vuid] = diskInfo
+			first = false
 		}
 	}
 	return vuid, ErrNoBalanceVunit

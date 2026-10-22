@@ -328,8 +328,8 @@ func (s *raftServer) raftApply() {
 				entries = append(entries, ap.entries...)
 				snap = ap.snapshot
 			}
-			s.applyEntries(entries)
 			s.applySnapshotFinish(snap)
+			s.applyEntries(entries)
 			s.applyWait.Trigger(s.store.Applied())
 
 			// only take effect when has snapshot
@@ -516,34 +516,33 @@ func (s *raftServer) raftStart() {
 					log.Warn("read state chan is not ready!!!")
 				}
 			}
-
-			ap := apply{
-				entries:  rd.CommittedEntries,
-				snapshot: rd.Snapshot,
-			}
-
-			if !raft.IsEmptySnap(ap.snapshot) {
+			ap := apply{}
+			if !raft.IsEmptySnap(rd.Snapshot) {
+				ap.snapshot = rd.Snapshot
 				ap.snapFinishCh = make(chan struct{})
+				select {
+				case s.applyc <- ap:
+				case <-s.stopc:
+					return
+				}
+				log.Debugf("waiting apply snapshot finish...")
+				<-ap.snapFinishCh
+				log.Debugf("apply snapshot finish...")
 			}
 
 			err := s.store.Save(rd.HardState, rd.Entries)
 			if err != nil {
 				log.Panicf("save raft entries error: %v", err)
 			}
-
+			ap = apply{}
+			ap.entries = rd.CommittedEntries
 			select {
 			case s.applyc <- ap:
 			case <-s.stopc:
 				return
 			}
-			s.tr.Send(s.processMessages(rd.Messages))
 
-			// waiting apply snapshot is finished
-			if ap.snapFinishCh != nil {
-				log.Debugf("waiting apply snapshot finish...")
-				<-ap.snapFinishCh
-				log.Debugf("apply snapshot finish...")
-			}
+			s.tr.Send(s.processMessages(rd.Messages))
 
 			s.n.Advance()
 		}

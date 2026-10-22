@@ -74,7 +74,7 @@ func getRepairShardsTest(ctx context.Context,
 
 	}
 	// get repair shards:
-	return getRepairShards(ctx, shardInfos, mode, badIdxs)
+	return getRepairShards(ctx, shardInfos, mode, badIdxs, nil)
 }
 
 func testGetRepairShards(t *testing.T, mode codemode.CodeMode) {
@@ -152,6 +152,112 @@ func testGetRepairShards(t *testing.T, mode codemode.CodeMode) {
 	shouldRepair, _, err = getRepairShardsTest(context.Background(), repairer4, replicas, mode, 1, badi4)
 	require.NoError(t, err)
 	require.Equal(t, 0, len(shouldRepair))
+}
+
+func TestUint8SliceToIntSet(t *testing.T) {
+	require.Equal(t, 0, len(uint8SliceToIntSet(nil)))
+	set := uint8SliceToIntSet([]uint8{0, 2, 2})
+	require.Equal(t, 2, len(set))
+	_, ok := set[0]
+	require.True(t, ok)
+	_, ok = set[2]
+	require.True(t, ok)
+	_, ok = set[1]
+	require.False(t, ok)
+}
+
+func TestHasRepairedWithForceSet(t *testing.T) {
+	mode := codemode.EC6P6
+	replicas := genMockVol(1, mode)
+	bids := []proto.BlobID{1}
+	sizes := []int64{1025}
+	getter := NewMockGetterWithBids(replicas, mode, bids, sizes)
+	repairer := NewShardRepairer(getter)
+
+	shardInfos := repairer.listShardsInfo(context.Background(), replicas, 1)
+
+	// idx 0 is Normal: without force it is treated as already repaired.
+	repaired, err := hasRepaired(shardInfos, []int{0}, nil)
+	require.NoError(t, err)
+	require.True(t, repaired)
+
+	// with force set, a Normal-but-corrupt idx must NOT be treated as repaired.
+	repaired, err = hasRepaired(shardInfos, []int{0}, map[int]struct{}{0: {}})
+	require.NoError(t, err)
+	require.False(t, repaired)
+}
+
+func TestGetRepairShardsForceCrc(t *testing.T) {
+	mode := codemode.EC6P6
+	replicas := genMockVol(1, mode)
+	bids := []proto.BlobID{1}
+	sizes := []int64{1025}
+	getter := NewMockGetterWithBids(replicas, mode, bids, sizes)
+	repairer := NewShardRepairer(getter)
+
+	// idx 0 still Normal (data corrupt) but flagged as crc-bad -> must be repaired.
+	shardInfos := repairer.listShardsInfo(context.Background(), replicas, 1)
+	forceSet := map[int]struct{}{0: {}}
+	shouldRepair, shardSize, err := getRepairShards(context.Background(), shardInfos, mode, []int{0}, forceSet)
+	require.NoError(t, err)
+	require.Equal(t, int64(1025), shardSize)
+	require.Equal(t, true, repairIdxsEqual(shouldRepair, []int{0}))
+
+	// CanRecover must exclude crc-bad idxs: with N-data shards corrupt+forced and
+	// the rest deleted, the blob is unrecoverable and an error is expected.
+	codeInfo := mode.Tactic()
+	getter2 := NewMockGetterWithBids(replicas, mode, bids, sizes)
+	repairer2 := NewShardRepairer(getter2)
+	var forced []int
+	forceSet2 := map[int]struct{}{}
+	for i := 0; i < codeInfo.M+1; i++ {
+		forced = append(forced, i)
+		forceSet2[i] = struct{}{}
+	}
+	shardInfos2 := repairer2.listShardsInfo(context.Background(), replicas, 1)
+	_, _, err = getRepairShards(context.Background(), shardInfos2, mode, forced, forceSet2)
+	require.Error(t, err)
+	require.EqualError(t, errcode.ErrShardMayBeLost, err.Error())
+}
+
+func TestRepairShardCrcInPlace(t *testing.T) {
+	testWithAllMode(t, testRepairShardCrcInPlace)
+}
+
+func testRepairShardCrcInPlace(t *testing.T, mode codemode.CodeMode) {
+	replicas := genMockVol(1, mode)
+	bids := []proto.BlobID{1}
+	sizes := []int64{1025}
+
+	workutils.TaskBufPool = workutils.NewBufPool(&workutils.BufConfig{
+		MigrateBufSize:     4 * 1024,
+		MigrateBufCapacity: 100,
+		RepairBufSize:      2 * 1024,
+		RepairBufCapacity:  100,
+	})
+
+	// origin crc of idx 0
+	originGetter := NewMockGetterWithBids(replicas, mode, bids, sizes)
+	originCrc := originGetter.getShardCrc32(replicas[0].Vuid, 1)
+
+	// case 1: crc-bad idx 0 is Normal but corrupt; WITHOUT the inspect-crc reason
+	// it is a no-op (legacy behaviour preserved), corruption stays.
+	getter := NewMockGetterWithBids(replicas, mode, bids, sizes)
+	getter.Corrupt(context.Background(), replicas[0].Vuid, 1)
+	corruptCrc := getter.getShardCrc32(replicas[0].Vuid, 1)
+	require.NotEqual(t, originCrc, corruptCrc)
+	repairer := NewShardRepairer(getter)
+	legacyTask := &proto.ShardRepairTask{Bid: 1, CodeMode: mode, Sources: replicas, BadIdxs: []uint8{0}}
+	require.NoError(t, repairer.RepairShard(context.Background(), legacyTask))
+	require.Equal(t, corruptCrc, getter.getShardCrc32(replicas[0].Vuid, 1)) // unchanged
+
+	// case 2: same corruption but WITH the inspect-crc reason -> rebuilt in place.
+	crcTask := &proto.ShardRepairTask{
+		Bid: 1, CodeMode: mode, Sources: replicas,
+		BadIdxs: []uint8{0}, Reason: proto.ShardRepairReasonInspectCrc,
+	}
+	require.NoError(t, repairer.RepairShard(context.Background(), crcTask))
+	require.Equal(t, originCrc, getter.getShardCrc32(replicas[0].Vuid, 1)) // restored
 }
 
 func repairIdxsEqual(idxs1, idxs2 []int) bool {

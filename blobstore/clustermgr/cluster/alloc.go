@@ -150,6 +150,75 @@ func (a *allocator) ReAlloc(ctx context.Context, policy reAllocPolicy) ([]proto.
 	return stg.alloc(ctx, policy.count, _excludes, policy.isBalance)
 }
 
+func (s *idcAllocator) applyNodeWeightDecrements(chosenDataStorages map[*nodeAllocator]int) {
+	for stg, num := range chosenDataStorages {
+		newWeight := atomic.AddInt64(&stg.weight, int64(-num))
+		if newWeight <= 0 && newWeight+int64(num) > 0 {
+			atomic.AddInt64(&s.creatableNodes, -1)
+		}
+	}
+}
+
+func (a *allocator) canAllocForMode(diskType proto.DiskType, mode codemode.CodeMode) bool {
+	shardNum := int64(mode.GetShardNum())
+	idcIndexes := mode.T().GetECLayoutByAZ()
+
+	nodeSetAllocators, ok := a.nodeSets[diskType]
+	if !ok {
+		return false
+	}
+
+	if !mode.T().IsReplicateMode() {
+		ns, ok := nodeSetAllocators[ecNodeSetID]
+		if !ok || atomic.LoadInt64(&ns.weight) < shardNum {
+			return false
+		}
+		ds, ok := ns.diskSets[ecDiskSetID]
+		if !ok || atomic.LoadInt64(&ds.weight) < shardNum {
+			return false
+		}
+		return idcAllocatorsCanSupport(ds.idcAllocators, idcIndexes)
+	}
+
+	for nsID, ns := range nodeSetAllocators {
+		if nsID == ecNodeSetID {
+			continue
+		}
+		if atomic.LoadInt64(&ns.weight) < shardNum {
+			continue
+		}
+		if a.cfg.diffHost && int64(a.cfg.tg.getNodeNum(diskType, ns.nodeSetID)) < shardNum {
+			continue
+		}
+		for _, ds := range ns.diskSets {
+			if atomic.LoadInt64(&ds.weight) < shardNum {
+				continue
+			}
+			if idcAllocatorsCanSupport(ds.idcAllocators, idcIndexes) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// idcAllocatorsCanSupport checks if there are at least len(idcIndexes) IDC allocators
+func idcAllocatorsCanSupport(idcAllocators map[string]*idcAllocator, idcIndexes [][]int) bool {
+	needIDCCount := len(idcIndexes)
+	chunksPerIDC := int64(len(idcIndexes[0]))
+	availableIDCCount := 0
+	for _, idcAlloc := range idcAllocators {
+		if atomic.LoadInt64(&idcAlloc.weight) < chunksPerIDC {
+			continue
+		}
+		if atomic.LoadInt64(&idcAlloc.creatableNodes) >= chunksPerIDC || (!idcAlloc.diffHost &&
+			atomic.LoadInt64(&idcAlloc.creatableDisks) >= chunksPerIDC) {
+			availableIDCCount++
+		}
+	}
+	return availableIDCCount >= needIDCCount
+}
+
 func (a *allocator) allocNodeSet(ctx context.Context, diskType proto.DiskType, mode codemode.CodeMode) (*nodeSetAllocator, error) {
 	span := trace.SpanFromContextSafe(ctx)
 
@@ -283,9 +352,11 @@ func (d *diskSetAllocator) alloc(ctx context.Context, count int) (ret []*idcAllo
 type idcAllocator struct {
 	idc string
 	// weight should always read and write by atomic
-	weight   int64
-	diffRack bool
-	diffHost bool
+	weight         int64
+	creatableNodes int64
+	creatableDisks int64
+	diffRack       bool
+	diffHost       bool
 
 	rackStorages map[string]*rackAllocator
 	nodeStorages []*nodeAllocator
@@ -391,9 +462,7 @@ func (s *idcAllocator) alloc(ctx context.Context, count int, excludes map[proto.
 	for rack, num := range chosenRacks {
 		atomic.AddInt64(&s.rackStorages[rack].weight, int64(-num))
 	}
-	for stg, num := range chosenDataStorages {
-		atomic.AddInt64(&stg.weight, int64(-num))
-	}
+	s.applyNodeWeightDecrements(chosenDataStorages)
 	for id, disk := range chosenDisks {
 		disk.withLocked(func() error {
 			disk.decrWeight(1)

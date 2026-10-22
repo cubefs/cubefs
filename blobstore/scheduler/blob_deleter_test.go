@@ -40,7 +40,10 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
 
+// --- fixtures ---
+
 func newBlobDeleteMgr(t *testing.T) *BlobDeleteMgr {
+	t.Helper()
 	ctr := gomock.NewController(t)
 	clusterMgrCli := NewMockClusterMgrAPI(ctr)
 	clusterMgrCli.EXPECT().GetConfig(any, any).AnyTimes().Return("", nil)
@@ -99,543 +102,357 @@ func newBlobDeleteMgr(t *testing.T) *BlobDeleteMgr {
 	}
 }
 
-func TestBlobDeleteConsume(t *testing.T) {
-	ctr := gomock.NewController(t)
-	ctx := context.Background()
-	mgr := newBlobDeleteMgr(t)
-	commonCloser := closer.New()
-	defer commonCloser.Close()
-	{
-		// return invalid message
-		kafkaMsgs := make([]*sarama.ConsumerMessage, 2)
-		msg := proto.DeleteMsg{}
-		msgByte, _ := json.Marshal(msg)
-		kafkaMsg := &sarama.ConsumerMessage{
-			Value: msgByte,
-		}
-		kafkaMsgs[0] = kafkaMsg
-		kafkaMsgs[1] = &sarama.ConsumerMessage{
-			Value: []byte("123"),
-		}
-		success := mgr.Consume(kafkaMsgs, commonCloser)
-		require.True(t, success)
-	}
-	{
-		// consume success
-		oldClusterTopology := mgr.clusterTopology
-		clusterTopology := NewMockClusterTopology(ctr)
-		clusterTopology.EXPECT().GetDisk(any).AnyTimes().Return(&client.DiskInfoSimple{}, true)
-		clusterTopology.EXPECT().GetVolume(any).AnyTimes().DoAndReturn(
-			func(vid proto.Vid) (*client.VolumeInfoSimple, error) {
-				return &client.VolumeInfoSimple{
-					Vid:            vid,
-					VunitLocations: []proto.VunitLocation{{Vuid: 1}},
-				}, nil
-			},
-		)
-		clusterTopology.EXPECT().IsBrokenDisk(any).AnyTimes().Return(false)
-		mgr.clusterTopology = clusterTopology
-		msg := &proto.DeleteMsg{Bid: 1, Vid: 1, ReqId: "123456"}
-		msgByte, _ := json.Marshal(msg)
-		kafkaMsg := &sarama.ConsumerMessage{
-			Value: msgByte,
-		}
-		kafkaMsgs := []*sarama.ConsumerMessage{kafkaMsg}
-		success := mgr.Consume(kafkaMsgs, commonCloser)
-		require.True(t, success)
-		mgr.clusterTopology = oldClusterTopology
-	}
-	{
-		// consume failed
-		oldClusterTopology := mgr.clusterTopology
-		clusterTopology := NewMockClusterTopology(ctr)
-		clusterTopology.EXPECT().GetDisk(any).AnyTimes().Return(&client.DiskInfoSimple{}, true)
-		clusterTopology.EXPECT().GetVolume(any).AnyTimes().DoAndReturn(
-			func(vid proto.Vid) (*client.VolumeInfoSimple, error) {
-				return &client.VolumeInfoSimple{Vid: vid, VunitLocations: []proto.VunitLocation{{Vuid: 1}}}, nil
-			},
-		)
-		clusterTopology.EXPECT().IsBrokenDisk(any).AnyTimes().Return(false)
-		mgr.clusterTopology = clusterTopology
+func defaultDeleteMsg() *proto.DeleteMsg {
+	return &proto.DeleteMsg{Bid: 1, Vid: 1, ReqId: "123456"}
+}
 
-		oldBlobNode := mgr.blobnodeCli
-		blobnodeCli := NewMockBlobnodeAPI(ctr)
-		blobnodeCli.EXPECT().MarkDelete(any, any, any).AnyTimes().Return(errMock)
-		mgr.blobnodeCli = blobnodeCli
+func deleteKafkaMsg(msg *proto.DeleteMsg) *sarama.ConsumerMessage {
+	b, _ := json.Marshal(msg)
+	return &sarama.ConsumerMessage{Value: b}
+}
+
+type deleteTopoOpts struct {
+	useNewVuid bool
+	brokenDisk bool
+	diskFound  bool
+	brokenAny  bool
+	withUpdate bool
+	updateFn   func(vid proto.Vid) (*client.VolumeInfoSimple, error)
+	diskID     proto.DiskID
+}
+
+func mockDeleteTopology(t *testing.T, ctr *gomock.Controller, opts deleteTopoOpts) *MockClusterTopology {
+	t.Helper()
+	if !opts.diskFound && opts.diskID == 0 {
+		opts.diskFound = true
+	}
+	topo := NewMockClusterTopology(ctr)
+	if opts.diskFound {
+		topo.EXPECT().GetDisk(any).AnyTimes().Return(&client.DiskInfoSimple{}, true)
+	} else {
+		topo.EXPECT().GetDisk(any).AnyTimes().Return(&client.DiskInfoSimple{}, false)
+	}
+	topo.EXPECT().GetVolume(any).AnyTimes().DoAndReturn(
+		func(vid proto.Vid) (*client.VolumeInfoSimple, error) {
+			loc := proto.VunitLocation{Vuid: 1}
+			if opts.useNewVuid {
+				loc.Vuid, _ = proto.NewVuid(vid, 0, 1)
+			}
+			if opts.diskID != 0 {
+				loc.DiskID = opts.diskID
+			}
+			return &client.VolumeInfoSimple{Vid: vid, VunitLocations: []proto.VunitLocation{loc}}, nil
+		},
+	)
+	if opts.brokenAny {
+		topo.EXPECT().IsBrokenDisk(any).AnyTimes().Return(opts.brokenDisk)
+	} else if opts.brokenDisk {
+		topo.EXPECT().IsBrokenDisk(any).Return(true)
+	} else {
+		topo.EXPECT().IsBrokenDisk(any).AnyTimes().Return(false)
+	}
+	if opts.withUpdate {
+		if opts.updateFn != nil {
+			topo.EXPECT().UpdateVolume(any).DoAndReturn(opts.updateFn)
+		} else {
+			topo.EXPECT().UpdateVolume(any).AnyTimes().Return(nil, nil)
+		}
+	}
+	return topo
+}
+
+func swapTopology(mgr *BlobDeleteMgr, topo IClusterTopology) func() {
+	old := mgr.clusterTopology
+	mgr.clusterTopology = topo
+	return func() { mgr.clusterTopology = old }
+}
+
+func swapBlobnode(mgr *BlobDeleteMgr, cli client.BlobnodeAPI) func() {
+	old := mgr.blobnodeCli
+	mgr.blobnodeCli = cli
+	return func() { mgr.blobnodeCli = old }
+}
+
+func consumeRet(mgr *BlobDeleteMgr, ctx context.Context, msg *proto.DeleteMsg, stop closer.Closer) delBlobRet {
+	ret := delBlobRet{delMsg: msg, ctx: ctx}
+	mgr.consume(&ret, stop)
+	return ret
+}
+
+func requireDeleteDone(t *testing.T, msg *proto.DeleteMsg, ret delBlobRet) {
+	t.Helper()
+	require.Equal(t, DeleteStatusDone, ret.status)
+	require.Len(t, msg.BlobDelStages.Stages, 1)
+	for _, stage := range msg.BlobDelStages.Stages {
+		require.Equal(t, proto.DeleteStageDelete, stage)
+	}
+}
+
+// --- kafka consume path ---
+
+func TestBlobDeleteConsumeKafka(t *testing.T) {
+	ctr := gomock.NewController(t)
+	mgr := newBlobDeleteMgr(t)
+	stop := closer.New()
+	defer stop.Close()
+
+	t.Run("invalid_messages", func(t *testing.T) {
+		msgs := []*sarama.ConsumerMessage{
+			deleteKafkaMsg(&proto.DeleteMsg{}),
+			{Value: []byte("123")},
+		}
+		require.True(t, mgr.Consume(msgs, stop))
+	})
+
+	t.Run("success", func(t *testing.T) {
+		restore := swapTopology(mgr, mockDeleteTopology(t, ctr, deleteTopoOpts{}))
+		defer restore()
+		require.True(t, mgr.Consume([]*sarama.ConsumerMessage{deleteKafkaMsg(defaultDeleteMsg())}, stop))
+	})
+
+	t.Run("mark_delete_failed_still_returns_true", func(t *testing.T) {
+		restoreTopo := swapTopology(mgr, mockDeleteTopology(t, ctr, deleteTopoOpts{}))
+		defer restoreTopo()
+		blobnode := NewMockBlobnodeAPI(ctr)
+		blobnode.EXPECT().MarkDelete(any, any, any).Return(errMock)
+		restoreCli := swapBlobnode(mgr, blobnode)
+		defer restoreCli()
 
 		msg := &proto.DeleteMsg{Bid: 2, Vid: 2, ReqId: "markDeleteFailed"}
-		msgByte, _ := json.Marshal(msg)
-		kafkaMsg := &sarama.ConsumerMessage{
-			Value: msgByte,
-		}
-		kafkaMsgs := []*sarama.ConsumerMessage{kafkaMsg}
-		success := mgr.Consume(kafkaMsgs, commonCloser)
-		require.True(t, success)
-		mgr.clusterTopology = oldClusterTopology
-		mgr.blobnodeCli = oldBlobNode
-	}
-	{
-		// retry many times and sleep and success
-		oldClusterTopology := mgr.clusterTopology
-		clusterTopology := NewMockClusterTopology(ctr)
-		clusterTopology.EXPECT().GetDisk(any).AnyTimes().Return(&client.DiskInfoSimple{}, true)
-		clusterTopology.EXPECT().GetVolume(any).AnyTimes().DoAndReturn(
-			func(vid proto.Vid) (*client.VolumeInfoSimple, error) {
-				return &client.VolumeInfoSimple{
-					Vid:            vid,
-					VunitLocations: []proto.VunitLocation{{Vuid: 1}},
-				}, nil
-			},
-		)
-		clusterTopology.EXPECT().IsBrokenDisk(any).Return(false)
-		mgr.clusterTopology = clusterTopology
+		require.True(t, mgr.Consume([]*sarama.ConsumerMessage{deleteKafkaMsg(msg)}, stop))
+	})
+
+	t.Run("protected_message_cancelled", func(t *testing.T) {
+		restore := swapTopology(mgr, mockDeleteTopology(t, ctr, deleteTopoOpts{}))
+		defer restore()
+		msg := &proto.DeleteMsg{Bid: 2, Vid: 2, ReqId: "protected", Time: time.Now().Unix() - 1}
+		cancel := closer.New()
+		go func() {
+			time.Sleep(10 * time.Millisecond)
+			cancel.Close()
+		}()
+		oldDelay := mgr.safeDelayTime
+		mgr.safeDelayTime = time.Hour
+		defer func() { mgr.safeDelayTime = oldDelay }()
+		require.False(t, mgr.Consume([]*sarama.ConsumerMessage{deleteKafkaMsg(msg)}, cancel))
+	})
+
+	t.Run("overload_triggers_slowdown", func(t *testing.T) {
+		restoreTopo := swapTopology(mgr, mockDeleteTopology(t, ctr, deleteTopoOpts{}))
+		defer restoreTopo()
+		blobnode := NewMockBlobnodeAPI(ctr)
+		blobnode.EXPECT().MarkDelete(any, any, any).Return(bloberr.ErrOverload)
+		restoreCli := swapBlobnode(mgr, blobnode)
+		defer restoreCli()
+
+		oldSlow := mgr.slowDownTime
+		mgr.slowDownTime = time.Second * defaultSlowDownTimeS
+		defer func() { mgr.slowDownTime = oldSlow }()
+
+		start := time.Now()
+		require.True(t, mgr.Consume([]*sarama.ConsumerMessage{deleteKafkaMsg(defaultDeleteMsg())}, stop))
+		require.GreaterOrEqual(t, time.Since(start), time.Duration(defaultSlowDownTimeS)*time.Second)
+	})
+}
+
+// --- direct consume path ---
+
+func TestBlobDeleteConsumeDirect(t *testing.T) {
+	ctx := context.Background()
+	ctr := gomock.NewController(t)
+	mgr := newBlobDeleteMgr(t)
+	stop := closer.New()
+	defer stop.Close()
+
+	t.Run("punished_retry_success", func(t *testing.T) {
+		restore := swapTopology(mgr, mockDeleteTopology(t, ctr, deleteTopoOpts{}))
+		defer restore()
 		msg := &proto.DeleteMsg{
 			Bid: 1, Vid: 1, ReqId: "123456", Retry: 4,
 			FailTime: time.Now().Unix() - int64(mgr.punishTime.Seconds()) + 1,
 		}
+		ret := consumeRet(mgr, ctx, msg, stop)
+		requireDeleteDone(t, msg, ret)
+	})
 
-		ret := delBlobRet{delMsg: msg, ctx: ctx}
-		mgr.consume(&ret, commonCloser)
-		require.Equal(t, DeleteStatusDone, ret.status)
-		require.Equal(t, 1, len(msg.BlobDelStages.Stages))
-		for _, v := range msg.BlobDelStages.Stages {
-			require.Equal(t, proto.DeleteStageDelete, v)
-		}
-		mgr.clusterTopology = oldClusterTopology
-	}
-	{
-		// consume cancel
-		oldClusterTopology := mgr.clusterTopology
-		clusterTopology := NewMockClusterTopology(ctr)
-		clusterTopology.EXPECT().GetDisk(any).AnyTimes().Return(&client.DiskInfoSimple{}, true)
-		clusterTopology.EXPECT().GetVolume(any).AnyTimes().DoAndReturn(
-			func(vid proto.Vid) (*client.VolumeInfoSimple, error) {
-				return &client.VolumeInfoSimple{
-					Vid:            vid,
-					VunitLocations: []proto.VunitLocation{{Vuid: 1}},
-				}, nil
-			},
-		)
-		clusterTopology.EXPECT().IsBrokenDisk(any).AnyTimes().Return(false)
-		mgr.clusterTopology = clusterTopology
+	t.Run("success", func(t *testing.T) {
+		restore := swapTopology(mgr, mockDeleteTopology(t, ctr, deleteTopoOpts{}))
+		defer restore()
+		msg := defaultDeleteMsg()
+		ret := consumeRet(mgr, ctx, msg, stop)
+		requireDeleteDone(t, msg, ret)
+	})
 
-		msg := &proto.DeleteMsg{
-			Bid:   2,
-			Vid:   2,
-			ReqId: "protected",
-			Time:  time.Now().Unix() - 1,
-		}
-		msgByte, _ := json.Marshal(msg)
-		kafkaMsg := &sarama.ConsumerMessage{
-			Value: msgByte,
-		}
-		mgr.safeDelayTime = 1 * time.Hour
-		closer := closer.New()
-		go func() {
-			time.Sleep(10 * time.Millisecond)
-			closer.Close()
-		}()
-		kafkaMsgs := []*sarama.ConsumerMessage{kafkaMsg}
-		success := mgr.Consume(kafkaMsgs, closer)
-		require.False(t, success)
-		mgr.clusterTopology = oldClusterTopology
-	}
-	{
-		// consume success
-		oldClusterTopology := mgr.clusterTopology
-		clusterTopology := NewMockClusterTopology(ctr)
-		clusterTopology.EXPECT().GetDisk(any).AnyTimes().Return(&client.DiskInfoSimple{}, true)
-		clusterTopology.EXPECT().GetVolume(any).AnyTimes().DoAndReturn(
-			func(vid proto.Vid) (*client.VolumeInfoSimple, error) {
-				return &client.VolumeInfoSimple{
-					Vid:            vid,
-					VunitLocations: []proto.VunitLocation{{Vuid: 1}},
-				}, nil
-			},
-		)
-		clusterTopology.EXPECT().IsBrokenDisk(any).AnyTimes().Return(false)
-		mgr.clusterTopology = clusterTopology
-		msg := &proto.DeleteMsg{Bid: 1, Vid: 1, ReqId: "123456"}
+	t.Run("skip_when_mark_deleted", func(t *testing.T) {
+		restore := swapTopology(mgr, mockDeleteTopology(t, ctr, deleteTopoOpts{useNewVuid: true}))
+		defer restore()
+		msg := defaultDeleteMsg()
+		msg.BlobDelStages = proto.BlobDeleteStage{Stages: map[uint8]proto.DeleteStage{0: proto.DeleteStageMarkDelete}}
+		ret := consumeRet(mgr, ctx, msg, stop)
+		requireDeleteDone(t, msg, ret)
+	})
 
-		ret := delBlobRet{delMsg: msg, ctx: ctx}
-		mgr.consume(&ret, commonCloser)
-		require.Equal(t, DeleteStatusDone, ret.status)
-		require.Equal(t, 1, len(msg.BlobDelStages.Stages))
-		for _, v := range msg.BlobDelStages.Stages {
-			require.Equal(t, proto.DeleteStageDelete, v)
-		}
-		mgr.clusterTopology = oldClusterTopology
-	}
-	{
-		// has mark deleted and not send request to blobnode
-		oldClusterTopology := mgr.clusterTopology
-		clusterTopology := NewMockClusterTopology(ctr)
-		clusterTopology.EXPECT().GetDisk(any).AnyTimes().Return(&client.DiskInfoSimple{}, true)
-		clusterTopology.EXPECT().GetVolume(any).AnyTimes().DoAndReturn(
-			func(vid proto.Vid) (*client.VolumeInfoSimple, error) {
-				vuid, _ := proto.NewVuid(vid, 0, 1)
-				return &client.VolumeInfoSimple{
-					Vid:            vid,
-					VunitLocations: []proto.VunitLocation{{Vuid: vuid}},
-				}, nil
-			},
-		)
-		clusterTopology.EXPECT().IsBrokenDisk(any).AnyTimes().Return(false)
-		mgr.clusterTopology = clusterTopology
-		stages := make(map[uint8]proto.DeleteStage)
-		stages[0] = proto.DeleteStageMarkDelete
-		msg := &proto.DeleteMsg{Bid: 1, Vid: 1, ReqId: "123456", BlobDelStages: proto.BlobDeleteStage{Stages: stages}}
+	t.Run("skip_when_already_deleted", func(t *testing.T) {
+		restore := swapTopology(mgr, mockDeleteTopology(t, ctr, deleteTopoOpts{useNewVuid: true}))
+		defer restore()
+		msg := defaultDeleteMsg()
+		msg.BlobDelStages = proto.BlobDeleteStage{Stages: map[uint8]proto.DeleteStage{0: proto.DeleteStageDelete}}
+		ret := consumeRet(mgr, ctx, msg, stop)
+		requireDeleteDone(t, msg, ret)
+	})
 
-		ret := delBlobRet{delMsg: msg, ctx: ctx}
-		mgr.consume(&ret, commonCloser)
-		require.Equal(t, DeleteStatusDone, ret.status)
-		require.Equal(t, 1, len(msg.BlobDelStages.Stages))
-		for _, v := range msg.BlobDelStages.Stages {
-			require.Equal(t, proto.DeleteStageDelete, v)
-		}
-		mgr.clusterTopology = oldClusterTopology
-	}
-	{
-		// has deleted and not send request to blobnode
-		oldClusterTopology := mgr.clusterTopology
-		clusterTopology := NewMockClusterTopology(ctr)
-		clusterTopology.EXPECT().GetDisk(any).AnyTimes().Return(&client.DiskInfoSimple{}, true)
-		clusterTopology.EXPECT().GetVolume(any).AnyTimes().DoAndReturn(
-			func(vid proto.Vid) (*client.VolumeInfoSimple, error) {
-				vuid, _ := proto.NewVuid(vid, 0, 1)
-				return &client.VolumeInfoSimple{
-					Vid:            vid,
-					VunitLocations: []proto.VunitLocation{{Vuid: vuid}},
-				}, nil
-			},
-		)
-		clusterTopology.EXPECT().IsBrokenDisk(any).AnyTimes().Return(false)
-		mgr.clusterTopology = clusterTopology
-		stages := make(map[uint8]proto.DeleteStage)
-		stages[0] = proto.DeleteStageDelete
-		msg := &proto.DeleteMsg{Bid: 1, Vid: 1, ReqId: "123456", BlobDelStages: proto.BlobDeleteStage{Stages: stages}}
-
-		ret := delBlobRet{delMsg: msg, ctx: ctx}
-		mgr.consume(&ret, commonCloser)
-		require.Equal(t, DeleteStatusDone, ret.status)
-		require.Equal(t, 1, len(msg.BlobDelStages.Stages))
-		for _, v := range msg.BlobDelStages.Stages {
-			require.Equal(t, proto.DeleteStageDelete, v)
-		}
-		mgr.clusterTopology = oldClusterTopology
-	}
-	{
-		// delete protected
-		oldClusterTopology := mgr.clusterTopology
-		clusterTopology := NewMockClusterTopology(ctr)
-		clusterTopology.EXPECT().GetDisk(any).AnyTimes().Return(&client.DiskInfoSimple{}, true)
-		clusterTopology.EXPECT().GetVolume(any).AnyTimes().DoAndReturn(
-			func(vid proto.Vid) (*client.VolumeInfoSimple, error) {
-				return &client.VolumeInfoSimple{
-					Vid:            vid,
-					VunitLocations: []proto.VunitLocation{{Vuid: 1}},
-				}, nil
-			},
-		)
-		clusterTopology.EXPECT().IsBrokenDisk(any).AnyTimes().Return(false)
-		mgr.clusterTopology = clusterTopology
-
-		msg := &proto.DeleteMsg{
-			Bid:   2,
-			Vid:   2,
-			ReqId: "protected",
-			Time:  time.Now().Unix() - 1,
-		}
+	t.Run("protected_within_delay", func(t *testing.T) {
+		restore := swapTopology(mgr, mockDeleteTopology(t, ctr, deleteTopoOpts{}))
+		defer restore()
+		msg := &proto.DeleteMsg{Bid: 2, Vid: 2, ReqId: "protected", Time: time.Now().Unix() - 1}
+		oldDelay := mgr.safeDelayTime
 		mgr.safeDelayTime = 2 * time.Second
-		ret := delBlobRet{delMsg: msg, ctx: ctx}
-		mgr.consume(&ret, commonCloser)
+		defer func() { mgr.safeDelayTime = oldDelay }()
+		ret := consumeRet(mgr, ctx, msg, stop)
 		require.Equal(t, DeleteStatusDone, ret.status)
-		mgr.clusterTopology = oldClusterTopology
-	}
-	{
-		// delete protected and cancel
-		oldClusterTopology := mgr.clusterTopology
-		clusterTopology := NewMockClusterTopology(ctr)
-		clusterTopology.EXPECT().GetDisk(any).AnyTimes().Return(&client.DiskInfoSimple{}, true)
-		clusterTopology.EXPECT().GetVolume(any).AnyTimes().DoAndReturn(
-			func(vid proto.Vid) (*client.VolumeInfoSimple, error) {
-				return &client.VolumeInfoSimple{
-					Vid:            vid,
-					VunitLocations: []proto.VunitLocation{{Vuid: 1}},
-				}, nil
-			},
-		)
-		clusterTopology.EXPECT().IsBrokenDisk(any).AnyTimes().Return(false)
-		mgr.clusterTopology = clusterTopology
+	})
 
-		msg := &proto.DeleteMsg{
-			Bid:   2,
-			Vid:   2,
-			ReqId: "protected",
-			Time:  time.Now().Unix() - 1,
-		}
-		mgr.safeDelayTime = 1 * time.Hour
-		closer := closer.New()
+	t.Run("protected_cancelled", func(t *testing.T) {
+		restore := swapTopology(mgr, mockDeleteTopology(t, ctr, deleteTopoOpts{}))
+		defer restore()
+		msg := &proto.DeleteMsg{Bid: 2, Vid: 2, ReqId: "protected", Time: time.Now().Unix() - 1}
+		cancel := closer.New()
 		go func() {
 			time.Sleep(10 * time.Millisecond)
-			closer.Close()
+			cancel.Close()
 		}()
-		ret := delBlobRet{delMsg: msg, ctx: ctx}
-		mgr.consume(&ret, closer)
+		oldDelay := mgr.safeDelayTime
+		mgr.safeDelayTime = time.Hour
+		defer func() { mgr.safeDelayTime = oldDelay }()
+		ret := consumeRet(mgr, ctx, msg, cancel)
 		require.Equal(t, DeleteStatusUndo, ret.status)
-		mgr.clusterTopology = oldClusterTopology
-	}
-	{
-		// blobnode delete failed
-		oldClusterTopology := mgr.clusterTopology
-		clusterTopology := NewMockClusterTopology(ctr)
-		clusterTopology.EXPECT().GetDisk(any).AnyTimes().Return(&client.DiskInfoSimple{}, true)
-		clusterTopology.EXPECT().GetVolume(any).AnyTimes().DoAndReturn(
-			func(vid proto.Vid) (*client.VolumeInfoSimple, error) {
-				return &client.VolumeInfoSimple{Vid: vid, VunitLocations: []proto.VunitLocation{{Vuid: 1}}}, nil
-			},
-		)
-		clusterTopology.EXPECT().IsBrokenDisk(any).AnyTimes().Return(false)
-		mgr.clusterTopology = clusterTopology
+	})
 
-		oldBlobNode := mgr.blobnodeCli
-		blobnodeCli := NewMockBlobnodeAPI(ctr)
-		blobnodeCli.EXPECT().MarkDelete(any, any, any).AnyTimes().Return(errMock)
-		mgr.blobnodeCli = blobnodeCli
+	t.Run("mark_delete_failed", func(t *testing.T) {
+		restoreTopo := swapTopology(mgr, mockDeleteTopology(t, ctr, deleteTopoOpts{}))
+		defer restoreTopo()
+		blobnode := NewMockBlobnodeAPI(ctr)
+		blobnode.EXPECT().MarkDelete(any, any, any).Return(errMock)
+		restoreCli := swapBlobnode(mgr, blobnode)
+		defer restoreCli()
 
 		msg := &proto.DeleteMsg{Bid: 2, Vid: 2, ReqId: "markDeleteFailed"}
-		ret := delBlobRet{delMsg: msg, ctx: ctx}
-		mgr.consume(&ret, commonCloser)
+		ret := consumeRet(mgr, ctx, msg, stop)
 		require.Equal(t, DeleteStatusFailed, ret.status)
 		require.ErrorIs(t, ret.err, errMock)
-		mgr.clusterTopology = oldClusterTopology
-		mgr.blobnodeCli = oldBlobNode
-	}
-	{
-		// blobnode return ErrDiskBroken
-		oldClusterTopology := mgr.clusterTopology
-		clusterTopology := NewMockClusterTopology(ctr)
-		clusterTopology.EXPECT().GetDisk(any).AnyTimes().Return(&client.DiskInfoSimple{}, true)
-		clusterTopology.EXPECT().GetVolume(any).AnyTimes().DoAndReturn(
-			func(vid proto.Vid) (*client.VolumeInfoSimple, error) {
+	})
+
+	t.Run("disk_broken", func(t *testing.T) {
+		restoreTopo := swapTopology(mgr, mockDeleteTopology(t, ctr, deleteTopoOpts{
+			withUpdate: true,
+			updateFn: func(vid proto.Vid) (*client.VolumeInfoSimple, error) {
 				return &client.VolumeInfoSimple{Vid: vid, VunitLocations: []proto.VunitLocation{{Vuid: 1}}}, nil
 			},
-		)
-		clusterTopology.EXPECT().IsBrokenDisk(any).AnyTimes().Return(false)
-		clusterTopology.EXPECT().UpdateVolume(any).AnyTimes().DoAndReturn(
-			func(vid proto.Vid) (*client.VolumeInfoSimple, error) {
-				return &client.VolumeInfoSimple{
-					Vid:            vid,
-					VunitLocations: []proto.VunitLocation{{Vuid: 1}},
-				}, nil
-			},
-		)
-		mgr.clusterTopology = clusterTopology
-
-		oldBlobNode := mgr.blobnodeCli
-		blobnodeCli := NewMockBlobnodeAPI(ctr)
-		blobnodeCli.EXPECT().MarkDelete(any, any, any).AnyTimes().Return(errcode.ErrDiskBroken)
-		mgr.blobnodeCli = blobnodeCli
+		}))
+		defer restoreTopo()
+		blobnode := NewMockBlobnodeAPI(ctr)
+		blobnode.EXPECT().MarkDelete(any, any, any).Return(errcode.ErrDiskBroken)
+		restoreCli := swapBlobnode(mgr, blobnode)
+		defer restoreCli()
 
 		msg := &proto.DeleteMsg{Bid: 2, Vid: 2, ReqId: "delete failed"}
-		ret := delBlobRet{delMsg: msg, ctx: ctx}
-		mgr.consume(&ret, commonCloser)
+		ret := consumeRet(mgr, ctx, msg, stop)
 		require.Equal(t, DeleteStatusFailed, ret.status)
 		require.Nil(t, msg.BlobDelStages.Stages)
 		require.ErrorIs(t, ret.err, errcode.ErrDiskBroken)
-		mgr.clusterTopology = oldClusterTopology
-		mgr.blobnodeCli = oldBlobNode
-	}
-	{
-		// blobnode return ErrDiskBroken, and clusterTopology update not eql
-		oldClusterTopology := mgr.clusterTopology
-		clusterTopology := NewMockClusterTopology(ctr)
-		clusterTopology.EXPECT().GetDisk(any).AnyTimes().Return(&client.DiskInfoSimple{}, true)
-		clusterTopology.EXPECT().GetVolume(any).AnyTimes().DoAndReturn(
-			func(vid proto.Vid) (*client.VolumeInfoSimple, error) {
-				return &client.VolumeInfoSimple{
-					Vid:            vid,
-					VunitLocations: []proto.VunitLocation{{Vuid: 1}},
-				}, nil
-			},
-		)
-		clusterTopology.EXPECT().IsBrokenDisk(any).AnyTimes().Return(false)
-		clusterTopology.EXPECT().UpdateVolume(any).DoAndReturn(
-			func(vid proto.Vid) (*client.VolumeInfoSimple, error) {
+	})
+
+	t.Run("disk_broken_volume_unchanged", func(t *testing.T) {
+		restoreTopo := swapTopology(mgr, mockDeleteTopology(t, ctr, deleteTopoOpts{
+			withUpdate: true,
+			updateFn: func(vid proto.Vid) (*client.VolumeInfoSimple, error) {
 				return &client.VolumeInfoSimple{
 					Vid:            vid,
 					VunitLocations: []proto.VunitLocation{{Vuid: 1}, {Vuid: 2}},
 				}, nil
 			},
-		)
-		mgr.clusterTopology = clusterTopology
-
-		oldBlobNode := mgr.blobnodeCli
-		blobnodeCli := NewMockBlobnodeAPI(ctr)
-		blobnodeCli.EXPECT().MarkDelete(any, any, any).AnyTimes().Return(errcode.ErrDiskBroken)
-		mgr.blobnodeCli = blobnodeCli
+		}))
+		defer restoreTopo()
+		blobnode := NewMockBlobnodeAPI(ctr)
+		blobnode.EXPECT().MarkDelete(any, any, any).AnyTimes().Return(errcode.ErrDiskBroken)
+		restoreCli := swapBlobnode(mgr, blobnode)
+		defer restoreCli()
 
 		msg := &proto.DeleteMsg{Bid: 2, Vid: 2, ReqId: "delete failed"}
-		ret := delBlobRet{delMsg: msg, ctx: ctx}
-		mgr.consume(&ret, commonCloser)
+		ret := consumeRet(mgr, ctx, msg, stop)
 		require.Equal(t, DeleteStatusFailed, ret.status)
 		require.Nil(t, msg.BlobDelStages.Stages)
 
-		clusterTopology.EXPECT().UpdateVolume(any).AnyTimes().DoAndReturn(
-			func(vid proto.Vid) (*client.VolumeInfoSimple, error) {
-				return &client.VolumeInfoSimple{
-					Vid:            vid,
-					VunitLocations: []proto.VunitLocation{{Vuid: 2}},
-				}, nil
+		restoreTopo2 := swapTopology(mgr, mockDeleteTopology(t, ctr, deleteTopoOpts{
+			withUpdate: true,
+			updateFn: func(vid proto.Vid) (*client.VolumeInfoSimple, error) {
+				return &client.VolumeInfoSimple{Vid: vid, VunitLocations: []proto.VunitLocation{{Vuid: 2}}}, nil
 			},
-		)
-		clusterTopology.EXPECT().IsBrokenDisk(any).AnyTimes().Return(false)
-		mgr.clusterTopology = clusterTopology
-		ret = delBlobRet{delMsg: msg, ctx: ctx}
-		mgr.consume(&ret, commonCloser)
+		}))
+		defer restoreTopo2()
+		ret = consumeRet(mgr, ctx, msg, stop)
 		require.Equal(t, DeleteStatusFailed, ret.status)
-		require.Nil(t, msg.BlobDelStages.Stages)
 		require.ErrorIs(t, ret.err, errcode.ErrDiskBroken)
+	})
 
-		mgr.clusterTopology = oldClusterTopology
-		mgr.blobnodeCli = oldBlobNode
-	}
-	{
-		// has broken disk and not send requests to blobnode
-		oldClusterTopology := mgr.clusterTopology
-		clusterTopology := NewMockClusterTopology(ctr)
-		clusterTopology.EXPECT().GetDisk(any).AnyTimes().Return(&client.DiskInfoSimple{}, true)
-		clusterTopology.EXPECT().GetVolume(any).AnyTimes().DoAndReturn(
-			func(vid proto.Vid) (*client.VolumeInfoSimple, error) {
-				return &client.VolumeInfoSimple{
-					Vid:            vid,
-					VunitLocations: []proto.VunitLocation{{Vuid: 1, DiskID: testDisk1.DiskID}},
-				}, nil
-			},
-		)
-		clusterTopology.EXPECT().IsBrokenDisk(any).AnyTimes().Return(true)
-		clusterTopology.EXPECT().UpdateVolume(any).AnyTimes().Return(nil, nil)
-		mgr.clusterTopology = clusterTopology
-
+	t.Run("broken_disk_skips_blobnode", func(t *testing.T) {
+		restore := swapTopology(mgr, mockDeleteTopology(t, ctr, deleteTopoOpts{
+			brokenDisk: true,
+			brokenAny:  true,
+			diskID:     testDisk1.DiskID,
+			withUpdate: true,
+		}))
+		defer restore()
 		msg := &proto.DeleteMsg{Bid: 2, Vid: 2, ReqId: "delete failed"}
-		ret := delBlobRet{delMsg: msg, ctx: ctx}
-		mgr.consume(&ret, commonCloser)
+		ret := consumeRet(mgr, ctx, msg, stop)
 		require.Equal(t, DeleteStatusFailed, ret.status)
 		require.Nil(t, msg.BlobDelStages.Stages)
-		mgr.clusterTopology = oldClusterTopology
-	}
-	{
-		// message punished and consume success
-		oldClusterTopology := mgr.clusterTopology
-		clusterTopology := NewMockClusterTopology(ctr)
-		clusterTopology.EXPECT().GetDisk(any).AnyTimes().Return(&client.DiskInfoSimple{}, true)
-		clusterTopology.EXPECT().GetVolume(any).AnyTimes().DoAndReturn(
-			func(vid proto.Vid) (*client.VolumeInfoSimple, error) {
-				return &client.VolumeInfoSimple{
-					Vid:            vid,
-					VunitLocations: []proto.VunitLocation{{Vuid: 1}},
-				}, nil
-			},
-		)
-		clusterTopology.EXPECT().IsBrokenDisk(any).AnyTimes().Return(false)
-		mgr.clusterTopology = clusterTopology
+	})
+
+	t.Run("punished_message_skips_delete", func(t *testing.T) {
+		restore := swapTopology(mgr, mockDeleteTopology(t, ctr, deleteTopoOpts{}))
+		defer restore()
 		msg := &proto.DeleteMsg{Bid: 2, Vid: 2, ReqId: "delete failed", Retry: defaultMessagePunishThreshold}
-		oldPunishTime := mgr.punishTime
+		oldPunish := mgr.punishTime
 		mgr.punishTime = 10 * time.Millisecond
-		ret := delBlobRet{delMsg: msg, ctx: ctx}
-		mgr.consume(&ret, commonCloser)
-		require.Equal(t, DeleteStatusDone, ret.status)
-		require.Equal(t, 1, len(msg.BlobDelStages.Stages))
-		for _, v := range msg.BlobDelStages.Stages {
-			require.Equal(t, proto.DeleteStageDelete, v)
-		}
-		mgr.punishTime = oldPunishTime
-		mgr.clusterTopology = oldClusterTopology
-	}
-	{
-		// message punished for a while and cancel
-		closer := closer.New()
+		defer func() { mgr.punishTime = oldPunish }()
+		ret := consumeRet(mgr, ctx, msg, stop)
+		requireDeleteDone(t, msg, ret)
+	})
+
+	t.Run("punished_message_cancelled", func(t *testing.T) {
+		cancel := closer.New()
 		go func() {
 			time.Sleep(10 * time.Millisecond)
-			closer.Close()
+			cancel.Close()
 		}()
 		msg := &proto.DeleteMsg{Bid: 2, Vid: 2, ReqId: "delete failed", Retry: defaultMessagePunishThreshold}
-		ret := delBlobRet{delMsg: msg, ctx: ctx}
-		mgr.consume(&ret, closer)
+		ret := consumeRet(mgr, ctx, msg, cancel)
 		require.Equal(t, DeleteStatusUndo, ret.status)
-	}
-	{
-		// consume success, and slow down consume message
-		start := time.Now()
-		oldClusterTopology := mgr.clusterTopology
-		clusterTopology := NewMockClusterTopology(ctr)
-		clusterTopology.EXPECT().GetDisk(any).AnyTimes().Return(&client.DiskInfoSimple{}, true)
-		clusterTopology.EXPECT().GetVolume(any).AnyTimes().DoAndReturn(
-			func(vid proto.Vid) (*client.VolumeInfoSimple, error) {
-				return &client.VolumeInfoSimple{
-					Vid:            vid,
-					VunitLocations: []proto.VunitLocation{{Vuid: 1}},
-				}, nil
+	})
+
+	t.Run("repaired_disk_update_volume_failed", func(t *testing.T) {
+		restoreTopo := swapTopology(mgr, mockDeleteTopology(t, ctr, deleteTopoOpts{
+			diskFound:  false,
+			diskID:     testDisk1.DiskID,
+			withUpdate: true,
+			updateFn: func(vid proto.Vid) (*client.VolumeInfoSimple, error) {
+				return nil, errMock
 			},
-		)
-		clusterTopology.EXPECT().IsBrokenDisk(any).AnyTimes().Return(false)
-		mgr.clusterTopology = clusterTopology
-
-		oldBlobNode := mgr.blobnodeCli
-		blobnodeCli := NewMockBlobnodeAPI(ctr)
-		blobnodeCli.EXPECT().MarkDelete(any, any, any).AnyTimes().Return(bloberr.ErrOverload)
-		mgr.blobnodeCli = blobnodeCli
-		oldSlowDownTime := mgr.slowDownTime
-		mgr.slowDownTime = time.Second * defaultSlowDownTimeS
-
-		msg := &proto.DeleteMsg{Bid: 1, Vid: 1, ReqId: "123456"}
-		msgByte, _ := json.Marshal(msg)
-		kafkaMsg := &sarama.ConsumerMessage{
-			Value: msgByte,
-		}
-		kafkaMsgs := []*sarama.ConsumerMessage{kafkaMsg}
-
-		success := mgr.Consume(kafkaMsgs, commonCloser)
-		end := time.Now() // normal success use 200 us,
-		require.True(t, success)
-		require.LessOrEqual(t, time.Duration(defaultSlowDownTimeS)*time.Second, end.Sub(start)) // overload, slow down a while
-		mgr.clusterTopology = oldClusterTopology
-		mgr.blobnodeCli = oldBlobNode
-		mgr.slowDownTime = oldSlowDownTime
-	}
-	{
-		// volume has repaired disk should update volume
-		oldClusterTopology := mgr.clusterTopology
-		clusterTopology := NewMockClusterTopology(ctr)
-		clusterTopology.EXPECT().GetDisk(any).AnyTimes().Return(&client.DiskInfoSimple{}, false)
-		clusterTopology.EXPECT().GetVolume(any).AnyTimes().DoAndReturn(
-			func(vid proto.Vid) (*client.VolumeInfoSimple, error) {
-				return &client.VolumeInfoSimple{
-					Vid:            vid,
-					VunitLocations: []proto.VunitLocation{{Vuid: 1, DiskID: testDisk1.DiskID}},
-				}, nil
-			},
-		)
-		clusterTopology.EXPECT().IsBrokenDisk(any).AnyTimes().Return(false)
-		clusterTopology.EXPECT().UpdateVolume(any).AnyTimes().Return(nil, errMock)
-
-		oldBlobNode := mgr.blobnodeCli
-		blobnodeCli := NewMockBlobnodeAPI(ctr)
-		blobnodeCli.EXPECT().MarkDelete(any, any, any).AnyTimes().Return(bloberr.ErrRequestTimeout)
-		mgr.blobnodeCli = blobnodeCli
-		mgr.clusterTopology = clusterTopology
+		}))
+		defer restoreTopo()
+		blobnode := NewMockBlobnodeAPI(ctr)
+		blobnode.EXPECT().MarkDelete(any, any, any).Return(bloberr.ErrRequestTimeout)
+		restoreCli := swapBlobnode(mgr, blobnode)
+		defer restoreCli()
 
 		msg := &proto.DeleteMsg{Bid: 10, Vid: 3, ReqId: "delete failed"}
-		ret := delBlobRet{delMsg: msg, ctx: ctx}
-		mgr.consume(&ret, commonCloser)
+		ret := consumeRet(mgr, ctx, msg, stop)
 		require.Equal(t, DeleteStatusFailed, ret.status)
 		require.Nil(t, msg.BlobDelStages.Stages)
-		mgr.clusterTopology = oldClusterTopology
-		mgr.blobnodeCli = oldBlobNode
-	}
+	})
 }
 
-// comment temporary
 func TestNewDeleteMgr(t *testing.T) {
 	ctr := gomock.NewController(t)
 	broker0 := NewBroker(t)
@@ -681,15 +498,11 @@ func TestNewDeleteMgr(t *testing.T) {
 	mgr, err := NewBlobDeleteMgr(blobCfg, clusterTopology, switchMgr, blobnodeCli, kafkaClient)
 	require.NoError(t, err)
 	require.False(t, mgr.Enabled())
-	// run task
 	mgr.Run()
-	err = mgr.startConsumer()
-	require.NoError(t, err)
+	require.NoError(t, mgr.startConsumer())
 	mgr.stopConsumer()
 	require.Nil(t, mgr.consumers)
 	mgr.Close()
-
-	// get stats
 	mgr.GetTaskStats()
 	mgr.GetErrorStats()
 }
@@ -703,40 +516,12 @@ func TestAllowDeleting(t *testing.T) {
 		ok        bool
 		waitTime  time.Duration
 	}{
-		{
-			hourRange: HourRange{0, 1},
-			now:       time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()),
-			ok:        true,
-		},
-		{
-			hourRange: HourRange{0, 1},
-			now:       time.Date(now.Year(), now.Month(), now.Day(), 1, 0, 0, 0, now.Location()),
-			ok:        false,
-			waitTime:  23 * time.Hour,
-		},
-		{
-			hourRange: HourRange{0, 2},
-			now:       time.Date(now.Year(), now.Month(), now.Day(), 1, 0, 0, 0, now.Location()),
-			ok:        true,
-		},
-		{
-			hourRange: HourRange{0, 23},
-			now:       time.Date(now.Year(), now.Month(), now.Day(), 23, 10, 0, 0, now.Location()),
-			ok:        false,
-			waitTime:  50 * time.Minute,
-		},
-		{
-			hourRange: HourRange{1, 2},
-			now:       time.Date(now.Year(), now.Month(), now.Day(), 3, 0, 0, 0, now.Location()),
-			ok:        false,
-			waitTime:  (21 + 1) * time.Hour,
-		},
-		{
-			hourRange: HourRange{2, 5},
-			now:       time.Date(now.Year(), now.Month(), now.Day(), 1, 0, 0, 0, now.Location()),
-			ok:        false,
-			waitTime:  1 * time.Hour,
-		},
+		{hourRange: HourRange{0, 1}, now: time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()), ok: true},
+		{hourRange: HourRange{0, 1}, now: time.Date(now.Year(), now.Month(), now.Day(), 1, 0, 0, 0, now.Location()), ok: false, waitTime: 23 * time.Hour},
+		{hourRange: HourRange{0, 2}, now: time.Date(now.Year(), now.Month(), now.Day(), 1, 0, 0, 0, now.Location()), ok: true},
+		{hourRange: HourRange{0, 23}, now: time.Date(now.Year(), now.Month(), now.Day(), 23, 10, 0, 0, now.Location()), ok: false, waitTime: 50 * time.Minute},
+		{hourRange: HourRange{1, 2}, now: time.Date(now.Year(), now.Month(), now.Day(), 3, 0, 0, 0, now.Location()), ok: false, waitTime: (21 + 1) * time.Hour},
+		{hourRange: HourRange{2, 5}, now: time.Date(now.Year(), now.Month(), now.Day(), 1, 0, 0, 0, now.Location()), ok: false, waitTime: 1 * time.Hour},
 	}
 	for _, test := range testCases {
 		mgr.deleteHourRange = test.hourRange
@@ -750,99 +535,96 @@ func TestDeleteBlob(t *testing.T) {
 	ctx := context.Background()
 	ctr := gomock.NewController(t)
 	volume := MockGenVolInfo(proto.Vid(1), codemode.EC3P3, proto.VolumeStatusActive)
-	{
-		// mark delete failed
+
+	t.Run("mark_delete_failed", func(t *testing.T) {
 		mgr := newBlobDeleteMgr(t)
-		blobnodeCli := NewMockBlobnodeAPI(ctr)
-		blobnodeCli.EXPECT().MarkDelete(any, any, any).AnyTimes().Return(errMock)
-		mgr.blobnodeCli = blobnodeCli
+		blobnode := NewMockBlobnodeAPI(ctr)
+		blobnode.EXPECT().MarkDelete(any, any, any).AnyTimes().Return(errMock)
+		mgr.blobnodeCli = blobnode
 
 		doneVolume, err := mgr.deleteBlob(ctx, volume, &proto.DeleteMsg{Bid: proto.BlobID(1)})
 		require.ErrorIs(t, err, errMock)
 		require.True(t, doneVolume.EqualWith(volume))
-	}
-	{
-		// delete failed: err[shard must mark delete]
+	})
+
+	t.Run("shard_not_mark_delete_rollback_and_retry", func(t *testing.T) {
 		mgr := newBlobDeleteMgr(t)
-		blobnodeCli := NewMockBlobnodeAPI(ctr)
-		blobnodeCli.EXPECT().Delete(any, any, any).Times(1).Return(errcode.ErrShardNotMarkDelete)
-		mgr.blobnodeCli = blobnodeCli
+		blobnode := NewMockBlobnodeAPI(ctr)
+		blobnode.EXPECT().Delete(any, any, any).Return(errcode.ErrShardNotMarkDelete)
+		mgr.blobnodeCli = blobnode
 
 		stages := make(map[uint8]proto.DeleteStage)
 		for i := 0; i < codemode.EC3P3.GetShardNum(); i++ {
 			stages[uint8(i)] = proto.DeleteStageDelete
 		}
 		stages[1] = proto.DeleteStageMarkDelete
-		msg := &proto.DeleteMsg{
-			Bid:           proto.BlobID(1),
-			BlobDelStages: proto.BlobDeleteStage{Stages: stages},
-		}
+		msg := &proto.DeleteMsg{Bid: proto.BlobID(1), BlobDelStages: proto.BlobDeleteStage{Stages: stages}}
 
-		doneVolume, err := mgr.deleteBlob(ctx, volume, msg) // will roll back stage
+		doneVolume, err := mgr.deleteBlob(ctx, volume, msg)
 		require.ErrorIs(t, err, errcode.ErrShardNotMarkDelete)
 		require.True(t, doneVolume.EqualWith(volume))
-		require.Equal(t, proto.InitStage, msg.BlobDelStages.Stages[1]) // alread roll back to init
+		require.Equal(t, proto.InitStage, msg.BlobDelStages.Stages[1])
 
-		blobnodeCli.EXPECT().MarkDelete(any, any, any).Times(1).Return(nil)
-		blobnodeCli.EXPECT().Delete(any, any, any).Times(1).Return(nil)
+		blobnode.EXPECT().MarkDelete(any, any, any).Return(nil)
+		blobnode.EXPECT().Delete(any, any, any).Return(nil)
 		doneVolume, err = mgr.deleteBlob(ctx, volume, msg)
-		require.NoError(t, err) // retry ok
+		require.NoError(t, err)
 		require.True(t, doneVolume.EqualWith(volume))
-	}
-	{
-		// mark delete failed and need update volume cache: update cache failed
-		mgr := newBlobDeleteMgr(t)
-		blobnodeCli := NewMockBlobnodeAPI(ctr)
-		blobnodeCli.EXPECT().MarkDelete(any, any, any).Times(5).Return(nil)
-		blobnodeCli.EXPECT().MarkDelete(any, any, any).Return(errcode.ErrNoSuchVuid)
-		mgr.blobnodeCli = blobnodeCli
+	})
 
-		clusterTopology := NewMockClusterTopology(ctr)
-		clusterTopology.EXPECT().UpdateVolume(any).Return(volume, errcode.ErrUpdateVolCacheFreq)
-		clusterTopology.EXPECT().GetDisk(any).AnyTimes().Return(&client.DiskInfoSimple{}, true)
-		mgr.clusterTopology = clusterTopology
+	t.Run("update_volume_cache_failed", func(t *testing.T) {
+		mgr := newBlobDeleteMgr(t)
+		blobnode := NewMockBlobnodeAPI(ctr)
+		blobnode.EXPECT().MarkDelete(any, any, any).Times(5).Return(nil)
+		blobnode.EXPECT().MarkDelete(any, any, any).Return(errcode.ErrNoSuchVuid)
+		mgr.blobnodeCli = blobnode
+
+		topo := NewMockClusterTopology(ctr)
+		topo.EXPECT().UpdateVolume(any).Return(volume, errcode.ErrUpdateVolCacheFreq)
+		topo.EXPECT().GetDisk(any).AnyTimes().Return(&client.DiskInfoSimple{}, true)
+		mgr.clusterTopology = topo
 
 		doneVolume, err := mgr.deleteBlob(ctx, volume, &proto.DeleteMsg{Bid: proto.BlobID(1)})
 		require.ErrorIs(t, err, errcode.ErrNoSuchVuid)
 		require.True(t, doneVolume.EqualWith(volume))
-	}
-	{
-		// mark delete failed and need update volume cache: update cache success but volume not change
-		mgr := newBlobDeleteMgr(t)
-		blobnodeCli := NewMockBlobnodeAPI(ctr)
-		blobnodeCli.EXPECT().MarkDelete(any, any, any).Times(5).Return(nil)
-		blobnodeCli.EXPECT().MarkDelete(any, any, any).Return(errcode.ErrNoSuchVuid)
-		mgr.blobnodeCli = blobnodeCli
+	})
 
-		clusterTopology := NewMockClusterTopology(ctr)
-		clusterTopology.EXPECT().UpdateVolume(any).Return(volume, nil)
-		clusterTopology.EXPECT().GetDisk(any).AnyTimes().Return(&client.DiskInfoSimple{}, true)
-		mgr.clusterTopology = clusterTopology
+	t.Run("update_volume_unchanged", func(t *testing.T) {
+		mgr := newBlobDeleteMgr(t)
+		blobnode := NewMockBlobnodeAPI(ctr)
+		blobnode.EXPECT().MarkDelete(any, any, any).Times(5).Return(nil)
+		blobnode.EXPECT().MarkDelete(any, any, any).Return(errcode.ErrNoSuchVuid)
+		mgr.blobnodeCli = blobnode
+
+		topo := NewMockClusterTopology(ctr)
+		topo.EXPECT().UpdateVolume(any).Return(volume, nil)
+		topo.EXPECT().GetDisk(any).AnyTimes().Return(&client.DiskInfoSimple{}, true)
+		mgr.clusterTopology = topo
 
 		doneVolume, err := mgr.deleteBlob(ctx, volume, &proto.DeleteMsg{Bid: proto.BlobID(1)})
 		require.ErrorIs(t, err, errcode.ErrNoSuchVuid)
 		require.True(t, doneVolume.EqualWith(volume))
-	}
-	{
-		// mark delete and delete success
-		mgr := newBlobDeleteMgr(t)
-		blobnodeCli := NewMockBlobnodeAPI(ctr)
-		blobnodeCli.EXPECT().MarkDelete(any, any, any).Times(5).Return(nil)
-		blobnodeCli.EXPECT().MarkDelete(any, any, any).Return(errcode.ErrNoSuchVuid)
-		blobnodeCli.EXPECT().MarkDelete(any, any, any).Return(nil)
-		blobnodeCli.EXPECT().Delete(any, any, any).Times(6).Return(nil)
-		mgr.blobnodeCli = blobnodeCli
+	})
 
-		clusterTopology := NewMockClusterTopology(ctr)
+	t.Run("retry_after_volume_change", func(t *testing.T) {
+		mgr := newBlobDeleteMgr(t)
+		blobnode := NewMockBlobnodeAPI(ctr)
+		blobnode.EXPECT().MarkDelete(any, any, any).Times(5).Return(nil)
+		blobnode.EXPECT().MarkDelete(any, any, any).Return(errcode.ErrNoSuchVuid)
+		blobnode.EXPECT().MarkDelete(any, any, any).Return(nil)
+		blobnode.EXPECT().Delete(any, any, any).Times(6).Return(nil)
+		mgr.blobnodeCli = blobnode
+
 		newVolume := MockGenVolInfo(proto.Vid(1), codemode.EC3P3, proto.VolumeStatusActive)
-		newVolume.VunitLocations[5].Vuid += 1
-		clusterTopology.EXPECT().UpdateVolume(any).Return(newVolume, nil)
-		clusterTopology.EXPECT().GetDisk(any).AnyTimes().Return(&client.DiskInfoSimple{}, true)
-		mgr.clusterTopology = clusterTopology
+		newVolume.VunitLocations[5].Vuid++
+		topo := NewMockClusterTopology(ctr)
+		topo.EXPECT().UpdateVolume(any).Return(newVolume, nil)
+		topo.EXPECT().GetDisk(any).AnyTimes().Return(&client.DiskInfoSimple{}, true)
+		mgr.clusterTopology = topo
 
 		doneVolume, err := mgr.deleteBlob(ctx, volume, &proto.DeleteMsg{Bid: proto.BlobID(1)})
 		require.NoError(t, err)
 		require.False(t, doneVolume.EqualWith(volume))
 		require.True(t, doneVolume.EqualWith(newVolume))
-	}
+	})
 }

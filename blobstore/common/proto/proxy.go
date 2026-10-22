@@ -80,6 +80,11 @@ func (msg *DeleteMsg) SetDeleteStage(stage BlobDeleteStage) {
 	}
 }
 
+// ShardRepairReasonInspectCrc marks a shard repair triggered by data-inspect
+// crc corruption. The consumer must rebuild every BadIdx in place even if their
+// meta still reports Normal.
+const ShardRepairReasonInspectCrc = "inspect-crc"
+
 type ShardRepairMsg struct {
 	ClusterID ClusterID `json:"cluster_id"`
 	Bid       BlobID    `json:"bid"`

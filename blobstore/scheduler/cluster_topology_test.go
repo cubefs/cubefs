@@ -258,7 +258,7 @@ func TestDoubleCheckedRun(t *testing.T) {
 	}
 }
 
-func BenchmarkVolumeCache(b *testing.B) {
+func BenchmarkRunCIVolumeCache(b *testing.B) {
 	for _, cs := range []struct {
 		Name  string
 		Items int

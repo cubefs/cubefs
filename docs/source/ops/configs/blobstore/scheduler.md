@@ -19,6 +19,8 @@ The configuration of the Scheduler is based on the [public configuration](./base
 | balance                        | Load balancing task parameter configuration                                                                         | No                                                                     |
 | disk_drop                      | Disk offline task parameter configuration                                                                           | No                                                                     |
 | disk_repair                    | Disk repair task parameter configuration                                                                            | No                                                                     |
+| manual_migrate                 | Manual migrate task parameter configuration. Fields are the same as disk_repair                                     | No                                                                     |
+| shard_disk_repair              | Shard disk repair task parameter configuration                                                                      | No                                                                     |
 | volume_inspect                 | Volume inspection task parameter configuration (this volume refers to the volume in the erasure code subsystem)     | No                                                                     |
 | shard_repair                   | Repair task parameter configuration                                                                                 | Yes, the directory for storing orphan data logs needs to be configured |
 | blob_delete                    | Deletion task parameter configuration                                                                               | Yes, the directory for storing deletion logs needs to be configured    |
@@ -107,6 +109,9 @@ Starting from v3.3.0, consumer groups are supported. For previous versions, plea
 * disk_concurrency, the maximum number of disks allowed to be balanced simultaneously, default is 1 (before v3.3.0, this value was balance_disk_cnt_limit, default is 100)
 * max_disk_free_chunk_cnt, when balancing, it will be judged whether there are disks with freechunk greater than or equal to this value in the current IDC. If not, no balance will be initiated. The default is 1024.
 * min_disk_free_chunk_cnt, disks with freechunk less than this value will be balanced, default is 20
+* disk_usage_threshold, disk usage ratio that also selects a disk for balance. 0 disables it. For example, 0.9 selects disks at or above 90% usage even when free chunks are enough
+* compact_migrate_hole_rate, hole rate that prioritizes a large chunk for migration. 0 disables it. For example, 0.6
+* compact_migrate_min_logic_size, minimum logical size in bytes for a chunk to be treated as large. Default is 16GiB when compact_migrate_hole_rate is greater than 0
 * prepare_queue_retry_delay_s, retry interval for the preparation queue when a task in the preparation queue fails to execute, default is 10
 * finish_queue_retry_delay_s, retry interval for the completion queue, default is 10
 * cancel_punish_duration_s, retry interval after task cancellation, default is 20
@@ -117,7 +122,10 @@ Starting from v3.3.0, consumer groups are supported. For previous versions, plea
 {
     "disk_concurrency": 700,    
     "max_disk_free_chunk_cnt": 500,    
-    "min_disk_free_chunk_cnt": 105,      
+    "min_disk_free_chunk_cnt": 105,
+    "disk_usage_threshold": 0.9,
+    "compact_migrate_hole_rate": 0.6,
+    "compact_migrate_min_logic_size": 17179869184,
     "prepare_queue_retry_delay_s": 60,    
     "finish_queue_retry_delay_s": 60,    
     "cancel_punish_duration_s": 60,    
@@ -180,22 +188,55 @@ Starting from version v3.3.0, concurrent disk repair is supported.
 }
 ```
 
+### manual_migrate
+
+Fields are the same as [disk_repair](#disk_repair), including the prepare queue, finish queue, cancel punishment, work queue, and `disk_concurrency`.
+
+### shard_disk_repair
+
+Queue fields are the same as disk_repair.
+
+* applied_index_threshold, how far the destination shard applied index may lag the leader. Migration continues only when the lag is within this value. Default is 10
+```json
+{
+    "applied_index_threshold": 10,
+    "prepare_queue_retry_delay_s": 60,
+    "finish_queue_retry_delay_s": 60,
+    "cancel_punish_duration_s": 60,
+    "work_queue_size": 600,
+    "collect_task_interval_s": 10,
+    "check_task_interval_s": 1,
+    "disk_concurrency": 1
+}
+```
+
 ### volume_inspect
 
 * inspect_interval_s, inspection time interval, default is 1s
 * inspect_batch, batch inspection volume size, default is 1000
 * list_vol_step, the size of requesting clustermgr to list volumes, which can control the QPS of requesting clustermgr, default is 100
 * list_vol_interval_ms, time interval for requesting clustermgr to list volumes, default is 10ms
-* timeout_ms, time interval for checking whether a batch of inspection tasks is completed, default is 10000ms
+* timeout_ms, timeout interval for inspection task is timeout, default is 10000ms
+* check_task_timeout_interval_ms, time interval for checking whether a batch of inspection tasks is completed, default is 10000ms
+* degrade_stats, volume degrade stats
+  * enable: enable volume degrade stats or not, default is false
+  * batch: Batch size for statistics, defaults to 10000, ideally a multiple of inspect_batch
+
 ```json
 {
-    "inspect_interval_s": 100,     
-    "inspect_batch": 10,    
-    "list_vol_step": 20,    
-    "list_vol_interval_ms": 10,    
-    "timeout_ms": 10000   
+    "inspect_interval_s": 100,
+    "inspect_batch": 10,
+    "list_vol_step": 20,
+    "list_vol_interval_ms": 10,
+    "timeout_ms": 10000,
+    "check_task_timeout_interval_ms": 10000,
+    "degrade_stats": {
+        "enable": true,
+        "batch": 10000
+    }
 }
 ```
+
 ### shard_repair
 
 * task_pool_size, concurrency of repair tasks, default is 10

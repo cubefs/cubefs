@@ -279,27 +279,16 @@ func TestAccessClusterChooseOne(t *testing.T) {
 
 		_, err = cc2.ChooseOne()
 		require.Error(t, err)
-
-		cc2.ChangeChooseAlg(controller.AlgRoundRobin)
-		_, err = cc2.ChooseOne()
-		require.Error(t, err)
 	}
 	{
 		cluster, err := cc1.ChooseOne()
 		require.NoError(t, err)
 		require.NotNil(t, cluster)
 
-		for _, alg := range []controller.AlgChoose{
-			controller.AlgAvailable,
-			controller.AlgRoundRobin,
-			controller.AlgRandom,
-		} {
-			cc1.ChangeChooseAlg(alg)
-			for range [100]struct{}{} {
-				clusterx, err := cc1.ChooseOne()
-				require.NoError(t, err)
-				require.Equal(t, cluster, clusterx)
-			}
+		for range [100]struct{}{} {
+			clusterx, err := cc1.ChooseOne()
+			require.NoError(t, err)
+			require.Equal(t, cluster, clusterx)
 		}
 	}
 }
@@ -331,40 +320,22 @@ func TestAccessClusterGetHandler(t *testing.T) {
 	}
 }
 
-func TestAccessClusterChangeChooseAlg(t *testing.T) {
+func TestParseClusterChooseAlg(t *testing.T) {
 	cases := []struct {
-		alg controller.AlgChoose
-		err error
+		in   string
+		want controller.AlgChoose
 	}{
-		{0, controller.ErrInvalidChooseAlg},
-		{controller.AlgAvailable, nil},
-		{controller.AlgRoundRobin, nil},
-		{controller.AlgRandom, nil},
-		{1024, controller.ErrInvalidChooseAlg},
+		{"", controller.AlgAvailable},
+		{"  ", controller.AlgAvailable},
+		{"available", controller.AlgAvailable},
+		{"AVAILABLE", controller.AlgAvailable},
+		{"roundrobin", controller.AlgRoundRobin},
+		{"ROUNDROBIN", controller.AlgRoundRobin},
+		{"random", controller.AlgRandom},
+		{"unknown", controller.AlgAvailable},
 	}
-	for _, cs := range cases {
-		err := cc.ChangeChooseAlg(cs.alg)
-		require.Equal(t, err, cs.err)
-	}
-}
-
-func TestAccessClusterChooseBalance(t *testing.T) {
-	cc := cc19
-	for _, alg := range []controller.AlgChoose{
-		controller.AlgAvailable,
-		controller.AlgRoundRobin,
-		controller.AlgRandom,
-	} {
-		err := cc.ChangeChooseAlg(alg)
-		require.NoError(t, err)
-
-		m := make(map[proto.ClusterID]int, 2)
-		for range [10000]struct{}{} {
-			cluster, err := cc.ChooseOne()
-			require.NoError(t, err)
-			m[cluster.ClusterID]++
-		}
-
-		t.Logf("balance with algorithm %s: %+v", alg, m)
+	for _, tc := range cases {
+		got := controller.ParseClusterChooseAlg(tc.in)
+		require.Equal(t, tc.want, got, tc.in)
 	}
 }

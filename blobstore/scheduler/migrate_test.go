@@ -167,6 +167,7 @@ func TestPrepareMigrateTask(t *testing.T) {
 		// unlock failed
 		volume := MockMigrateVolInfoMap[100]
 		volume.VunitLocations[int(t1.SourceVuid.Index())].Vuid = volume.VunitLocations[int(t1.SourceVuid.Index())].Vuid + 1
+		volume.Status = proto.VolumeStatusLock
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Return(volume, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UnlockVolume(any, any, any).Return(errMock)
 		err = mgr.prepareTask()
@@ -176,9 +177,32 @@ func TestPrepareMigrateTask(t *testing.T) {
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UnlockVolume(any, any, any).Return(nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().DeleteMigrateTask(any, any).Return(nil)
 		mgr.taskLogger.(*mocks.MockRecordLogEncoder).EXPECT().Encode(any).Return(nil)
+		require.True(t, mgr.IsMigratingDisk(proto.DiskID(4)))
 		err = mgr.prepareTask()
 		require.NoError(t, err)
-		base.VolTaskLockerInst().Unlock(context.Background(), 100)
+		// finish in advance must release the migrating disk slot
+		require.False(t, mgr.IsMigratingDisk(proto.DiskID(4)))
+		require.Equal(t, 0, mgr.GetMigratingDiskNum())
+	}
+	{
+		// source chunk has moved, volume NOT locked: skip UnlockVolume, finish task in advance directly
+		mgr := newMigrateMgr(t)
+		t1 := mockGenMigrateTask(proto.TaskTypeManualMigrate, "z0", 4, 300, proto.MigrateStateInited, MockMigrateVolInfoMap)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AddMigrateTask(any, any).Return(nil)
+		err := mgr.AddTask(ctx, t1)
+		require.NoError(t, err)
+
+		volume := MockMigrateVolInfoMap[300]
+		volume.VunitLocations[int(t1.SourceVuid.Index())].Vuid = volume.VunitLocations[int(t1.SourceVuid.Index())].Vuid + 1
+		// volume.Status is VolumeStatusIdle, UnlockVolume must not be called
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Return(volume, nil)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().DeleteMigrateTask(any, any).Return(nil)
+		mgr.taskLogger.(*mocks.MockRecordLogEncoder).EXPECT().Encode(any).Return(nil)
+		require.True(t, mgr.IsMigratingDisk(proto.DiskID(4)))
+		err = mgr.prepareTask()
+		require.NoError(t, err)
+		require.False(t, mgr.IsMigratingDisk(proto.DiskID(4)))
+		require.Equal(t, 0, mgr.GetMigratingDiskNum())
 	}
 	{
 		// one task and finish in advance because  other migrate task is doing on this volume
@@ -192,17 +216,19 @@ func TestPrepareMigrateTask(t *testing.T) {
 		volume := MockMigrateVolInfoMap[100]
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Return(volume, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().LockVolume(any, any, any).Return(errMock)
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().DeleteMigrateTask(any, any).Return(nil)
-		mgr.taskLogger.(*mocks.MockRecordLogEncoder).EXPECT().Encode(any).Return(errMock)
 		err = mgr.prepareTask()
 		require.True(t, errors.Is(err, errMock))
 
 		// lock failed and call lockVolFailHandleFunc
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Return(volume, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().LockVolume(any, any, any).Return(errcode.ErrLockNotAllow)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().DeleteMigrateTask(any, any).Return(nil)
+		mgr.taskLogger.(*mocks.MockRecordLogEncoder).EXPECT().Encode(any).Return(nil)
+		require.True(t, mgr.IsMigratingDisk(proto.DiskID(4)))
 		err = mgr.prepareTask()
 		require.NoError(t, err)
-		base.VolTaskLockerInst().Unlock(context.Background(), 100)
+		require.False(t, mgr.IsMigratingDisk(proto.DiskID(4)))
+		require.Equal(t, 0, mgr.GetMigratingDiskNum())
 	}
 	{
 		// one task and normal finish
@@ -363,6 +389,38 @@ func TestFinishMigrateTask(t *testing.T) {
 			require.NoError(t, err)
 		}
 	}
+}
+
+// TestFinishMigrateTask_ReleaseVunitIgnoredErrors verifies that ReleaseVolumeUnit errors
+// with CodeVuidNotFound or CodeDiskBroken are silently ignored: updateVolumeCache is NOT
+// called in the error recovery path, and the task completes successfully.
+func TestFinishMigrateTask_ReleaseVunitIgnoredErrors(t *testing.T) {
+	runCase := func(t *testing.T, releaseErr error, name string) {
+		t.Run(name, func(t *testing.T) {
+			mgr := newMigrateMgr(t)
+			t1 := mockGenMigrateTask(proto.TaskTypeManualMigrate, "z0", 4, 100, proto.MigrateStateWorkCompleted, MockMigrateVolInfoMap)
+			mgr.finishQueue.PushTask(t1.TaskID, t1)
+
+			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateMigrateTask(any, any).Return(nil)
+			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateVolume(any, any, any, any).Return(nil)
+			// ReleaseVolumeUnit returns an ignorable error code
+			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ReleaseVolumeUnit(any, any, any).Return(releaseErr)
+			// updateVolumeCache must NOT be called in the error recovery branch for these codes;
+			// GetVolumeInfo is called once for UnlockVolume
+			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Return(MockMigrateVolInfoMap[100], nil)
+			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UnlockVolume(any, any, any).Return(nil)
+			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().DeleteMigrateTask(any, any).Return(nil)
+			mgr.taskLogger.(*mocks.MockRecordLogEncoder).EXPECT().Encode(any).Return(nil)
+			// UpdateLeaderVolumeCache is still called at the end of finishTask (unconditional cache refresh)
+			mgr.volumeUpdater.(*MockTaskAPI).EXPECT().UpdateLeaderVolumeCache(any, any).Return(nil)
+
+			err := mgr.finishTask()
+			require.NoError(t, err)
+		})
+	}
+
+	runCase(t, errcode.ErrNoSuchVuid, "CodeVuidNotFound")
+	runCase(t, errcode.ErrDiskBroken, "CodeDiskBroken")
 }
 
 func TestAcquireMigrateTask(t *testing.T) {

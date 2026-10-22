@@ -33,7 +33,7 @@ func TestCheckChunkFile(t *testing.T) {
 	defer cleanTestBlobNodeService(service)
 
 	host := runTestServer(service)
-	client := bnapi.New(&bnapi.Config{})
+	client := newTestBlobNodeClient()
 
 	ctx := context.TODO()
 
@@ -78,7 +78,7 @@ func TestCheckRegisterChunk(t *testing.T) {
 	defer cleanTestBlobNodeService(service)
 
 	host := runTestServer(service)
-	client := bnapi.New(&bnapi.Config{})
+	client := newTestBlobNodeClient()
 
 	ctx := context.TODO()
 

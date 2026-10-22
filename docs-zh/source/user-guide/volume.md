@@ -30,13 +30,13 @@ curl -v "http://127.0.0.1:17010/vol/expand?name=test&authKey=57f0162b2303be3449c
 如果有部署 Blobstore 纠删码子系统，可以创建纠删码卷以存放冷数据
 
 ```bash
-curl -v 'http://127.0.0.1:17010/admin/createVol?name=test-cold&capacity=100&owner=cfs&volType=1'
+curl -v 'http://127.0.0.1:17010/admin/createVol?name=test-cold&capacity=100&owner=cfs&volStorageClass=3'
 ```
 
 - name，卷名
 - capacity，卷配额，如果配额用完之后需要扩容
 - owner，卷的所属用户
-- volType，卷类型，0为副本卷，1为纠删码卷，默认为0
+- volStorageClass，卷存储类型。1 为 SSD 副本卷，2 为 HDD 副本卷，3 为纠删码卷（BlobStore），默认为 0（由 master 自动选择）
 
 ## 开启多级缓存
 
@@ -44,13 +44,13 @@ curl -v 'http://127.0.0.1:17010/admin/createVol?name=test-cold&capacity=100&owne
 
 **缓存读数据**
 ```bash
-curl -v 'http://127.0.0.1:17010/admin/createVol?name=test-cold&capacity=100&owner=cfs&volType=1&cacheCap=10&cacheAction=1'
+curl -v 'http://127.0.0.1:17010/admin/createVol?name=test-cold&capacity=100&owner=cfs&volStorageClass=3&cacheCap=10&cacheAction=1'
 ```
 
 - name，卷名
 - capacity，卷配额，如果配额用完之后需要扩容
 - owner，卷的所属用户
-- volType，卷类型，0为副本卷，1为纠删码卷，默认为0
+- volStorageClass，卷存储类型。1 为 SSD 副本卷，2 为 HDD 副本卷，3 为纠删码卷（BlobStore），默认为 0（由 master 自动选择）
 - cacheCap，缓存大小，单位GB
 - cacheAction，缓存类型，0表示不缓存，1表示缓存读，2表示缓存读写，默认0
 
@@ -63,6 +63,6 @@ curl -v 'http://127.0.0.1:17010/admin/createVol?name=test-cold&capacity=100&owne
 - name，卷名
 - capacity，卷配额，如果配额用完之后需要扩容
 - owner，卷的所属用户
-- volType，卷类型，0为副本卷，1为纠删码卷，默认为0
+- volStorageClass，卷存储类型。1 为 SSD 副本卷，2 为 HDD 副本卷，3 为纠删码卷（BlobStore），默认为 0（由 master 自动选择）
 - cacheCap，缓存大小，单位GB
 - cacheAction，缓存类型，0表示不缓存，1表示缓存读，2表示缓存读写，默认0

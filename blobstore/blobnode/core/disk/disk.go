@@ -266,11 +266,17 @@ type DiskStorage struct {
 	// chan
 	compactCh chan proto.Vuid
 	closeCh   chan struct{} // closing signal
+	closeOnce sync.Once
 
 	// ctx is used for initiated requests that
 	// may need to be canceled on server shutdown.
 	wg  sync.WaitGroup
 	ctx context.Context
+
+	// inspectStore keeps this disk's data-inspect state in memory (loaded from the
+	// superblock at startup) and is batch-flushed by DataInspectMgr after each
+	// chunk traversal.
+	inspectStore *inspectStateStore
 
 	// hook fn
 	onClosed func()
@@ -280,6 +286,9 @@ type DiskStorage struct {
 
 	// io pools
 	ioPools map[bnapi.IOType]bncom.IoPool
+
+	// compact metrics for this disk instance
+	compactMetrics *compactMetrics
 }
 
 func (ds *DiskStorage) IsRegister() bool {
@@ -387,6 +396,11 @@ func (ds *DiskStorage) GetDataPath() (path string) {
 
 func (ds *DiskStorage) GetMetaPath() (path string) {
 	return ds.MetaPath
+}
+
+// InspectState exposes this disk's inspect progress store.
+func (ds *DiskStorage) InspectState() core.InspectStateStore {
+	return ds.inspectStore
 }
 
 func (ds *DiskStorage) ID() (id proto.DiskID) {
@@ -797,6 +811,7 @@ func (ds *DiskStorage) cleanReleasedChunks() (err error) {
 		return
 	}
 
+	// clean Release chunks after protectionPeriod
 	for _, ck := range chunks {
 		if ck.Status != clustermgr.ChunkStatusRelease {
 			continue
@@ -807,6 +822,7 @@ func (ds *DiskStorage) cleanReleasedChunks() (err error) {
 			continue
 		}
 
+		// Release chunk still bind to active Vuid...
 		chunkid, err := ds.SuperBlock.ReadVuidBind(ctx, ck.Vuid)
 		if err == nil && chunkid == ck.ChunkID {
 			span.Warnf("can not happen. vuid:%d bind %s. skip", ck.Vuid, ck.ChunkID)
@@ -925,13 +941,58 @@ func (ds *DiskStorage) isChunksExceeded(ctx context.Context, chunksize int64) bo
 }
 
 func (ds *DiskStorage) preClose(ctx context.Context) {
-	ds.Lock.Lock()
-	defer ds.Lock.Unlock()
+	ds.closeOnce.Do(func() {
+		ds.Lock.Lock()
+		defer ds.Lock.Unlock()
 
-	// stop loop background function
-	if ds.closeCh != nil {
-		close(ds.closeCh)
+		// stop loop background function
+		if ds.closeCh != nil {
+			close(ds.closeCh)
+		}
+	})
+}
+
+// gcOrphanInspectState removes persisted DataInspectMgr chunk-inspect state entries whose
+// vuid no longer has a live chunk on this disk.
+// (not exists, Release status, compact redundant chunks)
+// This runs after RestoreChunkStorage has rebuilt the live chunk set.
+func (dsw *DiskStorageWrapper) gcOrphanInspectState(ctx context.Context) {
+	span := trace.SpanFromContextSafe(ctx)
+	ds := dsw.DiskStorage
+
+	ds.Lock.RLock()
+	sb := ds.SuperBlock
+	alive := make(map[proto.Vuid]struct{}, len(ds.Chunks))
+	for vuid := range ds.Chunks {
+		alive[vuid] = struct{}{}
 	}
+	ds.Lock.RUnlock()
+
+	var orphans []proto.Vuid
+	if err := sb.RangeInspectChunkState(ctx, func(st *core.InspectChunkState) bool {
+		if _, exist := alive[st.Vuid]; !exist {
+			orphans = append(orphans, st.Vuid)
+		}
+		return true
+	}); err != nil {
+		span.Warnf("diskID:%d iterate inspect state failed: %v", ds.DiskID, err)
+		return
+	}
+
+	if len(orphans) == 0 {
+		span.Infof("diskID:%d has no orphan inspect state entries", ds.DiskID)
+		return
+	}
+
+	cleaned := 0
+	for _, vuid := range orphans {
+		if err := sb.DeleteInspectChunkState(ctx, vuid); err != nil {
+			span.Warnf("diskID:%d gc orphan inspect state vuid:%d failed: %v", ds.DiskID, vuid, err)
+			continue
+		}
+		cleaned++
+	}
+	span.Warnf("diskID:%d gc %d/%d orphan inspect state entries", ds.DiskID, cleaned, len(orphans))
 }
 
 func NewDiskStorage(ctx context.Context, conf core.Config) (dsw *DiskStorageWrapper, err error) {
@@ -944,6 +1005,15 @@ func NewDiskStorage(ctx context.Context, conf core.Config) (dsw *DiskStorageWrap
 
 	err = dsw.RestoreChunkStorage(ctx)
 	if err != nil {
+		return nil, err
+	}
+
+	// cleanup orphaned DataInspectMgr state for not exist、Release、 compact redundant chunks
+	dsw.gcOrphanInspectState(ctx)
+
+	// load persisted data-inspect state into memory once at startup; the store
+	// must be loaded before any accessor is used.
+	if err := ds.inspectStore.load(ctx); err != nil {
 		return nil, err
 	}
 
@@ -1017,7 +1087,7 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 
 	span.Infof("datapath: %v, metapath:%v", diskDataPath, diskMetaPath)
 
-	// load superblock，create or open
+	// load superblock, create or open
 	sb, err := NewSuperBlock(diskMetaPath, &conf)
 	if err != nil {
 		return nil, err
@@ -1122,6 +1192,7 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 		dataQos:          dataQos,
 		CreateAt:         dm.Ctime,
 		LastUpdateAt:     dm.Mtime,
+		inspectStore:     &inspectStateStore{superBlock: sb, diskID: dm.DiskID},
 		ioPools: map[bnapi.IOType]bncom.IoPool{
 			bnapi.ReadIO:       readPool,
 			bnapi.WriteIO:      writePool,
@@ -1129,10 +1200,28 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 			bnapi.BackgroundIO: backPool,
 		},
 	}
-
 	if err = ds.fillDiskUsage(ctx); err != nil {
 		span.Errorf("Failed fill disk usage, err:%v", err)
 		return nil, err
+	}
+
+	// initialize compact metrics and wire hooks
+	ds.compactMetrics = newCompactMetrics(ds)
+	ds.Conf.CompactHooks = core.CompactHooks{
+		OnCopyShard: func(bytes int64) {
+			ds.compactMetrics.copyBytes.Add(float64(bytes))
+			ds.compactMetrics.copyShards.Inc()
+		},
+		OnReplicaWrite: func(bytes int64) {
+			ds.compactMetrics.replicaBytes.Add(float64(bytes))
+			ds.compactMetrics.replicaCnt.Inc()
+		},
+		OnReplicaStgActive: func() {
+			ds.compactMetrics.replicaStg.Inc()
+		},
+		OnReplicaStgInactive: func() {
+			ds.compactMetrics.replicaStg.Dec()
+		},
 	}
 
 	// background loop

@@ -284,7 +284,7 @@ func (r *TaskRunner) Run() {
 		return
 	}
 
-	// task completed，send complete request to scheduler
+	// task completed, send complete request to scheduler
 	r.completeTask()
 	span.Infof("task Runner finish: taskID[%s]", r.taskID)
 }

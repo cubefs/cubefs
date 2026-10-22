@@ -134,7 +134,7 @@ func TestReplStorage_Operations(t *testing.T) {
 
 	stg2 := NewStorage(&mockBrokenMeta{}, &mockBrokenData{})
 
-	repstg := NewReplicateStg(stg, stg1, nil)
+	repstg := NewReplicateStg(stg, stg1, nil, nil)
 	require.NotNil(t, repstg)
 
 	// ===============================
@@ -164,7 +164,7 @@ func TestReplStorage_Operations(t *testing.T) {
 	// ===================================
 	var notifyCnt int
 	notify := func(err error) { notifyCnt++ }
-	repstg1 := NewReplicateStg(stg, stg2, notify)
+	repstg1 := NewReplicateStg(stg, stg2, notify, nil)
 	require.NotNil(t, repstg1)
 	err = repstg1.Write(ctx, b1)
 	require.Error(t, err)
@@ -176,7 +176,7 @@ func TestReplStorage_Operations(t *testing.T) {
 	err = repstg1.SyncData(ctx)
 	require.Error(t, err)
 
-	repstg2 := NewReplicateStg(stg2, stg1, notify)
+	repstg2 := NewReplicateStg(stg2, stg1, notify, nil)
 	require.NotNil(t, repstg2)
 	err = repstg2.Write(ctx, b1)
 	require.Error(t, err)

@@ -72,10 +72,11 @@ type chunk struct {
 	fileInfo FileInfo
 
 	// compact
-	compacting      bool
-	bidlimiter      limit.Limiter
-	lastCompactTime int64
-	compactTask     atomic.Value
+	compacting              bool
+	replicaStgMetricsActive bool
+	bidlimiter              limit.Limiter
+	lastCompactTime         int64
+	compactTask             atomic.Value
 
 	// status
 	dirty          uint32

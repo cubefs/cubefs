@@ -110,8 +110,5 @@ func TestAccessStreamAdmin(t *testing.T) {
 		ctr := admin.Controller
 		require.NotNil(t, ctr)
 		t.Log("region:", ctr.Region())
-		require.Error(t, ctr.ChangeChooseAlg(controller.AlgChoose(100)))
-		require.NoError(t, ctr.ChangeChooseAlg(controller.AlgRandom))
-		require.NoError(t, ctr.ChangeChooseAlg(controller.AlgAvailable))
 	}
 }

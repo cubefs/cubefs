@@ -73,6 +73,7 @@ type VolumeUnitRecord struct {
 	Total      uint64
 	Used       uint64
 	Compacting bool
+	LogicSize  uint64
 }
 
 type TokenRecord struct {

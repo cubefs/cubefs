@@ -165,3 +165,59 @@ func TestRetainVolumes(t *testing.T) {
 	expectedTokens := []string{"token", "token"}
 	require.Equal(t, expectedTokens, tokens)
 }
+
+func TestCheckAndReplenishAfterRetainDiscardsAll(t *testing.T) {
+	cmcli := mock.ProxyMockClusterMgrCli(t)
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+
+	const defaultAllocVolsNum = 4
+	allocCh := make(chan *allocArgs, 1)
+	info := &modeInfo{
+		current: &volumes{},
+		backup:  &volumes{},
+	}
+	mockHost := "127.0.0.1:7788"
+	now := time.Now().UnixNano()
+	for i := 1; i <= defaultAllocVolsNum; i++ {
+		vid := proto.Vid(i)
+		info.Put(&volume{
+			AllocVolumeInfo: clustermgr.AllocVolumeInfo{
+				VolumeInfo: clustermgr.VolumeInfo{
+					VolumeInfoBase: clustermgr.VolumeInfoBase{Vid: vid, Free: 16 * 1024 * 1024 * 1024},
+				},
+				Token:      proto.EncodeToken(mockHost, vid),
+				ExpireTime: now + 50*int64(math.Pow(10, 9)),
+			},
+		}, false)
+	}
+	require.Equal(t, defaultAllocVolsNum, info.current.Len())
+
+	v := &volumeMgr{
+		clusterMgr: cmcli,
+		VolConfig: VolConfig{
+			CodeModeVolConfig: CodeModeVolConfig{
+				DefaultAllocVolsNum: defaultAllocVolsNum,
+			},
+			RetainVolumeBatchNum: 400,
+			RetainBatchIntervalS: 1,
+		},
+		modeInfos: map[codemode.CodeMode]*modeInfo{codemode.EC6P6: info},
+		allocChs:  map[codemode.CodeMode]chan *allocArgs{codemode.EC6P6: allocCh},
+	}
+
+	// retainAll → RetainVolume mock discards first 8 tokens, so all 4 volumes are dropped.
+	v.retainAll(ctx)
+	require.Equal(t, 0, info.current.Len()+info.backup.Len(),
+		"retain should have discarded all volumes")
+
+	// checkAndReplenish must detect the empty cache and enqueue an allocation request.
+	v.checkAndReplenish(ctx)
+
+	select {
+	case args := <-allocCh:
+		require.False(t, args.isBackup, "replenish should target current, not backup")
+		require.Equal(t, defaultAllocVolsNum, args.count)
+	default:
+		t.Fatal("checkAndReplenish did not send a replenish notification after all volumes were discarded")
+	}
+}

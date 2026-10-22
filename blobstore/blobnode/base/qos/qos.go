@@ -160,6 +160,7 @@ type queueQos struct {
 	diskBps     uint64            // Current disk bandwidth usage
 	diskIOps    uint64            // Current disk IOps usage
 	concurrence int64             // current level qos concurrency
+	resetUpdate uint32            // 1: hot-reload, next updater tick restores originals
 
 	getter diskConfigGetter
 	conf   *perIOQosConfig // QoS configuration per IO type
@@ -290,11 +291,18 @@ func (q *queueQos) UpdateQosConcurrency(ctx context.Context) {
 	span := trace.SpanFromContextSafe(ctx)
 	reason := ""
 
+	if atomic.CompareAndSwapUint32(&q.resetUpdate, 1, 0) {
+		levelConf := q.getLevelConf()
+		atomic.StoreInt64(&q.concurrence, levelConf.Concurrency)
+		q.limitConcurrency.Reset(int(levelConf.Concurrency))
+		return
+	}
+
 	// The value of iops is very small, so the result of ema needs to be increased by 1000 multiple to be accurate
 	diskIops := q.diskIOps / emaMultiple
 	diskConf := q.getter.getDiskConfig()
 	levelConf := q.getLevelConf()
-	target, original, lastCon := int64(0), levelConf.Concurrency, q.concurrence
+	target, original, lastCon := int64(0), levelConf.Concurrency, atomic.LoadInt64(&q.concurrence)
 	diskIopsUsage := float64(diskIops) / float64(diskConf.DiskIops)
 	idle := int64(float64(original) * levelConf.IdleFactor)
 
@@ -367,6 +375,8 @@ func (q *queueQos) resetLevelLimit(conf LevelFlowConfig) {
 		q.limitBid.Reset(int(conf.BidConcurrency))
 	}
 	if conf.Concurrency > 0 {
+		atomic.StoreUint32(&q.resetUpdate, 1)
+		atomic.StoreInt64(&q.concurrence, conf.Concurrency)
 		q.limitConcurrency.Reset(int(conf.Concurrency))
 	}
 	if conf.MBPS > 0 {

@@ -20,7 +20,6 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/cubefs/cubefs/blobstore/access/controller"
 	"github.com/cubefs/cubefs/blobstore/access/stream"
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
@@ -150,31 +149,6 @@ func (s *Service) RegisterAdminHandler() {
 		}
 		c.RespondJSON(status)
 	})
-
-	profile.HandleFunc(http.MethodPost, "/access/stream/controller/alg/:alg", func(c *rpc.Context) {
-		algInt, err := strconv.ParseUint(c.Param.ByName("alg"), 10, 32)
-		if err != nil {
-			c.RespondWith(http.StatusBadRequest, "", []byte(err.Error()))
-			return
-		}
-
-		alg := controller.AlgChoose(algInt)
-		if sa := s.streamHandler.Admin(); sa != nil {
-			if admin, ok := sa.(*stream.StreamAdmin); ok {
-				if err := admin.Controller.ChangeChooseAlg(alg); err != nil {
-					c.RespondWith(http.StatusForbidden, "", []byte(err.Error()))
-					return
-				}
-
-				span := trace.SpanFromContextSafe(c.Request.Context())
-				span.Warnf("change cluster choose algorithm to (%d %s)", alg, alg.String())
-				c.Respond()
-				return
-			}
-		}
-
-		c.RespondStatus(http.StatusServiceUnavailable)
-	}, rpc.OptArgsURI())
 }
 
 // Limit rps controller

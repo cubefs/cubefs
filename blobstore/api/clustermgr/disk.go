@@ -71,7 +71,7 @@ type DiskInfo struct {
 	Rack         string           `json:"rack"`
 	Host         string           `json:"host"`
 	Path         string           `json:"path"`
-	Status       proto.DiskStatus `json:"status"` // normal、broken、repairing、repaired、dropped
+	Status       proto.DiskStatus `json:"status"` // normal broken repairing repaired dropped
 	Readonly     bool             `json:"readonly"`
 	CreateAt     time.Time        `json:"create_time"`
 	LastUpdateAt time.Time        `json:"last_update_time"`

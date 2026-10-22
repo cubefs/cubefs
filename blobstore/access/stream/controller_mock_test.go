@@ -54,20 +54,6 @@ func (mr *MockClusterControllerMockRecorder) All() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "All", reflect.TypeOf((*MockClusterController)(nil).All))
 }
 
-// ChangeChooseAlg mocks base method.
-func (m *MockClusterController) ChangeChooseAlg(arg0 controller.AlgChoose) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ChangeChooseAlg", arg0)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// ChangeChooseAlg indicates an expected call of ChangeChooseAlg.
-func (mr *MockClusterControllerMockRecorder) ChangeChooseAlg(arg0 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ChangeChooseAlg", reflect.TypeOf((*MockClusterController)(nil).ChangeChooseAlg), arg0)
-}
-
 // ChooseOne mocks base method.
 func (m *MockClusterController) ChooseOne() (*clustermgr.ClusterInfo, error) {
 	m.ctrl.T.Helper()

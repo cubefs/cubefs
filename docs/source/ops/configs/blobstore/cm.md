@@ -17,6 +17,7 @@ Clustermgr configuration is based on the [public configuration](./base.md), and 
 | region               | Region name                                                                                                                                                                                                      | Yes      |
 | db_path              | Metadata DB storage path. In production environments, it is recommended to store data on an SSD disk.                                                                                                            | Yes      |
 | code_mode_policies   | Encoding mode configuration, refer to the encoding mode detailed configuration, specific encoding information can refer to [How to Use Erasure Coding Storage System](../../../user-guide/blobstore.md) appendix | Yes      |
+| shard_code_mode_name | Replica code mode used by shardnode, for example `Replica3` or `Replica3OneAZ`. It must be a replica mode, and its AZ count must match the number of `idc` entries. The AZ check is skipped when `unavailable_idc` is set | Yes      |
 | raft_config          | Detailed Raft configuration                                                                                                                                                                                      | Yes      |
 | disk_mgr_config      | Detailed disk management configuration                                                                                                                                                                           | Yes      |
 | host_aware           | Host awareness                                                                                                                                                                                                   | Yes      |
@@ -34,9 +35,7 @@ Clustermgr configuration is based on the [public configuration](./base.md), and 
   "readonly": "Whether it is read-only",
   "db_path": "Default path for storing metadata DB. The corresponding DB data will be automatically created in this directory if there is no additional configuration for the DB.",
   "normal_db_path": "Path for common DB",
-  "normal_db_option": "Common DB option configuration, mainly for tuning rocksdb",
   "kv_db_path": "Path for storing kv DB",
-  "kv_db_option": "KV DB option configuration, mainly for tuning rocksdb",
   "code_mode_policies": [
     {
       "mode_name": "Encoding name",
@@ -45,10 +44,24 @@ Clustermgr configuration is based on the [public configuration](./base.md), and 
       "size_ratio": "The proportion occupied by this mode",
       "enable": "Whether it is enabled"
     }],
+  "code_mode_extends": [
+    {
+      "code_mode": "custom code mode id, range [240, 255]. Cannot be changed after it is set",
+      "name": "code mode name. Must not duplicate an existing name",
+      "n": "number of data shards",
+      "m": "number of parity shards",
+      "l": "number of local parity shards",
+      "az_count": "number of availability zones",
+      "put_quorum": "write quorum",
+      "get_quorum": "read quorum",
+      "min_shard_size": "minimum size of one shard. Must be greater than 0 when adapt_shard_size is enabled",
+      "adapt_shard_size": "when data size is below min_shard_size, round the shard size up to this granularity and cap it at min_shard_size. 0 disables it. Requires adapt_shard_size <= min_shard_size and min_shard_size divisible by adapt_shard_size"
+    }
+  ],
+  "shard_code_mode_name": "replica code mode name used by shardnode, for example Replica3 or Replica3OneAZ",
   "raft_config": {
     "raft_db_path": "Path for raft DB",
     "snapshot_patch_num": "A snapshot of a DB is divided into multiple patches. The snapshot data of a DB is very large and needs to be divided into multiple patches to be sent.",
-    "raft_db_option": "Mainly for tuning rocksdb",
     "server_config": {
       "nodeId": "Raft node ID",
       "listen_port": "Raft dedicated port",
@@ -64,7 +77,7 @@ Clustermgr configuration is based on the [public configuration](./base.md), and 
 
     "raft_node_config": {
       "flush_num_interval": "Number of logs that trigger flush",
-      "FlushTimeIntervalS": "Flush cycle interval",
+      "flush_time_interval_s": "Flush cycle interval, default 300s",
       "truncate_num_interval": "The leader retains the maximum number of log entries. The number of log entries loaded when the service starts can also be understood as the difference between the log entries of the leader and the follower. If it exceeds this value, log synchronization needs to go through snapshot synchronization, so this value is generally kept above 100,000.",
       "node_protocol": "Raft node synchronization protocol, generally http:// protocol",
       "members": [{
@@ -79,16 +92,23 @@ Clustermgr configuration is based on the [public configuration](./base.md), and 
   "volume_mgr_config": {
     "blob_node_config": "See rpc configuration",
     "volume_db_path": "Volume data DB path",
-    "volume_db_option": "Option configuration",
     "retain_time_s": "Renewal time, used in conjunction with the renewal time of the proxy",
     "retain_threshold": "The health of the volume that can be renewed. The health segment of the volume must be greater than this value to be renewed",
     "flush_interval_s": "Flush time interval",
     "check_expired_volume_interval_s": "Time interval for checking whether the volume has expired",
     "volume_slice_map_num": "ConcurrentMap used for volume management in cm, used to improve the performance of volume read and write. This value determines how many maps all volumes are divided into for management",
     "apply_concurrency": "Concurrency of applying wal logs",
-    "min_allocable_volume_count": "Minimum number of allocatable volumes",
-    "allocatable_disk_load_threshold": "Load of the corresponding disk that the volume can be allocated to",
-    "allocatable_size": "Minimum capacity threshold a volume can allocate, default 10G, if the volume capacity is small adjust it to a lower value such as 10MB."
+    "min_allocable_volume_count": "Minimum number of allocatable volumes, default 5",
+    "min_writable_volume_space": "Minimum writable space to keep for a code mode, in bytes, multiplied by that mode's size_ratio. Extra volumes are created when the current writable space is below it. 0 does not create volumes for space",
+    "allocatable_disk_load_threshold": "Load of the corresponding disk that the volume can be allocated to. A value less than or equal to 0 disables the check",
+    "alloc_factor": "When allocating count volumes, collect alloc_factor * count candidates first. Default is 5",
+    "shard_num": "Number of idle-volume list shards, used to reduce lock contention during allocation. Default is 16",
+    "route_item_truncate_interval_num": "Truncate interval of volume route items, default 16384",
+    "allocatable_size": "Minimum free size a volume must have before it can be allocated, default 1GB. Lower it when the volume capacity is small, for example to 10MB.",
+    "alloc_disk_usage_threshold": "Disk usage ratio above which a disk is treated as high usage during volume allocation. 0 disables the check. High-usage disks are used only when no lower-usage disk remains.",
+    "min_allocable_health_vol_count": "Minimum number of healthy allocatable volumes. Default is min_allocable_volume_count * 2 / 3.",
+    "check_healthy_volume_interval_s": "How long healthy allocatable volumes must stay below the threshold before extra volumes are created, default 60s.",
+    "enable_degrade_retain": "Lower the retain health threshold when healthy allocatable volumes are insufficient. Default is false."
   },
   "disk_mgr_config": {
     "refresh_interval_s": "Interval for refreshing disk status of the current cluster",
@@ -97,8 +117,27 @@ Clustermgr configuration is based on the [public configuration](./base.md), and 
     "rack_aware": "Rack awareness. Whether to allocate volumes on the same rack when allocating volumes. Rack isolation is configured based on the storage environment conditions",
     "flush_interval_s": "Flush time interval",
     "apply_concurrency": "Concurrency of application",
-    "blob_node_config": "",
-    "ensure_index": "Used to establish disk index"
+    "blob_node_config": "See rpc configuration",
+    "shard_node_config": "See rpc2 configuration",
+    "alloc_tolerate_buffer": "Weight reserved from the total weight during allocation. 0 when unset",
+    "disk_reserved_free_chunk": "Free chunks reserved on one disk. Disks with free chunks less than or equal to this value are not allocated. 0 reserves nothing",
+    "idc_reserved_free_chunk": "Free chunks reserved in one IDC. The IDC is treated as out of space when its remaining free chunks are less than or equal to this value. 0 reserves nothing",
+    "reserved_space": "Logical space reserved from writable space, in bytes. Default is 0",
+    "enable_node_ip_change": "Whether a registered node may change its IP. Default is false",
+    "ensure_index": "Used to establish disk index",
+    "copy_set_configs": "Copy set configuration by disk type. Keys are hdd, ssd, and nvmessd. Blobnode HDD defaults are node_set_cap 24, node_set_rack_cap 6, disk_set_cap 120, and disk_count_per_node_in_disk_set 10"
+  },
+  "shard_node_disk_mgr_config": "Shardnode disk management. Fields are the same as disk_mgr_config. NVMe defaults are node_set_cap 12, node_set_rack_cap 3, disk_set_cap 36, and disk_count_per_node_in_disk_set 3",
+  "catalog_mgr_config": {
+    "catalog_db_path": "catalog DB path. Default is db_path/catalogdb",
+    "flush_interval_s": "flush interval, default 600s",
+    "shard_concurrent_map_num": "number of concurrent maps for shards, default 10",
+    "space_concurrent_map_num": "number of concurrent maps for spaces, default 10",
+    "apply_concurrency": "concurrency of applying wal logs, default 20",
+    "init_shard_num": "initial shard count. The actual range count is rounded up to a power of two",
+    "check_init_shard_interval_s": "interval for checking whether the initial shards are created, default 60s",
+    "route_item_truncate_interval_num": "truncate interval of route items, default 16384",
+    "shard_node_config": "see rpc2 configuration"
   },
 
   "cluster_report_interval_s": "Interval for reporting to consul, default 60s",
@@ -109,6 +148,8 @@ Clustermgr configuration is based on the [public configuration](./base.md), and 
   "max_heartbeat_notify_num": "Maximum number of heartbeat notifications, default 2000",
   "metric_report_interval_m": "Interval for metric reporting (minutes), default 2",
   "consistent_check_interval_m": "Interval for consistency check (minutes), default 360",
+  "dashboard_fresh_interval_s": "Dashboard refresh interval in seconds, default 60",
+  "dashboard_fresh_volume_tick": "Refresh all volume stats every N dashboard ticks, default 5",
   "broken_volume_unit_report_num": "Number of broken volume units to report, default 3",
   "broken_shard_unit_report_num": "Number of broken shard units to report, default 2",
   "db_cache_size": "Database cache size (bytes)",
@@ -138,6 +179,7 @@ Clustermgr configuration is based on the [public configuration](./base.md), and 
     "code_mode_policies": [
         {"mode_name":"EC3P3","min_size":0,"max_size":5368709120,"size_ratio":1,"enable":true}
     ],
+    "shard_code_mode_name": "Replica3OneAZ",
     "raft_config": {
         "snapshot_patch_num": 64,
         "server_config": {

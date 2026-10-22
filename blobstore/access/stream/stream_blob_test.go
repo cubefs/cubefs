@@ -551,7 +551,7 @@ func TestStreamBlob_NotLeader_RetrySuccess(t *testing.T) {
 	clu.EXPECT().GetShardController(gAny).Return(shardMgr, nil).AnyTimes()
 	clu.EXPECT().GetServiceController(gAny).Return(svrCtrl, nil).AnyTimes()
 
-	// shardnode client mock：first NotLeader，and then success
+	// shardnode client mock: first NotLeader，and then success
 	shardCli := mocks.NewMockShardnodeAccess(ctr)
 	shardCli.EXPECT().DeleteBlob(gAny, gAny, gAny).Return(errcode.ErrShardNodeNotLeader)
 	shardCli.EXPECT().GetShardStats(gAny, gAny, gAny).Return(shardnode.ShardStats{LeaderDiskID: newInfo.DiskID}, nil)

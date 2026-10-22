@@ -118,3 +118,40 @@ func TestAbnormalReport(t *testing.T) {
 	require.True(t, rp.IsVuidReported(vuid))
 	require.False(t, rp.IsVuidReported(vuid+1))
 }
+
+func TestTaskStatsMgr_MissingPaths(t *testing.T) {
+	mgr := NewTaskStatsMgr(1, proto.TaskTypeDiskRepair)
+
+	// QueryTaskDetail: not found
+	_, err := mgr.QueryTaskDetail("nonexistent_task")
+	require.Error(t, err)
+
+	// ReportWorkerTaskStats: first call creates entry with StartTime
+	mgr.ReportWorkerTaskStats("task_progress", proto.TaskStatistics{Progress: 50}, 5, 5)
+	info, err := mgr.QueryTaskDetail("task_progress")
+	require.NoError(t, err)
+	require.False(t, info.Completed)
+
+	// ReportWorkerTaskStats: progress >= 100 sets CompleteTime and Completed=true
+	mgr.ReportWorkerTaskStats("task_progress", proto.TaskStatistics{Progress: 100}, 5, 5)
+	info, err = mgr.QueryTaskDetail("task_progress")
+	require.NoError(t, err)
+	require.True(t, info.Completed)
+	require.False(t, info.CompleteTime.IsZero())
+
+	// Second call to NewTaskStatsMgr with same labels hits AlreadyRegisteredError path
+	mgr2 := NewTaskStatsMgr(1, proto.TaskTypeDiskRepair)
+	require.NotNil(t, mgr2)
+
+	// NewCounter: second call with same labels hits AlreadyRegisteredError path
+	c1 := NewCounter(2, "test_type", KindSuccess)
+	c2 := NewCounter(2, "test_type", KindSuccess)
+	require.NotNil(t, c1)
+	require.NotNil(t, c2)
+
+	// NewAbnormalReporter: second call with same labels hits AlreadyRegisteredError path
+	rp1 := NewAbnormalReporter(proto.ClusterID(3), "test_type2", ChunkMissMigrateAbnormal)
+	rp2 := NewAbnormalReporter(proto.ClusterID(3), "test_type2", ChunkMissMigrateAbnormal)
+	require.NotNil(t, rp1)
+	require.NotNil(t, rp2)
+}

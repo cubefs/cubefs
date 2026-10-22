@@ -92,11 +92,11 @@ $> ./bin/blobstore-cli -c conf/blobstore-cli.conf
 $> access put -v -d "test -data-"
 # Return result
 #"code_mode":11 is the encoding mode specified in the clustermgr configuration file, and 11 is the EC3P3 encoding mode.
-{"cluster_id":1,"code_mode":10,"size":11,"blob_size":8388608,"crc":2359314771,"blobs":[{"min_bid":1844899,"vid":158458,"count":1}]}
+{"cluster_id":1,"code_mode":11,"size":11,"blob_size":4194304,"crc":2169337493,"blobs":[{"min_bid":2,"vid":7,"count":1}]}
 
 # Download the file, use the location obtained above as the parameter (-l), and you can download the file content
-$> access get -v -l '{"cluster_id":1,"code_mode":10,"size":11,"blob_size":8388608,"crc":2359314771,"blobs":[{"min_bid":1844899,"vid":158458,"count":1}]}'
+$> access get -v -l '{"cluster_id":1,"code_mode":11,"size":11,"blob_size":4194304,"crc":2169337493,"blobs":[{"min_bid":2,"vid":7,"count":1}]}'
 
 # Delete the file, use the location obtained above as the parameter (-l); deleting the file requires manual confirmation
-$> access del -v -l '{"cluster_id":1,"code_mode":10,"size":11,"blob_size":8388608,"crc":2359314771,"blobs":[{"min_bid":1844899,"vid":158458,"count":1}]}'
+$> access del -v -l '{"cluster_id":1,"code_mode":11,"size":11,"blob_size":4194304,"crc":2169337493,"blobs":[{"min_bid":2,"vid":7,"count":1}]}'
 ```
