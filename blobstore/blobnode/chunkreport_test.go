@@ -63,7 +63,9 @@ func TestChunkReport(t *testing.T) {
 	require.Equal(t, true, cs.IsDirty())
 
 	service.reportChunkInfoToClusterMgr()
-	require.Equal(t, false, cs.IsDirty())
+	require.Equal(t, true, cs.IsDirty())
+
+	service.Conf.ChunkReportMaxTimeSec = 1
 
 	bid := proto.BlobID(30001)
 	shardData := []byte("testData")
@@ -84,6 +86,7 @@ func TestChunkReport(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, true, cs.IsDirty())
 
+	service.chunkReportRecords[vuid] = chunkReportRecord{at: time.Now().Add(-time.Second)}
 	service.reportChunkInfoToClusterMgr()
 	require.Equal(t, false, cs.IsDirty())
 
@@ -99,6 +102,9 @@ func TestChunkReport(t *testing.T) {
 
 	require.Equal(t, true, cs.IsDirty())
 
+	recorded := service.chunkReportRecords[vuid]
+	recorded.at = time.Now().Add(-time.Second)
+	service.chunkReportRecords[vuid] = recorded
 	service.reportChunkInfoToClusterMgr()
 	require.Equal(t, false, cs.IsDirty())
 }
@@ -182,6 +188,41 @@ func TestChunkReport2(t *testing.T) {
 	cs.SetDirty(true)
 
 	time.Sleep(2 * time.Second)
+}
 
-	service.reportChunkInfoToClusterMgr()
+func TestChunkReportHit(t *testing.T) {
+	total := uint64(1000)
+	now := time.Now()
+	rule := chunkReportRule{now: now, sizePct: 5, highPct: 95, timeMax: time.Hour}
+
+	require.False(t, rule.hit(0, total, nil))
+	require.False(t, rule.hit(40, total, nil))
+	require.True(t, rule.hit(50, total, nil))
+	require.True(t, rule.hit(950, total, nil))
+
+	record := &chunkReportRecord{used: 100, at: now}
+	require.False(t, rule.hit(100, total, record))
+	rule.now = now.Add(time.Minute)
+	require.False(t, rule.hit(149, total, record))
+	require.True(t, rule.hit(150, total, record))
+	rule.now = now.Add(time.Hour)
+	require.True(t, rule.hit(101, total, record))
+	rule.now = now.Add(time.Hour - time.Second)
+	require.False(t, rule.hit(101, total, record))
+	rule.now = now
+	require.True(t, rule.hit(950, total, record))
+	require.True(t, rule.hit(50, total, record))
+	require.True(t, rule.hit(950, total, &chunkReportRecord{used: 949, at: now}))
+	require.False(t, rule.hit(955, total, &chunkReportRecord{used: 960, at: now}))
+
+	disabled := chunkReportRule{now: now, sizePct: -1, highPct: -1, timeMax: time.Hour}
+	require.False(t, disabled.hit(950, total, &chunkReportRecord{used: 949, at: now}))
+	disabled.highPct = 95
+	require.False(t, disabled.hit(150, total, record))
+	disabled.highPct = -1
+	disabled.timeMax = -time.Second
+	disabled.now = now.Add(time.Hour)
+	require.False(t, disabled.hit(101, total, record))
+	disabled.timeMax = time.Hour
+	require.True(t, disabled.hit(101, total, record))
 }

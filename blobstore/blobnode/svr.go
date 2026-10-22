@@ -65,6 +65,8 @@ type Service struct {
 	pendingBrokenDisksMu sync.RWMutex
 	pendingBrokenDisks   map[proto.DiskID]error
 
+	chunkReportRecords map[proto.Vuid]chunkReportRecord
+
 	// ctx is used for initiated requests that
 	// may need to be canceled on server shutdown.
 	ctx    context.Context
