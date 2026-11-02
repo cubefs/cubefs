@@ -430,13 +430,26 @@ func TestService_CmdpChunk(t *testing.T) {
 		HeartbeatIntervalSec: 600,
 	}
 
+	// MustMountPoint=true with no real mount points: getNodeID sees
+	// no usable disk, registerNode returns error, and startBlobnodeService
+	// calls span.Fatalf → os.Exit(1). Mock os.Exit to survive the test,
+	// then reset the patch immediately so the second NewService below
+	// sees the real os.Exit.
+	exitCode := 0
+	exitPatch := gomonkey.ApplyFunc(os.Exit, func(code int) {
+		exitCode = code
+		panic("os.Exit")
+	})
 	conf.DiskConfig.MustMountPoint = true
-	service, err := NewService(conf)
-	require.NoError(t, err)
-	require.Equal(t, 0, len(service.Disks)) // len(service.Disks) is 0
+	func() {
+		defer func() { recover() }()
+		NewService(conf)
+	}()
+	exitPatch.Reset()
+	require.Equal(t, 1, exitCode)
 
 	conf.DiskConfig.MustMountPoint = false
-	service, err = NewService(conf)
+	service, err := NewService(conf)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(service.Disks)) // len(conf.Disks) == len(service.Disks), is 2
 
@@ -1058,7 +1071,14 @@ func TestService_RegisterNode(t *testing.T) {
 		Conf:             &conf,
 	}
 
-	// first register
+	// first register: the config has no disks, so getNodeID would
+	// return (0, false) and trigger the "no usable disk" rejection.
+	// Mock getNodeID to simulate a new machine with a usable disk.
+	patchesReg := gomonkey.ApplyFunc(getNodeID,
+		func(ctx context.Context, conf *Config) (proto.NodeID, bool, error) {
+			return 0, true, nil
+		})
+	defer patchesReg.Reset()
 	svr.Conf.DiskType = proto.DiskTypeHDD
 	err := svr.registerNode(ctx, svr.Conf)
 	require.NoError(t, err)
@@ -1286,6 +1306,16 @@ func TestStartBlobnodeService_LostMountPoint(t *testing.T) {
 	})
 	defer patchesMP.Reset()
 
+	// getNodeID would return (0, false) with all disks unmounted,
+	// which triggers the "no usable disk" rejection. This test is
+	// about the pre-scan / lost-disk logic, not getNodeID, so mock
+	// getNodeID to report a usable disk.
+	patchesGN := gomonkey.ApplyFunc(getNodeID,
+		func(ctx context.Context, conf *Config) (proto.NodeID, bool, error) {
+			return 0, true, nil
+		})
+	defer patchesGN.Reset()
+
 	// cm return disk list: pathBroken, Broken; pathUnknown, not found
 	diskBrokenInfo1 := &cmapi.BlobNodeDiskInfo{
 		DiskInfo:          cmapi.DiskInfo{Path: pathData1, Status: proto.DiskStatusBroken},
@@ -1303,6 +1333,11 @@ func TestStartBlobnodeService_LostMountPoint(t *testing.T) {
 	cmCli.EXPECT().RegisterService(A, A, A, A, A).Return(nil).Times(1)
 	cmCli.EXPECT().AddNode(A, A).Return(proto.NodeID(1), nil).Times(1)
 	cmCli.EXPECT().ListHostDisk(A, A).Return([]*cmapi.BlobNodeDiskInfo{diskBrokenInfo1, diskBrokenInfo2}, nil)
+	// disk3 has no CM record and is not mounted → registerBrokenDisk
+	// allocates a DiskID, calls AddDisk (Normal), then SetDisk Broken.
+	cmCli.EXPECT().AllocDiskID(A).Return(proto.DiskID(1002), nil)
+	cmCli.EXPECT().AddDisk(A, A).Return(nil)
+	cmCli.EXPECT().SetDisk(A, proto.DiskID(1002), proto.DiskStatusBroken).Return(nil)
 
 	conf := Config{
 		HostInfo: core.HostInfo{IDC: "idc", Rack: "rack", Host: "host"},
@@ -1341,7 +1376,7 @@ func TestStartBlobnodeService_LostMountPoint(t *testing.T) {
 	// do start：3 unmount disk, pathBroken is broken in cm -> online++；pathUnknown not in cm -> lost++
 	err = startBlobnodeService(ctx, svr, conf)
 	require.NoError(t, err)
-	require.Equal(t, int32(1), atomic.LoadInt32(&lostCount))
+	require.Equal(t, int32(0), atomic.LoadInt32(&lostCount)) // pre-scan no longer reports metrics
 	require.Equal(t, int32(2), atomic.LoadInt32(&cleanDisk))
 	require.Equal(t, 0, len(svr.Disks))
 }
