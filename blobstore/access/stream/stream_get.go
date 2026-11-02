@@ -116,6 +116,12 @@ func (h *Handler) Get(ctx context.Context, w io.Writer, location proto.Location,
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("get request cluster:%d size:%d offset:%d", location.ClusterID, readSize, offset)
 
+	if err := h.clusterController.EnsureEncoder(ctx, location.ClusterID, location.CodeMode); err != nil {
+		span.Warnf("ensure codemode encoder cluster(%d) mode(%d) failed: %v",
+			location.ClusterID, location.CodeMode, err)
+		return func() error { return nil }, err
+	}
+
 	blobs, err := genLocationBlobs(&location, readSize, offset)
 	if err != nil {
 		span.Info("illegal argument", err)

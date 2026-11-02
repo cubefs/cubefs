@@ -46,6 +46,7 @@ func newStreamHandlerSuccess(t *testing.T) *Handler {
 	clu.EXPECT().GetShardController(gAny).Return(shardMgr, nil).AnyTimes()
 	clu.EXPECT().GetServiceController(gAny).Return(svrCtrl, nil).AnyTimes()
 	clu.EXPECT().MaxPolicySize().Return(int64(100)).AnyTimes()
+	clu.EXPECT().EnsureEncoder(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
 
 	shardCli := mocks.NewMockShardnodeAccess(ctr)
 	proxyClient := mocks.NewMockProxyClient(ctr)

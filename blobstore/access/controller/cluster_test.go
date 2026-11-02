@@ -23,6 +23,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -671,14 +672,48 @@ func TestParseClusterChooseAlg(t *testing.T) {
 	}
 }
 
-// newMockCMServer starts an isolated ClusterMgr HTTP stub that serves the given
-// codemode policies. Existing package-level mocks share one host and one
-// codeModeRaw, so they cannot express per-cluster policy differences.
-func newMockCMServer(t *testing.T, policies []codemode.Policy) *httptest.Server {
+// mockCMPolicyState lets tests replace the served policy, simulate a ClusterMgr
+// outage and count policy pulls.
+type mockCMPolicyState struct {
+	mu       sync.RWMutex
+	policies string
+	fail     bool
+	pulls    int32
+}
+
+func (s *mockCMPolicyState) setPolicies(policies []codemode.Policy) {
+	raw, err := json.Marshal(policies)
+	if err != nil {
+		panic(err)
+	}
+	s.mu.Lock()
+	s.policies = string(raw)
+	s.mu.Unlock()
+}
+
+func (s *mockCMPolicyState) setFail(fail bool) {
+	s.mu.Lock()
+	s.fail = fail
+	s.mu.Unlock()
+}
+
+// policy returns the served policy, and true when an outage is simulated.
+func (s *mockCMPolicyState) policy() (string, bool) {
+	atomic.AddInt32(&s.pulls, 1)
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.policies, s.fail
+}
+
+func (s *mockCMPolicyState) policyPulls() int32 {
+	return atomic.LoadInt32(&s.pulls)
+}
+
+// newMockCMPolicyServer starts an isolated ClusterMgr stub with a mutable codemode policy.
+func newMockCMPolicyServer(t *testing.T, policies []codemode.Policy) (*httptest.Server, *mockCMPolicyState) {
 	t.Helper()
-	policyJSON, err := json.Marshal(policies)
-	require.NoError(t, err)
-	policyRaw := string(policyJSON)
+	state := &mockCMPolicyState{}
+	state.setPolicies(policies)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/stat", func(w http.ResponseWriter, _ *http.Request) {
@@ -695,24 +730,34 @@ func newMockCMServer(t *testing.T, policies []codemode.Policy) *httptest.Server 
 		_, _ = w.Write([]byte(`{}`))
 	})
 	mux.HandleFunc("/config/get", func(w http.ResponseWriter, req *http.Request) {
-		key := req.URL.Query().Get("key")
-		var raw string
-		switch key {
-		case proto.CodeModeConfigKey:
-			raw = policyRaw
+		switch req.URL.Query().Get("key") {
 		case proto.CodeModeExtendKey:
-			raw = "[]"
-		}
-		if raw == "" {
+			resp, _ := json.Marshal("[]")
+			_, _ = w.Write(resp)
+		case proto.CodeModeConfigKey:
+			raw, failed := state.policy()
+			if failed {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			resp, _ := json.Marshal(raw)
+			_, _ = w.Write(resp)
+		default:
 			w.WriteHeader(http.StatusInternalServerError)
-			return
 		}
-		resp, _ := json.Marshal(raw)
-		_, _ = w.Write(resp)
 	})
 
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
+	return srv, state
+}
+
+// newMockCMServer starts an isolated ClusterMgr HTTP stub that serves the given
+// codemode policies. Existing package-level mocks share one host and one
+// codeModeRaw, so they cannot express per-cluster policy differences.
+func newMockCMServer(t *testing.T, policies []codemode.Policy) *httptest.Server {
+	t.Helper()
+	srv, _ := newMockCMPolicyServer(t, policies)
 	return srv
 }
 
@@ -852,4 +897,100 @@ func TestAccessClusterListCodeModes(t *testing.T) {
 	require.ElementsMatch(t, []proto.ClusterID{clusterA, clusterB}, got[codemode.EC6P6])
 	require.ElementsMatch(t, []proto.ClusterID{clusterA}, got[codemode.EC3P3])
 	require.NotContains(t, got, codemode.EC6P10L2)
+}
+
+func TestAccessClusterEnsureEncoder(t *testing.T) {
+	const (
+		clusterID = proto.ClusterID(1)
+		maxSize   = int64(1 << 30)
+	)
+	policyOf := func(modes ...codemode.CodeMode) []codemode.Policy {
+		policies := make([]codemode.Policy, 0, len(modes))
+		for _, mode := range modes {
+			policies = append(policies, codemode.Policy{
+				ModeName:  mode.Name(),
+				MinSize:   0,
+				MaxSize:   maxSize,
+				SizeRatio: 1,
+				Enable:    true,
+			})
+		}
+		return policies
+	}
+
+	srv, state := newMockCMPolicyServer(t, policyOf(codemode.EC6P6))
+	cc := newCCFromClusters(t, []controller.Cluster{{ClusterID: clusterID, Hosts: []string{srv.URL}}})
+	ctx := context.Background()
+
+	t.Run("already loaded mode needs no reload", func(t *testing.T) {
+		before := state.policyPulls()
+		require.NoError(t, cc.EnsureEncoder(ctx, clusterID, codemode.EC6P6))
+		require.Equal(t, before, state.policyPulls())
+	})
+
+	t.Run("missing mode triggers exactly one passive reload", func(t *testing.T) {
+		before := state.policyPulls()
+		state.setPolicies(policyOf(codemode.EC6P6, codemode.EC16P20L2))
+		require.NoError(t, cc.EnsureEncoder(ctx, clusterID, codemode.EC16P20L2))
+		require.Equal(t, before+1, state.policyPulls())
+		require.NotNil(t, cc.GetEncoder(codemode.EC16P20L2))
+	})
+
+	t.Run("concurrent requests share one reload", func(t *testing.T) {
+		const workers = 8
+		before := state.policyPulls()
+		state.setPolicies(policyOf(codemode.EC6P6, codemode.EC16P20L2, codemode.EC15P12))
+
+		var wg sync.WaitGroup
+		errs := make(chan error, workers)
+		wg.Add(workers)
+		for i := 0; i < workers; i++ {
+			go func() {
+				defer wg.Done()
+				errs <- cc.EnsureEncoder(ctx, clusterID, codemode.EC15P12)
+			}()
+		}
+		wg.Wait()
+		close(errs)
+		for err := range errs {
+			require.NoError(t, err)
+		}
+		// verify() is re-checked under the lock, so racing requests share one pull.
+		require.Equal(t, before+1, state.policyPulls())
+	})
+}
+
+func TestAccessClusterEnsureEncoderReloadFailure(t *testing.T) {
+	const (
+		clusterID = proto.ClusterID(1)
+		testSize  = int64(1 << 20)
+	)
+	policy := []codemode.Policy{{
+		ModeName: codemode.EC6P6.Name(), MinSize: 0, MaxSize: 1 << 30, SizeRatio: 1, Enable: true,
+	}}
+
+	srv, state := newMockCMPolicyServer(t, policy)
+	cc := newCCFromClusters(t, []controller.Cluster{{ClusterID: clusterID, Hosts: []string{srv.URL}}})
+	ctx := context.Background()
+
+	t.Run("clusterMgr outage keeps the policies loaded at startup", func(t *testing.T) {
+		state.setFail(true)
+		require.Error(t, cc.EnsureEncoder(ctx, clusterID, codemode.EC16P20L2))
+		require.Panics(t, func() { cc.GetEncoder(codemode.EC16P20L2) })
+
+		cid, mode, err := cc.ChooseOne(testSize, codemode.CodeModeNone, clusterID)
+		require.NoError(t, err)
+		require.Equal(t, clusterID, cid)
+		require.Equal(t, codemode.EC6P6, mode)
+	})
+
+	t.Run("a later reload serves the requested mode", func(t *testing.T) {
+		state.setFail(false)
+		state.setPolicies([]codemode.Policy{
+			{ModeName: codemode.EC6P6.Name(), MinSize: 0, MaxSize: 1 << 30, SizeRatio: 0.5, Enable: true},
+			{ModeName: codemode.EC16P20L2.Name(), MinSize: 0, MaxSize: 1 << 30, SizeRatio: 0.5, Enable: true},
+		})
+		require.NoError(t, cc.EnsureEncoder(ctx, clusterID, codemode.EC16P20L2))
+		require.NotNil(t, cc.GetEncoder(codemode.EC16P20L2))
+	})
 }

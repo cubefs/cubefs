@@ -86,6 +86,20 @@ func (mr *MockClusterControllerMockRecorder) GetEncoder(arg0 interface{}) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEncoder", reflect.TypeOf((*MockClusterController)(nil).GetEncoder), arg0)
 }
 
+// EnsureEncoder mocks base method.
+func (m *MockClusterController) EnsureEncoder(arg0 context.Context, arg1 proto.ClusterID, arg2 codemode.CodeMode) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "EnsureEncoder", arg0, arg1, arg2)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// EnsureEncoder indicates an expected call of EnsureEncoder.
+func (mr *MockClusterControllerMockRecorder) EnsureEncoder(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnsureEncoder", reflect.TypeOf((*MockClusterController)(nil).EnsureEncoder), arg0, arg1, arg2)
+}
+
 // MaxPolicySize mocks base method.
 func (m *MockClusterController) MaxPolicySize() int64 {
 	m.ctrl.T.Helper()

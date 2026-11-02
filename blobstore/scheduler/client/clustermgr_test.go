@@ -824,3 +824,28 @@ func TestClustermgrClientShardMethods(t *testing.T) {
 		require.True(t, disk.IsHealth())
 	}
 }
+
+func TestEnsureCodemode(t *testing.T) {
+	cli := NewClusterMgrClient(&cmapi.Config{}).(*clustermgrClient)
+	mockCli := NewMockClusterManager(gomock.NewController(t))
+	cli.client = mockCli
+	ctx := context.Background()
+
+	require.NoError(t, cli.ensureCodemode(ctx, codemode.EC6P6))
+
+	unknown := codemode.CodeMode(250)
+	require.False(t, unknown.IsValid())
+	mockCli.EXPECT().GetConfig(gomock.Any(), proto.CodeModeExtendKey).Return("", errors.New("cm down"))
+	require.Error(t, cli.ensureCodemode(ctx, unknown))
+}
+
+func TestVolumeInfoSimpleSetEnsure(t *testing.T) {
+	vol := &VolumeInfoSimple{}
+	err := vol.set(context.Background(), &cmapi.VolumeInfo{
+		VolumeInfoBase: cmapi.VolumeInfoBase{Vid: 1, CodeMode: 250},
+	},
+		func(context.Context, codemode.CodeMode) error {
+			return errors.New("ensure fail")
+		})
+	require.EqualError(t, err, "ensure fail")
+}

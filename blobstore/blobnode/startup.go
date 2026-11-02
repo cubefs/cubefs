@@ -25,6 +25,7 @@ import (
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/flow"
+	"github.com/cubefs/cubefs/blobstore/blobnode/base/workutils"
 	"github.com/cubefs/cubefs/blobstore/blobnode/client"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core/disk"
@@ -50,7 +51,7 @@ const (
 )
 
 func NewService(conf Config) (svr *Service, err error) {
-	span, ctx := trace.StartSpanFromContext(context.Background(), "NewBlobNodeService")
+	_, ctx := trace.StartSpanFromContext(context.Background(), "NewBlobNodeService")
 
 	configInit(&conf)
 
@@ -65,24 +66,6 @@ func NewService(conf Config) (svr *Service, err error) {
 		pendingBrokenDisks: make(map[proto.DiskID]error),
 	}
 	svr.ctx, svr.cancel = context.WithCancel(context.Background())
-
-	// load code mode, both worker and blobNode need it
-	if err = cmapi.LoadExtendCodemode(ctx, svr.ClusterMgrClient); err != nil {
-		span.Fatalf("load extend codemode from clusterMgr error:%+v", err)
-	}
-	for _, ecmode := range codemode.GetECCodeModes() {
-		tactic := ecmode.Tactic()
-		if tactic.MinShardSize <= 0 {
-			continue
-		}
-		if tactic.AdaptShardSize > 0 {
-			for size := tactic.AdaptShardSize; size <= tactic.MinShardSize; size += tactic.AdaptShardSize {
-				client.NopdataSize(size)
-			}
-		} else {
-			client.NopdataSize(tactic.MinShardSize)
-		}
-	}
 
 	// start worker service
 	if conf.StartMode == proto.ServiceNameWorker || conf.StartMode == defaultServiceBothBlobNodeWorker {
@@ -497,6 +480,30 @@ func startWorkerService(ctx context.Context, svr *Service, conf Config) {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debug("start worker service...")
 
+	if err := cmapi.LoadExtendCodemode(ctx, svr.ClusterMgrClient); err != nil {
+		span.Fatalf("load extend codemode from clusterMgr error:%+v", err)
+	}
+	for _, ecmode := range codemode.GetECCodeModes() {
+		registerNopDataSizesForMode(ecmode)
+	}
+	workutils.SetExtendReloader(func(ctx context.Context, mode codemode.CodeMode) error {
+		svr.codemodeMu.Lock()
+		defer svr.codemodeMu.Unlock()
+		if mode.IsValid() {
+			// Requests blocking on the lock may be raced by a finished ensure.
+			return nil
+		}
+		if err := cmapi.EnsureExtend(ctx, svr.ClusterMgrClient, mode); err != nil {
+			return err
+		}
+		// EnsureExtend registers all extend codemodes at once, register
+		// nopdata sizes for all EC codemodes, not only the triggering one.
+		for _, ecmode := range codemode.GetECCodeModes() {
+			registerNopDataSizesForMode(ecmode)
+		}
+		return nil
+	})
+
 	node := cmapi.ServiceNode{
 		ClusterID: uint64(conf.ClusterID),
 		Name:      proto.ServiceNameWorker,
@@ -701,4 +708,21 @@ func startBlobnodeService(ctx context.Context, svr *Service, conf Config) (err e
 	go svr.loopPendingBrokenDisks()
 
 	return
+}
+
+func registerNopDataSizesForMode(ecmode codemode.CodeMode) {
+	if !ecmode.IsValid() {
+		return
+	}
+	tactic := ecmode.Tactic()
+	if tactic.MinShardSize <= 0 {
+		return
+	}
+	if tactic.AdaptShardSize > 0 {
+		for size := tactic.AdaptShardSize; size <= tactic.MinShardSize; size += tactic.AdaptShardSize {
+			client.NopdataSize(size)
+		}
+		return
+	}
+	client.NopdataSize(tactic.MinShardSize)
 }

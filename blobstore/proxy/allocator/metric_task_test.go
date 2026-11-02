@@ -26,7 +26,6 @@ import (
 func TestMetricReport(t *testing.T) {
 	ctx := context.Background()
 	vm := volumeMgr{}
-	vm.modeInfos = make(map[codemode.CodeMode]*modeInfo)
 	modeInfo := &modeInfo{
 		current:        &volumes{},
 		backup:         &volumes{},
@@ -46,6 +45,6 @@ func TestMetricReport(t *testing.T) {
 			AllocVolumeInfo: volInfo,
 		}, false)
 	}
-	vm.modeInfos[codemode.CodeMode(2)] = modeInfo
+	vm.setModeInfo(codemode.CodeMode(2), modeInfo)
 	vm.metricReport(ctx)
 }

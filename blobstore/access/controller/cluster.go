@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"math/rand"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -43,6 +44,22 @@ import (
 
 // just for cli write to readonly initialised cluster.
 var ForceWriteReadonlyCluster = false
+
+// codeModePolicyReloadMinInterval and codeModePolicyReloadMaxInterval bound the
+// background reload interval of codemode policies.
+const (
+	codeModePolicyReloadMinInterval = 2 * time.Hour
+	codeModePolicyReloadMaxInterval = 4 * time.Hour
+)
+
+// codeModePolicyReloadInterval picks a random reload interval in
+// [codeModePolicyReloadMinInterval, codeModePolicyReloadMaxInterval), so that
+// access instances do not reload codemode policies simultaneously.
+func codeModePolicyReloadInterval() time.Duration {
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	delta := int64(codeModePolicyReloadMaxInterval - codeModePolicyReloadMinInterval)
+	return codeModePolicyReloadMinInterval + time.Duration(r.Int63n(delta))
+}
 
 // AlgChoose algorithm of choose cluster
 type AlgChoose uint32
@@ -150,6 +167,8 @@ type ClusterController interface {
 	// GetEncoder returns the EC encoder for the given CodeMode.
 	// Panics if the encoder was not initialised during cluster policy load.
 	GetEncoder(cm codemode.CodeMode) ec.Encoder
+	// EnsureEncoder loads codemode policy for clusterID when decoder is missing (read path).
+	EnsureEncoder(ctx context.Context, clusterID proto.ClusterID, mode codemode.CodeMode) error
 	// GetServiceController return ServiceController in specified cluster
 	GetServiceController(clusterID proto.ClusterID) (ServiceController, error)
 	// GetVolumeGetter return VolumeGetter in specified cluster
@@ -232,6 +251,9 @@ type clusterControllerImpl struct {
 	// Each slot stores an ec.Encoder; nil Load means not initialised.
 	encoders [256]atomic.Value
 
+	// policyMu serializes codemode policy reload across all clusters.
+	policyMu sync.Mutex
+
 	config ClusterConfig
 }
 
@@ -280,6 +302,7 @@ func NewClusterController(cfg *ClusterConfig, proxy proxy.Cacher, stopCh <-chan 
 	if stopCh == nil {
 		return controller, nil
 	}
+	go controller.runCodeModePolicyPeriodicReload()
 	go func() {
 		tick := time.NewTicker(time.Duration(cfg.ClusterReloadSecs) * time.Second)
 		defer tick.Stop()
@@ -406,7 +429,7 @@ func (c *clusterControllerImpl) deal(ctx context.Context,
 			// update cluster client if hosts changed
 			conf := c.config.CMClientConfig
 			conf.Hosts = cluster.clusterInfo.Nodes[:]
-			getClusterClient(ctx, clusterID, conf)
+			cluster.client = getClusterClient(ctx, clusterID, conf)
 		}
 	}
 
@@ -453,7 +476,7 @@ func (c *clusterControllerImpl) deal(ctx context.Context,
 			continue
 		}
 
-		if err := c.loadCodeModePolicy(ctx, clusterID, cmCli); err != nil {
+		if err := c.loadCodeModePolicy(ctx, clusterID, cmCli, false, nil); err != nil {
 			removeThisCluster()
 			span.Warnf("load codemode policy for cluster(%d) failed: %v", clusterID, err)
 			continue
@@ -499,6 +522,27 @@ func (c *clusterControllerImpl) GetEncoder(cm codemode.CodeMode) ec.Encoder {
 	return val.(ec.Encoder)
 }
 
+func (c *clusterControllerImpl) EnsureEncoder(
+	ctx context.Context, clusterID proto.ClusterID, mode codemode.CodeMode,
+) error {
+	if c.encoders[mode].Load() != nil {
+		return nil
+	}
+	cmCli, err := c.cmClient(clusterID)
+	if err != nil {
+		return err
+	}
+	span := trace.SpanFromContextSafe(ctx)
+	if err = c.loadCodeModePolicy(ctx, clusterID, cmCli, false, func() bool {
+		return c.encoders[mode].Load() != nil
+	}); err != nil {
+		span.Warnf("passive codemode policy reload cluster(%d) mode(%d) failed: %v", clusterID, mode, err)
+		return err
+	}
+	span.Infof("passive codemode policy reload cluster(%d) mode(%d) ok", clusterID, mode)
+	return nil
+}
+
 func (c *clusterControllerImpl) Region() string {
 	return c.region
 }
@@ -514,36 +558,36 @@ func (c *clusterControllerImpl) All() []*cmapi.ClusterInfo {
 	return ret
 }
 
+// loadCodeModePolicy loads and applies codemode policies of clusterID under a
+// process-wide mutex. With verify given, the reload is skipped when verify()
+// already holds, and ErrIllegalArguments is returned when verify still fails
+// after policies are applied.
 func (c *clusterControllerImpl) loadCodeModePolicy(
-	ctx context.Context, clusterID proto.ClusterID, cmCli *cmapi.Client,
+	ctx context.Context, clusterID proto.ClusterID, cmCli *cmapi.Client, compareConfig bool, verify func() bool,
 ) error {
-	span := trace.SpanFromContextSafe(ctx)
+	c.policyMu.Lock()
+	defer c.policyMu.Unlock()
 
-	// Extend must be registered before policy ModeName resolution.
-	// Invalid extend config panics inside codemode.Extend (ClusterMgr config error).
-	if err := cmapi.LoadExtendCodemode(ctx, cmCli); err != nil {
+	span := trace.SpanFromContextSafe(ctx)
+	// Requests blocking on the lock may be raced by a finished reload, skip
+	// when verify() already reports the requested mode as served.
+	if verify != nil && verify() {
+		return nil
+	}
+	policies, err := cmapi.LoadPolicies(ctx, cmCli)
+	if err != nil {
 		return err
 	}
-
-	raw, err := cmCli.GetConfig(ctx, proto.CodeModeConfigKey)
-	if err != nil {
-		return fmt.Errorf("load codemode policy failed: %w", err)
+	if compareConfig {
+		if cached, ok := c.clusterCodeModes.Load(clusterID); ok {
+			if reflect.DeepEqual(policies, cached.([]codemode.Policy)) {
+				span.Debugf("codemode config unchanged cluster(%d), skip periodic reload", clusterID)
+				return nil
+			}
+		}
 	}
-	var policies []codemode.Policy
-	if err = json.Unmarshal([]byte(raw), &policies); err != nil {
-		return fmt.Errorf("parse codemode policy failed: %w", err)
-	}
-	if len(policies) == 0 {
-		return fmt.Errorf("codemode policy is empty")
-	}
-
-	// Resolve CodeMode and initialise encoders before exposing policies, so
-	// ChooseOne never selects a mode without a ready encoder.
 	newMaxSize := int64(0)
 	for _, p := range policies {
-		if !p.ModeName.IsValid() {
-			return fmt.Errorf("policy has unknown mode_name %q", p.ModeName)
-		}
 		codeMode := p.ModeName.GetCodeMode()
 		if c.encoders[codeMode].Load() == nil {
 			enc, encErr := ec.NewEncoder(ec.Config{
@@ -560,7 +604,6 @@ func (c *clusterControllerImpl) loadCodeModePolicy(
 			newMaxSize = p.MaxSize
 		}
 	}
-
 	c.clusterCodeModes.Store(clusterID, policies)
 	for {
 		old := atomic.LoadInt64(&c.maxPolicySize)
@@ -571,10 +614,58 @@ func (c *clusterControllerImpl) loadCodeModePolicy(
 			break
 		}
 	}
+	if verify != nil && !verify() {
+		span.Errorf("codemode policies reloaded for cluster(%d), requested mode still not served", clusterID)
+		return errcode.ErrIllegalArguments
+	}
 	span.Infof("loaded codemode policies for cluster(%d): %+v, maxPolicySize=%d",
 		clusterID, policies, atomic.LoadInt64(&c.maxPolicySize))
-
 	return nil
+}
+
+func (c *clusterControllerImpl) cmClient(clusterID proto.ClusterID) (*cmapi.Client, error) {
+	allClusters, ok := c.clusters.Load().(clusterMap)
+	if !ok {
+		return nil, ErrNoSuchCluster
+	}
+	cl, ok := allClusters[clusterID]
+	if !ok || cl.client == nil {
+		return nil, ErrNoSuchCluster
+	}
+	return cl.client, nil
+}
+
+// runCodeModePolicyPeriodicReload reloads policies of all managed clusters periodically.
+func (c *clusterControllerImpl) runCodeModePolicyPeriodicReload() {
+	tick := time.NewTicker(codeModePolicyReloadInterval())
+	defer tick.Stop()
+	for {
+		select {
+		case <-tick.C:
+			c.reloadAllManagedCodeModePolicies(context.Background())
+		case <-c.stopCh:
+			return
+		}
+	}
+}
+
+func (c *clusterControllerImpl) reloadAllManagedCodeModePolicies(ctx context.Context) {
+	span, ctx := trace.StartSpanFromContext(ctx, "")
+	clusterIDs := make([]proto.ClusterID, 0)
+	c.serviceMgrs.Range(func(key, _ any) bool {
+		clusterIDs = append(clusterIDs, key.(proto.ClusterID))
+		return true
+	})
+	for _, clusterID := range clusterIDs {
+		cmCli, err := c.cmClient(clusterID)
+		if err != nil {
+			span.Warnf("periodic codemode policy reload cluster(%d): no client: %s", clusterID, err)
+			continue
+		}
+		if err = c.loadCodeModePolicy(ctx, clusterID, cmCli, true, nil); err != nil {
+			span.Warnf("periodic codemode policy reload cluster(%d) failed: %s", clusterID, err)
+		}
+	}
 }
 
 func (c *clusterControllerImpl) isClusterAvailable(clusterID proto.ClusterID) bool {

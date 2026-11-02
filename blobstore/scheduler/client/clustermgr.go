@@ -252,7 +252,12 @@ func (vol *VolumeInfoSimple) IsActive() bool {
 	return vol.Status == proto.VolumeStatusActive
 }
 
-func (vol *VolumeInfoSimple) set(info *cmapi.VolumeInfo) {
+func (vol *VolumeInfoSimple) set(ctx context.Context, info *cmapi.VolumeInfo,
+	ensure func(context.Context, codemode.CodeMode) error,
+) error {
+	if err := ensure(ctx, info.CodeMode); err != nil {
+		return err
+	}
 	vol.Vid = info.Vid
 	vol.Epoch = info.Epoch
 	vol.CodeMode = info.CodeMode
@@ -281,6 +286,7 @@ func (vol *VolumeInfoSimple) set(info *cmapi.VolumeInfo) {
 			DiskID: info.Units[i].DiskID,
 		}
 	}
+	return nil
 }
 
 // AllocVunitInfo volume unit info for alloc
@@ -498,6 +504,8 @@ type IClusterManager interface {
 type clustermgrClient struct {
 	client IClusterManager
 	rwLock sync.RWMutex
+
+	codemodeMu sync.Mutex // serializes codemode extend ensure
 }
 
 func NewClusterMgrClient(conf *cmapi.Config) ClusterMgrAPI {
@@ -534,6 +542,19 @@ func (c *clustermgrClient) SetConfig(ctx context.Context, key, value string) err
 	return nil
 }
 
+func (c *clustermgrClient) ensureCodemode(ctx context.Context, mode codemode.CodeMode) error {
+	if mode.IsValid() {
+		return nil
+	}
+	c.codemodeMu.Lock()
+	defer c.codemodeMu.Unlock()
+	if mode.IsValid() {
+		// Requests blocking on the lock may be raced by a finished ensure.
+		return nil
+	}
+	return cmapi.EnsureExtend(ctx, c.client, mode)
+}
+
 // GetVolumeInfo returns volume info
 func (c *clustermgrClient) GetVolumeInfo(ctx context.Context, vid proto.Vid) (*VolumeInfoSimple, error) {
 	c.rwLock.RLock()
@@ -547,7 +568,10 @@ func (c *clustermgrClient) GetVolumeInfo(ctx context.Context, vid proto.Vid) (*V
 		return nil, err
 	}
 	ret := &VolumeInfoSimple{}
-	ret.set(info)
+	if err := ret.set(ctx, info, c.ensureCodemode); err != nil {
+		span.Warnf("volume %d codemode ensure failed: %v", info.Vid, err)
+		return nil, err
+	}
 	return ret, nil
 }
 
@@ -662,13 +686,18 @@ func (c *clustermgrClient) ListVolume(ctx context.Context, marker proto.Vid, cou
 	c.rwLock.RLock()
 	defer c.rwLock.RUnlock()
 
+	span := trace.SpanFromContextSafe(ctx)
 	vols, err := c.client.ListVolume(ctx, &cmapi.ListVolumeArgs{Marker: marker, Count: count})
 	if err != nil {
 		return
 	}
 	for index := range vols.Volumes {
+		info := vols.Volumes[index]
 		ret := &VolumeInfoSimple{}
-		ret.set(vols.Volumes[index])
+		if err := ret.set(ctx, info, c.ensureCodemode); err != nil {
+			span.Warnf("volume %d codemode ensure failed: %v", info.Vid, err)
+			return nil, 0, err
+		}
 		rets = append(rets, ret)
 	}
 	nextVid = vols.Marker

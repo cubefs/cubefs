@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
@@ -90,7 +91,8 @@ func (v *volmgr) retain(ctx context.Context, isBackup bool) {
 // Determining whether a volume is full or not by heartbeat reduces the time of the allocation process.
 func (v *volmgr) handleFullVols(ctx context.Context, isBackup bool) {
 	span := trace.SpanFromContextSafe(ctx)
-	for codeMode, info := range v.modeInfos {
+	v.rangeSlots(func(codeMode codemode.CodeMode, slot *modeSlot) bool {
+		info := slot.info
 		fullVols := make([]proto.Vid, 0)
 		vols := info.List(isBackup)
 		for _, vol := range vols {
@@ -108,7 +110,8 @@ func (v *volmgr) handleFullVols(ctx context.Context, isBackup bool) {
 				span.Debugf("volume is full, vid: %v,codeMode: %v", vid, codeMode)
 			}
 		}
-	}
+		return true
+	})
 }
 
 // remove retain failed volume and update success expire time
@@ -156,14 +159,19 @@ func (v *volmgr) discardVolume(ctx context.Context, token string, isBackup bool)
 		return
 	}
 	span.Debugf("retain failed vid: %v", vid)
-	for _, info := range v.modeInfos {
+	discarded := v.rangeSlots(func(_ codemode.CodeMode, slot *modeSlot) bool {
+		info := slot.info
 		if vol, ok := info.Get(vid, isBackup); ok {
 			vol.mu.Lock()
 			vol.deleted = true
 			vol.mu.Unlock()
 			info.Delete(vid)
-			return
+			return false
 		}
+		return true
+	})
+	if discarded {
+		return
 	}
 	return errors.New("discardVolume, vid not in cache")
 }
@@ -173,13 +181,13 @@ func (v *volmgr) genRetainVolume(ctx context.Context, isBackup bool) (tokens []s
 	span := trace.SpanFromContextSafe(ctx)
 	tokens = make([]string, 0, 128)
 	vids := make([]proto.Vid, 0, 128)
-	for _, info := range v.modeInfos {
-		vols := info.List(isBackup)
-		for _, vol := range vols {
+	v.rangeSlots(func(_ codemode.CodeMode, slot *modeSlot) bool {
+		for _, vol := range slot.info.List(isBackup) {
 			vids = append(vids, vol.Vid)
 			tokens = append(tokens, vol.Token)
 		}
-	}
+		return true
+	})
 	if len(vids) > 0 {
 		span.Debugf("will retain volumes: %v, num of volumes: %v", vids, len(vids))
 	}
@@ -187,11 +195,15 @@ func (v *volmgr) genRetainVolume(ctx context.Context, isBackup bool) (tokens []s
 }
 
 func (v *volmgr) updateExpireTime(vid proto.Vid, expireTime int64, isBackup bool) (err error) {
-	for _, modeInfo := range v.modeInfos {
-		if vol, ok := modeInfo.Get(vid, isBackup); ok {
+	found := v.rangeSlots(func(_ codemode.CodeMode, slot *modeSlot) bool {
+		if vol, ok := slot.info.Get(vid, isBackup); ok {
 			vol.ExpireTime = expireTime
-			return nil
+			return false
 		}
+		return true
+	})
+	if found {
+		return nil
 	}
 	return errors.New("vid does not exist ")
 }

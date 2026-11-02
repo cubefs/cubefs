@@ -20,6 +20,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
 
@@ -55,7 +56,8 @@ func (v *volumeMgr) metricReportTask() {
 
 func (v *volumeMgr) metricReport(ctx context.Context) {
 	span := trace.SpanFromContextSafe(ctx)
-	for codeMode, info := range v.modeInfos {
+	v.rangeSlots(func(codeMode codemode.CodeMode, slot *modeSlot) bool {
+		info := slot.info
 		volNums := info.VolumeNum()
 		proxyStatusMetric.With(
 			prometheus.Labels{
@@ -77,5 +79,6 @@ func (v *volumeMgr) metricReport(ctx context.Context) {
 			}).Set(float64(info.TotalFree()))
 		span.Debugf("metric report total_free_size: %d, idc: %s, codemode: %s,",
 			info.TotalFree(), v.Idc, codeMode.String())
-	}
+		return true
+	})
 }

@@ -19,6 +19,7 @@ import (
 	"context"
 	"io"
 	"strings"
+	"sync"
 
 	api "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
@@ -87,10 +88,10 @@ func (si *ShardInfo) NotExist() bool {
 	return si.Flag == ShardStatusNotExist
 }
 
-var nopDataSizes = make(map[int64]struct{})
+var nopDataSizes sync.Map // int64 size -> struct{}
 
 func NopdataSize(size int) {
-	nopDataSizes[int64(size)] = struct{}{}
+	nopDataSizes.Store(int64(size), struct{}{})
 }
 
 // NewBlobNodeClient returns blobnode client
@@ -172,7 +173,7 @@ func (c *BlobNodeClient) PutShard(ctx context.Context,
 	ctx = trace.NewContextFromContext(ctx)
 	span := trace.SpanFromContext(ctx).WithOperation("PutShard")
 	args := &api.PutShardArgs{DiskID: location.DiskID, Vuid: location.Vuid, Bid: bid, Size: size, Type: ioType}
-	_, maybeNopData := nopDataSizes[size]
+	_, maybeNopData := nopDataSizes.Load(size)
 	if maybeNopData && crc32block.IsZeroBuffer(data) {
 		args.NopData = true
 	} else {
