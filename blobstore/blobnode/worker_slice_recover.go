@@ -814,7 +814,7 @@ func (r *ShardRecover) repair(ctx context.Context, repairBids []proto.BlobID, st
 		return errUnexpectedLength
 	}
 
-	encoder, err := workutils.GetEncoder(r.codeMode)
+	encoder, err := workutils.GetEncoder(ctx, r.codeMode)
 	if err != nil {
 		return err
 	}

@@ -59,6 +59,7 @@ type Service struct {
 
 	globalConfig sync.Map
 	singleFlight singleflight.Group
+	codemodeMu   sync.Mutex // serializes codemode extend reload
 
 	// pendingBrokenDisks keeps data-file EIOs that must not mark the disk yet.
 	// It is in-memory only: a restart drops it, and the next data EIO records the disk again.

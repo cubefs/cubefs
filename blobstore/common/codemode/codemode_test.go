@@ -16,6 +16,7 @@ package codemode
 
 import (
 	"math"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -264,6 +265,47 @@ func TestExtendCodemode(t *testing.T) {
 		CodeMode: extendStart, Name: "EC3P31M",
 		Tactic: Tactic{N: 3, M: 3, AZCount: 3, PutQuorum: 5, MinShardSize: 1 << 20},
 	})
+	require.True(t, CodeMode(extendStart).IsValid())
+	require.True(t, EC6P6.IsValid())
+	found := false
+	for _, mode := range GetAllCodeModes() {
+		if mode == extendStart {
+			found = true
+			break
+		}
+	}
+	require.True(t, found)
+}
+
+func TestExtendConcurrentMerge(t *testing.T) {
+	// Extend registers into a process-wide table that no test can undo, so avoid
+	// code points other tests require to stay unregistered: 255 is asserted as
+	// invalid by TestCodeModeGetTactic, which only runs first because of source
+	// order (it breaks under -shuffle).
+	tactic := Tactic{N: 3, M: 3, AZCount: 1, PutQuorum: 5, MinShardSize: 1 << 10}
+	modeA := ExtendCodeMode{CodeMode: 244, Name: "EC3P3CAS_A", Tactic: tactic}
+	modeB := ExtendCodeMode{CodeMode: 245, Name: "EC3P3CAS_B", Tactic: tactic}
+
+	const n = 32
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		i := i
+		go func() {
+			defer wg.Done()
+			if i%2 == 0 {
+				Extend(modeA)
+				return
+			}
+			Extend(modeB)
+		}()
+	}
+	wg.Wait()
+
+	require.True(t, modeA.CodeMode.IsValid())
+	require.True(t, modeB.CodeMode.IsValid())
+	require.Equal(t, modeA.Name, modeA.CodeMode.Name())
+	require.Equal(t, modeB.Name, modeB.CodeMode.Name())
 }
 
 func TestAdaptShardSizeIsValid(t *testing.T) {

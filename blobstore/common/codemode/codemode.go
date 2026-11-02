@@ -16,6 +16,7 @@ package codemode
 
 import (
 	"fmt"
+	"sync/atomic"
 )
 
 type (
@@ -226,6 +227,8 @@ type Tactic struct {
 }
 
 func init() {
+	extendSnap.Store(newExtendTable())
+
 	// assert all codemode
 	for _, pair := range []struct {
 		Mode CodeMode
@@ -272,6 +275,9 @@ func (c CodeMode) Tactic() Tactic {
 	if tactic, ok := constCodeModeTactic[c]; ok {
 		return tactic
 	}
+	if tactic, ok := loadExtend().tactic[c]; ok {
+		return tactic
+	}
 	panic(fmt.Sprintf("Invalid codemode:%d", c))
 }
 
@@ -286,6 +292,9 @@ func (c CodeMode) Name() CodeModeName {
 	if name, ok := constCodeMode2Name[c]; ok {
 		return name
 	}
+	if name, ok := loadExtend().code2name[c]; ok {
+		return name
+	}
 	panic(fmt.Sprintf("codemode: %d is invalid", c))
 }
 
@@ -294,12 +303,18 @@ func (c CodeMode) String() string {
 	if name, ok := constCodeMode2Name[c]; ok {
 		return string(name)
 	}
+	if name, ok := loadExtend().code2name[c]; ok {
+		return string(name)
+	}
 	return ""
 }
 
 // IsValid check the CodeMode is valid
 func (c CodeMode) IsValid() bool {
-	_, ok := constCodeMode2Name[c]
+	if _, ok := constCodeMode2Name[c]; ok {
+		return true
+	}
+	_, ok := loadExtend().code2name[c]
 	return ok
 }
 
@@ -308,12 +323,18 @@ func (cn CodeModeName) GetCodeMode() CodeMode {
 	if code, ok := constName2CodeMode[cn]; ok {
 		return code
 	}
+	if code, ok := loadExtend().name2code[cn]; ok {
+		return code
+	}
 	panic(fmt.Sprintf("codemode: %s is invalid", cn))
 }
 
 // IsValid check the CodeMode is valid by Name
 func (cn CodeModeName) IsValid() bool {
-	_, ok := constName2CodeMode[cn]
+	if _, ok := constName2CodeMode[cn]; ok {
+		return true
+	}
+	_, ok := loadExtend().name2code[cn]
 	return ok
 }
 
@@ -427,11 +448,55 @@ func GetECCodeModes() []CodeMode {
 
 // GetAllCodeModes get all the available CodeModes
 func GetAllCodeModes() []CodeMode {
-	modes := make([]CodeMode, 0, len(constCodeModeTactic))
+	ext := loadExtend()
+	modes := make([]CodeMode, 0, len(constCodeModeTactic)+len(ext.tactic))
 	for mode := range constCodeModeTactic {
 		modes = append(modes, mode)
 	}
+	for mode := range ext.tactic {
+		modes = append(modes, mode)
+	}
 	return modes
+}
+
+// extendTable holds only extend-range modes (code >= extendStart). Builtin modes stay in const maps.
+type extendTable struct {
+	tactic    map[CodeMode]Tactic
+	code2name map[CodeMode]CodeModeName
+	name2code map[CodeModeName]CodeMode
+}
+
+var extendSnap atomic.Value // *extendTable
+
+func loadExtend() *extendTable {
+	return extendSnap.Load().(*extendTable)
+}
+
+func newExtendTable() *extendTable {
+	return &extendTable{
+		tactic:    make(map[CodeMode]Tactic),
+		code2name: make(map[CodeMode]CodeModeName),
+		name2code: make(map[CodeModeName]CodeMode),
+	}
+}
+
+func (t *extendTable) clone() *extendTable {
+	n := len(t.tactic)
+	next := &extendTable{
+		tactic:    make(map[CodeMode]Tactic, n),
+		code2name: make(map[CodeMode]CodeModeName, n),
+		name2code: make(map[CodeModeName]CodeMode, n),
+	}
+	for k, v := range t.tactic {
+		next.tactic[k] = v
+	}
+	for k, v := range t.code2name {
+		next.code2name[k] = v
+	}
+	for k, v := range t.name2code {
+		next.name2code[k] = v
+	}
+	return next
 }
 
 const extendStart CodeMode = (256 - 16)
@@ -445,8 +510,27 @@ type ExtendCodeMode struct {
 	Tactic
 }
 
-// Extend adds extend codemodes.
+// Extend adds extend-range modes on a cloned snapshot. Invalid or conflicting config panics.
+// Concurrent writers retry CAS so disjoint merges are not lost. A merge that
+// registers nothing new (empty or already-registered modes) skips the swap.
 func Extend(modes ...ExtendCodeMode) {
+	for {
+		old := loadExtend()
+		draft := old.clone()
+		if !draft.applyExtend(modes) {
+			return
+		}
+		if extendSnap.CompareAndSwap(old, draft) {
+			return
+		}
+	}
+}
+
+// applyExtend merges modes into the table and reports whether any new mode
+// was registered. Re-registering an identical mode is a no-op; conflicting
+// definitions panic.
+func (t *extendTable) applyExtend(modes []ExtendCodeMode) bool {
+	changed := false
 	for _, mode := range modes {
 		code := mode.CodeMode
 		tactic := mode.Tactic
@@ -459,11 +543,11 @@ func Extend(modes ...ExtendCodeMode) {
 		if tactic.PutQuorum < tactic.N {
 			panic(fmt.Sprintf("codemode:%d too small put quorum", code))
 		}
-		if oldtactic, exist := constCodeModeTactic[code]; exist {
+		if oldtactic, exist := t.tactic[code]; exist {
 			if oldtactic != tactic {
 				panic(fmt.Sprintf("codemode:%d code conflicted", code))
 			}
-			if oldname := constCodeMode2Name[code]; oldname != mode.Name {
+			if oldname := t.code2name[code]; oldname != mode.Name {
 				panic(fmt.Sprintf("codemode:%d name mismatch", code))
 			}
 			continue
@@ -471,9 +555,14 @@ func Extend(modes ...ExtendCodeMode) {
 		if _, exist := constName2CodeMode[mode.Name]; exist {
 			panic(fmt.Sprintf("codemode:%d name conflicted %s", code, mode.Name))
 		}
+		if _, exist := t.name2code[mode.Name]; exist {
+			panic(fmt.Sprintf("codemode:%d name conflicted %s", code, mode.Name))
+		}
 
-		constCodeModeTactic[code] = tactic
-		constCodeMode2Name[code] = mode.Name
-		constName2CodeMode[mode.Name] = code
+		t.tactic[code] = tactic
+		t.code2name[code] = mode.Name
+		t.name2code[mode.Name] = code
+		changed = true
 	}
+	return changed
 }

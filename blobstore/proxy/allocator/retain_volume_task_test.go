@@ -51,7 +51,6 @@ func TestRetain(t *testing.T) {
 
 	v := volumeMgr{
 		clusterMgr: cmcli,
-		modeInfos:  modeInfoMap,
 		BlobConfig: BlobConfig{
 			BidAllocNums: 100000,
 		},
@@ -64,6 +63,9 @@ func TestRetain(t *testing.T) {
 			RetainBatchIntervalS: 1,
 			RetainVolumeBatchNum: 400,
 		},
+	}
+	for mode, info := range modeInfoMap {
+		v.setModeInfo(mode, info)
 	}
 
 	v.retainAll(ctx)
@@ -136,7 +138,6 @@ func MockModeInfoMap() (modeMap map[codemode.CodeMode]*modeInfo) {
 func TestRetainVolumes(t *testing.T) {
 	ctx := context.Background()
 	vm := volumeMgr{}
-	vm.modeInfos = make(map[codemode.CodeMode]*modeInfo)
 
 	modeInfo := &modeInfo{
 		current:        &volumes{totalFree: 2 * 16 * 1024 * 1024 * 1024},
@@ -160,7 +161,7 @@ func TestRetainVolumes(t *testing.T) {
 		}, false)
 	}
 
-	vm.modeInfos[codemode.CodeMode(2)] = modeInfo
+	vm.setModeInfo(codemode.CodeMode(2), modeInfo)
 	tokens := vm.genRetainVolume(ctx, false)
 	expectedTokens := []string{"token", "token"}
 	require.Equal(t, expectedTokens, tokens)
@@ -171,7 +172,7 @@ func TestCheckAndReplenishAfterRetainDiscardsAll(t *testing.T) {
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 
 	const defaultAllocVolsNum = 4
-	allocCh := make(chan *allocArgs, 1)
+	allocCh := make(chan allocArgs, 1)
 	info := &modeInfo{
 		current: &volumes{},
 		backup:  &volumes{},
@@ -201,9 +202,8 @@ func TestCheckAndReplenishAfterRetainDiscardsAll(t *testing.T) {
 			RetainVolumeBatchNum: 400,
 			RetainBatchIntervalS: 1,
 		},
-		modeInfos: map[codemode.CodeMode]*modeInfo{codemode.EC6P6: info},
-		allocChs:  map[codemode.CodeMode]chan *allocArgs{codemode.EC6P6: allocCh},
 	}
+	v.modes.Store(codemode.EC6P6, &modeSlot{info: info, ch: allocCh})
 
 	// retainAll → RetainVolume mock discards first 8 tokens, so all 4 volumes are dropped.
 	v.retainAll(ctx)

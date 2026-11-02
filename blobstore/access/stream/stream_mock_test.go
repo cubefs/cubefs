@@ -419,6 +419,7 @@ func initMockData() {
 	c := NewMockClusterController(ctr)
 	c.EXPECT().Region().AnyTimes().Return("test-region")
 	c.EXPECT().MaxPolicySize().AnyTimes().Return(defaultMaxObjectSize)
+	c.EXPECT().EnsureEncoder(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
 	c.EXPECT().ChooseOne(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
 		func(_ int64, mode codemode.CodeMode, assignClusterID proto.ClusterID) (proto.ClusterID, codemode.CodeMode, error) {
 			if assignClusterID == 2 {

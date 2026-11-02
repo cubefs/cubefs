@@ -52,8 +52,7 @@ func TestRetain(t *testing.T) {
 	tp := NewMockAllocTransport(t)
 
 	v := volmgr{
-		tp:        tp,
-		modeInfos: modeInfoMap,
+		tp: tp,
 		BlobConfig: BlobConfig{
 			BidAllocNums: 100000,
 		},
@@ -64,6 +63,9 @@ func TestRetain(t *testing.T) {
 			RetainBatchIntervalS: 1,
 			RetainVolumeBatchNum: 400,
 		},
+	}
+	for mode, info := range modeInfoMap {
+		v.setModeInfo(mode, info)
 	}
 
 	v.retainAll(ctx)
@@ -136,7 +138,6 @@ func MockModeInfoMap() (modeMap map[codemode.CodeMode]*modeInfo) {
 func TestRetainVolumes(t *testing.T) {
 	ctx := context.Background()
 	vm := volmgr{}
-	vm.modeInfos = make(map[codemode.CodeMode]*modeInfo)
 
 	modeInfo := &modeInfo{
 		current:        &volumes{totalFree: 2 * 16 * 1024 * 1024 * 1024},
@@ -160,7 +161,7 @@ func TestRetainVolumes(t *testing.T) {
 		}, false)
 	}
 
-	vm.modeInfos[codemode.CodeMode(2)] = modeInfo
+	vm.setModeInfo(codemode.CodeMode(2), modeInfo)
 	tokens := vm.genRetainVolume(ctx, false)
 	expectedTokens := []string{"token", "token"}
 	require.Equal(t, expectedTokens, tokens)

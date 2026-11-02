@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
@@ -94,7 +95,8 @@ func (v *volumeMgr) retain(ctx context.Context, isBackup bool) {
 // Determining whether a volume is full or not by heartbeat reduces the time of the allocation process.
 func (v *volumeMgr) handleFullVols(ctx context.Context, isBackup bool) {
 	span := trace.SpanFromContextSafe(ctx)
-	for codeMode, info := range v.modeInfos {
+	v.rangeSlots(func(codeMode codemode.CodeMode, slot *modeSlot) bool {
+		info := slot.info
 		fullVols := make([]proto.Vid, 0)
 		vols := info.List(isBackup)
 		for _, vol := range vols {
@@ -112,7 +114,8 @@ func (v *volumeMgr) handleFullVols(ctx context.Context, isBackup bool) {
 				span.Infof("volume is full, vid: %v,codeMode: %v", vid, codeMode)
 			}
 		}
-	}
+		return true
+	})
 }
 
 // remove retain failed volume and update success expire time
@@ -160,14 +163,19 @@ func (v *volumeMgr) discardVolume(ctx context.Context, token string) (err error)
 		return
 	}
 	span.Infof("retain failed vid: %v", vid)
-	for _, info := range v.modeInfos {
+	discarded := v.rangeSlots(func(_ codemode.CodeMode, slot *modeSlot) bool {
+		info := slot.info
 		if vol, ok := info.GetAny(vid); ok {
 			vol.mu.Lock()
 			vol.deleted = true
 			vol.mu.Unlock()
 			info.Delete(vid)
-			return
+			return false
 		}
+		return true
+	})
+	if discarded {
+		return
 	}
 	return errors.New("discardVolume, vid not in cache")
 }
@@ -177,13 +185,13 @@ func (v *volumeMgr) genRetainVolume(ctx context.Context, isBackup bool) (tokens 
 	span := trace.SpanFromContextSafe(ctx)
 	tokens = make([]string, 0, 128)
 	vids := make([]proto.Vid, 0, 128)
-	for _, info := range v.modeInfos {
-		vols := info.List(isBackup)
-		for _, vol := range vols {
+	v.rangeSlots(func(_ codemode.CodeMode, slot *modeSlot) bool {
+		for _, vol := range slot.info.List(isBackup) {
 			vids = append(vids, vol.Vid)
 			tokens = append(tokens, vol.Token)
 		}
-	}
+		return true
+	})
 	if len(vids) > 0 {
 		span.Debugf("will retain volumes: %v, num of volumes: %v", vids, len(vids))
 	}
@@ -191,11 +199,15 @@ func (v *volumeMgr) genRetainVolume(ctx context.Context, isBackup bool) (tokens 
 }
 
 func (v *volumeMgr) updateExpireTime(vid proto.Vid, expireTime int64) (err error) {
-	for _, modeInfo := range v.modeInfos {
-		if vol, ok := modeInfo.GetAny(vid); ok {
+	found := v.rangeSlots(func(_ codemode.CodeMode, slot *modeSlot) bool {
+		if vol, ok := slot.info.GetAny(vid); ok {
 			vol.ExpireTime = expireTime
-			return nil
+			return false
 		}
+		return true
+	})
+	if found {
+		return nil
 	}
 	return errors.New("vid does not exist ")
 }
@@ -217,11 +229,13 @@ func (v *volumeMgr) retainVolumeFromCm(ctx context.Context, tokens []string) {
 // checkAndReplenish inspects the volume cache for every code mode after a retain cycle.
 func (v *volumeMgr) checkAndReplenish(ctx context.Context) {
 	span := trace.SpanFromContextSafe(ctx)
-	for mode, info := range v.modeInfos {
+	v.rangeSlots(func(mode codemode.CodeMode, slot *modeSlot) bool {
 		modeCfg := v.getCodeModeConfig(mode)
+		info := slot.info
 		if info.current.Len()+info.backup.Len() == 0 {
 			span.Warnf("codeMode %s: current and backup both empty after retain, triggering replenish", mode.String())
 			v.allocNotify(ctx, mode, modeCfg.DefaultAllocVolsNum, false)
 		}
-	}
+		return true
+	})
 }

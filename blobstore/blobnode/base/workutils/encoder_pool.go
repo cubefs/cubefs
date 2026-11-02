@@ -15,6 +15,8 @@
 package workutils
 
 import (
+	"context"
+	"fmt"
 	"sync"
 
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
@@ -33,13 +35,39 @@ func init() {
 	encoderPool = &EncoderPool{encoders: make(map[codemode.CodeMode]ec.Encoder)}
 }
 
-func GetEncoder(mode codemode.CodeMode) (ec.Encoder, error) {
+// ExtendReloader syncs extend codemodes from clustermgr when a mode is missing locally.
+type ExtendReloader func(ctx context.Context, mode codemode.CodeMode) error
+
+var extendReloader ExtendReloader
+
+// SetExtendReloader registers passive codemode extend reload (typically from blobnode startup).
+func SetExtendReloader(fn ExtendReloader) {
+	extendReloader = fn
+}
+
+// EnsureCodeMode ensures the extend codemode is registered locally, reloading
+// extend codemodes from clustermgr through the registered reloader if missing.
+func EnsureCodeMode(ctx context.Context, mode codemode.CodeMode) error {
+	if mode.IsValid() {
+		return nil
+	}
+	if extendReloader == nil {
+		return fmt.Errorf("codemode %d invalid and no reloader registered", mode)
+	}
+	return extendReloader(ctx, mode)
+}
+
+func GetEncoder(ctx context.Context, mode codemode.CodeMode) (ec.Encoder, error) {
 	encoderPool.mu.RLock()
 	if encoder, ok := encoderPool.encoders[mode]; ok {
 		encoderPool.mu.RUnlock()
 		return encoder, nil
 	}
 	encoderPool.mu.RUnlock()
+
+	if err := EnsureCodeMode(ctx, mode); err != nil {
+		return nil, err
+	}
 
 	encoder, err := ec.NewEncoder(ec.Config{
 		CodeMode:     mode.Tactic(),

@@ -187,6 +187,12 @@ func (s *WorkerService) ShardRepair(c *rpc.Context) {
 	}
 	defer s.shardRepairLimit.Release()
 
+	if err := base.EnsureCodeMode(ctx, args.CodeMode); err != nil {
+		span.Errorf("ensure codemode failed: bid[%d], mode[%d], err[%v]", args.Bid, args.CodeMode, err)
+		c.RespondError(errcode.ErrIllegalTask)
+		return
+	}
+
 	err = s.shardRepairer.RepairShard(ctx, args)
 	c.RespondError(err)
 }
@@ -276,6 +282,11 @@ func (s *WorkerService) acquireInspectTask() {
 		return
 	}
 
+	if err := base.EnsureCodeMode(ctx, t.Mode); err != nil {
+		span.Errorf("ensure inspect task codemode failed: taskID[%s], mode[%d], err[%v]", t.TaskID, t.Mode, err)
+		return
+	}
+
 	if !t.IsValid() {
 		span.Errorf("inspect task is illegal: task[%+v]", t)
 		return
@@ -295,6 +306,11 @@ func (s *WorkerService) addBlobNodeTask(ctx context.Context, t *proto.Task) {
 	task := &proto.MigrateTask{}
 	if err := task.Unmarshal(t.Data); err != nil {
 		span.Errorf("task decode failed: task type[%s], task[%+v]", t.TaskType, t)
+		return
+	}
+
+	if err := base.EnsureCodeMode(ctx, task.CodeMode); err != nil {
+		span.Errorf("ensure task codemode failed: taskID[%s], mode[%d], err[%v]", task.TaskID, task.CodeMode, err)
 		return
 	}
 
