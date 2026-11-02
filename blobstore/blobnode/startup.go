@@ -19,7 +19,6 @@ import (
 	"net/http"
 	"os"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
@@ -333,18 +332,73 @@ func (s *Service) handleStartDiskError(ctx context.Context, allUniqDiskPathMap m
 	}
 }
 
+// registerBrokenDisk registers an unmounted disk that has no CM record as Broken.
+// It allocates a DiskID, calls AddDisk, and then set Broken status.
+func (s *Service) registerBrokenDisk(ctx context.Context, diskConf *core.Config) {
+	span := trace.SpanFromContextSafe(ctx)
+	now := time.Now()
+	diskID, err := s.ClusterMgrClient.AllocDiskID(ctx)
+	if err != nil {
+		span.Errorf("alloc disk id failed for %s: %v", diskConf.Path, err)
+		return
+	}
+
+	// add disk get new diskID
+	hostInfo := diskConf.HostInfo
+	info := &cmapi.BlobNodeDiskInfo{
+		DiskInfo: cmapi.DiskInfo{
+			ClusterID:    hostInfo.ClusterID,
+			Idc:          hostInfo.IDC,
+			Rack:         hostInfo.Rack,
+			Host:         hostInfo.Host,
+			Path:         diskConf.Path,
+			Status:       proto.DiskStatusNormal, // Normal status
+			NodeID:       s.Conf.NodeID,
+			CreateAt:     now,
+			LastUpdateAt: now,
+		},
+	}
+	info.DiskID = diskID
+	if err = s.ClusterMgrClient.AddDisk(ctx, info); err != nil {
+		span.Errorf("register broken disk %s failed: %v", diskConf.Path, err)
+		return
+	}
+
+	span.Infof("add disk[%d:%s] success", diskID, diskConf.Path)
+
+	// set the newly added disk to Broken
+	if err = s.ClusterMgrClient.SetDisk(ctx, diskID, proto.DiskStatusBroken); err != nil &&
+		rpc.DetectStatusCode(err) != bloberr.CodeChangeDiskStatusNotAllow {
+		span.Errorf("set disk[%d:%s] broken to cm failed: %v", diskID, diskConf.Path, err)
+		return
+	}
+
+	span.Infof("set disk[%d:%s] broken status success", diskID, diskConf.Path)
+	span.Warnf("register broken [%d:%s] success", diskID, diskConf.Path)
+}
+
 func (s *Service) registerNode(ctx context.Context, conf *Config) error {
 	span := trace.SpanFromContextSafe(ctx)
 	if err := core.CheckNodeConf(&conf.HostInfo); err != nil {
 		return err
 	}
 
-	// diskNodeID: 1. is zero: a.new node; b. old version upgrade; c. all borken disks;
+	// diskNodeID:
+	// 1. is zero: a.new node; b. old version upgrade; c. all borken disks;
 	// 2. not zero: v1.5.2 node restart(change IP or not change)
-	localNodeID, err := getNodeID(ctx, conf)
+	localNodeID, hasUsableDisk, err := getNodeID(ctx, conf)
 	if err != nil {
 		return err
 	}
+
+	// refuse to start if no valid NodeID and no usable disk (e.g., IP migration without disks mounted)
+	if localNodeID == 0 && !hasUsableDisk {
+		return errors.New("no usable disk, refuse to start blobnode")
+	}
+	// Note: when localNodeID==0 and hasUsableDisk, we cannot distinguish an
+	// IP-migration scenario when old disks are all unmounted while new disks
+	// happen to be added meanwhile.  This is an extreme corner case and basically
+	// never operated that way.
 
 	nodeToCm := cmapi.BlobNodeInfo{
 		NodeInfo: cmapi.NodeInfo{
@@ -426,15 +480,18 @@ func readFormatInfo(ctx context.Context, diskRootPath string, nodeID proto.NodeI
 	return formatInfo, err
 }
 
-func getNodeID(ctx context.Context, conf *Config) (proto.NodeID, error) {
+func getNodeID(ctx context.Context, conf *Config) (nodeID proto.NodeID, hasUsableDisk bool, err error) {
 	span := trace.SpanFromContextSafe(ctx)
-	nodeID := proto.NodeID(0)
 
 	// If a broken disk is detected during boot:
 	//   1. If the IP address hasn't been changed, we can query historical bad disk records in cm;
 	//   2. If the IP address has been changed, we can not query it in cm.
 	for _, diskConf := range conf.Disks {
-		// bad disk
+		// use global DiskConfig before fixDiskConf
+		if conf.DiskConfig.MustMountPoint && !myos.IsMountPoint(diskConf.Path) {
+			// disk has not been mounted
+			continue
+		}
 		_, err := os.ReadDir(diskConf.Path)
 		if err != nil {
 			span.Warnf("read disk[%s] root path error:%+v", diskConf.Path, err)
@@ -443,18 +500,30 @@ func getNodeID(ctx context.Context, conf *Config) (proto.NodeID, error) {
 
 		formatInfo, err := core.ReadFormatInfo(ctx, diskConf.Path)
 		if err != nil {
-			// new disk; format.info v1 upgrade to v2; bad disk; or other error
-			span.Warnf("Failed read disk[%s] format info, err:%+v", diskConf.Path, err)
+			if os.IsNotExist(err) {
+				// mounted but not formatted: new disk, legal new-machine scenario
+				span.Warnf("disk[%s] format does not exist, as new disk", diskConf.Path)
+				hasUsableDisk = true
+			} else if err == core.ErrFormatV2CrcIsEmpty {
+				// v1 format disk, will be upgraded to v2 in per-disk init
+				span.Warnf("disk[%s] is v1 format, will upgrade to v2", diskConf.Path)
+				hasUsableDisk = true
+			} else {
+				// format.info read error (EIO/corruption): not a usable disk
+				span.Warnf("Failed read disk[%s] format info, err:%+v", diskConf.Path, err)
+			}
 			continue
 		}
 
+		// format.info read successfully: disk is usable
+		hasUsableDisk = true
 		if formatInfo.NodeID != 0 && nodeID != 0 && nodeID != formatInfo.NodeID {
-			return 0, errors.Newf("disk[%s] node id not match", diskConf.Path)
+			return 0, hasUsableDisk, errors.Newf("disk[%s] node id not match", diskConf.Path)
 		}
 		nodeID = formatInfo.NodeID
 	}
 
-	return nodeID, nil
+	return nodeID, hasUsableDisk, nil
 }
 
 func isAllInConfig(ctx context.Context, registeredDisks []*cmapi.BlobNodeDiskInfo, conf *Config) bool {
@@ -569,7 +638,6 @@ func startBlobnodeService(ctx context.Context, svr *Service, conf Config) (err e
 	}
 
 	wg := sync.WaitGroup{}
-	lostCnt := int32(0)
 
 	foundDiskIDInCluster := make(map[proto.DiskID]*cmapi.BlobNodeDiskInfo)
 	foundDiskPathInCluster := make(map[string]*cmapi.BlobNodeDiskInfo)
@@ -582,6 +650,28 @@ func startBlobnodeService(ctx context.Context, svr *Service, conf Config) (err e
 		}
 	}
 
+	// Fast pre-scan lost disks before any CM-related operations:
+	// count lost disks and check threshold to prevent spurious broken-disk registration
+	// when the entire machine has mount failures (e.g., fstab not applied after reboot)
+	preScanLostCnt := 0
+	for i := range conf.Disks {
+		path := conf.Disks[i].Path
+		// use global DiskConfig before fixDiskConf
+		// Path is a real valid mountpoint
+		if !conf.DiskConfig.MustMountPoint || myos.IsMountPoint(path) {
+			continue
+		}
+		// Count unmounted disks: both new-added disks and Normal disks in CM.
+		// If the total reaches LostDiskCount, refuse to start up blobnode service.
+		if info, exist := foundDiskPathInCluster[path]; !exist || info.Status == proto.DiskStatusNormal {
+			preScanLostCnt++
+			span.Warnf("pre-scan: detect disk[%s] not mounted", path)
+		}
+	}
+	if preScanLostCnt >= LostDiskCount {
+		log.Fatalf("lost disk count:%d over threshold:%d", preScanLostCnt, LostDiskCount)
+	}
+
 	for _, diskConf := range conf.Disks {
 		wg.Add(1)
 
@@ -592,22 +682,20 @@ func startBlobnodeService(ctx context.Context, svr *Service, conf Config) (err e
 			svr.fixDiskConf(&diskConf)
 
 			if diskConf.MustMountPoint && !myos.IsMountPoint(diskConf.Path) {
-				span.Errorf("Path is not mount point:%s. skip init", diskConf.Path)
 				lostDisk, exist := foundDiskPathInCluster[diskConf.Path]
 
-				if !exist || lostDisk.Status == proto.DiskStatusNormal {
-					// report when not exist in cm or not set broken; and  will clean metric when it's repaired/register
-					lost := atomic.AddInt32(&lostCnt, 1)
+				if !exist {
+					// disk has no CM record: register this as Broken one
+					svr.registerBrokenDisk(ctx, &diskConf)
+				} else if lostDisk.Status == proto.DiskStatusNormal {
+					// disk is Normal in CM but not mounted: report lost disk metric
 					svr.reportLostDisk(&diskConf.HostInfo, diskConf.Path)
-					if lost >= LostDiskCount {
-						log.Fatalf("lost disk count:%d over threshold:%d", lost, LostDiskCount)
-					}
 				} else {
-					// if already set broken to cm, clean metric
+					// already set Broken in CM, clean metric
 					svr.reportOnlineDisk(&diskConf.HostInfo, diskConf.Path)
 				}
 
-				return // skip
+				return
 			}
 
 			// read disk meta. get DiskID
