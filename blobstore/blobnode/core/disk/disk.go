@@ -34,6 +34,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/blobnode/core/chunk"
 	myos "github.com/cubefs/cubefs/blobstore/blobnode/sys"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
+	"github.com/cubefs/cubefs/blobstore/common/kvstat"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
@@ -399,6 +400,11 @@ func (ds *DiskStorage) GetMetaPath() (path string) {
 }
 
 // InspectState exposes this disk's inspect progress store.
+
+func (ds *DiskStorage) DBStats(ctx context.Context) (kvstat.Stats, error) {
+	return ds.SuperBlock.DBStats(ctx)
+}
+
 func (ds *DiskStorage) InspectState() core.InspectStateStore {
 	return ds.inspectStore
 }

@@ -30,6 +30,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/blobnode/core/storage"
 	"github.com/cubefs/cubefs/blobstore/blobnode/db"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
+	"github.com/cubefs/cubefs/blobstore/common/kvstat"
 	rdb "github.com/cubefs/cubefs/blobstore/common/kvstore"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -424,6 +425,10 @@ func (s *SuperBlock) DeleteChunk(ctx context.Context, id clustermgr.ChunkID) (er
 
 func (s *SuperBlock) SetHandlerIOError(handleIOError func(err error)) {
 	s.db.SetHandleIOError(handleIOError)
+}
+
+func (s *SuperBlock) DBStats(ctx context.Context) (kvstat.Stats, error) {
+	return s.db.DBStats(ctx)
 }
 
 func (s *SuperBlock) Close(ctx context.Context) error {

@@ -77,4 +77,62 @@ func (ds *DiskStorage) metricReport(ctx context.Context) {
 			"item":       item,
 		}).Set(value)
 	}
+	ds.reportMetaStat(ctx)
+}
+
+// DiskMetaStatMetric exports per-disk meta engine stats.
+var (
+	DiskMetaStatMetric = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: "blobstore",
+			Subsystem: "blobnode",
+			Name:      "meta_stat",
+			Help:      "blobnode disk meta engine stat",
+		},
+		[]string{"cluster_id", "idc", "rack", "host", "disk_id", "item"},
+	)
+)
+
+func init() {
+	prometheus.MustRegister(DiskMetaStatMetric)
+}
+
+// DeleteDiskMetaStatLabels removes all meta stat series of a disk (matched
+// by cluster_id + disk_id). Called when the disk is dropped/replaced or when a
+// collection round fails.
+func DeleteDiskMetaStatLabels(clusterID, diskID string) {
+	DiskMetaStatMetric.DeletePartialMatch(prometheus.Labels{
+		"cluster_id": clusterID,
+		"disk_id":    diskID,
+	})
+}
+
+func (ds *DiskStorage) reportMetaStat(ctx context.Context) {
+	span := trace.SpanFromContextSafe(ctx)
+
+	stats, err := ds.DBStats(ctx)
+	if err != nil {
+		span.Debugf("diskID:%v meta stat failed: %v", ds.DiskID, err)
+		DeleteDiskMetaStatLabels(ds.Conf.ClusterID.ToString(), ds.DiskID.ToString())
+		DiskMetaStatMetric.With(prometheus.Labels{
+			"cluster_id": ds.Conf.ClusterID.ToString(),
+			"idc":        ds.Conf.IDC,
+			"rack":       ds.Conf.Rack,
+			"host":       ds.Conf.Host,
+			"disk_id":    ds.DiskID.ToString(),
+			"item":       "stats_success",
+		}).Set(0)
+		return
+	}
+
+	clusterID := ds.Conf.ClusterID.ToString()
+	idc := ds.Conf.IDC
+	rack := ds.Conf.Rack
+	host := ds.Conf.Host
+	diskID := ds.DiskID.ToString()
+
+	stats.RangeTagValue(func(tag string, value uint64) {
+		DiskMetaStatMetric.WithLabelValues(clusterID, idc, rack, host, diskID, tag).Set(float64(value))
+	})
+	DiskMetaStatMetric.WithLabelValues(clusterID, idc, rack, host, diskID, "stats_success").Set(1)
 }

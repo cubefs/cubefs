@@ -13,6 +13,7 @@ import (
 	clustermgr "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	qos "github.com/cubefs/cubefs/blobstore/blobnode/base/qos"
 	core "github.com/cubefs/cubefs/blobstore/blobnode/core"
+	"github.com/cubefs/cubefs/blobstore/common/kvstat"
 	proto "github.com/cubefs/cubefs/blobstore/common/proto"
 	gomock "github.com/golang/mock/gomock"
 )
@@ -289,6 +290,21 @@ func (m *MockDiskAPI) PrepareClose(arg0 context.Context) {
 func (mr *MockDiskAPIMockRecorder) PrepareClose(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PrepareClose", reflect.TypeOf((*MockDiskAPI)(nil).PrepareClose), arg0)
+}
+
+// DBStats mocks base method.
+func (m *MockDiskAPI) DBStats(arg0 context.Context) (kvstat.Stats, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DBStats", arg0)
+	ret0, _ := ret[0].(kvstat.Stats)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DBStats indicates an expected call of DBStats.
+func (mr *MockDiskAPIMockRecorder) DBStats(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DBStats", reflect.TypeOf((*MockDiskAPI)(nil).DBStats), arg0)
 }
 
 // InspectState returns the mock itself as InspectStateStore so existing

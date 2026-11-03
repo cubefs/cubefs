@@ -27,6 +27,7 @@ import (
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
+	"github.com/cubefs/cubefs/blobstore/common/kvstat"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -210,6 +211,62 @@ func (s *Service) DebugStat(c *rpc.Context) {
 	ret := make(map[string]interface{})
 	ret["chunks"] = chunks
 	c.RespondJSON(ret)
+}
+
+// MetaStat returns RocksDB engine-level statistics for one disk,
+// or all disk stats when diskid=0. The response is always a map keyed by disk id.
+// 'localhost:${port}/debug/meta/stat/diskid/1'
+// 'localhost:${port}/debug/meta/stat/diskid/0'
+func (s *Service) MetaStat(c *rpc.Context) {
+	ctx := c.Request.Context()
+	span := trace.SpanFromContextSafe(ctx)
+
+	args := new(bnapi.DiskStatArgs)
+	if err := c.ParseArgs(args); err != nil {
+		c.RespondError(err)
+		return
+	}
+
+	span.Debugf("debug meta stats disk_id: %v", args.DiskID)
+
+	if args.DiskID == 0 {
+		// return all disks
+		disks := s.copyDiskStorages(ctx)
+		ret := make(map[proto.DiskID]kvstat.Stats, len(disks))
+		for _, ds := range disks {
+			stats, err := ds.DBStats(ctx)
+			if err != nil {
+				c.RespondError(err)
+				return
+			}
+			ret[ds.ID()] = stats
+		}
+		c.RespondJSON(ret)
+		return
+	}
+	if !bnapi.IsValidDiskID(args.DiskID) {
+		c.RespondError(bloberr.ErrInvalidDiskId)
+		return
+	}
+
+	s.lock.RLock()
+	ds, exist := s.Disks[args.DiskID]
+	s.lock.RUnlock()
+	if !exist {
+		c.RespondError(bloberr.ErrNoSuchDisk)
+		return
+	}
+	if ds.IsClosing() {
+		c.RespondError(bloberr.ErrNoSuchDisk)
+		return
+	}
+
+	stats, err := ds.DBStats(ctx)
+	if err != nil {
+		c.RespondError(err)
+		return
+	}
+	c.RespondJSON(map[proto.DiskID]kvstat.Stats{args.DiskID: stats})
 }
 
 /*

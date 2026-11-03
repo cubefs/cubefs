@@ -22,7 +22,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	apierrors "github.com/cubefs/cubefs/blobstore/common/errors"
+	"github.com/cubefs/cubefs/blobstore/common/kvstat"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
 
 var (
@@ -90,6 +93,25 @@ var (
 		},
 		[]string{"region", "cluster", "item", "value"},
 	)
+
+	metaStatMetric = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: "blobstore",
+			Subsystem: "clusterMgr",
+			Name:      "meta_stat",
+			Help:      "clustermgr meta engine stat",
+		},
+		[]string{"region", "cluster", "db_name", "item"},
+	)
+	metaCFStatMetric = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: "blobstore",
+			Subsystem: "clusterMgr",
+			Name:      "meta_cf_stat",
+			Help:      "clustermgr meta column family stat",
+		},
+		[]string{"region", "cluster", "db_name", "cf", "item"},
+	)
 )
 
 func init() {
@@ -99,6 +121,8 @@ func init() {
 	prometheus.MustRegister(brokenChunkNumInVolumeMetric)
 	prometheus.MustRegister(brokenShardUnitNumInShardMetric)
 	prometheus.MustRegister(dashboardMetric)
+	prometheus.MustRegister(metaStatMetric)
+	prometheus.MustRegister(metaCFStatMetric)
 }
 
 func (s *Service) report(_ context.Context) {
@@ -194,4 +218,77 @@ func (s *Service) reportBrokenUnitNumInShard(shardIDs map[proto.ShardID]int) {
 	for shardID, num := range shardIDs {
 		brokenShardUnitNumInShardMetric.WithLabelValues(s.Region, s.ClusterID.ToString(), shardID.ToString()).Set(float64(num))
 	}
+}
+
+func (s *Service) reportMetaStat(ctx context.Context) {
+	span := trace.SpanFromContextSafe(ctx)
+
+	metaStatMetric.Reset()
+	metaCFStatMetric.Reset()
+
+	dbNames := make([]string, 0, len(s.dbs)+1)
+	for name := range s.dbs {
+		dbNames = append(dbNames, name)
+	}
+	dbNames = append(dbNames, "raft")
+	for _, dbName := range dbNames {
+		db, err := s.resolveDBForMetric(dbName)
+		if err != nil {
+			span.Debugf("resolve db %s failed: %v", dbName, err)
+			metaStatMetric.With(prometheus.Labels{
+				"region":  s.Region,
+				"cluster": s.ClusterID.ToString(),
+				"db_name": dbName,
+				"item":    "stats_success",
+			}).Set(0)
+			continue
+		}
+
+		stats, err := db.Stats()
+		if err != nil {
+			span.Debugf("db %s stats failed: %v", dbName, err)
+			metaStatMetric.With(prometheus.Labels{
+				"region":  s.Region,
+				"cluster": s.ClusterID.ToString(),
+				"db_name": dbName,
+				"item":    "stats_success",
+			}).Set(0)
+			continue
+		}
+
+		region := s.Region
+		cluster := s.ClusterID.ToString()
+
+		stats.RangeTagValue(func(tag string, value uint64) {
+			metaStatMetric.WithLabelValues(region, cluster, dbName, tag).Set(float64(value))
+		})
+		metaStatMetric.WithLabelValues(region, cluster, dbName, "stats_success").Set(1)
+
+		// per-CF metrics (only for multi-CF databases)
+		stats.RangeCFs(func(name string, cf *kvstat.CFStats) {
+			cf.RangeTagValue(func(tag string, value uint64) {
+				metaCFStatMetric.WithLabelValues(region, cluster, dbName, name, tag).Set(float64(value))
+			})
+		})
+	}
+}
+
+// statsProvider is the minimal read capability required by metrics and debug interfaces.
+type statsProvider interface {
+	Stats() (kvstat.Stats, error)
+}
+
+func (s *Service) resolveDBForMetric(dbName string) (statsProvider, error) {
+	switch dbName {
+	case "raft":
+		if s.raftDB == nil {
+			return nil, apierrors.ErrIllegalArguments
+		}
+		return s.raftDB, nil
+	default:
+		if db, ok := s.dbs[dbName]; ok {
+			return db, nil
+		}
+	}
+	return nil, apierrors.ErrIllegalArguments
 }
