@@ -20,6 +20,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/util/log"
@@ -66,4 +68,35 @@ func TestDiskMetricReport(t *testing.T) {
 	require.NotNil(t, cs)
 
 	ds.metricReport(ctx)
+}
+
+func TestDeleteDiskMetaStatLabels(t *testing.T) {
+	DiskMetaStatMetric.Reset()
+	const clusterID = "9999"
+
+	DiskMetaStatMetric.WithLabelValues(clusterID, "z0", "r0", "h0", "888", "live_sst_files_size").Set(1)
+	DiskMetaStatMetric.WithLabelValues(clusterID, "z0", "r0", "h0", "888", "is_write_stopped").Set(1)
+	DiskMetaStatMetric.WithLabelValues(clusterID, "z0", "r0", "h0", "889", "live_sst_files_size").Set(2)
+	require.Equal(t, 3, collectMetricCount(DiskMetaStatMetric))
+
+	// delete only disk 888's series, disk 889 remains
+	DeleteDiskMetaStatLabels(clusterID, "888")
+	require.Equal(t, 1, collectMetricCount(DiskMetaStatMetric))
+
+	// deleting a non-existent disk is a no-op
+	DeleteDiskMetaStatLabels(clusterID, "888")
+	require.Equal(t, 1, collectMetricCount(DiskMetaStatMetric))
+}
+
+func collectMetricCount(c prometheus.Collector) int {
+	ch := make(chan prometheus.Metric, 64)
+	go func() {
+		c.Collect(ch)
+		close(ch)
+	}()
+	n := 0
+	for range ch {
+		n++
+	}
+	return n
 }

@@ -230,10 +230,17 @@ func (s *Service) waitRepairAndClose(ctx context.Context, disk core.DiskAPI) {
 
 	// clean inspect metrics when disk dropped
 	s.inspectMgr.cleanDiskInspectMetric(disk, diskID)
+	s.cleanDiskMetaStatMetric(disk)
 
 	disk.PrepareClose(ctx)
 
 	span.Infof("diskID:%d will gc close", diskID)
+}
+
+// cleanDiskMetaStatMetric removes stale meta stat series for a dropped/replaced disk.
+func (s *Service) cleanDiskMetaStatMetric(ds core.DiskAPI) {
+	info := ds.DiskInfo()
+	disk.DeleteDiskMetaStatLabels(info.ClusterID.ToString(), ds.ID().ToString())
 }
 
 func (s *Service) handleDiskDrop(ctx context.Context, ds core.DiskAPI) {
@@ -273,6 +280,7 @@ func (s *Service) handleDiskDrop(ctx context.Context, ds core.DiskAPI) {
 		// replaced, so the old disk_id label series must be cleared.
 		// Blobnode service always wires inspectMgr before disk cleanup runs.
 		s.inspectMgr.cleanDiskInspectMetric(ds, diskID)
+		s.cleanDiskMetaStatMetric(ds)
 
 		// 5. even chunks clean, we still need to PrepareClose for loopOut break out
 		ds.PrepareClose(ctx)

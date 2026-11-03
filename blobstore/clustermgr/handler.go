@@ -204,6 +204,9 @@ func NewHandler(service *Service) *rpc.Router {
 
 	rpc.GET("/stat", service.Stat)
 
+	rpc.RegisterArgsParser(&clustermgr.MetaStatArgs{}, "json")
+	rpc.GET("/debug/meta/stat", service.MetaStat, rpc.OptArgsQuery())
+
 	rpc.GET("/snapshot/dump", service.SnapshotDump)
 
 	rpc.POST("/cluster/set", service.ClusterSetReadonly, rpc.OptArgsQuery())

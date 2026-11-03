@@ -166,6 +166,7 @@ type Service struct {
 	// electedLeaderReadIndex indicate that service(elected leader) should execute ReadIndex or not before accept incoming request
 	electedLeaderReadIndex uint32
 	raftNode               *base.RaftNode
+	raftDB                 *raftdb.RaftDB
 	raftStartOnce          sync.Once
 	raftStartCh            chan interface{}
 	closeCh                chan interface{}
@@ -323,6 +324,7 @@ func New(cfg *Config) (*Service, error) {
 	// register all mgr's apply method
 	raftNode.RegistRaftApplier(service)
 	service.raftNode = raftNode
+	service.raftDB = raftDB
 
 	cfg.RaftConfig.ServerConfig.SM = service
 	cfg.RaftConfig.ServerConfig.Applied = applyIndex
@@ -821,6 +823,7 @@ func (s *Service) metricReport(ctx context.Context) {
 	s.VolumeMgr.Report(ctx, s.Region, s.ClusterID)
 	s.BlobNodeMgr.Report(ctx, s.Region, s.ClusterID, isLeader)
 	s.ServiceMgr.Report(ctx, s.Region, s.ClusterID)
+	s.reportMetaStat(ctx)
 }
 
 func (s *Service) checkVolInfos(ctx context.Context, clis []*clustermgr.Client) ([]proto.Vid, error) {

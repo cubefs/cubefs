@@ -25,6 +25,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/configmgr"
 	apierrors "github.com/cubefs/cubefs/blobstore/common/errors"
+	"github.com/cubefs/cubefs/blobstore/common/kvstat"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/raftserver"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
@@ -133,6 +134,71 @@ func (s *Service) Stat(c *rpc.Context) {
 	ret.ShardNodeSpaceStat = *(s.ShardNodeMgr.Stat(ctx, proto.DiskTypeNVMeSSD))
 	ret.VolumeStat = s.VolumeMgr.Stat(ctx)
 	ret.ReadOnly = s.getClusterReadonlyStatus(ctx)
+	c.RespondJSON(ret)
+}
+
+func (s *Service) MetaStat(c *rpc.Context) {
+	ctx := c.Request.Context()
+	span := trace.SpanFromContextSafe(ctx)
+	span.Debugf("debug meta stat")
+
+	args := new(clustermgr.MetaStatArgs)
+	if err := c.ParseArgs(args); err != nil {
+		c.RespondError(err)
+		return
+	}
+
+	resolveDB := func(name string) (statsProvider, error) {
+		switch name {
+		case "raft":
+			if s.raftDB == nil {
+				return nil, apierrors.ErrIllegalArguments
+			}
+			return s.raftDB, nil
+		default:
+			if db, ok := s.dbs[name]; ok {
+				return db, nil
+			}
+		}
+		return nil, apierrors.ErrIllegalArguments
+	}
+
+	if args.DBName != "" {
+		db, err := resolveDB(args.DBName)
+		if err != nil {
+			c.RespondError(err)
+			return
+		}
+		stats, err := db.Stats()
+		if err != nil {
+			c.RespondError(err)
+			return
+		}
+		c.RespondJSON(map[string]kvstat.Stats{args.DBName: stats})
+		return
+	}
+
+	// if not specified, return all databases
+	names := make([]string, 0, len(s.dbs)+1)
+	for name := range s.dbs {
+		names = append(names, name)
+	}
+	names = append(names, "raft")
+	ret := make(map[string]kvstat.Stats, len(names))
+	for _, name := range names {
+		db, err := resolveDB(name)
+		if err != nil {
+			c.RespondError(err)
+			return
+		}
+		stats, err := db.Stats()
+		if err != nil {
+			c.RespondError(err)
+			return
+		}
+		ret[name] = stats
+	}
+
 	c.RespondJSON(ret)
 }
 

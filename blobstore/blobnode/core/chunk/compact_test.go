@@ -35,6 +35,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/qos"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/blobnode/db"
+	"github.com/cubefs/cubefs/blobstore/common/kvstat"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
@@ -194,6 +195,10 @@ func (mock *diskMock) IsClosing() bool {
 }
 
 func (mock *diskMock) SetOnCloseFn(fn func()) {
+}
+
+func (mock *diskMock) DBStats(ctx context.Context) (kvstat.Stats, error) {
+	return kvstat.Stats{}, nil
 }
 
 func ensureTestDir(t *testing.T, diskRoot string) (root, meta, data string) {

@@ -21,6 +21,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/errors"
+	"github.com/cubefs/cubefs/blobstore/common/kvstat"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 )
@@ -87,6 +88,13 @@ func (c *client) QosStat(ctx context.Context, host string, args *QosStatArgs) (s
 	return
 }
 
+func (c *client) MetaStat(ctx context.Context, host string, args *DiskStatArgs) (stat map[proto.DiskID]kvstat.Stats, err error) {
+	urlStr := fmt.Sprintf("%s/debug/meta/stat/diskid/%d", host, args.DiskID)
+	stat = make(map[proto.DiskID]kvstat.Stats)
+	err = c.GetWith(ctx, urlStr, &stat)
+	return
+}
+
 type DiskStatArgs struct {
 	DiskID proto.DiskID `json:"diskid"`
 }
@@ -109,6 +117,7 @@ type StorageAPI interface {
 	Stat(ctx context.Context, host string) (infos []*clustermgr.BlobNodeDiskInfo, err error)
 	DiskInfo(ctx context.Context, host string, args *DiskStatArgs) (di *clustermgr.BlobNodeDiskInfo, err error)
 	QosStat(ctx context.Context, host string, args *QosStatArgs) (stat map[proto.DiskID]map[string]IoLimiterStats, err error)
+	MetaStat(ctx context.Context, host string, args *DiskStatArgs) (stat map[proto.DiskID]kvstat.Stats, err error)
 	GetInspectStat(ctx context.Context, host string) (stat *DataInspectStat, err error)
 	GetInspectDiskState(ctx context.Context, host string, args *DiskStatArgs) (stat map[proto.DiskID]InspectDiskState, err error)
 	GetInspectChunkState(ctx context.Context, host string, args *ChunkInspectArgs) (stat map[proto.Vuid]InspectChunkState, err error)

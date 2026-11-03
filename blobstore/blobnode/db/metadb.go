@@ -23,6 +23,7 @@ import (
 
 	bncom "github.com/cubefs/cubefs/blobstore/blobnode/base"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
+	"github.com/cubefs/cubefs/blobstore/common/kvstat"
 	rdb "github.com/cubefs/cubefs/blobstore/common/kvstore"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
@@ -40,6 +41,7 @@ var (
 type MetaHandler interface {
 	Get(ctx context.Context, key []byte) ([]byte, error)
 	Put(ctx context.Context, kv rdb.KV) error
+	DBStats(ctx context.Context) (kvstat.Stats, error)
 	Delete(ctx context.Context, key []byte) error
 	DeleteRange(ctx context.Context, start, end []byte) error
 	Flush(ctx context.Context) error
@@ -98,6 +100,10 @@ func (md *metadb) DeleteRange(ctx context.Context, start, end []byte) (err error
 
 func (md *metadb) NewIterator(ctx context.Context, opts ...rdb.OpOption) rdb.Iterator {
 	return md.db.NewIterator(nil, opts...)
+}
+
+func (md *metadb) DBStats(ctx context.Context) (kvstat.Stats, error) {
+	return md.db.Stats()
 }
 
 func (md *metadb) Close(ctx context.Context) (err error) {

@@ -25,6 +25,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/cubefs/cubefs/blobstore/common/kvstat"
 	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 	rdb "github.com/tecbot/gorocksdb"
 )
@@ -37,6 +38,7 @@ var (
 type KVStore interface {
 	KVStorage
 	GetDB() *rdb.DB
+	Stats() (kvstat.Stats, error)
 	Table(name string) KVTable
 	Close() error
 }

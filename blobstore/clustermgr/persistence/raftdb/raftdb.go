@@ -14,7 +14,10 @@
 
 package raftdb
 
-import "github.com/cubefs/cubefs/blobstore/common/kvstore"
+import (
+	"github.com/cubefs/cubefs/blobstore/common/kvstat"
+	"github.com/cubefs/cubefs/blobstore/common/kvstore"
+)
 
 type RaftDB struct {
 	kvs kvstore.KVStore
@@ -27,6 +30,11 @@ func OpenRaftDB(path string, dbOpts ...kvstore.DbOptions) (*RaftDB, error) {
 	}
 
 	return &RaftDB{kvs: db}, nil
+}
+
+// Stats returns the RocksDB engine-level statistics.
+func (r *RaftDB) Stats() (kvstat.Stats, error) {
+	return r.kvs.Stats()
 }
 
 func (r *RaftDB) Close() error {

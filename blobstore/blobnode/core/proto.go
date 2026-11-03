@@ -22,6 +22,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/qos"
 	"github.com/cubefs/cubefs/blobstore/blobnode/db"
+	"github.com/cubefs/cubefs/blobstore/common/kvstat"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
@@ -181,6 +182,9 @@ type DiskAPI interface {
 
 	// InspectState returns the per-disk inspect progress store
 	InspectState() InspectStateStore
+
+	// DBStats returns RocksDB engine-level statistics for the disk meta store.
+	DBStats(ctx context.Context) (kvstat.Stats, error)
 
 	SetStatus(status proto.DiskStatus)
 	LoadDiskInfo(ctx context.Context) (dm DiskMeta, err error)

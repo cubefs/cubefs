@@ -20,6 +20,7 @@ import (
 	"net/http"
 
 	"github.com/cubefs/cubefs/blobstore/common/errors"
+	"github.com/cubefs/cubefs/blobstore/common/kvstat"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/util"
@@ -142,5 +143,22 @@ type SetClusterReadonlyArgs struct {
 
 func (c *Client) SetClusterReadonly(ctx context.Context, args *SetClusterReadonlyArgs) (err error) {
 	err = c.PostWith(ctx, "/cluster/set?readonly="+util.Any2String(args.Readonly), nil, nil)
+	return
+}
+
+// MetaStatArgs is the argument of GET /debug/meta/stat. db_name is optional;
+// when omitted, stats of all databases are returned.
+type MetaStatArgs struct {
+	DBName string `json:"db_name,omitempty"`
+}
+
+// MetaStat returns RocksDB engine-level stats for one db, or all dbs when
+// db_name is empty. The response is always a map keyed by db name.
+func (c *Client) MetaStat(ctx context.Context, args *MetaStatArgs) (ret map[string]kvstat.Stats, err error) {
+	url := "/debug/meta/stat"
+	if args != nil && args.DBName != "" {
+		url += "?db_name=" + args.DBName
+	}
+	err = c.GetWith(ctx, url, &ret)
 	return
 }

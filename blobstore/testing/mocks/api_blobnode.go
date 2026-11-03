@@ -11,6 +11,7 @@ import (
 
 	blobnode "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	clustermgr "github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	kvstat "github.com/cubefs/cubefs/blobstore/common/kvstat"
 	proto "github.com/cubefs/cubefs/blobstore/common/proto"
 	gomock "github.com/golang/mock/gomock"
 )
@@ -79,6 +80,21 @@ func (m *MockStorageAPI) CreateChunk(arg0 context.Context, arg1 string, arg2 *bl
 func (mr *MockStorageAPIMockRecorder) CreateChunk(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateChunk", reflect.TypeOf((*MockStorageAPI)(nil).CreateChunk), arg0, arg1, arg2)
+}
+
+// MetaStat mocks base method.
+func (m *MockStorageAPI) MetaStat(arg0 context.Context, arg1 string, arg2 *blobnode.DiskStatArgs) (map[proto.DiskID]kvstat.Stats, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MetaStat", arg0, arg1, arg2)
+	ret0, _ := ret[0].(map[proto.DiskID]kvstat.Stats)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// MetaStat indicates an expected call of MetaStat.
+func (mr *MockStorageAPIMockRecorder) MetaStat(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MetaStat", reflect.TypeOf((*MockStorageAPI)(nil).MetaStat), arg0, arg1, arg2)
 }
 
 // DeleteShard mocks base method.
