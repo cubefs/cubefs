@@ -46,3 +46,4 @@ This page contains a list of organizations who are using CubeFS in production or
 | [shoppe](https://shopee.com/) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
 | [houdutech](https://www.houdutech.cn) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
 | [cecloud](https://www.cecloud.com/) | ![testing](https://img.shields.io/badge/-testing-green?style=flat) |
+| [Wordfully](https://wordfully.ai) | ![production](https://img.shields.io/badge/-production-blue?style=flat) |
