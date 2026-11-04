@@ -342,17 +342,25 @@ func TestSdkHandler_Alloc(t *testing.T) {
 	require.NotNil(t, err)
 	require.Equal(t, proto.Location{}, ret.Location)
 
+	// stream handler alloc returns location with zero crc, sdk alloc should fill it
 	loca := &proto.Location{
 		ClusterID: 1,
 		Size_:     2,
 		SliceSize: 1,
 	}
-	crc, _ := security.LocationCrcCalculate(loca)
-	loca.Crc = crc
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Alloc(gAny, gAny, gAny, gAny, gAny).Return(loca, nil)
 	ret, err = hd.alloc(ctx, args)
 	require.NoError(t, err)
 	require.Equal(t, *loca, ret.Location)
+	require.NotZero(t, ret.Location.Crc)
+	require.True(t, security.LocationCrcVerify(&ret.Location))
+
+	// filling crc on a signed location again is idempotent
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().Alloc(gAny, gAny, gAny, gAny, gAny).Return(loca, nil)
+	ret, err = hd.alloc(ctx, args)
+	require.NoError(t, err)
+	require.Equal(t, *loca, ret.Location)
+	require.True(t, security.LocationCrcVerify(&ret.Location))
 }
 
 func TestSdkHandler_putParts(t *testing.T) {
@@ -376,6 +384,7 @@ func TestSdkHandler_putParts(t *testing.T) {
 	data := "test alloc put"
 	args.Body = bytes.NewBuffer([]byte(data))
 	args.Size = int64(len(data))
+	// stream handler alloc returns location with zero crc, sdk alloc fills it
 	loca := &proto.Location{
 		ClusterID: 1,
 		CodeMode:  codemode.EC3P3,
@@ -387,14 +396,13 @@ func TestSdkHandler_putParts(t *testing.T) {
 			Count:      4,
 		}},
 	}
-	crc, _ := security.LocationCrcCalculate(loca)
-	loca.Crc = crc
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Alloc(gAny, gAny, gAny, gAny, gAny).Return(loca, nil)
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().PutAt(gAny, gAny, gAny, gAny, gAny, gAny, gAny).Return(nil).Times(14/4 + 1)
 	loc, hash, err = hd.Put(ctx, args)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(hash))
 	require.Equal(t, *loca, loc)
+	require.True(t, security.LocationCrcVerify(&loc))
 
 	// waiting at least one blob, errcode.ErrAccessReadRequestBody
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Alloc(gAny, gAny, gAny, gAny, gAny).Return(loca, nil)
@@ -440,6 +448,55 @@ func TestSdkHandler_putParts(t *testing.T) {
 		_, _, err = hd.Put(ctx, args)
 		require.Error(t, err)
 	}
+}
+
+func TestSdkHandler_putPartsReallocSign(t *testing.T) {
+	ctx := context.Background()
+	hd := newSdkHandler(t)
+
+	hd.conf.MaxSizePutOnce = 8
+	data := "test realloc"
+	args := &acapi.PutArgs{
+		Hashes: 1,
+		Body:   bytes.NewBuffer([]byte(data)),
+		Size:   int64(len(data)),
+	}
+
+	// stream handler alloc returns location with zero crc, sdk alloc fills it
+	loca := &proto.Location{
+		ClusterID: 1,
+		CodeMode:  codemode.EC3P3,
+		Size_:     uint64(args.Size),
+		SliceSize: 4,
+		Slices: []proto.Slice{{
+			MinSliceID: 1001,
+			Vid:        10,
+			Count:      4,
+		}},
+	}
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().Alloc(gAny, gAny, gAny, gAny, gAny).Return(loca, nil) // init alloc
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().Alloc(gAny, gAny, gAny, gAny, gAny).Return(loca, nil) // realloc returns the same vid, retry
+	locb := &proto.Location{
+		ClusterID: 1,
+		CodeMode:  codemode.EC3P3,
+		Size_:     uint64(args.Size),
+		SliceSize: 4,
+		Slices: []proto.Slice{{
+			MinSliceID: 2001,
+			Vid:        11, // differ from loca, accept the realloc
+			Count:      4,
+		}},
+	}
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().Alloc(gAny, gAny, gAny, gAny, gAny).Return(locb, nil)                    // realloc ok
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().PutAt(gAny, gAny, gAny, gAny, gAny, gAny, gAny).Return(errMock).Times(3) // first batch fail
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().PutAt(gAny, gAny, gAny, gAny, gAny, gAny, gAny).Return(nil).Times(3)     // realloc batch ok
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().Delete(gAny, gAny).Return(nil).AnyTimes()                                // clean fail blobs
+
+	loc, hash, err := hd.Put(ctx, args)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(hash))
+	require.Equal(t, locb.Slices, loc.Slices)
+	require.True(t, security.LocationCrcVerify(&loc))
 }
 
 func TestSdkBlob_Get(t *testing.T) {
