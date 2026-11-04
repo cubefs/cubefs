@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 
 	"github.com/cubefs/cubefs/blobstore/access/stream"
 	acapi "github.com/cubefs/cubefs/blobstore/api/access"
@@ -35,7 +36,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/blobstore/util/retry"
-	"github.com/cubefs/cubefs/blobstore/util/task"
 )
 
 const (
@@ -298,11 +298,13 @@ func (s *sdkHandler) PutBlob(ctx context.Context, args *acapi.PutBlobArgs) (cid 
 	defer func() {
 		// cid != 0, means create ok, but put fail. need delete
 		if needDel && cid != 0 {
+			// force to clean up, even canceled context
+			newCtx := trace.NewContextFromSpan(span)
 			delArgs := &acapi.DelBlobArgs{
 				BlobName:  args.BlobName,
 				ClusterID: cid,
 			}
-			if err1 := s.DeleteBlob(ctx, delArgs); err1 != nil {
+			if err1 := s.DeleteBlob(newCtx, delArgs); err1 != nil {
 				span.Warnf("put fail, clean args=%v, cluster=%d, err=%+v", delArgs, cid, err1)
 			}
 		}
@@ -677,10 +679,13 @@ type blobPart struct {
 }
 
 func (s *sdkHandler) putPartsBatch(ctx context.Context, parts []blobPart) error {
-	tasks := make([]func() error, 0, len(parts))
+	var wg sync.WaitGroup
+	errCh := make(chan error, len(parts))
 	for _, pt := range parts {
 		part := pt
-		tasks = append(tasks, func() error {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
 			_, err := s.doPutAt(ctx, &acapi.PutAtArgs{
 				ClusterID: part.cid,
 				Vid:       part.vid,
@@ -689,12 +694,18 @@ func (s *sdkHandler) putPartsBatch(ctx context.Context, parts []blobPart) error 
 				Hashes:    0,
 				Body:      bytes.NewReader(part.buf),
 			})
-			return err
-		})
+			if err != nil {
+				errCh <- err
+			}
+		}()
 	}
+	// wait all parts done before return, to make sure no one is reading
+	// part.buf when the caller releases the buffers back to mempool
+	wg.Wait()
+	close(errCh)
 
 	newCtx := trace.NewContextFromContext(ctx)
-	if err := task.Run(ctx, tasks...); err != nil {
+	if err := <-errCh; err != nil {
 		for _, pt := range parts {
 			part := pt
 			// asynchronously delete blob

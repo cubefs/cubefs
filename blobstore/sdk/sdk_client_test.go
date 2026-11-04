@@ -8,6 +8,7 @@ import (
 	"hash/crc32"
 	"io"
 	"testing"
+	"time"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
@@ -1145,4 +1146,73 @@ func TestSdkBlob_Put(t *testing.T) {
 	require.NotNil(t, err)
 	require.Equal(t, proto.ClusterID(1), cid)
 	require.Nil(t, hashes)
+}
+
+func TestSdkHandler_putPartsBatchWaitAll(t *testing.T) {
+	ctx := context.Background()
+	hd := newSdkHandler(t)
+
+	// one slow putat succeeds, the others fail immediately
+	slowDone := make(chan struct{})
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().PutAt(gAny, gAny, gAny, gAny, proto.BlobID(1001), gAny, gAny).DoAndReturn(
+		func(ctx context.Context, rd io.Reader, cid proto.ClusterID, vid proto.Vid, bid proto.BlobID, sz int64, hm acapi.HasherMap) error {
+			time.Sleep(200 * time.Millisecond)
+			close(slowDone)
+			return nil
+		})
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().PutAt(gAny, gAny, gAny, gAny, gAny, gAny, gAny).Return(errMock).Times(2)
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().Delete(gAny, gAny).Return(nil).AnyTimes()
+
+	parts := []blobPart{
+		{cid: 1, vid: 10, bid: 1001, size: 4, buf: make([]byte, 4)},
+		{cid: 1, vid: 10, bid: 1002, size: 4, buf: make([]byte, 4)},
+		{cid: 1, vid: 10, bid: 1003, size: 4, buf: make([]byte, 4)},
+	}
+	err := hd.putPartsBatch(ctx, parts)
+	require.Error(t, err)
+	require.ErrorIs(t, err, errMock)
+
+	// putPartsBatch must not return before the slow putat goroutine exits,
+	// otherwise releaseBuffer would put the in-use buf back to mempool
+	select {
+	case <-slowDone:
+	default:
+		t.Fatal("putPartsBatch returned before the slow putat finished")
+	}
+}
+
+func TestSdkBlob_PutCleanCtx(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	hd := newSdkHandler(t)
+	hd.conf.ShardnodeConfig = &stream.ShardnodeConfig{}
+
+	// create ok, then fix location size fails: size 10 > count 9 * slicesize 1
+	loca := &proto.Location{
+		ClusterID: 1,
+		SliceSize: 1,
+		Slices:    []proto.Slice{{MinSliceID: 1, Vid: 10, Count: 9}},
+	}
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().CreateBlob(gAny, gAny).Return(loca, nil)
+	cleanCtxErr := make(chan error, 1)
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().DeleteBlob(gAny, gAny).DoAndReturn(
+		func(ctx context.Context, args *acapi.DelBlobArgs) error {
+			cleanCtxErr <- ctx.Err()
+			return nil
+		})
+
+	// simulate the caller ctx canceled after put started
+	cancel()
+	args := &acapi.PutBlobArgs{
+		BlobName: ("blob-clean"),
+		CodeMode: codemode.EC3P3,
+		Size:     10,
+		Body:     bytes.NewBuffer(make([]byte, 10)),
+	}
+	cid, _, err := hd.PutBlob(ctx, args)
+	require.Error(t, err)
+	require.ErrorIs(t, err, errcode.ErrIllegalLocationSize)
+	require.Equal(t, proto.ClusterID(1), cid)
+
+	// the cleanup DeleteBlob must receive a live ctx even if caller ctx was canceled
+	require.NoError(t, <-cleanCtxErr)
 }
