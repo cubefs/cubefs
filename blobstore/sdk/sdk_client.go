@@ -653,6 +653,11 @@ func (s *sdkHandler) doAlloc(ctx context.Context, args *acapi.AllocArgs) (resp a
 		return resp, err
 	}
 
+	if err = security.LocationCrcFill(location); err != nil {
+		span.Error("stream alloc fill location crc", err)
+		return resp, err
+	}
+
 	resp = acapi.AllocResp{
 		Location: *location,
 		Tokens:   security.StreamGenTokens(location),
@@ -960,7 +965,7 @@ func (s *sdkHandler) putParts(ctx context.Context, args *acapi.PutArgs) (proto.L
 		signResp, err1 := s.sign(ctx, &signArgs)
 		if err1 != nil {
 			span.Error("sign location with crc", err1)
-			return proto.Location{}, nil, err
+			return proto.Location{}, nil, err1
 		}
 		loc = signResp.Location
 	}
