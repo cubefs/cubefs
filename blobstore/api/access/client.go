@@ -37,7 +37,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/blobstore/util/retry"
-	"github.com/cubefs/cubefs/blobstore/util/task"
 )
 
 const (
@@ -454,25 +453,35 @@ type blobPart struct {
 func (c *client) putPartsBatch(ctx context.Context, parts []blobPart) error {
 	rpcClient := c.rpcClient.Load().(rpc.Client)
 
-	tasks := make([]func() error, 0, len(parts))
-	for _, part := range parts {
-		part := part
-		tasks = append(tasks, func() error {
+	var wg sync.WaitGroup
+	errCh := make(chan error, len(parts))
+	for _, pt := range parts {
+		part := pt
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
 			urlStr := fmt.Sprintf("/putat?clusterid=%d&volumeid=%d&blobid=%d&size=%d&hashes=%d&token=%s",
 				part.cid, part.vid, part.bid, part.size, 0, part.token)
 			req, err := http.NewRequest(http.MethodPut, urlStr, bytes.NewReader(part.buf))
 			if err != nil {
-				return err
+				errCh <- err
+				return
 			}
 			resp := &PutAtResp{}
-			return rpcClient.DoWith(ctx, req, resp, rpc.WithCrcEncode())
-		})
+			if err := rpcClient.DoWith(ctx, req, resp, rpc.WithCrcEncode()); err != nil {
+				errCh <- err
+			}
+		}()
 	}
+	// wait all parts done before return, to make sure no one is reading
+	// part.buf when the caller releases the buffers back to mempool
+	wg.Wait()
+	close(errCh)
 
 	newCtx := trace.NewContextFromContext(ctx)
-	if err := task.Run(ctx, tasks...); err != nil {
-		for _, part := range parts {
-			part := part
+	if err := <-errCh; err != nil {
+		for _, pt := range parts {
+			part := pt
 			// asynchronously delete blob
 			go func() {
 				urlStr := fmt.Sprintf("/deleteblob?clusterid=%d&volumeid=%d&blobid=%d&size=%d&token=%s",
