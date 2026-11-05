@@ -676,6 +676,12 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 	}
 	span.AppendTrackLog("files.d", start, err)
 
+	auditObjects := make([]string, 0, len(deletedObjects))
+	for _, deleted := range deletedObjects {
+		auditObjects = append(auditObjects, deleted.Key)
+	}
+	SetAuditFields(r, AuditFields{Objects: auditObjects})
+
 	deleteResult := DeleteResult{
 		Deleted: deletedObjects,
 		Error:   deletedErrors,
@@ -1403,6 +1409,8 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 		errorCode = BadDigest
 		return
 	}
+
+	SetAuditFields(r, AuditFields{Size: fsFileInfo.Size, ETag: fsFileInfo.ETag})
 
 	// set response header
 	w.Header()[ETag] = []string{wrapUnescapedQuot(fsFileInfo.ETag)}
