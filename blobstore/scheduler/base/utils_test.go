@@ -74,19 +74,19 @@ func TestAllocVunitSafe(t *testing.T) {
 	volumeAllocClient := NewMockAllocVunit(gomock.NewController(t))
 	vuid1, _ := proto.NewVuid(1, 1, 1)
 	volumeAllocClient.EXPECT().AllocVolumeUnit(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, errMock)
-	_, err := AllocVunitSafe(ctx, volumeAllocClient, vuid1, nil, nil, false)
+	_, err := AllocVunitSafe(ctx, volumeAllocClient, vuid1, nil, nil, client.BalancePolicy{})
 	require.True(t, errors.Is(err, errMock))
 
 	vuid2, _ := proto.NewVuid(1, 1, 2)
 	vuid3, _ := proto.NewVuid(1, 2, 1)
 	volumeAllocClient.EXPECT().AllocVolumeUnit(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&client.AllocVunitInfo{VunitLocation: proto.VunitLocation{Vuid: vuid2, DiskID: proto.DiskID(1)}}, nil)
-	allocVunit, err := AllocVunitSafe(ctx, volumeAllocClient, vuid1, []proto.VunitLocation{{Vuid: vuid2, DiskID: proto.DiskID(1)}, {Vuid: vuid3, DiskID: proto.DiskID(2)}}, nil, false)
+	allocVunit, err := AllocVunitSafe(ctx, volumeAllocClient, vuid1, []proto.VunitLocation{{Vuid: vuid2, DiskID: proto.DiskID(1)}, {Vuid: vuid3, DiskID: proto.DiskID(2)}}, nil, client.BalancePolicy{})
 	require.NoError(t, err)
 	require.Equal(t, vuid2, allocVunit.Vuid)
 
 	volumeAllocClient.EXPECT().AllocVolumeUnit(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&client.AllocVunitInfo{VunitLocation: proto.VunitLocation{Vuid: vuid2, DiskID: proto.DiskID(2)}}, nil)
 	require.Panics(t, func() {
-		AllocVunitSafe(ctx, volumeAllocClient, vuid1, []proto.VunitLocation{{Vuid: vuid2, DiskID: proto.DiskID(1)}, {Vuid: vuid3, DiskID: proto.DiskID(2)}}, nil, false)
+		AllocVunitSafe(ctx, volumeAllocClient, vuid1, []proto.VunitLocation{{Vuid: vuid2, DiskID: proto.DiskID(1)}, {Vuid: vuid3, DiskID: proto.DiskID(2)}}, nil, client.BalancePolicy{})
 	})
 }
 

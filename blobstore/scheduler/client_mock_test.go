@@ -81,7 +81,7 @@ func (mr *MockClusterMgrAPIMockRecorder) AllocShardUnit(arg0, arg1, arg2 interfa
 }
 
 // AllocVolumeUnit mocks base method.
-func (m *MockClusterMgrAPI) AllocVolumeUnit(arg0 context.Context, arg1 proto.Vuid, arg2 []proto.DiskID, arg3 bool) (*client.AllocVunitInfo, error) {
+func (m *MockClusterMgrAPI) AllocVolumeUnit(arg0 context.Context, arg1 proto.Vuid, arg2 []proto.DiskID, arg3 client.BalancePolicy) (*client.AllocVunitInfo, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AllocVolumeUnit", arg0, arg1, arg2, arg3)
 	ret0, _ := ret[0].(*client.AllocVunitInfo)

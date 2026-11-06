@@ -253,7 +253,7 @@ func TestPrepareMigrateTask(t *testing.T) {
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().LockVolume(any, any, any).Return(nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateMigrateTask(any, any).Return(nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocVolumeUnit(any, any, any, any).DoAndReturn(
-			func(ctx context.Context, vuid proto.Vuid, excludes []proto.DiskID, isBalance bool) (*client.AllocVunitInfo, error) {
+			func(ctx context.Context, vuid proto.Vuid, excludes []proto.DiskID, balance client.BalancePolicy) (*client.AllocVunitInfo, error) {
 				vid := vuid.Vid()
 				idx := vuid.Index()
 				epoch := vuid.Epoch()
@@ -321,7 +321,7 @@ func TestFinishMigrateTask(t *testing.T) {
 			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Return(MockMigrateVolInfoMap[100], nil)
 			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateVolume(any, any, any, any).Return(errcode.ErrNewVuidNotMatch)
 			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocVolumeUnit(any, any, any, any).DoAndReturn(
-				func(ctx context.Context, vuid proto.Vuid, excludes []proto.DiskID, isBalance bool) (*client.AllocVunitInfo, error) {
+				func(ctx context.Context, vuid proto.Vuid, excludes []proto.DiskID, balance client.BalancePolicy) (*client.AllocVunitInfo, error) {
 					vid := vuid.Vid()
 					idx := vuid.Index()
 					epoch := vuid.Epoch()

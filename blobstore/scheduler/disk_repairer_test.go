@@ -608,7 +608,7 @@ func TestDiskRepairerPopTaskAndPrepare(t *testing.T) {
 		err = mgr.popTaskAndPrepare()
 		require.True(t, errors.Is(err, errMock))
 
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocVolumeUnit(any, any, any, any).DoAndReturn(func(ctx context.Context, vuid proto.Vuid, excludes []proto.DiskID, isBalance bool) (*client.AllocVunitInfo, error) {
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocVolumeUnit(any, any, any, any).DoAndReturn(func(ctx context.Context, vuid proto.Vuid, excludes []proto.DiskID, balance client.BalancePolicy) (*client.AllocVunitInfo, error) {
 			vid := vuid.Vid()
 			idx := vuid.Index()
 			epoch := vuid.Epoch()
@@ -679,7 +679,7 @@ func TestDiskRepairerPopTaskAndFinish(t *testing.T) {
 		mgr.finishQueue.PushTask(t1.TaskID, t1)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateMigrateTask(any, any).Times(2).Return(nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateVolume(any, any, any, any).Return(errcode.ErrNewVuidNotMatch)
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocVolumeUnit(any, any, any, any).DoAndReturn(func(ctx context.Context, vuid proto.Vuid, excludes []proto.DiskID, isBalance bool) (*client.AllocVunitInfo, error) {
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocVolumeUnit(any, any, any, any).DoAndReturn(func(ctx context.Context, vuid proto.Vuid, excludes []proto.DiskID, balance client.BalancePolicy) (*client.AllocVunitInfo, error) {
 			vid := vuid.Vid()
 			idx := vuid.Index()
 			epoch := vuid.Epoch()
@@ -703,7 +703,7 @@ func TestDiskRepairerPopTaskAndFinish(t *testing.T) {
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateMigrateTask(any, any).Times(2).Return(nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateVolume(any, any, any, any).Return(errcode.ErrStatChunkFailed)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocVolumeUnit(any, any, any, any).DoAndReturn(func(ctx context.Context,
-			vuid proto.Vuid, excludes []proto.DiskID, isBalance bool,
+			vuid proto.Vuid, excludes []proto.DiskID, balance client.BalancePolicy,
 		) (*client.AllocVunitInfo, error) {
 			vid := vuid.Vid()
 			idx := vuid.Index()

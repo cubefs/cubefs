@@ -1995,7 +1995,7 @@ func TestBalanceFilterAllow(t *testing.T) {
 		}
 	}
 
-	bf := &balanceFilter{srcDiskID: proto.DiskID(1), srcFree: 100, minDstDiff: 1}
+	bf := balanceFilter{isBalance: true, srcDiskID: proto.DiskID(1), srcFree: 100, minDstDiff: 1}
 	// diff == minDstDiff+2: allowed, post-migration target still minDstDiff freer than source
 	require.True(t, bf.allow(mkDisk(103)))
 	// diff == minDstDiff+1: rejected, one chunk short
@@ -2004,9 +2004,9 @@ func TestBalanceFilterAllow(t *testing.T) {
 	require.False(t, bf.allow(mkDisk(100)))
 
 	// disabled (minDstDiff <= 0): never rejects, degraded to no-filter behavior
-	bf = &balanceFilter{srcDiskID: proto.DiskID(1), srcFree: 100, minDstDiff: 0}
+	bf = balanceFilter{isBalance: true, srcDiskID: proto.DiskID(1), srcFree: 100, minDstDiff: 0}
 	require.True(t, bf.allow(mkDisk(101)))
-	bf = &balanceFilter{srcDiskID: proto.DiskID(1), srcFree: 100, minDstDiff: -1}
+	bf = balanceFilter{isBalance: true, srcDiskID: proto.DiskID(1), srcFree: 100, minDstDiff: -1}
 	require.True(t, bf.allow(mkDisk(0)))
 	require.True(t, bf.allow(mkDisk(100)))
 }
@@ -2031,7 +2031,7 @@ func TestAllocWithBalanceFilter(t *testing.T) {
 		idcAllocator := allocators.nodeSets[proto.DiskTypeHDD][ecNodeSetID].diskSets[ecDiskSetID].idcAllocators[testIdcs[0]]
 
 		// allowed: diff == minDstDiff+2
-		bf := &balanceFilter{srcDiskID: proto.DiskID(1), srcFree: testDiskFreeChunkCnt - 3, minDstDiff: 1}
+		bf := balanceFilter{isBalance: true, srcDiskID: proto.DiskID(1), srcFree: testDiskFreeChunkCnt - 3, minDstDiff: 1}
 		ret, err := idcAllocator.allocWithFilter(ctx, 1, nil, bf)
 		require.NoError(t, err)
 		require.Equal(t, 1, len(ret))
@@ -2039,23 +2039,23 @@ func TestAllocWithBalanceFilter(t *testing.T) {
 		require.GreaterOrEqual(t, testDiskMgr.allDisks[ret[0]].weight()+1-bf.srcFree, bf.minDstDiff+2)
 
 		// filtered: diff == minDstDiff+1
-		bf = &balanceFilter{srcDiskID: proto.DiskID(1), srcFree: testDiskFreeChunkCnt - 2, minDstDiff: 1}
+		bf = balanceFilter{isBalance: true, srcDiskID: proto.DiskID(1), srcFree: testDiskFreeChunkCnt - 2, minDstDiff: 1}
 		_, err = idcAllocator.allocWithFilter(ctx, 1, nil, bf)
 		require.Equal(t, ErrNoEnoughSpace, err)
 
 		// filtered: equal free disks must not exchange chunks (anti ping-pong)
-		bf = &balanceFilter{srcDiskID: proto.DiskID(1), srcFree: testDiskFreeChunkCnt, minDstDiff: 1}
+		bf = balanceFilter{isBalance: true, srcDiskID: proto.DiskID(1), srcFree: testDiskFreeChunkCnt, minDstDiff: 1}
 		_, err = idcAllocator.allocWithFilter(ctx, 1, nil, bf)
 		require.Equal(t, ErrNoEnoughSpace, err)
 
 		// disabled: never rejects, still a balance allocation via the disk-level path
-		bf = &balanceFilter{srcDiskID: proto.DiskID(1), srcFree: testDiskFreeChunkCnt, minDstDiff: -1}
+		bf = balanceFilter{isBalance: true, srcDiskID: proto.DiskID(1), srcFree: testDiskFreeChunkCnt, minDstDiff: -1}
 		ret, err = idcAllocator.allocWithFilter(ctx, 1, nil, bf)
 		require.NoError(t, err)
 		require.Equal(t, 1, len(ret))
 
-		// nil bf is a normal (non-balance) allocation via the node-level path
-		ret, err = idcAllocator.allocWithFilter(ctx, 1, nil, nil)
+		// zero value is a normal (non-balance) allocation via the node-level path
+		ret, err = idcAllocator.allocWithFilter(ctx, 1, nil, balanceFilter{})
 		require.NoError(t, err)
 		require.Equal(t, 1, len(ret))
 	}
@@ -2071,11 +2071,11 @@ func TestAllocWithBalanceFilter(t *testing.T) {
 		idcAllocator := allocators.nodeSets[proto.DiskTypeHDD][ecNodeSetID].diskSets[ecDiskSetID].idcAllocators[testIdcs[0]]
 
 		_, err := idcAllocator.allocWithFilter(ctx, 1, nil,
-			&balanceFilter{srcDiskID: proto.DiskID(61), srcFree: testDiskFreeChunkCnt, minDstDiff: 1})
+			balanceFilter{isBalance: true, srcDiskID: proto.DiskID(61), srcFree: testDiskFreeChunkCnt, minDstDiff: 1})
 		require.Equal(t, ErrNoEnoughSpace, err)
 
 		ret, err := idcAllocator.allocWithFilter(ctx, 1, nil,
-			&balanceFilter{srcDiskID: proto.DiskID(61), srcFree: testDiskFreeChunkCnt - 3, minDstDiff: 1})
+			balanceFilter{isBalance: true, srcDiskID: proto.DiskID(61), srcFree: testDiskFreeChunkCnt - 3, minDstDiff: 1})
 		require.NoError(t, err)
 		require.Equal(t, 1, len(ret))
 	}
@@ -2098,14 +2098,14 @@ func TestReAllocBalanceFilter(t *testing.T) {
 
 	reAlloc := func(isBalance bool, srcDiskID proto.DiskID, minDstDiff int64) ([]proto.DiskID, error) {
 		return allocators.ReAlloc(ctx, reAllocPolicy{
-			diskType:           proto.DiskTypeHDD,
-			diskSetID:          ecDiskSetID,
-			idc:                testIdcs[0],
-			count:              1,
-			excludes:           []proto.DiskID{1},
-			isBalance:          isBalance,
-			srcDiskID:          srcDiskID,
-			minDstDiffChunkCnt: minDstDiff,
+			diskType:            proto.DiskTypeHDD,
+			diskSetID:           ecDiskSetID,
+			idc:                 testIdcs[0],
+			count:               1,
+			excludes:            []proto.DiskID{1},
+			isBalance:           isBalance,
+			srcDiskID:           srcDiskID,
+			dstLeadFreeChunkCnt: minDstDiff,
 		})
 	}
 

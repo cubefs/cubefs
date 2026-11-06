@@ -132,43 +132,35 @@ type reAllocPolicy struct {
 	count     int
 	excludes  []proto.DiskID
 	isBalance bool
-	// srcDiskID and minDstDiffChunkCnt only take effect when isBalance is true,
-	// see balanceFilter for details.
-	srcDiskID          proto.DiskID
-	minDstDiffChunkCnt int64
+
+	srcDiskID           proto.DiskID
+	dstLeadFreeChunkCnt int64
 }
 
 // balanceFilter carries the balance-allocation context through the alloc chain.
 type balanceFilter struct {
-	// srcDiskID is the disk where the migrating vunit currently lives.
-	srcDiskID proto.DiskID
-	// srcFree is the source disk free chunk count (alloc weight), resolved from the
-	// heartbeat-maintained disk item when minDstDiff > 0.
-	srcFree int64
-	// minDstDiff is the configured minimum free-chunk gap of target disks over the source
-	// disk, <= 0 disables the stability filter and degrades to the no-filter behavior.
+	isBalance  bool
+	srcDiskID  proto.DiskID
+	srcFree    int64
 	minDstDiff int64
 }
 
 // allow reports whether the candidate disk can be chosen as a balance migration target.
-// It always returns true when the stability filter is disabled (minDstDiff <= 0).
-func (bf *balanceFilter) allow(d *diskItem) bool {
+func (bf balanceFilter) allow(d *diskItem) bool {
 	if bf.minDstDiff <= 0 {
 		return true
 	}
 	return d.weight()-bf.srcFree >= bf.minDstDiff+2
 }
 
-// newBalanceFilter builds the balance-allocation context, it returns nil when
-// isBalance is false, which means a normal (non-balance) allocation.
-func (a *allocator) newBalanceFilter(srcDiskID proto.DiskID, minDstDiff int64, isBalance bool) *balanceFilter {
-	if !isBalance {
-		return nil
-	}
-	bf := &balanceFilter{srcDiskID: srcDiskID, minDstDiff: minDstDiff}
-	if minDstDiff > 0 {
-		srcDisk, _ := a.cfg.dg.getDisk(srcDiskID)
-		bf.srcFree = srcDisk.weight()
+func (a *allocator) newBalanceFilter(srcDiskID proto.DiskID, minDstDiff int64, isBalance bool) balanceFilter {
+	bf := balanceFilter{isBalance: isBalance, srcDiskID: srcDiskID, minDstDiff: minDstDiff}
+	if isBalance && minDstDiff > 0 {
+		srcDisk, ok := a.cfg.dg.getDisk(srcDiskID)
+		if ok {
+			bf.srcFree = srcDisk.weight()
+		}
+
 	}
 	return bf
 }
@@ -186,7 +178,7 @@ func (a *allocator) ReAlloc(ctx context.Context, policy reAllocPolicy) ([]proto.
 		}
 	}
 
-	bf := a.newBalanceFilter(policy.srcDiskID, policy.minDstDiffChunkCnt, policy.isBalance)
+	bf := a.newBalanceFilter(policy.srcDiskID, policy.dstLeadFreeChunkCnt, policy.isBalance)
 	return stg.allocWithFilter(ctx, policy.count, _excludes, bf)
 }
 
@@ -475,17 +467,10 @@ func (d *nodeAllocator) allocDisk(ctx context.Context, excludes map[proto.DiskID
 }
 
 func (s *idcAllocator) alloc(ctx context.Context, count int, excludes map[proto.DiskID]*diskItem, isBalance bool) ([]proto.DiskID, error) {
-	// legacy entry without balance source-disk info: a balance allocation takes the
-	// disk-level path but is never stability-filtered
-	var bf *balanceFilter
-	if isBalance {
-		bf = &balanceFilter{}
-	}
-	return s.allocWithFilter(ctx, count, excludes, bf)
+	return s.allocWithFilter(ctx, count, excludes, balanceFilter{isBalance: isBalance})
 }
 
-// allocWithFilter allocs disks, nil bf means a normal (non-balance) allocation.
-func (s *idcAllocator) allocWithFilter(ctx context.Context, count int, excludes map[proto.DiskID]*diskItem, bf *balanceFilter) ([]proto.DiskID, error) {
+func (s *idcAllocator) allocWithFilter(ctx context.Context, count int, excludes map[proto.DiskID]*diskItem, bf balanceFilter) ([]proto.DiskID, error) {
 	span := trace.SpanFromContextSafe(ctx)
 	var chosenRacks map[string]int
 	var chosenDataStorages map[*nodeAllocator]int
@@ -528,7 +513,7 @@ func (s *idcAllocator) allocWithFilter(ctx context.Context, count int, excludes 
 // 1. alloc rack with free item weight
 // 2. alloc from rack's data node storage
 // 3. if can't meet the alloc count request, then retry with enable same rack
-func (s *idcAllocator) allocFromRack(ctx context.Context, count int, excludes map[proto.DiskID]*diskItem, bf *balanceFilter) (chosenRacksRet map[string]int, chosenDataStorages map[*nodeAllocator]int, chosenDisks map[proto.DiskID]*diskItem) {
+func (s *idcAllocator) allocFromRack(ctx context.Context, count int, excludes map[proto.DiskID]*diskItem, bf balanceFilter) (chosenRacksRet map[string]int, chosenDataStorages map[*nodeAllocator]int, chosenDisks map[proto.DiskID]*diskItem) {
 	span := trace.SpanFromContextSafe(ctx)
 	rackNum := len(s.rackStorages)
 	chosenRacksRet = make(map[string]int, count)
@@ -631,9 +616,9 @@ RETRY:
 }
 
 func (s *idcAllocator) allocFromNodeOrDisk(ctx context.Context, count int, totalWeight int64, srcNodeStorages []*nodeAllocator,
-	srcDiskStorages []*diskItem, excludes map[proto.DiskID]*diskItem, bf *balanceFilter,
+	srcDiskStorages []*diskItem, excludes map[proto.DiskID]*diskItem, bf balanceFilter,
 ) (chosenDataStorages map[*nodeAllocator]int, chosenDisks map[proto.DiskID]*diskItem) {
-	if bf != nil {
+	if bf.isBalance {
 		return s.allocFromDiskStorages(ctx, count, totalWeight, srcNodeStorages, srcDiskStorages, excludes, bf)
 	}
 	return s.allocFromNodeStorages(ctx, count, totalWeight, srcNodeStorages, excludes)
@@ -755,10 +740,10 @@ RETRY:
 //  3. the alloc result length may not equal to count if there is no enough space or something else
 //  4. Normally, count must be 1. If you allocate a disk with count greater than 1 and diffHost is true,
 //     allocation may fail. In this case, you should use allocFromNodeStorages instead.
-//  5. bf is the balance-allocation context: non-nil marks a balance migration and may
-//     carry the post-migration stability filter (see balanceFilter).
+//  5. bf is the balance-allocation context: bf.isBalance marks a balance migration and
+//     bf.minDstDiff > 0 arms the post-migration stability filter (see balanceFilter).
 func (s *idcAllocator) allocFromDiskStorages(ctx context.Context, count int, totalWeight int64, srcNodeStorages []*nodeAllocator,
-	srcDiskStorages []*diskItem, excludes map[proto.DiskID]*diskItem, bf *balanceFilter,
+	srcDiskStorages []*diskItem, excludes map[proto.DiskID]*diskItem, bf balanceFilter,
 ) (chosenNodeStorages map[*nodeAllocator]int, chosenDisks map[proto.DiskID]*diskItem) {
 	span := trace.SpanFromContextSafe(ctx)
 	excludeHosts := make(map[proto.NodeID]bool)
@@ -798,7 +783,7 @@ func (s *idcAllocator) allocFromDiskStorages(ctx context.Context, count int, tot
 		}
 		// balance migration: keep post-migration stability, filter candidate disks
 		// whose free chunk count is too close to the source disk's
-		if bf != nil && !bf.allow(srcDiskStorages[i]) {
+		if !bf.allow(srcDiskStorages[i]) {
 			weight := srcDiskStorages[i].weight()
 			totalWeight -= weight
 			span.Debugf("balance filter disk %d: free[%d] not enough more than src disk[%d] free[%d]",

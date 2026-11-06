@@ -49,6 +49,8 @@ type BalanceMgrConfig struct {
 	DiskUsageThreshold         float64 `json:"disk_usage_threshold"`           // 0 means disabled, e.g. 0.9
 	CompactMigrateHoleRate     float64 `json:"compact_migrate_hole_rate"`      // hole rate threshold for large chunks, e.g. 0.6
 	CompactMigrateMinLogicSize uint64  `json:"compact_migrate_min_logic_size"` // bytes, large chunk boundary, default 16GiB
+	SrcLagMaxFreeChunkCnt      int64   `json:"src_lag_max_free_chunk_cnt"`
+	DstLeadFreeChunkCnt        int64   `json:"dst_lead_free_chunk_cnt"`
 	MigrateConfig
 }
 
@@ -74,6 +76,7 @@ func NewBalanceMgr(clusterMgrCli client.ClusterMgrAPI, volumeUpdater client.Task
 		priorityVuids:   make(map[proto.Vuid]*client.DiskInfoSimple),
 	}
 	conf.MigrateConfig.IsBalanceAlloc = true
+	conf.MigrateConfig.DstLeadFreeChunkCnt = conf.DstLeadFreeChunkCnt
 	mgr.IMigrator = NewMigrateMgr(clusterMgrCli, volumeUpdater, taskSwitch, taskLogger,
 		&conf.MigrateConfig, proto.TaskTypeBalance, clusterTopology)
 	return mgr
@@ -168,9 +171,11 @@ func (mgr *BalanceMgr) collectionTask() (err error) {
 func (mgr *BalanceMgr) selectDisks(ctx context.Context, maxFreeChunkCnt, minFreeChunkCnt int64) []*client.DiskInfoSimple {
 	span := trace.SpanFromContextSafe(ctx)
 	var allDisks []*client.DiskInfoSimple
+	idcMaxFreeChunks := make(map[string]int64)
 	for idcName := range mgr.clusterTopology.GetIDCs() {
 		maxFreeChunksDisk := mgr.clusterTopology.MaxFreeChunksDisk(idcName)
 		if maxFreeChunksDisk != nil && maxFreeChunksDisk.FreeChunkCnt >= maxFreeChunkCnt {
+			idcMaxFreeChunks[idcName] = maxFreeChunksDisk.FreeChunkCnt
 			allDisks = append(allDisks, mgr.clusterTopology.GetIDCDisks(idcName)...)
 		}
 	}
@@ -179,6 +184,10 @@ func (mgr *BalanceMgr) selectDisks(ctx context.Context, maxFreeChunkCnt, minFree
 	var selected []*client.DiskInfoSimple
 	for _, disk := range allDisks {
 		if !disk.IsHealth() || mgr.IMigrator.IsMigratingDisk(disk.DiskID) {
+			continue
+		}
+		if mgr.cfg.SrcLagMaxFreeChunkCnt > 0 &&
+			idcMaxFreeChunks[disk.Idc]-disk.FreeChunkCnt < mgr.cfg.SrcLagMaxFreeChunkCnt {
 			continue
 		}
 		if disk.FreeChunkCnt < minFreeChunkCnt {

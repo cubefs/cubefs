@@ -336,7 +336,8 @@ type MigrateConfig struct {
 	ClusterID proto.ClusterID `json:"-"` // fill in config.go
 	base.TaskCommonConfig
 
-	IsBalanceAlloc bool `json:"-"`
+	IsBalanceAlloc      bool  `json:"-"`
+	DstLeadFreeChunkCnt int64 `json:"-"`
 
 	lockFailHandleFunc lockFailFunc
 	// clear junk tasks
@@ -350,6 +351,10 @@ type MigrateConfig struct {
 }
 
 type clearJunkTasksFunc func(ctx context.Context, tasks []*proto.MigrateTask) error
+
+func (c *MigrateConfig) BalancePolicy() client.BalancePolicy {
+	return client.BalancePolicy{IsBalance: c.IsBalanceAlloc, DstLeadFreeChunkCnt: c.DstLeadFreeChunkCnt}
+}
 
 var defaultClearJunkTasksFunc = func(ctx context.Context, tasks []*proto.MigrateTask) error {
 	return nil
@@ -617,7 +622,8 @@ func (mgr *MigrateMgr) prepareTask() (err error) {
 	}
 
 	// alloc volume unit
-	ret, err := base.AllocVunitSafe(ctx, mgr.clusterMgrCli, migTask.SourceVuid, migTask.Sources, nil, mgr.cfg.IsBalanceAlloc)
+	ret, err := base.AllocVunitSafe(ctx, mgr.clusterMgrCli, migTask.SourceVuid, migTask.Sources, nil,
+		mgr.cfg.BalancePolicy())
 	if err != nil {
 		span.Errorf("alloc volume unit failed: err[%+v]", err)
 		return
@@ -831,7 +837,8 @@ func (mgr *MigrateMgr) handleUpdateVolMappingFail(ctx context.Context, task *pro
 
 	if base.ShouldAllocAndRedo(code) {
 		span.Infof("realloc vunit and redo: task_id[%s]", task.TaskID)
-		newVunit, err := base.AllocVunitSafe(ctx, mgr.clusterMgrCli, task.SourceVuid, task.Sources, nil, mgr.cfg.IsBalanceAlloc)
+		newVunit, err := base.AllocVunitSafe(ctx, mgr.clusterMgrCli, task.SourceVuid, task.Sources, nil,
+			mgr.cfg.BalancePolicy())
 		if err != nil {
 			span.Errorf("realloc failed: vuid[%d], err[%+v]", task.SourceVuid, err)
 			return err
@@ -1009,7 +1016,7 @@ func (mgr *MigrateMgr) ReclaimTask(ctx context.Context, args *api.TaskArgs) (err
 	}
 
 	newDst, err := base.AllocVunitSafe(ctx, mgr.clusterMgrCli, arg.Src[arg.Dest.Vuid.Index()].Vuid,
-		arg.Src, []proto.DiskID{arg.Dest.DiskID}, mgr.cfg.IsBalanceAlloc)
+		arg.Src, []proto.DiskID{arg.Dest.DiskID}, mgr.cfg.BalancePolicy())
 	if err != nil {
 		span.Errorf("alloc volume unit from clustermgr failed, err: %s", err)
 		return err

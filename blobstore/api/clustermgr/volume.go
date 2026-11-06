@@ -161,14 +161,9 @@ func (c *Client) UnlockVolume(ctx context.Context, args *UnlockVolumeArgs) (err 
 }
 
 type AllocVolumeUnitArgs struct {
-	Vuid      proto.Vuid `json:"vuid"`
-	IsBalance bool       `json:"is_balance"`
-	// MinDstDiffChunkCnt enables the balance target-disk stability filter when > 0:
-	// a candidate target disk is allowed only if its free chunk count exceeds the
-	// source disk's by at least MinDstDiffChunkCnt+2, so after moving one chunk the
-	// target disk still stays strictly freer than the source disk.
-	// <= 0 disables the filter. Only effective when IsBalance is true.
-	MinDstDiffChunkCnt int64 `json:"min_dst_diff_chunk_cnt"`
+	Vuid                proto.Vuid `json:"vuid"`
+	IsBalance           bool       `json:"is_balance"`
+	DstLeadFreeChunkCnt int64      `json:"dst_lead_free_chunk_cnt"`
 }
 
 type AllocVolumeUnit struct {

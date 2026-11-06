@@ -61,3 +61,23 @@ func TestConfigCheckAndFix(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, defaultDeleteNoDelay, cfg.BlobDelete.SafeDelayTimeH)
 }
+
+func TestConfigBalanceGateOptIn(t *testing.T) {
+	cfg := &Config{ClusterID: 1}
+	cfg.ServiceRegister.Host = "http://127.0.0.1:9800"
+	cfg.Kafka.Version = "2.1.0"
+	require.NoError(t, cfg.fixConfig())
+
+	// balance gates stay off until explicitly configured
+	require.Equal(t, int64(0), cfg.Balance.SrcLagMaxFreeChunkCnt)
+	require.Equal(t, int64(0), cfg.Balance.DstLeadFreeChunkCnt)
+	require.Equal(t, int64(0), cfg.Balance.MigrateConfig.DstLeadFreeChunkCnt)
+
+	cfg.Balance.SrcLagMaxFreeChunkCnt = 10
+	cfg.Balance.DstLeadFreeChunkCnt = 5
+	require.NoError(t, cfg.fixConfig())
+	require.Equal(t, int64(10), cfg.Balance.SrcLagMaxFreeChunkCnt)
+	require.Equal(t, int64(5), cfg.Balance.DstLeadFreeChunkCnt)
+	// migrate only receives the value via NewBalanceMgr pass-down
+	require.Equal(t, int64(0), cfg.Balance.MigrateConfig.DstLeadFreeChunkCnt)
+}

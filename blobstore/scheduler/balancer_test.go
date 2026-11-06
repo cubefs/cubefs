@@ -37,6 +37,10 @@ import (
 )
 
 func newBalancer(t *testing.T) *BalanceMgr {
+	return newBalancerWithConf(t, &BalanceMgrConfig{})
+}
+
+func newBalancerWithConf(t *testing.T, conf *BalanceMgrConfig) *BalanceMgr {
 	ctr := gomock.NewController(t)
 	clusterMgr := NewMockClusterMgrAPI(ctr)
 	volumeUpdater := NewMockTaskAPI(ctr)
@@ -44,7 +48,6 @@ func newBalancer(t *testing.T) *BalanceMgr {
 	topologyMgr := NewMockClusterTopology(ctr)
 	taskLogger := mocks.NewMockRecordLogEncoder(ctr)
 	migrater := NewMockMigrater(ctr)
-	conf := &BalanceMgrConfig{}
 	c := closer.New()
 
 	topologyMgr.EXPECT().Close().AnyTimes().Return()
@@ -64,6 +67,14 @@ func TestBalanceLoad(t *testing.T) {
 	mgr.IMigrator.(*MockMigrater).EXPECT().Load().Return(nil)
 	err := mgr.Load()
 	require.NoError(t, err)
+}
+
+func TestBalancePassDownMinDstDiffChunkCnt(t *testing.T) {
+	conf := &BalanceMgrConfig{DstLeadFreeChunkCnt: 7}
+	mgr := newBalancerWithConf(t, conf)
+	require.Equal(t, int64(7), mgr.cfg.MigrateConfig.DstLeadFreeChunkCnt)
+	require.True(t, mgr.cfg.IsBalanceAlloc)
+	require.Equal(t, client.BalancePolicy{IsBalance: true, DstLeadFreeChunkCnt: 7}, mgr.cfg.BalancePolicy())
 }
 
 func TestBalanceRun(t *testing.T) {
@@ -148,22 +159,53 @@ func TestBalanceCollectionTask(t *testing.T) {
 			units = append(units, &ele)
 		}
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListDiskVolumeUnits(any, any).Return(units, nil)
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Return(volume, nil)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).AnyTimes().Return(volume, nil)
 		mgr.IMigrator.(*MockMigrater).EXPECT().IsTaskExist(any, any).Return(false)
 		mgr.IMigrator.(*MockMigrater).EXPECT().AddTask(any, any).Return(nil)
 		err = mgr.collectionTask()
 		require.NoError(t, err)
 
-		// select one task and gen task failed
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListDiskVolumeUnits(any, any).Return(nil, errMock)
-		err = mgr.collectionTask()
-		require.True(t, errors.Is(err, ErrNoBalanceVunit))
+		// failure paths use fresh controllers: the AnyTimes mocks above would shadow
+		// the failure mocks on shared ones
+		{
+			// ListDiskVolumeUnits fails
+			mgr := newBalancer(t)
+			mgr.cfg.DiskConcurrency = 2
+			mgr.IMigrator.(*MockMigrater).EXPECT().GetMigratingDiskNum().AnyTimes().Return(1)
+			mgr.IMigrator.(*MockMigrater).EXPECT().IsMigratingDisk(any).AnyTimes().DoAndReturn(func(diskID proto.DiskID) bool {
+				return diskID == 1
+			})
+			clusterTopMgr := &ClusterTopologyMgr{
+				taskStatsMgr: base.NewClusterTopologyStatisticsMgr(1, []float64{}),
+			}
+			clusterTopMgr.buildClusterTopology([]*client.DiskInfoSimple{disk1, disk2, disk3}, 1)
+			mgr.clusterTopology = clusterTopMgr
+			mgr.cfg.MinDiskFreeChunkCnt = 101
 
-		// select one task and gen task failed
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListDiskVolumeUnits(any, any).Return(units, nil)
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).AnyTimes().Return(nil, errMock)
-		err = mgr.collectionTask()
-		require.True(t, errors.Is(err, ErrNoBalanceVunit))
+			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListDiskVolumeUnits(any, any).Return(nil, errMock)
+			err = mgr.collectionTask()
+			require.True(t, errors.Is(err, ErrNoBalanceVunit))
+		}
+		{
+			// GetVolumeInfo fails
+			mgr := newBalancer(t)
+			mgr.cfg.DiskConcurrency = 2
+			mgr.IMigrator.(*MockMigrater).EXPECT().GetMigratingDiskNum().AnyTimes().Return(1)
+			mgr.IMigrator.(*MockMigrater).EXPECT().IsMigratingDisk(any).AnyTimes().DoAndReturn(func(diskID proto.DiskID) bool {
+				return diskID == 1
+			})
+			clusterTopMgr := &ClusterTopologyMgr{
+				taskStatsMgr: base.NewClusterTopologyStatisticsMgr(1, []float64{}),
+			}
+			clusterTopMgr.buildClusterTopology([]*client.DiskInfoSimple{disk1, disk2, disk3}, 1)
+			mgr.clusterTopology = clusterTopMgr
+			mgr.cfg.MinDiskFreeChunkCnt = 101
+
+			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListDiskVolumeUnits(any, any).Return(units, nil)
+			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).AnyTimes().Return(nil, errMock)
+			err = mgr.collectionTask()
+			require.True(t, errors.Is(err, ErrNoBalanceVunit))
+		}
 	}
 }
 
@@ -294,6 +336,37 @@ func TestSelectDisks(t *testing.T) {
 		require.Contains(t, ids, diskWatermark.DiskID)
 		require.NotContains(t, ids, diskHealthy.DiskID)
 		require.NotContains(t, ids, diskBroken.DiskID)
+	})
+	// diff between diskTrigger(200) and each candidate: diskSlot 195, diskWatermark 150, diskHealthy 150
+	t.Run("migrate diff gate: disks lagging the IDC max-free disk by less than the config are skipped", func(t *testing.T) {
+		newMgrWithGate := func(gate int64) *BalanceMgr {
+			mgr := newBalancer(t)
+			mgr.cfg.MaxDiskFreeChunkCnt = 100
+			mgr.cfg.MinDiskFreeChunkCnt = 20
+			mgr.cfg.DiskUsageThreshold = 0.9
+			mgr.cfg.SrcLagMaxFreeChunkCnt = gate
+			mgr.clusterTopology = buildTopology(allDisks)
+			mgr.IMigrator.(*MockMigrater).EXPECT().IsMigratingDisk(any).AnyTimes().Return(false)
+			return mgr
+		}
+
+		selected := newMgrWithGate(0).selectDisks(context.Background(), 100, 20)
+		ids := diskIDs(selected)
+		require.Contains(t, ids, diskSlot.DiskID)
+		require.Contains(t, ids, diskWatermark.DiskID)
+
+		selected = newMgrWithGate(150).selectDisks(context.Background(), 100, 20)
+		ids = diskIDs(selected)
+		require.Contains(t, ids, diskSlot.DiskID)
+		require.Contains(t, ids, diskWatermark.DiskID)
+
+		selected = newMgrWithGate(151).selectDisks(context.Background(), 100, 20)
+		ids = diskIDs(selected)
+		require.Contains(t, ids, diskSlot.DiskID)
+		require.NotContains(t, ids, diskWatermark.DiskID)
+
+		selected = newMgrWithGate(196).selectDisks(context.Background(), 100, 20)
+		require.Empty(t, diskIDs(selected))
 	})
 }
 
