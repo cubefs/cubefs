@@ -145,6 +145,9 @@ type AllocPolicy struct {
 	Idc        string
 	RetryTimes int
 	IsBalance  bool
+
+	SrcDiskID          proto.DiskID
+	MinDstDiffChunkCnt int64
 }
 
 type BlobNodeManager struct {
@@ -505,12 +508,14 @@ func (b *BlobNodeManager) AllocChunks(ctx context.Context, policy AllocPolicy) (
 	// repair
 	if len(policy.Excludes) > 0 {
 		ret, err := allocator.ReAlloc(ctx, reAllocPolicy{
-			diskType:  policy.DiskType,
-			diskSetID: policy.DiskSetID,
-			idc:       policy.Idc,
-			count:     len(policy.Vuids),
-			excludes:  policy.Excludes,
-			isBalance: policy.IsBalance,
+			diskType:           policy.DiskType,
+			diskSetID:          policy.DiskSetID,
+			idc:                policy.Idc,
+			count:              len(policy.Vuids),
+			excludes:           policy.Excludes,
+			isBalance:          policy.IsBalance,
+			srcDiskID:          policy.SrcDiskID,
+			minDstDiffChunkCnt: policy.MinDstDiffChunkCnt,
 		})
 		if err != nil {
 			return nil, nil, err
@@ -564,11 +569,14 @@ func (b *BlobNodeManager) AllocChunks(ctx context.Context, policy AllocPolicy) (
 	RETRY:
 		if len(excludes) > 0 {
 			disks, err = allocator.ReAlloc(ctx, reAllocPolicy{
-				diskType:  policy.DiskType,
-				diskSetID: diskSetID,
-				idc:       idc,
-				count:     len(vuids),
-				excludes:  excludes,
+				diskType:           policy.DiskType,
+				diskSetID:          diskSetID,
+				idc:                idc,
+				count:              len(vuids),
+				excludes:           excludes,
+				isBalance:          policy.IsBalance,
+				srcDiskID:          policy.SrcDiskID,
+				minDstDiffChunkCnt: policy.MinDstDiffChunkCnt,
 			})
 			if err != nil {
 				return nil, nil, err

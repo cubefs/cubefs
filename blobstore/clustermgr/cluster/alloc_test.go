@@ -1979,3 +1979,148 @@ func TestAlloc_HostAwareFilter(t *testing.T) {
 	_, err := alloc.allocNodeSet(ctx, proto.DiskTypeHDD, codemode.Replica3)
 	require.ErrorIs(t, err, ErrNoEnoughSpace)
 }
+
+// free chunk count of disks created by initTestBlobNodeMgrDisks
+const testDiskFreeChunkCnt = int64(14.5 * 1024 / 16)
+
+// TestBalanceFilterAllow unit-tests the filter math in isolation:
+// the effective threshold is minDstDiff+2, where +2 is the structural cost of
+// one migration (source free +1, target free -1).
+func TestBalanceFilterAllow(t *testing.T) {
+	mkDisk := func(free int64) *diskItem {
+		return &diskItem{
+			diskID:       proto.DiskID(1),
+			weightGetter: blobNodeDiskWeightGetter,
+			info:         diskItemInfo{extraInfo: &clustermgr.DiskHeartBeatInfo{FreeChunkCnt: free}},
+		}
+	}
+
+	bf := &balanceFilter{srcDiskID: proto.DiskID(1), srcFree: 100, minDstDiff: 1}
+	// diff == minDstDiff+2: allowed, post-migration target still minDstDiff freer than source
+	require.True(t, bf.allow(mkDisk(103)))
+	// diff == minDstDiff+1: rejected, one chunk short
+	require.False(t, bf.allow(mkDisk(102)))
+	// equal free: rejected, equal disks must not exchange chunks
+	require.False(t, bf.allow(mkDisk(100)))
+
+	// disabled (minDstDiff <= 0): never rejects, degraded to no-filter behavior
+	bf = &balanceFilter{srcDiskID: proto.DiskID(1), srcFree: 100, minDstDiff: 0}
+	require.True(t, bf.allow(mkDisk(101)))
+	bf = &balanceFilter{srcDiskID: proto.DiskID(1), srcFree: 100, minDstDiff: -1}
+	require.True(t, bf.allow(mkDisk(0)))
+	require.True(t, bf.allow(mkDisk(100)))
+}
+
+// TestAllocWithBalanceFilter verifies the balance target-disk filter end to end
+// on the isBalance=true allocation path (allocFromDiskStorages).
+func TestAllocWithBalanceFilter(t *testing.T) {
+	testDiskMgr, closeTestDiskMgr := initTestBlobNodeMgr(t)
+	defer closeTestDiskMgr()
+	// disk never expire
+	testDiskMgr.cfg.HeartbeatExpireIntervalS = 6000
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+
+	// same host alloc, isBalance=true walks allocFromDiskStorages
+	{
+		initTestBlobNodeMgrNodes(t, testDiskMgr, 1, 1, testIdcs...)
+		initTestBlobNodeMgrDisks(t, testDiskMgr, 1, 6, false, testIdcs[0])
+		testDiskMgr.cfg.HostAware = false
+		testDiskMgr.cfg.RackAware = false
+		testDiskMgr.refresh(ctx)
+		allocators := testDiskMgr.manager.allocator.Load().(*allocator)
+		idcAllocator := allocators.nodeSets[proto.DiskTypeHDD][ecNodeSetID].diskSets[ecDiskSetID].idcAllocators[testIdcs[0]]
+
+		// allowed: diff == minDstDiff+2
+		bf := &balanceFilter{srcDiskID: proto.DiskID(1), srcFree: testDiskFreeChunkCnt - 3, minDstDiff: 1}
+		ret, err := idcAllocator.allocWithFilter(ctx, 1, nil, bf)
+		require.NoError(t, err)
+		require.Equal(t, 1, len(ret))
+		// +1 adds back the chunk the allocation itself just consumed (decrWeight)
+		require.GreaterOrEqual(t, testDiskMgr.allDisks[ret[0]].weight()+1-bf.srcFree, bf.minDstDiff+2)
+
+		// filtered: diff == minDstDiff+1
+		bf = &balanceFilter{srcDiskID: proto.DiskID(1), srcFree: testDiskFreeChunkCnt - 2, minDstDiff: 1}
+		_, err = idcAllocator.allocWithFilter(ctx, 1, nil, bf)
+		require.Equal(t, ErrNoEnoughSpace, err)
+
+		// filtered: equal free disks must not exchange chunks (anti ping-pong)
+		bf = &balanceFilter{srcDiskID: proto.DiskID(1), srcFree: testDiskFreeChunkCnt, minDstDiff: 1}
+		_, err = idcAllocator.allocWithFilter(ctx, 1, nil, bf)
+		require.Equal(t, ErrNoEnoughSpace, err)
+
+		// disabled: never rejects, still a balance allocation via the disk-level path
+		bf = &balanceFilter{srcDiskID: proto.DiskID(1), srcFree: testDiskFreeChunkCnt, minDstDiff: -1}
+		ret, err = idcAllocator.allocWithFilter(ctx, 1, nil, bf)
+		require.NoError(t, err)
+		require.Equal(t, 1, len(ret))
+
+		// nil bf is a normal (non-balance) allocation via the node-level path
+		ret, err = idcAllocator.allocWithFilter(ctx, 1, nil, nil)
+		require.NoError(t, err)
+		require.Equal(t, 1, len(ret))
+	}
+
+	// diff rack + diff host, the filter must thread through allocFromRack too
+	{
+		initTestBlobNodeMgrNodes(t, testDiskMgr, 2, 2, testIdcs...)
+		initTestBlobNodeMgrDisks(t, testDiskMgr, 61, 66, false, testIdcs[0])
+		testDiskMgr.cfg.HostAware = true
+		testDiskMgr.cfg.RackAware = true
+		testDiskMgr.refresh(ctx)
+		allocators := testDiskMgr.manager.allocator.Load().(*allocator)
+		idcAllocator := allocators.nodeSets[proto.DiskTypeHDD][ecNodeSetID].diskSets[ecDiskSetID].idcAllocators[testIdcs[0]]
+
+		_, err := idcAllocator.allocWithFilter(ctx, 1, nil,
+			&balanceFilter{srcDiskID: proto.DiskID(61), srcFree: testDiskFreeChunkCnt, minDstDiff: 1})
+		require.Equal(t, ErrNoEnoughSpace, err)
+
+		ret, err := idcAllocator.allocWithFilter(ctx, 1, nil,
+			&balanceFilter{srcDiskID: proto.DiskID(61), srcFree: testDiskFreeChunkCnt - 3, minDstDiff: 1})
+		require.NoError(t, err)
+		require.Equal(t, 1, len(ret))
+	}
+}
+
+// TestReAllocBalanceFilter verifies the filter is built from the heartbeat-maintained
+// source disk, and that every disabled combination degrades to the no-filter behavior.
+func TestReAllocBalanceFilter(t *testing.T) {
+	testDiskMgr, closeTestDiskMgr := initTestBlobNodeMgr(t)
+	defer closeTestDiskMgr()
+	testDiskMgr.cfg.HeartbeatExpireIntervalS = 6000
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+
+	initTestBlobNodeMgrNodes(t, testDiskMgr, 1, 1, testIdcs...)
+	initTestBlobNodeMgrDisks(t, testDiskMgr, 1, 6, false, testIdcs[0])
+	testDiskMgr.cfg.HostAware = false
+	testDiskMgr.cfg.RackAware = false
+	testDiskMgr.refresh(ctx)
+	allocators := testDiskMgr.manager.allocator.Load().(*allocator)
+
+	reAlloc := func(isBalance bool, srcDiskID proto.DiskID, minDstDiff int64) ([]proto.DiskID, error) {
+		return allocators.ReAlloc(ctx, reAllocPolicy{
+			diskType:           proto.DiskTypeHDD,
+			diskSetID:          ecDiskSetID,
+			idc:                testIdcs[0],
+			count:              1,
+			excludes:           []proto.DiskID{1},
+			isBalance:          isBalance,
+			srcDiskID:          srcDiskID,
+			minDstDiffChunkCnt: minDstDiff,
+		})
+	}
+
+	// source disk free is resolved from allDisks: all disks are equally free, so no
+	// candidate target is strictly freer => no enough space
+	_, err := reAlloc(true, proto.DiskID(2), 1)
+	require.Equal(t, ErrNoEnoughSpace, err)
+
+	// minDstDiff <= 0 disables the filter
+	_, err = reAlloc(true, proto.DiskID(2), 0)
+	require.NoError(t, err)
+	_, err = reAlloc(true, proto.DiskID(2), -1)
+	require.NoError(t, err)
+
+	// isBalance=false disables the filter even with valid source and threshold
+	_, err = reAlloc(false, proto.DiskID(2), 100)
+	require.NoError(t, err)
+}

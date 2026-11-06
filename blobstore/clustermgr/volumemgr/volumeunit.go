@@ -121,6 +121,10 @@ func (v *VolumeMgr) AllocVolumeUnit(ctx context.Context, args *cmapi.AllocVolume
 		Excludes:   excludes,
 		RetryTimes: 0,
 		IsBalance:  args.IsBalance,
+		// targetDiskID is the disk where the old vunit currently lives, i.e. the migration
+		// source disk; pass it with the configured min dst diff to enable the stability filter
+		SrcDiskID:          targetDiskID,
+		MinDstDiffChunkCnt: args.MinDstDiffChunkCnt,
 	}
 	if policy.CodeMode.T().IsReplicateMode() {
 		policy.DiskSetID = diskInfo.DiskSetID
