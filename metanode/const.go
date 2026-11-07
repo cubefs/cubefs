@@ -254,6 +254,7 @@ const (
 
 	metaNodeDeleteBatchCountKey = "batchCount"
 	configNameResolveInterval   = "nameResolveInterval" // int
+	cfgAdvertisedAddr           = "advertisedAddr"      // string
 )
 
 const (

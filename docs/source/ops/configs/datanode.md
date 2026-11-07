@@ -16,6 +16,7 @@
 | exporterPort  | string         | Port of the monitoring system                                                                                                   | No       |
 | masterAddr    | string slice   | Address of the cluster manager                                                                                                  | Yes      |
 | localIP       | string         | IP address of the local machine. If this option is not specified, the IP address used for communication with the master is used | No       |
+| advertisedAddr | string        | Advertised address used when registering the node to the master. If not configured, localIP is used                            | No       |
 | zoneName      | string         | Specify the zone. By default, it is assigned to the `default` zone                                                              | No       |
 | diskReadIocc  | int            | Limit read concurrency io frequency per disk. No limit if less than or equal to 0                                               | No       |
 | diskReadFlow  | int            | Limit read io flow per disk. No limit if less than or equal to 0                                                                | No       |
