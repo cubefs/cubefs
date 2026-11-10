@@ -104,6 +104,19 @@ func ParseRequestParam(r *http.Request) *RequestParam {
 	return p
 }
 
+// Object keys are mapped onto the directory tree of the volume, so "." and ".."
+// must not appear as path components of a new object key. They would be stored
+// as literal dentries with these reserved names, which POSIX clients mounting
+// the same volume can neither resolve nor remove.
+func hasInvalidPathComponent(key string) bool {
+	for _, name := range strings.Split(key, pathSep) {
+		if name == "." || name == ".." {
+			return true
+		}
+	}
+	return false
+}
+
 func (o *ObjectNode) getVol(bucket string) (vol *Volume, err error) {
 	if bucket == "" {
 		return nil, errors.New("bucket name is empty")
