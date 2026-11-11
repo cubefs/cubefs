@@ -52,7 +52,7 @@ func GetMatchParation(path string) (*disk.PartitionStat, error) {
 }
 
 var (
-	ErrInvalidDiskPartition = errors.New("invalid disk partiton")
+	ErrInvalidDiskPartition = errors.New("invalid disk partition")
 	ErrFailedToGetIoCounter = errors.New("failed to get io counter")
 )
 
