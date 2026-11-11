@@ -172,8 +172,12 @@ type StreamConfig struct {
 	// CodeModesGetOrdered shards with volume unit order to
 	// reduce reedsolom's inverted matrix cache
 	//
-	// EC24P8 in 1AZ, C(32, 8) = 10518300 matrix
-	// Inverted matrix memory: (24 + 24*24 + 24*24*8) * 10518300 ~= 51 GB
+	// NOTE: reedsolomon caches inverted matrices as N*N [][]byte (1B element
+	// over GF(256)), each costs 24 + 24*N + N*N bytes, keyed on invalid indices
+	// and never evicted. Worst case all C(N+M, M) combinations are cached:
+	//   EC24P8 in 1AZ:  C(32, 8)  = 10518300 * (24 + 24*24 + 24*24) ~= 12.4 GB
+	//   EC15P12 random: C(27, 12) = 17383860 * (24 + 15*24 + 15*15) ~= 10.6 GB
+	// plus ~1 GB inversion tree nodes and children pointer arrays.
 	CodeModesGetOrdered map[codemode.CodeMode]bool `json:"code_mode_get_ordered"`
 	// CodeModesGetIgnoreIDC no distance when getting cross idc
 	CodeModesGetIgnoreIDC map[codemode.CodeMode]bool `json:"code_mode_get_ignore_idc"`
