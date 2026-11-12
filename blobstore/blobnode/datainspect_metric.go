@@ -37,24 +37,25 @@ var (
 	)
 
 	// dataInspectBadShardByDiskVec gauges the current bad-bid count per disk (sum of all chunks'
-	// BadBids). Updated at the end of each round. Reset to zero via /inspect/cleanmetric.
+	// BadBids). Only disks with actual bad bids (>0) export series.
 	dataInspectBadShardByDiskVec = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: "blobstore",
 			Subsystem: "blobnode",
 			Name:      "data_inspect_bad_shard_by_disk",
-			Help:      "Current number of tracked bad bids on the disk as aggregated from all chunks",
+			Help:      "Current number of tracked bad bids on the disk, reported when greater than 0",
 		},
 		[]string{"cluster_id", "disk_id"},
 	)
 
 	// dataInspectBadShardByChunkVec gauges unresolved bad bids per chunk (BadBids length).
+	// Only chunks with bad bids (>0) export series to keep the metric count small.
 	dataInspectBadShardByChunkVec = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: "blobstore",
 			Subsystem: "blobnode",
 			Name:      "data_inspect_bad_shard_by_chunk",
-			Help:      "Current number of tracked bad bids per chunk",
+			Help:      "Current number of tracked bad bids per chunk, reported when greater than 0",
 		},
 		[]string{"cluster_id", "disk_id", "vuid"},
 	)
@@ -74,6 +75,26 @@ func dataInspectDiskLabelValues(info clustermgr.BlobNodeDiskInfo) []string {
 
 func dataInspectChunkLabelValues(info clustermgr.BlobNodeDiskInfo, vuid proto.Vuid) []string {
 	return []string{info.ClusterID.ToString(), info.DiskID.ToString(), vuid.ToString()}
+}
+
+// setDiskBadShardMetric publishes the per-disk bad-bid gauge
+func setDiskBadShardMetric(info clustermgr.BlobNodeDiskInfo, badCnt int64) {
+	labels := dataInspectDiskLabelValues(info)
+	if badCnt <= 0 {
+		dataInspectBadShardByDiskVec.DeleteLabelValues(labels...)
+		return
+	}
+	dataInspectBadShardByDiskVec.WithLabelValues(labels...).Set(float64(badCnt))
+}
+
+// setChunkBadShardMetric publishes the per-chunk bad-bid gauge
+func setChunkBadShardMetric(info clustermgr.BlobNodeDiskInfo, vuid proto.Vuid, badCnt int64) {
+	labels := dataInspectChunkLabelValues(info, vuid)
+	if badCnt <= 0 {
+		dataInspectBadShardByChunkVec.DeleteLabelValues(labels...)
+		return
+	}
+	dataInspectBadShardByChunkVec.WithLabelValues(labels...).Set(float64(badCnt))
 }
 
 // onChunkReleased drops inspect metrics for a released vuid.

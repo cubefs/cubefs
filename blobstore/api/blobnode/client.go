@@ -109,7 +109,7 @@ type StorageAPI interface {
 	DiskInfo(ctx context.Context, host string, args *DiskStatArgs) (di *clustermgr.BlobNodeDiskInfo, err error)
 	QosStat(ctx context.Context, host string, args *QosStatArgs) (stat map[proto.DiskID]map[string]IoLimiterStats, err error)
 	GetInspectStat(ctx context.Context, host string) (stat *DataInspectStat, err error)
-	GetInspectDiskState(ctx context.Context, host string, args *DiskStatArgs) (stat map[proto.DiskID]InspectDiskState, err error)
+	GetInspectDiskStat(ctx context.Context, host string, args *DiskStatArgs) (stat map[proto.DiskID]InspectDiskStat, err error)
 	GetInspectChunkState(ctx context.Context, host string, args *ChunkInspectArgs) (stat map[proto.Vuid]InspectChunkState, err error)
 
 	// chunks

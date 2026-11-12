@@ -107,6 +107,7 @@ func TestRunInspectRoundCallsInspectDisk(t *testing.T) {
 
 	ds1 := NewMockDiskAPI(ctr)
 	ds2 := NewMockDiskAPI(ctr)
+	aliveCS := NewMockChunkAPI(ctr)
 	svr := &Service{
 		Disks:   map[proto.DiskID]core.DiskAPI{11: ds1, 22: ds2},
 		ctx:     ctx,
@@ -127,13 +128,33 @@ func TestRunInspectRoundCallsInspectDisk(t *testing.T) {
 	ds1.EXPECT().DiskInfo().Return(clustermgr.BlobNodeDiskInfo{}).AnyTimes()
 	ds1.EXPECT().RangeInspectChunkState(any, any).Return(nil).AnyTimes()
 
+	// the skipped disk still gets its gauges refreshed from the in-memory state
+	t.Cleanup(func() {
+		dataInspectBadShardByDiskVec.DeleteLabelValues("9", "22")
+		dataInspectBadShardByChunkVec.DeleteLabelValues("9", "22", "2001")
+	})
+	ds2.EXPECT().DiskInfo().Return(clustermgr.BlobNodeDiskInfo{
+		DiskInfo:          clustermgr.DiskInfo{ClusterID: 9},
+		DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{DiskID: 22},
+	}).AnyTimes()
+	ds2.EXPECT().RangeInspectChunkState(any, any).DoAndReturn(
+		func(_ context.Context, fn func(*core.InspectChunkState) bool) error {
+			fn(&core.InspectChunkState{Vuid: 2001, BadBids: badBidSet(1, 2)})
+			return nil
+		},
+	).Times(1)
+	ds2.EXPECT().GetChunkStorage(any).Return(aliveCS, true).AnyTimes()
+	aliveCS.EXPECT().Status().Return(clustermgr.ChunkStatusNormal).AnyTimes()
+
 	mgr.runInspectRound(ctx)
+
+	require.Equal(t, float64(2), testGaugeValue(dataInspectBadShardByDiskVec, []string{"9", "22"}))
 }
 
-// TestListInspectDiskStatesSkipsClosing verifies listInspectDiskStates skips
-// closing disks and returns a map keyed by disk id with the persisted states of
-// open disks only, consistent with /qos/stat/diskid/*.
-func TestListInspectDiskStatesSkipsClosing(t *testing.T) {
+// TestListInspectDiskStatsSkipsClosing verifies listInspectDiskStats skips
+// closing disks and returns a map keyed by disk id with the inspect stats of
+// open disks only, consistent with /inspect/stat/diskid/*.
+func TestListInspectDiskStatsSkipsClosing(t *testing.T) {
 	ctr := gomock.NewController(t)
 	ctx := context.Background()
 
@@ -150,12 +171,13 @@ func TestListInspectDiskStatesSkipsClosing(t *testing.T) {
 	open.EXPECT().LoadInspectDiskState(any).Return(
 		core.InspectDiskState{DiskID: 3, CycleStartAt: 987654321, CycleID: 8}, nil,
 	).Times(1)
+	open.EXPECT().RangeInspectChunkState(any, any).Return(nil).Times(1)
 
-	states, err := svr.listInspectDiskStates(ctx)
+	stats, err := svr.listInspectDiskStats(ctx)
 	require.NoError(t, err)
-	require.Equal(t, map[proto.DiskID]core.InspectDiskState{
-		3: {DiskID: 3, CycleStartAt: 987654321, CycleID: 8},
-	}, states)
+	require.Equal(t, map[proto.DiskID]bnapi.InspectDiskStat{
+		3: {InspectDiskState: core.InspectDiskState{DiskID: 3, CycleStartAt: 987654321, CycleID: 8}},
+	}, stats)
 }
 
 // TestListInspectChunkStates verifies listInspectChunkStates returns the full

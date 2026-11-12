@@ -77,6 +77,17 @@ func (st InspectDiskState) CycleElapsed() time.Duration {
 	return time.Since(time.Unix(0, st.CycleStartAt))
 }
 
+// InspectDiskStat is the per-disk inspect stat with scan shards info.
+type InspectDiskStat struct {
+	InspectDiskState
+
+	// BadShards is the total tracked bad bids across all alive chunks of the disk
+	BadShards int64 `json:"bad_shards"`
+	// ScannedShards and TotalShards are the shard-scan progress of the current inspect cycle
+	ScannedShards int64 `json:"scanned_shards"`
+	TotalShards   int64 `json:"total_shards"`
+}
+
 // BadBidMeta is the per-bid metadata kept in InspectChunkState.BadBids.
 type BadBidMeta struct {
 	FoundAt int64  `json:"found_at"`         // UnixNano, the first time the bid was flagged bad
@@ -148,9 +159,9 @@ func (c *client) GetInspectStat(ctx context.Context, host string) (stat *DataIns
 	return
 }
 
-func (c *client) GetInspectDiskState(ctx context.Context, host string, args *DiskStatArgs) (stat map[proto.DiskID]InspectDiskState, err error) {
+func (c *client) GetInspectDiskStat(ctx context.Context, host string, args *DiskStatArgs) (stat map[proto.DiskID]InspectDiskStat, err error) {
 	urlStr := fmt.Sprintf("%v/inspect/stat/diskid/%v", host, args.DiskID)
-	stat = make(map[proto.DiskID]InspectDiskState)
+	stat = make(map[proto.DiskID]InspectDiskStat)
 	err = c.GetWith(ctx, urlStr, &stat)
 	return
 }
