@@ -1602,6 +1602,7 @@ func TestService_DataInspect(t *testing.T) {
 		}
 		ds1.EXPECT().IsClosing().Return(false).Times(1)
 		ds1.EXPECT().LoadInspectDiskState(gomock.Any()).Return(expectedDiskSt, nil).Times(1)
+		ds1.EXPECT().RangeInspectChunkState(gomock.Any(), gomock.Any()).Return(nil).Times(1)
 
 		totalUrl := testServer.URL + "/inspect/stat/diskid/2"
 		resp, err := HTTPRequest(http.MethodGet, totalUrl)
@@ -1611,10 +1612,12 @@ func TestService_DataInspect(t *testing.T) {
 
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
-		var data map[proto.DiskID]InspectDiskState
+		var data map[proto.DiskID]bnapi.InspectDiskStat
 		err = json.Unmarshal(body, &data)
 		require.NoError(t, err)
-		require.Equal(t, map[proto.DiskID]InspectDiskState{2: expectedDiskSt}, data)
+		require.Equal(t, map[proto.DiskID]bnapi.InspectDiskStat{
+			2: {InspectDiskState: expectedDiskSt},
+		}, data)
 	}
 
 	{
@@ -1625,8 +1628,10 @@ func TestService_DataInspect(t *testing.T) {
 		ds2.EXPECT().ID().Return(proto.DiskID(3)).AnyTimes()
 		ds1.EXPECT().IsClosing().Return(false).Times(1)
 		ds1.EXPECT().LoadInspectDiskState(gomock.Any()).Return(expectedDiskStates[2], nil).Times(1)
+		ds1.EXPECT().RangeInspectChunkState(gomock.Any(), gomock.Any()).Return(nil).Times(1)
 		ds2.EXPECT().IsClosing().Return(false).Times(1)
 		ds2.EXPECT().LoadInspectDiskState(gomock.Any()).Return(expectedDiskStates[3], nil).Times(1)
+		ds2.EXPECT().RangeInspectChunkState(gomock.Any(), gomock.Any()).Return(nil).Times(1)
 
 		totalUrl := testServer.URL + "/inspect/stat/diskid/0"
 		resp, err := HTTPRequest(http.MethodGet, totalUrl)
@@ -1636,10 +1641,13 @@ func TestService_DataInspect(t *testing.T) {
 
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
-		var data map[proto.DiskID]InspectDiskState
+		var data map[proto.DiskID]bnapi.InspectDiskStat
 		err = json.Unmarshal(body, &data)
 		require.NoError(t, err)
-		require.Equal(t, expectedDiskStates, data)
+		require.Equal(t, map[proto.DiskID]bnapi.InspectDiskStat{
+			2: {InspectDiskState: expectedDiskStates[2]},
+			3: {InspectDiskState: expectedDiskStates[3]},
+		}, data)
 	}
 
 	{

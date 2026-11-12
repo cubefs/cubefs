@@ -244,8 +244,7 @@ func (mgr *DataInspectMgr) updateBadShardByChunk(ctx context.Context, cs core.Ch
 		return
 	}
 	info := cs.Disk().DiskInfo()
-	dataInspectBadShardByChunkVec.WithLabelValues(dataInspectChunkLabelValues(info, cs.Vuid())...).
-		Set(float64(len(st.BadBids)))
+	setChunkBadShardMetric(info, cs.Vuid(), int64(len(st.BadBids)))
 }
 
 // inspectCountOnly walks the chunk's shard metadata only (no data I/O, no CRC) to record
@@ -478,11 +477,12 @@ func (mgr *DataInspectMgr) reconcileBadBids(ctx context.Context,
 	return cleared, nil
 }
 
-func (mgr *DataInspectMgr) logRoundSumm(ctx context.Context,
-	span trace.Span, ds core.DiskAPI, diskSt core.InspectDiskState, roundScanned int64,
+// sumInspectChunkStates aggregates, across all alive chunks of the disk, the
+// shard-scan progress of the current cycle and the total tracked bad bids.
+func sumInspectChunkStates(ctx context.Context, ds core.DiskAPI, diskSt core.InspectDiskState) (
+	totalShards, totalScanned, totalBadBids int64, err error,
 ) {
-	var totalShards, totalScanned, totalBadBids int64
-	if err := ds.InspectState().RangeInspectChunkState(ctx, func(st *core.InspectChunkState) bool {
+	err = ds.InspectState().RangeInspectChunkState(ctx, func(st *core.InspectChunkState) bool {
 		// skip chunks that have been released or are no longer alive on this disk
 		cs, ok := ds.GetChunkStorage(st.Vuid)
 		if !ok || cs.Status() == clustermgr.ChunkStatusRelease {
@@ -500,13 +500,21 @@ func (mgr *DataInspectMgr) logRoundSumm(ctx context.Context,
 			totalScanned += st.CycleScanned
 		}
 		return true
-	}); err != nil {
+	})
+	return
+}
+
+func (mgr *DataInspectMgr) logRoundSumm(ctx context.Context,
+	span trace.Span, ds core.DiskAPI, diskSt core.InspectDiskState, roundScanned int64,
+) {
+	totalShards, totalScanned, totalBadBids, err := sumInspectChunkStates(ctx, ds, diskSt)
+	if err != nil {
 		span.Warnf("inspect disk:%d round summ iterate inspect state failed: %+v", ds.ID(), err)
 	}
 
 	// summary diskLevel total badshards
 	info := ds.DiskInfo()
-	dataInspectBadShardByDiskVec.WithLabelValues(dataInspectDiskLabelValues(info)...).Set(float64(totalBadBids))
+	setDiskBadShardMetric(info, totalBadBids)
 
 	var progressPct float64
 	if totalShards > 0 {

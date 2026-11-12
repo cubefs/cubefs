@@ -122,6 +122,36 @@ func testGaugeValue(vec *prometheus.GaugeVec, labels []string) float64 {
 	return m.GetGauge().GetValue()
 }
 
+// testGaugeSeriesExists checks whether a series with the given label values is
+// currently exported by the vec, without re-creating a deleted child.
+func testGaugeSeriesExists(vec *prometheus.GaugeVec, labels []string) bool {
+	ch := make(chan prometheus.Metric, 32)
+	go func() {
+		vec.Collect(ch)
+		close(ch)
+	}()
+	found := false
+	// drain the channel even after a match, otherwise a Collect goroutine
+	// blocked on a full buffer would be left behind
+	for m := range ch {
+		dm := &dto.Metric{}
+		_ = m.Write(dm)
+		lps := dm.GetLabel()
+		if len(lps) != len(labels) {
+			continue
+		}
+		match := true
+		for i, lp := range lps {
+			if lp.GetValue() != labels[i] {
+				match = false
+				break
+			}
+		}
+		found = found || match
+	}
+	return found
+}
+
 func TestCalcScanShardsPerRound(t *testing.T) {
 	mgr := &DataInspectMgr{conf: DataInspectConf{CycleDays: 90}}
 	cycleDuration := time.Duration(90) * core.CycleDayDuration
@@ -700,6 +730,46 @@ func TestLogRoundSummSkipsReleasedState(t *testing.T) {
 	require.Equal(t, float64(4), testGaugeValue(dataInspectBadShardByDiskVec, []string{"9", "77"}))
 }
 
+// TestDiskInspectStat verifies diskInspectStat returns the persisted cycle
+// state plus the shard-scan counts of the current cycle, with the same
+// filtering rules as the round summary (released/stale/not-counted chunks are
+// excluded from the counts).
+func TestDiskInspectStat(t *testing.T) {
+	ctr := gomock.NewController(t)
+	ctx := context.Background()
+	ds := NewMockDiskAPI(ctr)
+	aliveCS := NewMockChunkAPI(ctr)
+
+	diskSt := core.InspectDiskState{DiskID: 11, CycleID: 2, CycleStartAt: time.Now().UnixNano()}
+	states := []*core.InspectChunkState{
+		{Vuid: 1001, CycleID: 2, CycleCnt: 100, CycleScanned: 40, BadBids: badBidSet(1)}, // current cycle, alive
+		{Vuid: 1002, CycleID: 1, CycleCnt: 50, CycleScanned: 50},                         // stale cycle
+		{Vuid: 1004, CycleID: 2, CycleCnt: -1, BadBids: badBidSet(2)},                    // not counted yet
+	}
+
+	ds.EXPECT().ID().Return(proto.DiskID(11)).AnyTimes()
+	ds.EXPECT().LoadInspectDiskState(any).Return(diskSt, nil).Times(1)
+	ds.EXPECT().RangeInspectChunkState(any, any).DoAndReturn(
+		func(_ context.Context, fn func(*core.InspectChunkState) bool) error {
+			for _, st := range states {
+				fn(st)
+			}
+			return nil
+		},
+	).Times(1)
+	ds.EXPECT().GetChunkStorage(any).Return(aliveCS, true).AnyTimes()
+	aliveCS.EXPECT().Status().Return(clustermgr.ChunkStatusNormal).AnyTimes()
+
+	stat, err := diskInspectStat(ctx, ds)
+	require.NoError(t, err)
+	require.Equal(t, diskSt, stat.InspectDiskState)
+	// only the current cycle's counted chunks contribute to the counts: 40/100
+	require.Equal(t, int64(100), stat.TotalShards)
+	require.Equal(t, int64(40), stat.ScannedShards)
+	// bad bids are counted over all alive chunks regardless of cycle: 1001 (1) + 1004 (1)
+	require.Equal(t, int64(2), stat.BadShards)
+}
+
 // TestRefreshDiskBadShardMetrics verifies refreshDiskBadShardMetrics repopulates
 // the per-chunk and per-disk gauges from the in-memory inspect state, skipping
 // released chunks. It is used by the startup bad-bid reconcile to publish the
@@ -787,6 +857,49 @@ func TestOnBadBidRepaired(t *testing.T) {
 		// the disk-level gauge is recalibrated by logRoundSumm, not here
 		require.Equal(t, float64(0), testGaugeValue(dataInspectBadShardByDiskVec, []string{"9", "88"}))
 	})
+}
+
+// TestDiskBadShardMetricZeroNotReported verifies disks without bad bids are
+// not exported: the series is created only for a non-zero count and is deleted
+// again once the count drops back to zero.
+func TestDiskBadShardMetricZeroNotReported(t *testing.T) {
+	labels := []string{"9", "78"}
+	info := clustermgr.BlobNodeDiskInfo{
+		DiskInfo:          clustermgr.DiskInfo{ClusterID: 9},
+		DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{DiskID: 78},
+	}
+
+	setDiskBadShardMetric(info, 0)
+	require.False(t, testGaugeSeriesExists(dataInspectBadShardByDiskVec, labels))
+
+	setDiskBadShardMetric(info, 3)
+	require.True(t, testGaugeSeriesExists(dataInspectBadShardByDiskVec, labels))
+	require.Equal(t, float64(3), testGaugeValue(dataInspectBadShardByDiskVec, labels))
+
+	setDiskBadShardMetric(info, 0)
+	require.False(t, testGaugeSeriesExists(dataInspectBadShardByDiskVec, labels))
+}
+
+// TestChunkBadShardMetricZeroNotReported verifies chunks without bad bids are
+// not exported: the series is created only for a non-zero count and is deleted
+// again once the count drops back to zero.
+func TestChunkBadShardMetricZeroNotReported(t *testing.T) {
+	vuid := proto.Vuid(2001)
+	labels := []string{"9", "77", "2001"}
+	info := clustermgr.BlobNodeDiskInfo{
+		DiskInfo:          clustermgr.DiskInfo{ClusterID: 9},
+		DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{DiskID: 77},
+	}
+
+	setChunkBadShardMetric(info, vuid, 0)
+	require.False(t, testGaugeSeriesExists(dataInspectBadShardByChunkVec, labels))
+
+	setChunkBadShardMetric(info, vuid, 3)
+	require.True(t, testGaugeSeriesExists(dataInspectBadShardByChunkVec, labels))
+	require.Equal(t, float64(3), testGaugeValue(dataInspectBadShardByChunkVec, labels))
+
+	setChunkBadShardMetric(info, vuid, 0)
+	require.False(t, testGaugeSeriesExists(dataInspectBadShardByChunkVec, labels))
 }
 
 func TestInspectScanWindowUpdatesCursorOnInterrupt(t *testing.T) {

@@ -59,7 +59,7 @@ func addCmdInspect(cmd *grumble.Command) {
 		Run: func(c *grumble.Context) error {
 			cli := blobnode.New(&blobnode.Config{})
 			host := c.Flags.String("host")
-			ret, err := cli.GetInspectDiskState(common.CmdContext(), host, &blobnode.DiskStatArgs{
+			ret, err := cli.GetInspectDiskStat(common.CmdContext(), host, &blobnode.DiskStatArgs{
 				DiskID: proto.DiskID(c.Flags.Uint("diskid")),
 			})
 			if err != nil {

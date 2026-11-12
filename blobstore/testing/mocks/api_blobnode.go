@@ -125,19 +125,19 @@ func (mr *MockStorageAPIMockRecorder) GetInspectChunkState(arg0, arg1, arg2 inte
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetInspectChunkState", reflect.TypeOf((*MockStorageAPI)(nil).GetInspectChunkState), arg0, arg1, arg2)
 }
 
-// GetInspectDiskState mocks base method.
-func (m *MockStorageAPI) GetInspectDiskState(arg0 context.Context, arg1 string, arg2 *blobnode.DiskStatArgs) (map[proto.DiskID]blobnode.InspectDiskState, error) {
+// GetInspectDiskStat mocks base method.
+func (m *MockStorageAPI) GetInspectDiskStat(arg0 context.Context, arg1 string, arg2 *blobnode.DiskStatArgs) (map[proto.DiskID]blobnode.InspectDiskStat, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetInspectDiskState", arg0, arg1, arg2)
-	ret0, _ := ret[0].(map[proto.DiskID]blobnode.InspectDiskState)
+	ret := m.ctrl.Call(m, "GetInspectDiskStat", arg0, arg1, arg2)
+	ret0, _ := ret[0].(map[proto.DiskID]blobnode.InspectDiskStat)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetInspectDiskState indicates an expected call of GetInspectDiskState.
-func (mr *MockStorageAPIMockRecorder) GetInspectDiskState(arg0, arg1, arg2 interface{}) *gomock.Call {
+// GetInspectDiskStat indicates an expected call of GetInspectDiskStat.
+func (mr *MockStorageAPIMockRecorder) GetInspectDiskStat(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetInspectDiskState", reflect.TypeOf((*MockStorageAPI)(nil).GetInspectDiskState), arg0, arg1, arg2)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetInspectDiskStat", reflect.TypeOf((*MockStorageAPI)(nil).GetInspectDiskStat), arg0, arg1, arg2)
 }
 
 // GetInspectStat mocks base method.

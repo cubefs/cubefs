@@ -184,6 +184,9 @@ func (mgr *DataInspectMgr) runInspectRound(ctx context.Context) {
 	wg := sync.WaitGroup{}
 	for _, ds := range disks {
 		if !ds.IsWritable() || ds.IsClosing() {
+			// inspect skipped should refresh their gauges from the in-memory
+			// inspect state to avoid leaving a frozen stale value
+			mgr.refreshDiskBadShardMetrics(ctx, ds)
 			continue
 		}
 
@@ -612,11 +615,10 @@ func (mgr *DataInspectMgr) refreshDiskBadShardMetrics(ctx context.Context, ds co
 		}
 		badBids := int64(len(st.BadBids))
 		totalBadBids += badBids
-		dataInspectBadShardByChunkVec.WithLabelValues(dataInspectChunkLabelValues(info, st.Vuid)...).
-			Set(float64(badBids))
+		setChunkBadShardMetric(info, st.Vuid, badBids)
 		return true
 	})
-	dataInspectBadShardByDiskVec.WithLabelValues(dataInspectDiskLabelValues(info)...).Set(float64(totalBadBids))
+	setDiskBadShardMetric(info, totalBadBids)
 }
 
 // reconcileBadBidsAtStartup check persisted bad bids when service starts.
@@ -1009,23 +1011,46 @@ func (s *Service) CleanInspectMetric(c *rpc.Context) {
 // query API
 // ---------------------------------------------------------------------------------------
 
-func (s *Service) listInspectDiskStates(ctx context.Context) (map[proto.DiskID]core.InspectDiskState, error) {
+// diskInspectStat computes one disk's inspect stat: the persisted cycle state
+// plus the shard-scan counts of the current cycle
+func diskInspectStat(ctx context.Context, ds core.DiskAPI) (bnapi.InspectDiskStat, error) {
+	span := trace.SpanFromContextSafe(ctx)
+
+	diskSt, err := ds.InspectState().LoadInspectDiskState(ctx)
+	if err != nil {
+		return bnapi.InspectDiskStat{}, err
+	}
+
+	stat := bnapi.InspectDiskStat{InspectDiskState: diskSt}
+	totalShards, totalScanned, totalBadBids, err := sumInspectChunkStates(ctx, ds, diskSt)
+	if err != nil {
+		span.Warnf("inspect disk:%d stat iterate inspect state failed: %+v", ds.ID(), err)
+	}
+	stat.BadShards = totalBadBids
+	stat.TotalShards = totalShards
+	stat.ScannedShards = totalScanned
+	return stat, nil
+}
+
+// listInspectDiskStats returns the inspect stats of all open disks, keyed by
+// disk id and sorted by disk id.
+func (s *Service) listInspectDiskStats(ctx context.Context) (map[proto.DiskID]bnapi.InspectDiskStat, error) {
 	disks := s.copyDiskStorages(ctx)
 	sort.Slice(disks, func(i, j int) bool { return disks[i].ID() < disks[j].ID() })
 
-	states := make(map[proto.DiskID]core.InspectDiskState, len(disks))
+	stats := make(map[proto.DiskID]bnapi.InspectDiskStat, len(disks))
 	for _, ds := range disks {
 		if ds.IsClosing() {
 			continue
 		}
 
-		st, err := ds.InspectState().LoadInspectDiskState(ctx)
+		stat, err := diskInspectStat(ctx, ds)
 		if err != nil {
 			return nil, err
 		}
-		states[ds.ID()] = st
+		stats[ds.ID()] = stat
 	}
-	return states, nil
+	return stats, nil
 }
 
 // listInspectChunkStates returns the persisted inspect state of every chunk on the disk.
@@ -1093,23 +1118,24 @@ func (s *Service) GetInspectChunkState(c *rpc.Context) {
 	c.RespondJSON(map[proto.Vuid]core.InspectChunkState{args.Vuid: st})
 }
 
-// GetInspectDiskState returns the persisted disk-level inspect state for one disk,
-// or all disk states when diskid=0. The response is always a map keyed by disk id.
+// GetInspectDiskStat returns the inspect stat (persisted cycle state plus
+// shard-scan counts) of one disk, or all disks when diskid=0. The response is
+// always a map keyed by disk id.
 // 'localhost:${port}/inspect/stat/diskid/1'
 // 'localhost:${port}/inspect/stat/diskid/0'
-func (s *Service) GetInspectDiskState(c *rpc.Context) {
+func (s *Service) GetInspectDiskStat(c *rpc.Context) {
 	args := new(bnapi.DiskStatArgs)
 	if err := c.ParseArgs(args); err != nil {
 		c.RespondError(err)
 		return
 	}
 	if args.DiskID == 0 {
-		states, err := s.listInspectDiskStates(c.Request.Context())
+		stats, err := s.listInspectDiskStats(c.Request.Context())
 		if err != nil {
 			c.RespondError(err)
 			return
 		}
-		c.RespondJSON(states)
+		c.RespondJSON(stats)
 		return
 	}
 	if !bnapi.IsValidDiskID(args.DiskID) {
@@ -1129,12 +1155,12 @@ func (s *Service) GetInspectDiskState(c *rpc.Context) {
 		return
 	}
 
-	st, err := ds.InspectState().LoadInspectDiskState(c.Request.Context())
+	stat, err := diskInspectStat(c.Request.Context(), ds)
 	if err != nil {
 		c.RespondError(err)
 		return
 	}
-	c.RespondJSON(map[proto.DiskID]core.InspectDiskState{args.DiskID: st})
+	c.RespondJSON(map[proto.DiskID]bnapi.InspectDiskStat{args.DiskID: stat})
 }
 
 func isInspectReportIgnoredError(err error) bool {
