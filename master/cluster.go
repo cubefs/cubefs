@@ -6380,6 +6380,37 @@ func (c *Cluster) rangeAllParitions(f func(d *DataPartition) bool) {
 	}
 }
 
+// sync update data partition with retry,if retry all failed, log audit log
+func (c *Cluster) syncUpdateDataPartitionWithRetry(dp *DataPartition) error {
+	return retryPersistDataPartitionOp(dp.PartitionID, "syncUpdateDataPartition",
+		syncUpdateDPMaxRetries, syncUpdateDPRetryBaseInterval,
+		func() error { return c.syncUpdateDataPartition(dp) })
+}
+
+func retryPersistDataPartitionOp(partitionID uint64, opName string, maxRetries int, base time.Duration, fn func() error) error {
+	var lastErr error
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		if err := fn(); err == nil {
+			if attempt > 1 {
+				log.LogInfof("[retryPersistDataPartitionOp] %v dp(%v) succeeded after %v attempts",
+					opName, partitionID, attempt)
+			}
+			return nil
+		} else {
+			lastErr = err
+			log.LogWarnf("[retryPersistDataPartitionOp] %v dp(%v) attempt(%v/%v) failed: %v",
+				opName, partitionID, attempt, maxRetries, err)
+			if attempt < maxRetries {
+				time.Sleep(time.Duration(attempt) * base)
+			}
+		}
+	}
+	auditlog.LogMasterOp(opName,
+		fmt.Sprintf("dp(%v) all %v retries failed", partitionID, maxRetries), lastErr)
+	return errors.NewErrorf("dp(%v) %v failed after %v retries: %v",
+		partitionID, opName, maxRetries, lastErr)
+}
+
 func (c *Cluster) markDecommissionDataPartition(dp *DataPartition, src *DataNode, dstNodeSetID uint64, raftForce bool, migrateType uint32, weight int, triggerCondition string) (err error) {
 	addr := src.Addr
 	replica, err := dp.getReplica(addr)
@@ -6408,9 +6439,7 @@ func (c *Cluster) markDecommissionDataPartition(dp *DataPartition, src *DataNode
 		}
 	}
 
-	// TODO: handle error
-	updateErr := c.syncUpdateDataPartition(dp)
-	if updateErr != nil {
+	if updateErr := c.syncUpdateDataPartitionWithRetry(dp); updateErr != nil {
 		return errors.NewErrorf("dp(%v) mark decommission status failed, err(%v), updateErr(%v)", dp.PartitionID, err, updateErr)
 	}
 
