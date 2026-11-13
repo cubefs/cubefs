@@ -120,7 +120,15 @@ func valuesToIPNets(op operator, values ValueSet) ([]*IPInfo, error) {
 		}
 
 		if !strings.Contains(s, "/") {
-			s += "/32"
+			// A bare address denotes a single host. Use the full-length mask
+			// of its family, otherwise an IPv6 host is widened to a /32 block
+			// (about 2^96 addresses) and the aws:SourceIp condition matches far
+			// more than the single host the policy author specified.
+			if ip := net.ParseIP(s); ip != nil && ip.To4() == nil {
+				s += "/128"
+			} else {
+				s += "/32"
+			}
 		}
 		IP, IPNet, err := net.ParseCIDR(s)
 		if err != nil {
