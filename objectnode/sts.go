@@ -17,9 +17,11 @@ package objectnode
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"strconv"
 	"strings"
 	"time"
@@ -65,7 +67,7 @@ type FederatedCredentials struct {
 }
 
 func EncodeFedSessionToken(ownerAk, ownerSk, fedAk, fedSk, name, policy, expireUnix string) (token string, err error) {
-	encoding, err := NewStsEncoding(fedAk, ownerSk)
+	encoding, err := NewStsEncoding(ownerSk)
 	if err != nil {
 		return
 	}
@@ -76,7 +78,11 @@ func EncodeFedSessionToken(ownerAk, ownerSk, fedAk, fedSk, name, policy, expireU
 		policy,
 		expireUnix,
 	}, stsSep)
-	token = base64.URLEncoding.EncodeToString([]byte(ownerAk + stsSep + encoding.Encrypt([]byte(toEncrypt))))
+	encrypted, err := encoding.Encrypt([]byte(toEncrypt))
+	if err != nil {
+		return
+	}
+	token = base64.URLEncoding.EncodeToString([]byte(ownerAk + stsSep + encrypted))
 	return
 }
 
@@ -104,7 +110,7 @@ func DecodeFedSessionToken(fedAk, session string, getUserInfo func(ak string) (*
 	if err != nil {
 		return nil, InvalidToken
 	}
-	encoding, err := NewStsEncoding(fedAk, userInfo.SecretKey)
+	encoding, err := NewStsEncoding(userInfo.SecretKey)
 	if err != nil {
 		return nil, InvalidToken
 	}
@@ -138,29 +144,37 @@ func DecodeFedSessionToken(fedAk, session string, getUserInfo func(ak string) (*
 	return &FedDecodeResult{UserInfo: userInfo, FedSK: fedSk, Policy: &policy}, nil
 }
 
-func NewStsEncoding(block, key string) (*StsEncoding, error) {
-	bk, err := aes.NewCipher(MakeSha256([]byte(block)))
+// NewStsEncoding derives the token cipher from the owner's secret key. The key
+// must stay secret: the federation access key travels back to the client and is
+// sent on every request, so anything derived from it is public and must not key
+// the token.
+func NewStsEncoding(secret string) (*StsEncoding, error) {
+	block, err := aes.NewCipher(MakeSha256([]byte(secret)))
+	if err != nil {
+		return nil, err
+	}
+	aead, err := cipher.NewGCM(block)
 	if err != nil {
 		return nil, err
 	}
 	return &StsEncoding{
 		encoding: base64.RawURLEncoding,
-		block:    bk,
-		key:      MakeMD5([]byte(key)),
+		aead:     aead,
 	}, nil
 }
 
 type StsEncoding struct {
 	encoding *base64.Encoding
-	block    cipher.Block
-	key      []byte
+	aead     cipher.AEAD
 }
 
-func (ec *StsEncoding) Encrypt(data []byte) string {
-	buf := make([]byte, len(data))
-	cfb := cipher.NewCFBEncrypter(ec.block, ec.key)
-	cfb.XORKeyStream(buf, data)
-	return ec.encoding.EncodeToString(buf)
+func (ec *StsEncoding) Encrypt(data []byte) (string, error) {
+	nonce := make([]byte, ec.aead.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return "", err
+	}
+	sealed := ec.aead.Seal(nonce, nonce, data, nil)
+	return ec.encoding.EncodeToString(sealed), nil
 }
 
 func (ec *StsEncoding) Decrypt(s string) ([]byte, error) {
@@ -168,8 +182,10 @@ func (ec *StsEncoding) Decrypt(s string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	buf := make([]byte, len(data))
-	cfb := cipher.NewCFBDecrypter(ec.block, ec.key)
-	cfb.XORKeyStream(buf, data)
-	return buf, nil
+	nonceSize := ec.aead.NonceSize()
+	if len(data) < nonceSize {
+		return nil, errors.New("sts token too short")
+	}
+	nonce, ciphertext := data[:nonceSize], data[nonceSize:]
+	return ec.aead.Open(nil, nonce, ciphertext, nil)
 }
