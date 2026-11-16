@@ -15,6 +15,26 @@ CubeFS supports deploying a basic cluster with a single script. The basic cluste
 cd ./cubefs
 # Compile
 make
+```
+
+::: tip Note
+
+If you encounter the following error when using C++17 or higher versions during make:
+```bash
+error: 'uint64_t' does not name a type
+```
+You can try executing the following command before running the make command:
+```bash
+export CXXFLAGS="-include cstdint"
+```
+
+If you encounter missing `autoreconf` during make, please install autoconf, automake, and libtool:
+```bash
+sudo apt install autoconf automake libtool
+```
+
+:::
+
 # Generate configuration files and start the basic cluster
 sh ./shell/deploy.sh /home/data bond0
 
