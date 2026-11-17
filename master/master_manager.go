@@ -33,7 +33,7 @@ type LeaderInfo struct {
 }
 
 func (m *Server) getCurrAddr() string {
-	return AddrDatabase[m.id]
+	return AddrDatabase.Get(m.id)
 }
 
 func (m *Server) handleLeaderChange(leader uint64) {
@@ -61,7 +61,7 @@ func (m *Server) handleLeaderChange(leader uint64) {
 	}
 
 	// oldLeaderAddr := m.leaderInfo.addr
-	m.leaderInfo.addr = AddrDatabase[leader]
+	m.leaderInfo.addr = AddrDatabase.Get(leader)
 	m.leaderInfo.id = leader
 
 	log.LogWarnf("action[handleLeaderChange] current id [%v] new leader addr [%v] leader id [%v]", m.id, m.leaderInfo.addr, leader)
@@ -115,10 +115,11 @@ func (m *Server) handlePeerChange(confChange *proto.ConfChange) (err error) {
 			break
 		}
 		m.raftStore.AddNodeWithPort(confChange.Peer.ID, arr[0], int(m.config.heartbeatPort), int(m.config.replicaPort))
-		AddrDatabase[confChange.Peer.ID] = string(confChange.Context)
+		AddrDatabase.Set(confChange.Peer.ID, addr)
 		msg = fmt.Sprintf("clusterID[%v] peerID:%v,nodeAddr[%v] has been add", m.clusterName, confChange.Peer.ID, addr)
 	case proto.ConfRemoveNode:
 		m.raftStore.DeleteNode(confChange.Peer.ID)
+		AddrDatabase.Delete(confChange.Peer.ID)
 		msg = fmt.Sprintf("clusterID[%v] peerID:%v,nodeAddr[%v] has been removed", m.clusterName, confChange.Peer.ID, addr)
 	default:
 		// do nothing

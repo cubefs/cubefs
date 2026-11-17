@@ -151,8 +151,8 @@ const (
 	defaultDataNodeGOGC = 100
 )
 
-// AddrDatabase is a map that stores the address of a given host (e.g., the leader)
-var AddrDatabase = make(map[uint64]string)
+// AddrDatabase stores the HTTP address of each Master.
+var AddrDatabase = newAddrDatabase()
 
 type clusterConfig struct {
 	secondsToFreeDataPartitionAfterLoad int64
@@ -318,7 +318,7 @@ func (cfg *clusterConfig) parsePeers(peerStr string) error {
 		cfg.peers = append(cfg.peers, raftstore.PeerAddress{Peer: proto.Peer{ID: id}, Address: ip, HeartbeatPort: int(cfg.heartbeatPort), ReplicaPort: int(cfg.replicaPort)})
 		address := fmt.Sprintf("%v:%v", ip, port)
 		syslog.Println(address)
-		AddrDatabase[id] = address
+		AddrDatabase.Set(id, address)
 	}
 	return nil
 }
