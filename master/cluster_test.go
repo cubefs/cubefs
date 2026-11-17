@@ -382,11 +382,11 @@ func TestMasterClientLeaderChange(t *testing.T) {
 	cluster.BadDataPartitionIds = new(sync.Map)
 
 	// NOTE: avoid conflict
-	AddrDatabase[5] = "192.168.0.11:17010"
-	AddrDatabase[6] = "192.168.0.12:17010"
+	AddrDatabase.Set(5, "192.168.0.11:17010")
+	AddrDatabase.Set(6, "192.168.0.12:17010")
 	server.handleLeaderChange(5)
 	server.handleLeaderChange(6)
-	require.True(t, cluster.leaderInfo.addr == AddrDatabase[6])
+	require.True(t, cluster.leaderInfo.addr == AddrDatabase.Get(6))
 }
 
 func TestCreateVolWithDpCount(t *testing.T) {
