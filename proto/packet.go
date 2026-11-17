@@ -1216,7 +1216,12 @@ func (p *Packet) ReadFromConnWithVer(c net.Conn, timeoutSec int) (err error) {
 		cnt := binary.BigEndian.Uint16(cntByte)
 		log.LogDebugf("action[ReadFromConnWithVer] op %s verseq %v, extType %d, cnt %d",
 			p.GetOpMsg(), p.VerSeq, p.ExtentType, cnt)
-		verData := make([]byte, cnt*verInfoCnt)
+		// cnt is a uint16 read from the connection, and verInfoCnt is 17, so
+		// cnt*verInfoCnt is computed in uint16 arithmetic and wraps: a cnt of
+		// 3856 asks for 65552 bytes but yields a 16 byte buffer, and the short
+		// read below then rejects the packet. Widen the multiplication so the
+		// buffer matches what cnt actually describes.
+		verData := make([]byte, int(cnt)*verInfoCnt)
 		if _, err = io.ReadFull(c, verData); err != nil {
 			err = fmt.Errorf("reqId(%v) opCode(%v) protoVer(%v) remote(%v), read ver slice from conn failed: %v",
 				p.GetReqID(), p.GetOpMsg(), p.ProtoVersion, c.RemoteAddr(), err)
