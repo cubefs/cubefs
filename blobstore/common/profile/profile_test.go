@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -14,6 +15,34 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 )
+
+func TestProfileHandlerLocalOnly(t *testing.T) {
+	routerOnce.Do(registerRouter)
+	ph := &profileHandler{}
+
+	cases := []struct {
+		name       string
+		remoteAddr string
+		wantStatus int
+	}{
+		{"ipv4 loopback", "127.0.0.1:54321", http.StatusOK},
+		{"ipv6 loopback", "[::1]:54321", http.StatusOK},
+		{"remote ipv4", "203.0.113.5:54321", http.StatusForbidden},
+		{"remote ipv6", "[2001:db8::1]:54321", http.StatusForbidden},
+		{"no port", "203.0.113.5", http.StatusForbidden},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/debug/vars", nil)
+			req.RemoteAddr = c.remoteAddr
+			w := httptest.NewRecorder()
+			ph.Handler(w, req, func(http.ResponseWriter, *http.Request) {
+				t.Fatal("fallback handler should not be invoked for a registered profile route")
+			})
+			require.Equal(t, c.wantStatus, w.Code)
+		})
+	}
+}
 
 func TestProfileBase(t *testing.T) {
 	i := expvar.NewInt("int_key")
