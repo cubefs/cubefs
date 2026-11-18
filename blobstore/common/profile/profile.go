@@ -110,19 +110,32 @@ type profileHandler struct{}
 
 func (ph *profileHandler) Handler(w http.ResponseWriter, r *http.Request, f func(http.ResponseWriter, *http.Request)) {
 	path := r.URL.Path
-	addr := r.RemoteAddr
 	handle, _, _ := httpRouter.Router.Lookup(r.Method, path)
 	if handle != nil {
-		// to support local host, need not authentication
-		if strings.HasPrefix(addr, "localhost") || strings.HasPrefix(addr, "127.0.0.1") {
-			httpRouter.ServeHTTP(w, r)
+		if !isLocalRequest(r) {
+			http.Error(w, "profile endpoints are only accessible from localhost", http.StatusForbidden)
 			return
 		}
-		// todo Authentication manager authority
 		httpRouter.ServeHTTP(w, r)
 		return
 	}
 	f(w, r)
+}
+
+// isLocalRequest reports whether r originates from the local machine. The
+// previous check compared RemoteAddr (always "ip:port", never a resolved
+// hostname) against the string prefix "localhost", so it could never match,
+// and the "127.0.0.1" branch fell through to the same ServeHTTP call as the
+// unauthenticated else branch anyway -- leaving every profile endpoint
+// reachable from any remote address with no local-vs-remote distinction at
+// all. See https://github.com/cubefs/cubefs/issues/4123.
+func isLocalRequest(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func init() {
