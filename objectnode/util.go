@@ -22,7 +22,9 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/binary"
 	"fmt"
+	"hash/crc32"
 	"net"
 	"net/http"
 	"net/url"
@@ -338,6 +340,12 @@ func GetMD5(b []byte) string {
 	hash := md5.New()
 	hash.Write(b)
 	return base64.StdEncoding.EncodeToString(hash.Sum(nil))
+}
+
+func getCRC32(b []byte) string {
+	checksum := make([]byte, 4)
+	binary.BigEndian.PutUint32(checksum, crc32.ChecksumIEEE(b))
+	return base64.StdEncoding.EncodeToString(checksum)
 }
 
 func contains(items []string, key string) bool {

@@ -536,6 +536,24 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func verifyDeleteObjectsChecksum(header http.Header, body []byte) *ErrorCode {
+	// Preserve Content-MD5 as the authoritative checksum when both headers exist.
+	requestChecksum := header.Get(ContentMD5)
+	calculateChecksum := GetMD5
+	if requestChecksum == "" {
+		requestChecksum = header.Get(XAmzChecksumCRC32)
+		calculateChecksum = getCRC32
+	}
+
+	if requestChecksum == "" {
+		return MissingContentMD5
+	}
+	if requestChecksum != calculateChecksum(body) {
+		return BadDigest
+	}
+	return nil
+}
+
 // Delete objects (multiple objects)
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteObjects.html
 func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request) {
@@ -561,8 +579,7 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	requestMD5 := r.Header.Get(ContentMD5)
-	if requestMD5 == "" {
+	if r.Header.Get(ContentMD5) == "" && r.Header.Get(XAmzChecksumCRC32) == "" {
 		errorCode = MissingContentMD5
 		return
 	}
@@ -578,8 +595,7 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 		errorCode = UnexpectedContent
 		return
 	}
-	if requestMD5 != GetMD5(bytes) {
-		errorCode = BadDigest
+	if errorCode = verifyDeleteObjectsChecksum(r.Header, bytes); errorCode != nil {
 		return
 	}
 
