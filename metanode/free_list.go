@@ -65,6 +65,22 @@ func (fl *freeList) Remove(ino uint64) {
 	}
 }
 
+func (fl *freeList) replace(other *freeList) {
+	if fl == other {
+		return
+	}
+
+	other.Lock()
+	defer other.Unlock()
+	fl.Lock()
+	defer fl.Unlock()
+
+	fl.list = other.list
+	fl.index = other.index
+	other.list = list.New()
+	other.index = make(map[uint64]*list.Element)
+}
+
 func (fl *freeList) Len() int {
 	fl.Lock()
 	defer fl.Unlock()

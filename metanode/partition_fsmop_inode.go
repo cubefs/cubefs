@@ -755,16 +755,20 @@ func (mp *metaPartition) fsmBatchEvictInode(ib InodeBatch) (resp []*InodeRespons
 }
 
 func (mp *metaPartition) checkAndInsertFreeList(ino *Inode) {
+	checkAndInsertFreeLists(ino, mp.freeList, mp.freeHybridList)
+}
+
+func checkAndInsertFreeLists(ino *Inode, targetFreeList, targetFreeHybridList *freeList) {
 	if proto.IsDir(ino.Type) {
 		return
 	}
 	if ino.ShouldDelete() {
-		mp.freeList.Push(ino.Inode)
+		targetFreeList.Push(ino.Inode)
 	} else if ino.IsTempFile() {
 		ino.AccessTime = time.Now().Unix()
-		mp.freeList.Push(ino.Inode)
+		targetFreeList.Push(ino.Inode)
 	} else if ino.ShouldDeleteMigrationExtentKey(true) {
-		mp.freeHybridList.Push(ino.Inode)
+		targetFreeHybridList.Push(ino.Inode)
 	}
 }
 
