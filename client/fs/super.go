@@ -408,9 +408,16 @@ func (s *Super) Node(ino, pino uint64, mode uint32) (fs.Node, error) {
 	return node, nil
 }
 
+func statfsInodeCounts(inodeCount uint64) (files, free uint64) {
+	const defaultMaxMetaPartitionInodeID uint64 = 1<<63 - 1
+	if inodeCount >= defaultMaxMetaPartitionInodeID {
+		return defaultMaxMetaPartitionInodeID, 0
+	}
+	return defaultMaxMetaPartitionInodeID, defaultMaxMetaPartitionInodeID - inodeCount
+}
+
 // Statfs handles the Statfs request and returns a set of statistics.
 func (s *Super) Statfs(ctx context.Context, req *fuse.StatfsRequest, resp *fuse.StatfsResponse) error {
-	const defaultMaxMetaPartitionInodeID uint64 = 1<<63 - 1
 	total, used, inodeCount := s.mw.Statfs()
 	resp.Blocks = total / uint64(DefaultBlksize)
 	resp.Bfree = (total - used) / uint64(DefaultBlksize)
@@ -418,8 +425,7 @@ func (s *Super) Statfs(ctx context.Context, req *fuse.StatfsRequest, resp *fuse.
 	resp.Bsize = DefaultBlksize
 	resp.Namelen = DefaultMaxNameLen
 	resp.Frsize = DefaultBlksize
-	resp.Files = inodeCount
-	resp.Ffree = defaultMaxMetaPartitionInodeID - inodeCount
+	resp.Files, resp.Ffree = statfsInodeCounts(inodeCount)
 	return nil
 }
 
