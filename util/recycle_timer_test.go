@@ -40,7 +40,7 @@ func TestRecycleTimer(t *testing.T) {
 	require.GreaterOrEqual(t, actual, smallBufSize)
 	require.GreaterOrEqual(t, inUsed, smallBufSize)
 
-	timer, err := util.NewRecycleTimer(1*time.Second, 0, largeBufSize)
+	timer, err := util.NewRecycleTimer(1*time.Second, 0, smallBufSize)
 	require.NoError(t, err)
 	defer timer.Stop()
 
@@ -74,7 +74,10 @@ func TestRecycleTimer(t *testing.T) {
 	require.GreaterOrEqual(t, actual, smallBufSize)
 	require.Less(t, inUsed, smallBufSize)
 
-	time.Sleep(2 * time.Second)
+	require.Eventually(t, func() bool {
+		current, err := loadutil.GetCurrentProcessMemory()
+		return err == nil && current < largeBufSize
+	}, 10*time.Second, 100*time.Millisecond)
 
 	actual, err = loadutil.GetCurrentProcessMemory()
 	require.NoError(t, err)
