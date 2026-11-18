@@ -62,6 +62,10 @@ func (o *ObjectNode) createMultipleUploadHandler(w http.ResponseWriter, r *http.
 		errorCode = KeyTooLong
 		return
 	}
+	if hasInvalidPathComponent(param.Object()) {
+		errorCode = InvalidKey
+		return
+	}
 	var vol *Volume
 	if vol, err = o.getVol(param.Bucket()); err != nil {
 		log.LogErrorf("createMultipleUploadHandler: load volume fail: requestID(%v) err(%v)",
