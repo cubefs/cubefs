@@ -128,7 +128,7 @@ ldap_autofs_entry_value		= automountInformation
 
 [3] LDAP: [https://www.ibm.com/docs/en/zos/2.1.0?topic=SSLTBW_2.1.0/com.ibm.zos.v2r1.cbdu100/cbd2ug00152.html](https://www.ibm.com/docs/en/zos/2.1.0?topic=SSLTBW_2.1.0/com.ibm.zos.v2r1.cbdu100/cbd2ug00152.html)
 
-[4] CubeFS AutoFS: [https://github.com/cubefs/cubefs/tree/master/autofs](https://github.com/cubefs/cubefs/tree/master/autofs)
+[4] CubeFS AutoFS: [https://github.com/cubefs/cubefs/tree/master/tool/autofs](https://github.com/cubefs/cubefs/tree/master/tool/autofs)
 
  
 
