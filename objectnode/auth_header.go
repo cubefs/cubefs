@@ -178,7 +178,7 @@ func (auth *HeaderAuth) CanonicalRequest() string {
 func (auth *HeaderAuth) SignatureMatch(secretKey string, wildcards Wildcards) bool {
 	switch auth.version {
 	case signatureV2:
-		return auth.signature == auth.buildSignatureV2(secretKey, wildcards)
+		return signatureEqual(auth.buildSignatureV2(secretKey, wildcards), auth.signature)
 	case signatureV4:
 		var signature string
 		if auth.request.Header.Get(XAmzDecodedContentLength) != "" &&
@@ -187,7 +187,7 @@ func (auth *HeaderAuth) SignatureMatch(secretKey string, wildcards Wildcards) bo
 		} else {
 			signature = auth.buildSignatureV4(secretKey)
 		}
-		return auth.signature == signature
+		return signatureEqual(signature, auth.signature)
 	default:
 		return false
 	}

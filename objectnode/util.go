@@ -19,6 +19,7 @@ import (
 	"crypto/md5"
 	"crypto/sha1"
 	"crypto/sha256"
+	"crypto/subtle"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
@@ -371,6 +372,13 @@ func MakeHmacSha256(key, data []byte) []byte {
 	hash := hmac.New(sha256.New, key)
 	hash.Write(data)
 	return hash.Sum(nil)
+}
+
+// signatureEqual reports whether the client-supplied request signature matches
+// the server-computed one. The comparison runs in constant time so its timing
+// does not reveal how many leading bytes of the expected signature matched.
+func signatureEqual(expected, actual string) bool {
+	return subtle.ConstantTimeCompare([]byte(expected), []byte(actual)) == 1
 }
 
 func ParseCompatibleTime(timeStr string) (t time.Time, err error) {
