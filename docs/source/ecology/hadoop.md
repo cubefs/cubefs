@@ -7,7 +7,7 @@ This chapter describes the installation and configuration process of CubeFS in t
 ## Dependencies
 
 - Set up an accessible CubeFS cluster and need to [create a volume (file system)](../user-guide//volume.md) in advance.
-- The SDK dynamic library [libcfs.so](https://github.com/cubefs/cubefs/tree/master/libsdk) provided by CubeFS for Java calling.
+- The SDK dynamic library [libcfs.so](https://github.com/cubefs/cubefs/tree/master/client/libsdk) provided by CubeFS for Java calling.
 - The CubeFS plugin [cfs-hadoop.jar](https://github.com/cubefs/cubefs-hadoop.git) for Hadoop.
 - The third-party dependency package jna-5.4.0.jar (minimum supported version 4.0, recommended 5.4 or above) for the cfs-hadoop.jar plugin.
 
