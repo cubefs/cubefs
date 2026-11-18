@@ -2244,7 +2244,7 @@ func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, 
 	specifiedZoneName string, dataMediaType uint32) (hosts []string, peers []proto.Peer, err error,
 ) {
 	log.LogInfof("[getHostFromNormalZone] dataMediaType(%v) nodeType(%v) replicaNum(%v) zoneNumNeed(%v) specifiedZoneName(%v)",
-		proto.MediaTypeString(nodeType), nodeType, replicaNum, zoneNumNeed, specifiedZoneName)
+		proto.MediaTypeString(dataMediaType), nodeType, replicaNum, zoneNumNeed, specifiedZoneName)
 
 	var zonesQualified []*Zone
 	if replicaNum <= zoneNumNeed {
