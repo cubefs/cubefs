@@ -1007,6 +1007,18 @@ func (d *Disk) HasDiskErrPartition(dpId uint64) bool {
 	return ok
 }
 
+func (d *Disk) GetVolumePartitionCount(vol string) int {
+	d.RLock()
+	defer d.RUnlock()
+	cnt := 0
+	for _, partition := range d.partitionMap {
+		if partition.volumeID == vol {
+			cnt++
+		}
+	}
+	return cnt
+}
+
 // isExpiredPartition return whether one partition is expired
 // if one partition does not exist in master, we decided that it is one expired partition
 func isExpiredPartition(id uint64, partitions []uint64) bool {

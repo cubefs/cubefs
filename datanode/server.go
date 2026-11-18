@@ -152,6 +152,11 @@ const (
 
 	// storage device media type, for hybrid cloud, in string: SDD or HDD
 	ConfigMediaType = "mediaType"
+
+	ConfigDiskSelectorName            = "diskSelectorName"
+	ConfigDiskSelectorCapacityWeight  = "diskSelectorCapacityWeight"
+	ConfigDiskSelectorPartitionWeight = "diskSelectorPartitionWeight"
+	ConfigDiskSelectorAffinityWeight  = "diskSelectorAffinityWeight"
 )
 
 const cpuSampleDuration = 1 * time.Second
@@ -159,6 +164,12 @@ const cpuSampleDuration = 1 * time.Second
 const (
 	gcTimerDuration         = 10 * time.Second
 	defaultGcRecyclePercent = 0.90
+)
+
+const (
+	defaultCapacityWeight  = 0.5
+	defaultPartitionWeight = 0.3
+	defaultAffinityWeight  = 0.2
 )
 
 // DataNode defines the structure of a data node.
@@ -246,6 +257,12 @@ type DataNode struct {
 	DirectReadVols                     map[string]struct{}
 	IgnoreTinyRecoverVols              map[string]struct{}
 	ExtentCacheTtlByMin                int
+
+	// disk selector config
+	diskSelectorName string
+	capacityWeight   float64
+	partitionWeight  float64
+	affinityWeight   float64
 }
 
 type verOp2Phase struct {
@@ -510,6 +527,26 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	s.mediaType = mediaType
 
 	s.ExtentCacheTtlByMin = cfg.GetIntWithDefault(ConfigExtentCacheTtlByMin, DefaultExtentCacheTtlByMin)
+
+	s.diskSelectorName = cfg.GetString(ConfigDiskSelectorName)
+	if s.diskSelectorName == "" {
+		s.diskSelectorName = NormalizeSelectorName
+	}
+	s.capacityWeight = cfg.GetFloat(ConfigDiskSelectorCapacityWeight)
+	if s.capacityWeight <= 0 {
+		log.LogWarnf("invalid capacityWeight(%v), use default value", s.capacityWeight)
+		s.capacityWeight = defaultCapacityWeight
+	}
+	s.partitionWeight = cfg.GetFloat(ConfigDiskSelectorPartitionWeight)
+	if s.partitionWeight <= 0 {
+		log.LogWarnf("invalid partitionWeight(%v), use default value", s.partitionWeight)
+		s.partitionWeight = defaultPartitionWeight
+	}
+	s.affinityWeight = cfg.GetFloat(ConfigDiskSelectorAffinityWeight)
+	if s.affinityWeight <= 0 {
+		log.LogWarnf("invalid affinityWeight(%v), use default value", s.affinityWeight)
+		s.affinityWeight = defaultAffinityWeight
+	}
 
 	log.LogDebugf("action[parseConfig] load masterAddrs(%v).", MasterClient.Nodes())
 	log.LogDebugf("action[parseConfig] load port(%v).", s.port)
@@ -970,6 +1007,8 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/setGOGC", s.setGOGC)
 	http.HandleFunc("/getGOGC", s.getGOGC)
 	http.HandleFunc("/triggerRaftLogRotate", s.triggerRaftLogRotate)
+	http.HandleFunc("/setDiskSelector", s.setDiskSelector)
+	http.HandleFunc("/getDiskSelector", s.getDiskSelector)
 }
 
 func (s *DataNode) startTCPService() (err error) {
