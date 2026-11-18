@@ -33,8 +33,20 @@ var proxyStatusMetric = prometheus.NewGaugeVec(
 	[]string{"service", "cluster", "idc", "host", "codemode", "type"},
 )
 
+// bidCacheMetric
+var bidCacheMetric = prometheus.NewGaugeVec(
+	prometheus.GaugeOpts{
+		Namespace: "blobstore",
+		Subsystem: "proxy",
+		Name:      "bid_cache",
+		Help:      "bid cache status on proxy",
+	},
+	[]string{"cluster", "host", "idc", "service", "type"},
+)
+
 func init() {
 	prometheus.MustRegister(proxyStatusMetric)
+	prometheus.MustRegister(bidCacheMetric)
 }
 
 func (v *volumeMgr) metricReportTask() {
@@ -78,4 +90,26 @@ func (v *volumeMgr) metricReport(ctx context.Context) {
 		span.Debugf("metric report total_free_size: %d, idc: %s, codemode: %s,",
 			info.TotalFree(), v.Idc, codeMode.String())
 	}
+	// Report current_count and backup_count
+	current, backup := v.getBidMgrCache()
+
+	bidCacheMetric.With(
+		prometheus.Labels{
+			"cluster": v.ClusterID.ToString(),
+			"host":    v.Host,
+			"idc":     v.Idc,
+			"service": "PROXY",
+			"type":    "current_count",
+		}).Set(float64(current))
+
+	bidCacheMetric.With(
+		prometheus.Labels{
+			"cluster": v.ClusterID.ToString(),
+			"host":    v.Host,
+			"idc":     v.Idc,
+			"service": "PROXY",
+			"type":    "backup_count",
+		}).Set(float64(backup))
+
+	span.Debugf("metric report bid cache: current=%d, backup=%d", current, backup)
 }
