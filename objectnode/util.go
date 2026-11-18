@@ -25,7 +25,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -230,24 +229,40 @@ func wrapUnescapedQuot(src string) string {
 	return "\"" + src + "\""
 }
 
-func encodeKey(key, encodingType string) string {
-	isKeyEscapedSkipByte := func(b byte) bool {
-		for _, skipByte := range keyEscapedSkipBytes {
-			if b == skipByte {
-				return true
-			}
-		}
+func shouldEscapeKeyByte(b byte) bool {
+	switch {
+	case '0' <= b && b <= '9':
+		return false
+	case 'A' <= b && b <= 'Z':
+		return false
+	case 'a' <= b && b <= 'z':
+		return false
+	case b == '~':
 		return false
 	}
+
+	for _, skipByte := range keyEscapedSkipBytes {
+		if b == skipByte {
+			return false
+		}
+	}
+	return true
+}
+
+func encodeKey(key, encodingType string) string {
 	if strings.ToLower(encodingType) == "url" {
+		const upperhex = "0123456789ABCDEF"
 		encodedKeyBuilder := strings.Builder{}
+		encodedKeyBuilder.Grow(len(key) * 3)
 		for i := 0; i < len(key); i++ {
-			b := byte(key[i])
-			if isKeyEscapedSkipByte(b) {
-				encodedKeyBuilder.Write([]byte{b})
-			} else {
-				encodedKeyBuilder.Write([]byte(url.QueryEscape(string(b))))
+			b := key[i]
+			if !shouldEscapeKeyByte(b) {
+				encodedKeyBuilder.WriteByte(b)
+				continue
 			}
+			encodedKeyBuilder.WriteByte('%')
+			encodedKeyBuilder.WriteByte(upperhex[b>>4])
+			encodedKeyBuilder.WriteByte(upperhex[b&15])
 		}
 		return encodedKeyBuilder.String()
 	}
