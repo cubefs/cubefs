@@ -40,6 +40,21 @@ var (
 	MaxKeyLength = 750
 )
 
+func parseMaxKeys(maxKeys string) (uint64, error) {
+	if maxKeys == "" {
+		return MaxKeys, nil
+	}
+
+	maxKeysInt, err := strconv.ParseUint(maxKeys, 10, 64)
+	if err != nil {
+		return 0, err
+	}
+	if maxKeysInt > MaxKeys {
+		maxKeysInt = MaxKeys
+	}
+	return maxKeysInt, nil
+}
+
 // Get object
 // API reference: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html
 func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
@@ -973,15 +988,12 @@ func (o *ObjectNode) getBucketV1Handler(w http.ResponseWriter, r *http.Request) 
 
 	var maxKeysInt uint64
 	if maxKeys != "" {
-		maxKeysInt, err = strconv.ParseUint(maxKeys, 10, 16)
+		maxKeysInt, err = parseMaxKeys(maxKeys)
 		if err != nil {
 			log.LogErrorf("getBucketV1Handler: parse max key fail: requestID(%v) volume(%v) maxKeys(%v) err(%v)",
 				GetRequestID(r), vol.Name(), maxKeys, err)
 			errorCode = InvalidArgument
 			return
-		}
-		if maxKeysInt > MaxKeys {
-			maxKeysInt = MaxKeys
 		}
 	} else {
 		maxKeysInt = uint64(MaxKeys)
@@ -1114,15 +1126,12 @@ func (o *ObjectNode) getBucketV2Handler(w http.ResponseWriter, r *http.Request) 
 
 	var maxKeysInt uint64
 	if maxKeys != "" {
-		maxKeysInt, err = strconv.ParseUint(maxKeys, 10, 16)
+		maxKeysInt, err = parseMaxKeys(maxKeys)
 		if err != nil {
 			log.LogErrorf("getBucketV2Handler: parse max keys fail: requestID(%v) volume(%v) maxKeys(%v) err(%v)",
 				GetRequestID(r), vol.Name(), maxKeys, err)
 			errorCode = InvalidArgument
 			return
-		}
-		if maxKeysInt > MaxKeys {
-			maxKeysInt = MaxKeys
 		}
 	} else {
 		maxKeysInt = MaxKeys
