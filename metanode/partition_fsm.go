@@ -840,6 +840,20 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 		switch snap.Op {
 		case opFSMApplyId:
 			appIndexID = binary.BigEndian.Uint64(snap.V)
+			// NOTE: we update peer in here
+			_ = peers
+			if len(snap.V) > 8 {
+				var snapPeers []proto.Peer
+				if err = json.Unmarshal(snap.V[8:], &snapPeers); err != nil {
+					log.LogErrorf("ApplySnapshot: partitionID(%v) unmarshal peers err(%v)", mp.config.PartitionId, err)
+					return
+				}
+				if len(snapPeers) > 0 {
+					// NOTE: will be persist in mp.store when apply snapshot complete
+					mp.config.Peers = snapPeers
+					log.LogInfof("ApplySnapshot: partitionID(%v) updated peers: %v", mp.config.PartitionId, mp.config.Peers)
+				}
+			}
 			log.LogDebugf("ApplySnapshot: partitionID(%v) appIndexID:%v", mp.config.PartitionId, appIndexID)
 		case opFSMTxId:
 			txID = binary.BigEndian.Uint64(snap.V)

@@ -73,6 +73,9 @@ func newMetaPartition(PartitionId uint64, manager *metadataManager) (mp *metaPar
 		extReset:       make(chan struct{}),
 		vol:            NewVol(),
 		manager:        manager,
+		multiVersionList: &proto.VolVersionInfoList{
+			TemporaryVerMap: make(map[uint64]*proto.VolVersionInfo),
+		},
 	}
 	mp.config.Cursor = 1000
 	mp.config.End = 100000

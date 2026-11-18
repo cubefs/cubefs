@@ -150,6 +150,7 @@ type MetaItemIterator struct {
 	txRbDentryTree    *BTree
 	uniqChecker       *uniqChecker
 	verList           []*proto.VolVersionInfo
+	peers             []proto.Peer
 
 	filenames []string
 
@@ -205,6 +206,8 @@ func newMetaItemIterator(mp *metaPartition) (si *MetaItemIterator, err error) {
 	si.txRbDentryTree = mp.txProcessor.txResource.txRbDentryTree.GetTree()
 	si.uniqChecker = mp.uniqChecker.clone()
 	si.verList = mp.GetAllVerList()
+	si.peers = make([]proto.Peer, len(mp.config.Peers))
+	copy(si.peers, mp.config.Peers)
 	mp.nonIdempotent.Unlock()
 
 	si.dataCh = make(chan interface{})
@@ -420,6 +423,16 @@ func (si *MetaItemIterator) Next() (data []byte, err error) {
 		} else if typedItem.key == SiwKeyApplyId {
 			applyIDBuf := make([]byte, 8)
 			binary.BigEndian.PutUint64(applyIDBuf, si.applyID)
+			// NOTE: append peers JSON after 8-bytes, so we keep old version compatibility
+			if len(si.peers) > 0 {
+				var peersJSON []byte
+				if peersJSON, err = json.Marshal(si.peers); err != nil {
+					si.err = err
+					si.Close()
+					return
+				}
+				applyIDBuf = append(applyIDBuf, peersJSON...)
+			}
 			snap = NewMetaItem(opFSMApplyId, typedItem.MarshalKey(), applyIDBuf)
 		} else if typedItem.key == SiwKeyTxId {
 			txIDBuf := make([]byte, 8)
