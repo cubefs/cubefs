@@ -76,6 +76,13 @@ type raftFsm struct {
 	//electionFirstBegin is used to mark the begin time of continuous election
 	//It is valid if and only if mo != nil.
 	electionFirstBegin time.Time
+
+	// drainApplyc waits until the async apply goroutine has drained applyc so that
+	// curApplied catches up with raftLog.applied. It is set by the owning raft after
+	// the apply goroutine starts, and is nil during construction (applyc not started
+	// yet). becomeLeader calls it before recoverCommit to avoid applying logs
+	// concurrently with the async apply goroutine.
+	drainApplyc func()
 }
 
 func (fsm *raftFsm) getReplicas() (m string) {
