@@ -42,25 +42,30 @@ func (id MultipartID) PartitionID() (pID uint64, found bool) {
 		mpStart        int
 		mpEnd          int
 		flag           string
-		length         int64
-		appendInfo     []rune
+		length         uint64
+		appendInfo     string
 		mpIdString     string
 		delimiterIndex int
 		err            error
 	)
+	// A generated id only has ASCII characters, so it is indexed by byte.
+	// len(id) is a byte count, so indexing the runes with it could go out of range.
 	delimiterIndex = len(id) - multipartIDMetaLength
-	appendInfo = []rune(id)[delimiterIndex:]
-	if string(appendInfo[0]) != multipartIDDelimiter {
+	appendInfo = string(id)[delimiterIndex:]
+	if appendInfo[:1] != multipartIDDelimiter {
 		return
 	}
-	flag = string(appendInfo[1 : multipartIDFlagLength+1])
-	length, err = strconv.ParseInt(flag, 10, 32)
+	flag = appendInfo[1 : multipartIDFlagLength+1]
+	length, err = strconv.ParseUint(flag, 10, 32)
 	if err != nil {
 		return 0, false
 	}
 	mpStart = 1 + multipartIDFlagLength
 	mpEnd = mpStart + int(length)
-	mpIdString = string(appendInfo[mpStart:mpEnd])
+	if mpEnd > len(appendInfo) {
+		return 0, false
+	}
+	mpIdString = appendInfo[mpStart:mpEnd]
 	pID, err = strconv.ParseUint(mpIdString, 10, 64)
 	found = err == nil
 	return
