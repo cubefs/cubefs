@@ -282,7 +282,7 @@ func newQuotaGetInode(client *master.MasterClient) *cobra.Command {
 			volName := args[0]
 			inodeId, err := strconv.ParseUint(args[1], 10, 64)
 			if err != nil {
-				stdout("inodeId %v is illegal", args[2])
+				stdout("inodeId %v is illegal\n", args[1])
 				return
 			}
 
