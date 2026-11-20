@@ -173,18 +173,20 @@ func transferError(key string, err error) Error {
 
 // get request remote IP
 func getRequestIP(r *http.Request) string {
-	IPAddress := r.Header.Get("X-Real-Ip")
+	IPAddress := strings.TrimSpace(r.Header.Get("X-Real-Ip"))
 	if IPAddress == "" {
-		IPAddress = r.Header.Get("X-Forwarded-For")
+		// X-Forwarded-For is a list ("client, proxy1, proxy2"), the first one is the client.
+		IPAddress, _, _ = strings.Cut(r.Header.Get("X-Forwarded-For"), ",")
+		IPAddress = strings.TrimSpace(IPAddress)
 	}
 	if IPAddress == "" {
 		IPAddress = r.RemoteAddr
 	}
-	if ok := strings.Contains(IPAddress, ":"); ok {
-		IPAddress = strings.Split(IPAddress, ":")[0]
+	// Remove the port if there is one, it works for both IPv4 and IPv6 addresses.
+	if host, _, err := net.SplitHostPort(IPAddress); err == nil {
+		return host
 	}
-
-	return IPAddress
+	return strings.Trim(IPAddress, "[]")
 }
 
 // check ipnet contains ip
