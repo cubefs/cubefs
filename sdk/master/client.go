@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -352,24 +353,15 @@ func (c *MasterClient) updateMaster(address string) {
 	c.leaderAddr = address
 }
 
-func (c *MasterClient) mergeRequestUrl(url string, params map[string]string) string {
+func (c *MasterClient) mergeRequestUrl(rawURL string, params map[string]string) string {
 	if len(params) > 0 {
-		buff := bytes.NewBuffer([]byte(url))
-		isFirstParam := true
+		query := make(url.Values, len(params))
 		for k, v := range params {
-			if isFirstParam {
-				buff.WriteString("?")
-				isFirstParam = false
-			} else {
-				buff.WriteString("&")
-			}
-			buff.WriteString(k)
-			buff.WriteString("=")
-			buff.WriteString(v)
+			query.Set(k, v)
 		}
-		return buff.String()
+		return rawURL + "?" + query.Encode()
 	}
-	return url
+	return rawURL
 }
 
 func NewMasterCLientWithResolver(masters []string, useSSL bool, updateInverval int) *MasterCLientWithResolver {
