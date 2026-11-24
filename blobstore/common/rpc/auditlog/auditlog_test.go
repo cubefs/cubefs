@@ -28,6 +28,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -36,6 +38,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util/largefile"
 )
 
 type testRespData struct {
@@ -48,10 +51,15 @@ type testErrorRespData struct {
 	Message string   `xml:"Message"`
 }
 
-func initServer(t *testing.T, name string, cfg Config) (server *httptest.Server, tmpDir string, lc LogCloser) {
-	tracer := trace.NewTracer(name)
-	trace.SetGlobalTracer(tracer)
+// TestMain sets the global tracer before any test runs: auditlog2_test.go
+// starts rpc2 servers whose connection goroutines keep reading the global
+// tracer, and writing it later from a test races with them.
+func TestMain(m *testing.M) {
+	trace.SetGlobalTracer(trace.NewTracer("auditlog-test"))
+	os.Exit(m.Run())
+}
 
+func initServer(t *testing.T, name string, cfg Config) (server *httptest.Server, tmpDir string, lc LogCloser) {
 	tmpDir = fmt.Sprintf("%s/%s-auditlog-%s%s", os.TempDir(), name, strconv.FormatInt(time.Now().Unix(), 10), strconv.Itoa(rand.Intn(100000)))
 	err := os.Mkdir(tmpDir, 0o755)
 	require.NoError(t, err)
@@ -141,8 +149,6 @@ func initServer(t *testing.T, name string, cfg Config) (server *httptest.Server,
 
 func initNoContentLengthServer(t *testing.T) (server *httptest.Server, tmpDir string, lc LogCloser) {
 	moduleName := "TESTNOCONTENTLENGTHMOULE"
-	tracer := trace.NewTracer(moduleName)
-	trace.SetGlobalTracer(tracer)
 
 	tmpDir = os.TempDir() + "/test-NoContentLength-log" + strconv.FormatInt(time.Now().Unix(), 10) + strconv.Itoa(rand.Intn(100000))
 	err := os.Mkdir(tmpDir, 0o755)
@@ -456,9 +462,6 @@ func TestAuditLogEntry_Basic(t *testing.T) {
 	require.NoError(t, err)
 	defer lc.Close()
 
-	tracer := trace.NewTracer(moduleName)
-	trace.SetGlobalTracer(tracer)
-
 	offset, size := int64(1024), int64(4096)
 	expectedReqParams := fmt.Sprintf(`{"offset":%d,"size":%d}`, offset, size)
 
@@ -640,4 +643,183 @@ func TestUserLabelsNormalize(t *testing.T) {
 	} {
 		require.Panics(t, func() { sortedUserLabels(in, constLabels) })
 	}
+}
+
+func TestOpenLogAsync(t *testing.T) {
+	dir, err := os.MkdirTemp(os.TempDir(), "auditlog_async")
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	// 0: not configured, blocking path, same as before
+	_, lc, err := Open("test", &Config{LogDir: dir})
+	require.NoError(t, err)
+	_, isAsync := lc.(*largefile.LossyAsyncLog)
+	require.False(t, isAsync)
+	require.NoError(t, lc.Close())
+
+	// < 0: async with the default queue size, default not drop
+	ah, lc, err := Open("test", &Config{LogDir: dir, LogAsyncQueueSize: -1})
+	require.NoError(t, err)
+	require.IsType(t, &largefile.LossyAsyncLog{}, lc)
+	require.Equal(t, lc, ah.(*jsonAuditlog).logFile)
+	require.NoError(t, lc.Close())
+
+	// > 0: async with custom queue size; LogAsyncDrop opt-in
+	_, lc, err = Open("test", &Config{
+		LogDir: dir, LogAsyncQueueSize: 8, LogAsyncDrop: true,
+	})
+	require.NoError(t, err)
+	require.IsType(t, &largefile.LossyAsyncLog{}, lc)
+	require.NoError(t, lc.Close())
+
+	// above max: still async, size is clamped to the max
+	_, lc, err = Open("test", &Config{
+		LogDir: dir, LogAsyncQueueSize: largefile.LossyAsyncMaxQueueSize + 1,
+	})
+	require.NoError(t, err)
+	require.IsType(t, &largefile.LossyAsyncLog{}, lc)
+	require.NoError(t, lc.Close())
+
+	// no logdir: noop regardless of async
+	_, lc, err = Open("test", &Config{LogAsyncQueueSize: -1})
+	require.NoError(t, err)
+	require.Equal(t, noopLogCloser{}, lc)
+}
+
+func TestOpenLogAsyncWrite(t *testing.T) {
+	dir, err := os.MkdirTemp(os.TempDir(), "auditlog_async_write")
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	_, lc, err := Open("test", &Config{LogDir: dir, LogAsyncQueueSize: -1})
+	require.NoError(t, err)
+
+	const lines = 10
+	for i := 0; i < lines; i++ {
+		require.NoError(t, lc.Log([]byte("audit-line")))
+	}
+	// Close drains the queue before closing the file
+	require.NoError(t, lc.Close())
+
+	// the underlying largeLogger appends '\n'
+	count := 0
+	err = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		count += strings.Count(string(data), "audit-line\n")
+		return nil
+	})
+	require.NoError(t, err)
+	require.Equal(t, lines, count)
+}
+
+type noopMetricSender struct{}
+
+func (noopMetricSender) Send([]byte) error  { return nil }
+func (noopMetricSender) SendEntry(LogEntry) {}
+
+// ownedTestLogCloser records lines and the number of buffers handed back.
+type ownedTestLogCloser struct {
+	mu       sync.Mutex
+	lines    []string
+	released int
+}
+
+func (m *ownedTestLogCloser) Close() error { return nil }
+
+func (m *ownedTestLogCloser) Log(b []byte) error {
+	m.mu.Lock()
+	m.lines = append(m.lines, string(b))
+	m.mu.Unlock()
+	return nil
+}
+
+func (m *ownedTestLogCloser) LogOwned(line largefile.BufferOwned) error {
+	m.mu.Lock()
+	m.lines = append(m.lines, string(line.Buffer()))
+	m.mu.Unlock()
+	line.Release()
+	m.mu.Lock()
+	m.released++
+	m.mu.Unlock()
+	return nil
+}
+
+func (m *ownedTestLogCloser) snapshot() ([]string, int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]string(nil), m.lines...), m.released
+}
+
+// TestFilterLoggingOwnedBuffer verifies filterLogging hands the pooled line
+// over instead of calling the copying Log, and that it comes back exactly once.
+func TestFilterLoggingOwnedBuffer(t *testing.T) {
+	mock := &ownedTestLogCloser{}
+	j := &jsonAuditlog{
+		cfg:          &Config{},
+		logFile:      mock,
+		logFilter:    &filters{},
+		metricSender: noopMetricSender{},
+		logPool:      sync.Pool{New: func() any { return new(ownedLine) }},
+	}
+
+	al := &AuditLog{ReqType: "PUT", Module: "test", StartTime: time.Now().Unix(), Method: "GET"}
+	j.filterLogging(al, true)
+	j.filterLogging(al, false)
+
+	lines, released := mock.snapshot()
+	require.Len(t, lines, 2)
+	require.Equal(t, 2, released)
+	require.Contains(t, lines[0], "PUT")
+	// text lines are terminated by ToBytesWithTab itself
+	require.True(t, strings.HasSuffix(lines[1], "\n"))
+}
+
+// TestFilterLoggingJSONPathReturnsBuffer verifies the JSON path also hands its
+// line to the owned logger and the line object comes back through the
+// release, so the pool keeps working.
+func TestFilterLoggingJSONPathReturnsBuffer(t *testing.T) {
+	mock := &ownedTestLogCloser{}
+	j := &jsonAuditlog{
+		cfg:          &Config{LogFormat: LogFormatJSON},
+		logFile:      mock,
+		logFilter:    &filters{},
+		metricSender: noopMetricSender{},
+		logPool:      sync.Pool{New: func() any { return new(ownedLine) }},
+	}
+
+	al := &AuditLog{ReqType: "PUT", Module: "test", StartTime: time.Now().Unix(), Method: "GET"}
+	j.filterLogging(al, true)
+
+	lines, released := mock.snapshot()
+	require.Len(t, lines, 1)
+	require.Equal(t, 1, released)
+	// released == 1 proves the line object was handed over and released;
+	// recycling identity is not asserted: sync.Pool does not guarantee
+	// Get returns the just-Put object, a GC in between clears the pool.
+	// JSON lines are freshly allocated by json.Marshal, the writer
+	// terminates them with a newline.
+	require.Equal(t, string(al.ToJson()), lines[0])
+}
+
+type ownedLineStub struct {
+	buf      []byte
+	released *int32
+}
+
+func (s *ownedLineStub) Buffer() []byte { return s.buf }
+func (s *ownedLineStub) Release()       { atomic.AddInt32(s.released, 1) }
+
+func TestNoopLogCloserLogOwnedReleases(t *testing.T) {
+	var released int32
+	require.NoError(t, NoopLogCloser.LogOwned(&ownedLineStub{buf: []byte("x"), released: &released}))
+	require.Equal(t, int32(1), atomic.LoadInt32(&released))
 }

@@ -27,7 +27,9 @@
     },
     "filters": "按照日志字段多条件组合匹配过滤日志",
     "metrics_filter": "是否开启metric filter",
-    "log_format": "日志输出格式，有 text 和 json"
+    "log_format": "日志输出格式，有 text 和 json",
+    "log_async_queue_size": "审计日志异步队列条数：0（默认）不开启异步，同步等待写盘返回（与历史行为一致）；<0 开启异步并用默认队列长度4096；>0 开启异步并用该值作为队列长度，最大1048576（超出会被截断并打告警日志）。修改后需重启。对 blobstore 服务、SDK 及 ObjectNode 本地审计（auditLog.local 段）生效。异步模式下 Close（含 SDK）最多阻塞 5 秒",
+    "log_async_drop": "异步队列满时是否丢弃而非阻塞等待，默认false：不丢弃（兼容历史写盘，不丢日志），审计盘卡死时请求线程会被拖住（与同步模式同样的风险）；true：丢弃，业务不等待审计盘。仅 log_async_queue_size != 0 时生效"
   },
   "auth": {
     "enable_auth": "是否开启鉴权，true或者false，默认false",

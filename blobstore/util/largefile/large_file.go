@@ -119,6 +119,15 @@ func (fi *fileItem) Size(latestIdx int64) (int64, error) {
 }
 
 func OpenLargeFile(cfg Config) (LargeFile, error) {
+	l, err := openLargeFile(cfg)
+	if err != nil {
+		return nil, err
+	}
+	cfg.AsyncConfig.lf = l
+	return newAsyncLargeFile(cfg.AsyncConfig), nil
+}
+
+func openLargeFile(cfg Config) (*largeFile, error) {
 	if strings.Contains(cfg.Suffix, "-") {
 		return nil, errors.New("log suffix can not contain '-'")
 	}
@@ -172,17 +181,19 @@ func OpenLargeFile(cfg Config) (LargeFile, error) {
 		return nil, err
 	}
 	l.off = fsize
-
-	cfg.AsyncConfig.lf = l
-	alf := newAsyncLargeFile(cfg.AsyncConfig)
-
-	return alf, nil
+	return l, nil
 }
 
 func (l *largeFile) Write(b []byte) (n int, err error) {
 	len := int64(len(b))
 	off := atomic.AddInt64(&l.off, len)
-	n, err = l.writeAt(b, off-len)
+	if n, err = l.writeAt(b, off-len); err != nil {
+		// A failed write must not burn the offset: repeated failures
+		// (e.g. ENOSPC on a full disk) would keep advancing the offset,
+		// cross chunk boundaries and create a series of empty files.
+		// Roll back only when no concurrent writer has advanced since.
+		atomic.CompareAndSwapInt64(&l.off, off, off-len)
+	}
 	return
 }
 

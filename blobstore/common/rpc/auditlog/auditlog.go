@@ -58,7 +58,7 @@ type jsonAuditlog struct {
 	module       string
 	decoder      Decoder
 	metricSender MetricSender
-	logFile      LogCloser
+	logFile      largefile.OwnedLogCloser
 	logFilter    LogFilter
 
 	logPool  sync.Pool
@@ -116,7 +116,7 @@ func (a *AuditLog) ToJson() (b []byte) {
 	return
 }
 
-func Open(module string, cfg *Config) (auditHandler AuditHandler, logFile LogCloser, err error) {
+func Open(module string, cfg *Config) (auditHandler AuditHandler, logFile largefile.OwnedLogCloser, err error) {
 	if cfg.BodyLimit < 0 {
 		cfg.BodyLimit = 0
 	} else if cfg.BodyLimit == 0 {
@@ -138,7 +138,10 @@ func Open(module string, cfg *Config) (auditHandler AuditHandler, logFile LogClo
 
 	logFile = noopLogCloser{}
 	if cfg.LogDir != "" {
-		logFile, err = largefile.OpenLargeFileLog(largeLogConfig, cfg.RotateNew)
+		logFile, err = largefile.OpenLog(largeLogConfig, cfg.RotateNew, largefile.LossyAsyncLogOptions{
+			QueueSize:    cfg.LogAsyncQueueSize,
+			DropWhenFull: cfg.LogAsyncDrop,
+		})
 		if err != nil {
 			return nil, nil, errors.Info(err, "auditlog.Open: large file log open failed").Detail(err)
 		}
@@ -146,6 +149,7 @@ func Open(module string, cfg *Config) (auditHandler AuditHandler, logFile LogClo
 
 	logFilter, err := newLogFilter(cfg.Filters)
 	if err != nil {
+		logFile.Close()
 		return nil, nil, errors.Info(err, "new log filter").Detail(err)
 	}
 
@@ -158,7 +162,7 @@ func Open(module string, cfg *Config) (auditHandler AuditHandler, logFile LogClo
 
 		logPool: sync.Pool{
 			New: func() any {
-				return new(bytes.Buffer)
+				return new(ownedLine)
 			},
 		},
 		bodyPool: sync.Pool{
@@ -392,17 +396,47 @@ func (j *jsonAuditlog) Audit(ctx context.Context, handler func(context.Context, 
 	return err
 }
 
+// ownedLine implements largefile.BufferOwned: it carries one audit line to
+// the logger and returns itself to the pool on Release. The text line lives
+// in buf, the JSON line is freshly allocated by json.Marshal; lines without
+// the trailing newline are terminated by the writer.
+type ownedLine struct {
+	buf bytes.Buffer
+	// line: a view of buf for text, JSON never gets copied into buf.
+	line []byte
+	pool *sync.Pool
+}
+
+func (o *ownedLine) Buffer() []byte { return o.line }
+
+func (o *ownedLine) Release() {
+	o.line = nil
+	o.buf.Reset()
+	if o.pool != nil {
+		o.pool.Put(o)
+	}
+}
+
 func (j *jsonAuditlog) filterLogging(auditLog *AuditLog, entry bool) {
-	b := j.logPool.Get().(*bytes.Buffer)
-	defer j.logPool.Put(b)
-	b.Reset()
+	o := j.logPool.Get().(*ownedLine)
+	o.pool = &j.logPool
+	o.buf.Reset()
+	o.line = nil
+	// handed guards the single owner of o: until it is set o goes back to
+	// the pool here, after it the logger owns it and frees it via Release.
+	handed := false
+	defer func() {
+		if !handed {
+			o.Release()
+		}
+	}()
 
 	if j.logFile == nil || j.logFilter.Filter(auditLog) {
 		if !j.cfg.MetricsFilter {
 			if entry {
 				j.metricSender.SendEntry(&auditLogEntry{log: auditLog})
 			} else {
-				j.metricSender.Send(auditLog.ToBytesWithTab(b))
+				j.metricSender.Send(auditLog.ToBytesWithTab(&o.buf))
 			}
 		}
 		return
@@ -411,7 +445,7 @@ func (j *jsonAuditlog) filterLogging(auditLog *AuditLog, entry bool) {
 	if entry {
 		j.metricSender.SendEntry(&auditLogEntry{log: auditLog})
 	} else {
-		j.metricSender.Send(auditLog.ToBytesWithTab(b))
+		j.metricSender.Send(auditLog.ToBytesWithTab(&o.buf))
 	}
 
 	var logBytes []byte
@@ -420,12 +454,17 @@ func (j *jsonAuditlog) filterLogging(auditLog *AuditLog, entry bool) {
 		logBytes = auditLog.ToJson()
 	default:
 		if entry {
-			logBytes = auditLog.ToBytesWithTab(b)
+			logBytes = auditLog.ToBytesWithTab(&o.buf)
 		} else {
-			logBytes = b.Bytes() // *bytes.Buffer was filled with metricSender.Send
+			logBytes = o.buf.Bytes() // filled with metricSender.Send above
 		}
 	}
-	if err := j.logFile.Log(logBytes); err != nil {
+	o.line = logBytes
+
+	// The line is handed over without a copy; Release gives o back to the
+	// pool after the line is written or dropped.
+	handed = true
+	if err := j.logFile.LogOwned(o); err != nil {
 		log.Errorf("audit logging failed, error: %s", err.Error())
 	}
 }

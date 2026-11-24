@@ -18,6 +18,7 @@ import (
 	"math/rand"
 	"os"
 	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -68,4 +69,46 @@ func TestLargeFileLog(t *testing.T) {
 		require.NoError(t, err)
 	}
 	l.Close()
+}
+
+type countedLine struct {
+	buf      []byte
+	released *int32
+}
+
+func (c *countedLine) Buffer() []byte { return c.buf }
+func (c *countedLine) Release()       { atomic.AddInt32(c.released, 1) }
+
+func TestLargeLoggerOwned(t *testing.T) {
+	l, err := OpenLargeFileLog(Config{
+		Path:              t.TempDir(),
+		FileChunkSizeBits: 12,
+		Backup:            2,
+		Suffix:            ".log",
+	}, true)
+	require.NoError(t, err)
+	defer l.Close()
+
+	var released int32
+	line := &countedLine{buf: []byte("line"), released: &released}
+	require.NoError(t, l.LogOwned(line))
+	require.Equal(t, int32(1), atomic.LoadInt32(&released))
+}
+
+// TestLargeLoggerEmptyLine verifies an empty line is written as a bare newline
+// instead of panicking on msg[len(msg)-1].
+func TestLargeLoggerEmptyLine(t *testing.T) {
+	l, err := OpenLargeFileLog(Config{
+		Path:              t.TempDir(),
+		FileChunkSizeBits: 12,
+		Backup:            2,
+		Suffix:            ".log",
+	}, true)
+	require.NoError(t, err)
+	defer l.Close()
+
+	require.NoError(t, l.Log(nil))
+	require.NoError(t, l.Log([]byte{}))
+
+	require.NoError(t, l.LogOwned(&pooledLine{}))
 }

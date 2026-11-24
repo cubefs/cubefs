@@ -20,6 +20,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
+	"github.com/cubefs/cubefs/blobstore/util/largefile"
 )
 
 const (
@@ -50,6 +51,20 @@ type Config struct {
 
 	// LogFormat valid value is "text" or "json", default is "text"
 	LogFormat string `json:"log_format"`
+
+	// LogAsyncQueueSize controls asynchronous writing.
+	//  0 (default): disabled, wait for the disk, same as the historical behavior.
+	//  < 0: enabled, queue size is the default 4096.
+	//  > 0: enabled, this value is the queue size; values above 1<<20 are
+	//       clamped to the max with a warning.
+	LogAsyncQueueSize int `json:"log_async_queue_size"`
+	// LogAsyncDrop changes the queue-full behavior from blocking
+	// (backpressure, nothing is dropped) to dropping the line so the
+	// business never waits for the audit disk.
+	// Default false: do not drop, compatible with the historical writer.
+	// Request goroutines may be dragged by a hung audit disk just like in
+	// sync mode. Only takes effect when LogAsyncQueueSize != 0.
+	LogAsyncDrop bool `json:"log_async_drop"`
 }
 
 // LogCloser a implemented audit logger should implements ProgressHandler
@@ -61,10 +76,18 @@ type LogCloser interface {
 
 type noopLogCloser struct{}
 
-var NoopLogCloser LogCloser = noopLogCloser{}
+var NoopLogCloser largefile.OwnedLogCloser = noopLogCloser{}
 
 func (noopLogCloser) Close() error     { return nil }
 func (noopLogCloser) Log([]byte) error { return nil }
+
+// LogOwned implements the owned-buffer part of largefile.OwnedLogCloser:
+// nothing is written, but Release is still required, otherwise the caller's
+// pooled buffer would stay checked out forever.
+func (noopLogCloser) LogOwned(line largefile.BufferOwned) error {
+	line.Release()
+	return nil
+}
 
 type MetricSender interface {
 	Send(raw []byte) error

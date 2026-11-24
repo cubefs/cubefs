@@ -27,7 +27,9 @@ The basic configuration is shared by each module and mainly includes server port
     },
     "filters": "Filter log by multi-criteria matching of log's fields",
     "metrics_filter": "enable metric filter or not",
-    "log_format": "value is text or json, default is text"
+    "log_format": "value is text or json, default is text",
+    "log_async_queue_size": "async audit log queue size: 0 (default) disables async and waits for disk writing (historical behavior); < 0 enables async with default 4096; > 0 enables async with this queue size, max 1048576 (larger values are clamped with a warning). Restart is required after modification. Takes effect in blobstore services, sdk and ObjectNode local audit (auditLog.local). In async mode Close, including SDK Close, blocks for at most 5 seconds",
+    "log_async_drop": "drop the line when the async queue is full instead of blocking, default is false: do not drop (compatible with the historical writer), request goroutines may be dragged by a hung audit disk just like in sync mode; true: drop, the business never waits for the audit disk. Only takes effect when log_async_queue_size != 0"
   },
   "auth": {
     "enable_auth": "whether to enable authentication, true or false, default is false",
