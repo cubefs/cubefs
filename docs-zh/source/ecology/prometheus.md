@@ -507,7 +507,7 @@ blobstore_proxy_cache{action="miss",cluster="100",name="diskv",service="volume"}
 ## 开启指标
 
 - `Master` 指标监听端口为服务端口，默认开启指标监控模块
-- `Blobstore` 指标监听端口为服务端口，默认开启服务自定义监控指标项，公共指标项需要修改配置文件进行打开，可参考 [这里](./metrics.md)。
+- `Blobstore` 指标监听端口为服务端口，默认开启服务自定义监控指标项，公共指标项需要修改配置文件进行打开，可参考 [这里](../ops/configs/blobstore/base.md)。
 
 - `其他模块` 需要配置指标监听端口，默认关闭
     - `exporterPort`: 指标监听端口。

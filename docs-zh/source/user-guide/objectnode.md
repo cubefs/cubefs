@@ -91,7 +91,7 @@ ObjectNode提供兼容S3的对象存储接口来操作CubeFS中的文件，因�
 | Boto3                             | `Python`     | <http://boto.cloudhackers.com>            |
 
 ## 创建用户
-创建用户可以参见链接：[用户管理命令](../maintenance/admin-api/master/user.md)
+创建用户可以参见链接：[用户管理命令](../dev-guide/admin-api/master/user.md)
 
 如已创建用户，用户可以通过相关API获取用户密钥 Access Key 和 Secret Key 。
 
