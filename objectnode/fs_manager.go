@@ -34,8 +34,8 @@ type VolumeLoader struct {
 	store      Store              // Storage for ACP management
 	volumes    map[string]*Volume // mapping: volume name -> *Volume
 	volMu      sync.RWMutex
-	volInitMap sync.Map // mapping: volume name -> *sync.Mutex
-	blacklist  sync.Map // mapping: volume name -> timestamp (time.Time)
+	volInit    keyedMutex // per volume name init lock
+	blacklist  sync.Map   // mapping: volume name -> timestamp (time.Time)
 	closeOnce  sync.Once
 	closeCh    chan struct{}
 	metaStrict bool
@@ -85,13 +85,10 @@ func (loader *VolumeLoader) VolumeWithoutBlacklist(volName string, init bool) (*
 }
 
 func (loader *VolumeLoader) syncVolumeInit(volume string) (releaseFunc func()) {
-	value, _ := loader.volInitMap.LoadOrStore(volume, new(sync.Mutex))
-	initMu := value.(*sync.Mutex)
-	initMu.Lock()
+	unlock := loader.volInit.lock(volume)
 	log.LogDebugf("syncVolumeInit: get volume init lock: volume(%v)", volume)
 	return func() {
-		initMu.Unlock()
-		loader.volInitMap.Delete(volume)
+		unlock()
 		log.LogDebugf("syncVolumeInit: release volume init lock: volume(%v)", volume)
 	}
 }
