@@ -108,6 +108,17 @@ func (m *SnapshotMeta) Decode(datas []byte) {
 	m.Index = binary.BigEndian.Uint64(datas)
 	m.Term = binary.BigEndian.Uint64(datas[8:])
 	size := binary.BigEndian.Uint32(datas[16:])
+	// size is four bytes off the wire, and each peer occupies peer_size bytes
+	// there, so a count that would read past datas cannot be genuine. Without
+	// this the count alone sizes the allocation: a 20 byte message declaring
+	// size=0xFFFFFFFF asks for 4294967295 * 24 bytes = 96 GiB before a single
+	// peer has been read, and the loop below then indexes datas out of range.
+	// Bound it by what the buffer can actually supply rather than by a constant.
+	if avail := uint64(len(datas)); avail < snapmeta_header ||
+		uint64(size) > (avail-snapmeta_header)/peer_size {
+		m.Peers = nil
+		return
+	}
 	m.Peers = make([]Peer, size)
 	start := snapmeta_header
 	for i := uint32(0); i < size; i++ {
