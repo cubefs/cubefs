@@ -46,6 +46,9 @@ func addPeerTest(t *testing.T) {
 		t.Error(err)
 		return
 	}
+	if addr := AddrDatabase.Get(confChange.Peer.ID); addr != string(confChange.Context) {
+		t.Fatalf("added peer address: got %q, want %q", addr, confChange.Context)
+	}
 }
 
 func removePeerTest(t *testing.T) {
@@ -57,6 +60,16 @@ func removePeerTest(t *testing.T) {
 	if err := server.handlePeerChange(confChange); err != nil {
 		t.Error(err)
 		return
+	}
+	if addr := AddrDatabase.Get(confChange.Peer.ID); addr != "" {
+		t.Fatalf("removed peer address remains: %q", addr)
+	}
+	confChange.Context = nil
+	if err := server.handlePeerChange(confChange); err != nil {
+		t.Fatal(err)
+	}
+	if addr := AddrDatabase.Get(confChange.Peer.ID); addr != "" {
+		t.Fatalf("repeated removal restored peer address: %q", addr)
 	}
 }
 

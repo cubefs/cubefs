@@ -306,8 +306,11 @@ func (mgr *followerReadManager) sendFollowerVolumeDpView() {
 			log.LogErrorf("followerReadManager.sendFollowerVolumeDpView err %v", err)
 			continue
 		}
-		for _, addr := range AddrDatabase {
+		for id, addr := range AddrDatabase.Snapshot() {
 			if addr == mgr.c.leaderInfo.addr {
+				continue
+			}
+			if AddrDatabase.Get(id) != addr {
 				continue
 			}
 
