@@ -135,7 +135,7 @@ func newVersionStrategyCmd(client *master.MasterClient) *cobra.Command {
 		Short:   cmdVersionSetStrategyShort,
 		Aliases: []string{"create"},
 		Run: func(cmd *cobra.Command, args []string) {
-			if len(args) <= 3 {
+			if len(args) < 5 {
 				stdout("USAGE:./cfs-cli version verSetStrategy volName periodic count enable isForce\n")
 				return
 			}
