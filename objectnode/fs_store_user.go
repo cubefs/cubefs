@@ -97,8 +97,8 @@ type CacheUserInfoLoader struct {
 	mc          *master.MasterClient
 	akInfoStore map[string]*proto.UserInfo // mapping: access key -> user info (*proto.UserInfo)
 	akInfoMutex sync.RWMutex
-	akInitMap   sync.Map // mapping: access key -> *sync.Mutex
-	blacklist   sync.Map // mapping: access key -> timestamp (time.Time)
+	akInit      keyedMutex // per access key init lock
+	blacklist   sync.Map   // mapping: access key -> timestamp (time.Time)
 	closeCh     chan struct{}
 	closeOnce   sync.Once
 }
@@ -176,13 +176,10 @@ func (us *CacheUserInfoLoader) scheduleUpdate() {
 }
 
 func (us *CacheUserInfoLoader) syncUserInit(accessKey string) (releaseFunc func()) {
-	value, _ := us.akInitMap.LoadOrStore(accessKey, new(sync.Mutex))
-	initMu := value.(*sync.Mutex)
-	initMu.Lock()
+	unlock := us.akInit.lock(accessKey)
 	log.LogDebugf("syncUserInit: get user init lock: accessKey(%v)", accessKey)
 	return func() {
-		initMu.Unlock()
-		us.akInitMap.Delete(accessKey)
+		unlock()
 		log.LogDebugf("syncUserInit: release user init lock: accessKey(%v)", accessKey)
 	}
 }
