@@ -64,10 +64,13 @@ type AuditEntry struct {
 		Error      string            `json:"Error,omitempty"`
 	} `json:"Response"`
 
-	BytesRequest  int64  `json:"BytesRequest,omitempty"`
-	BytesResponse int64  `json:"BytesResponse,omitempty"`
-	Duration      string `json:"Duration,omitempty"`
-	DurationNS    string `json:"DurationNS,omitempty"`
+	BytesRequest  int64    `json:"BytesRequest,omitempty"`
+	BytesResponse int64    `json:"BytesResponse,omitempty"`
+	Duration      string   `json:"Duration,omitempty"`
+	DurationNS    string   `json:"DurationNS,omitempty"`
+	Size          int64    `json:"Size,omitempty"`
+	ETag          string   `json:"ETag,omitempty"`
+	Objects       []string `json:"Objects,omitempty"`
 }
 
 type AuditLogConfig struct {
@@ -176,6 +179,10 @@ func (a *ExternalAudit) Logger(w http.ResponseWriter, r *http.Request) {
 	entry.Response.StatusCode = statusCode
 	entry.Response.Status = http.StatusText(statusCode)
 	entry.Response.Error = getResponseErrorMessage(r)
+	fields := GetAuditFields(r)
+	entry.Size = fields.Size
+	entry.ETag = fields.ETag
+	entry.Objects = fields.Objects
 
 	data, err := json.Marshal(entry)
 	if err != nil {
