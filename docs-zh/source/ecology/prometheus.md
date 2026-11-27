@@ -539,16 +539,17 @@ blobstore_proxy_cache{action="miss",cluster="100",name="diskv",service="volume"}
 
 ```yaml
 # prometheus.yml
-- job_name: 'cubefs01'
-file_sd_configs:
-  - files: [ '/home/service/app/prometheus/cubefs01/*.yml' ]
-  refresh_interval: 10s
+scrape_configs:
+  - job_name: 'cubefs01'
+    file_sd_configs:
+      - files: [ '/home/service/app/prometheus/cubefs01/*.yml' ]
+        refresh_interval: 10s
 ```
 
-接入 exporter，在上述配置目录下创建 exporter 文件，以 master 为例，创建 master_exporter.yaml 文件
+接入 exporter，在上述配置目录下创建 exporter 文件，以 master 为例，创建 master_exporter.yml 文件
 
 ```yaml
-# master_exporter.yaml
+# master_exporter.yml
 - targets: [ 'master1_ip:17010' ]
   labels:
     cluster: cubefs01

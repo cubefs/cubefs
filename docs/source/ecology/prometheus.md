@@ -537,16 +537,17 @@ Modify the Prometheus YAML configuration file and add the metric collection sour
 
 ```yaml
 # prometheus.yml
-- job_name: 'cubefs01'
-file_sd_configs:
-  - files: [ '/home/service/app/prometheus/cubefs01/*.yml' ]
-  refresh_interval: 10s
+scrape_configs:
+  - job_name: 'cubefs01'
+    file_sd_configs:
+      - files: [ '/home/service/app/prometheus/cubefs01/*.yml' ]
+        refresh_interval: 10s
 ```
 
-Access the exporter and create an exporter file under the above configuration directory. Taking `Master` as an example, create the `master_exporter.yaml` file
+Access the exporter and create an exporter file under the above configuration directory. Taking `Master` as an example, create the `master_exporter.yml` file
 
 ```yaml
-# master_exporter.yaml
+# master_exporter.yml
 - targets: [ 'master1_ip:17010' ]
   labels:
     cluster: cubefs01
