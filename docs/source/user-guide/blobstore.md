@@ -107,7 +107,7 @@ nohup ./clustermgr -f clustermgr2.conf
 }
 ```
 
-Set the initial value of background task according to the mentioned in [ClusterMgr Manage](../ops/admin-api/blobstore/cm.md)
+Set the initial value of background task according to the mentioned in [ClusterMgr Manage](../dev-guide/admin-api/blobstore/cm.md)
 ```bash
 #example balance
 $> curl -X POST http://127.0.0.1:9998/config/set -d '{"key":"balance","value":"false"}' --header 'Content-Type: application/json'

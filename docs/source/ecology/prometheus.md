@@ -505,7 +505,7 @@ blobstore_proxy_cache{action="miss",cluster="100",name="diskv",service="volume"}
 ## Enabling Metrics
 
 - The `Master` metric listening port is the service port, and the metric monitoring module is enabled by default.
-- The `Blobstore` metric listening port is the service port, and the service custom monitoring metric items are enabled by default. Public metric items need to be opened by modifying the configuration file. [Refer to](./metrics.md):
+- The `Blobstore` metric listening port is the service port, and the service custom monitoring metric items are enabled by default. Public metric items need to be opened by modifying the configuration file. [Refer to](../ops/configs/blobstore/base.md):
 
 - Other modules need to configure the metric listening port, which is disabled by default.
   - `exporterPort`: Metric listening port.

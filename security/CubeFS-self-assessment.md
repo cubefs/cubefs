@@ -135,7 +135,7 @@ CubeFS  seeks graduation and is preparing for a security audit.
   
   * Typically, commits must include test cases and coverage for most processes, and GitHub will notify users of any coverage gaps
   * Code submissions on GitHub undergo multiple layers of checks.CubeFS have integrated many tools in CI, includes ci-test-unit,ci-test-s3 and ci-sast : [reference link](https://github.com/cubefs/cubefs/blob/master/.github/workflows/ci.yml)
-  * Contributor make the commit message need comply the rules or else can't pass the pull request t : [reference link](check.https://github.com/cubefs/cubefs/blob/master/CONTRIBUTING.md#commit-message-guidelines)
+  * Contributor make the commit message need comply the rules or else can't pass the pull request t : [reference link](https://github.com/cubefs/cubefs/blob/master/CONTRIBUTING.md#commit-message-guidelines)
 * Communication Channels.  Reference where you document how to reach your team or
   describe in corresponding section.
   
