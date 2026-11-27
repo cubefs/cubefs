@@ -2,7 +2,7 @@
 set -e
 
 if [ $# -ne 1 ]; then
-    echo "useage: genIp.sh <bond0>"
+    echo "usage: genIp.sh <bond0>"
     exit 1
 fi
 
@@ -11,13 +11,6 @@ interface=$1
 if ! [ -n "$(ip link show "$interface" 2>/dev/null)" ]; then
     echo "network interface $interface does not exist"
     exit 2
-fi
-
-processNum=`ps -aux | grep -v grep |grep "${newPid}" | wc -l`
-
-if [ ${processNum} -eq 0 ]; then
-    echo "service start fail after 3 seconds"
-    exit 3
 fi
 
 genIp() {
