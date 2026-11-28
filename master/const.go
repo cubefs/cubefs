@@ -228,6 +228,8 @@ const (
 	EmptyCrcValue                          uint32 = 4045511210
 	DefaultZoneName                               = proto.DefaultZoneName
 	retrySendSyncTaskInternal                     = 3 * time.Second
+	syncUpdateDPMaxRetries                        = 3
+	syncUpdateDPRetryBaseInterval                 = time.Second
 	defaultRangeOfCountDifferencesAllowed         = 50
 	defaultMinusOfMaxInodeID                      = 1000
 	defaultNodeSetGrpBatchCnt                     = 3
