@@ -211,19 +211,20 @@ func (o *ObjectNode) policyCheck(f http.HandlerFunc) http.HandlerFunc {
 		}
 		userPolicy = userInfo.Policy
 		isOwner = userPolicy.IsOwn(param.Bucket())
+		// copy api should check srcBucket policy additionally, even if the request user
+		// has been authorized on the target bucket by user policy
+		if param.apiName == COPY_OBJECT || param.apiName == UPLOAD_PART_COPY {
+			err = o.allowedBySrcBucketPolicy(param, userInfo.UserID, userPolicy)
+			if err != nil {
+				return
+			}
+		}
 		// The bucket is not owned by request user who has not been authorized, so bucket policy should be checked.
 		if !isOwner && userPolicy.IsAuthorizedS3(param.Bucket(), param.apiName) {
 			log.LogInfof("user policy check:  permission url(%v) requestID(%v) userID(%v) accessKey(%v) volume(%v) object(%v) action(%v) authorizedVols(%v)",
 				r.URL, GetRequestID(r), userInfo.UserID, param.AccessKey(), param.Bucket(), param.Object(), param.Action(), userPolicy.AuthorizedVols)
 			allowed = true
 			return
-		}
-		// copy api should check srcBucket policy additionally
-		if param.apiName == COPY_OBJECT || param.apiName == UPLOAD_PART_COPY {
-			err = o.allowedBySrcBucketPolicy(param, userInfo.UserID)
-			if err != nil {
-				return
-			}
 		}
 		// batch delete will delay to check just before delete for each key
 		if param.apiName == BATCH_DELETE {
@@ -325,11 +326,17 @@ func (o *ObjectNode) loadBucketMeta(bucket string) (vol *Volume, acl *AccessCont
 	return
 }
 
-func (o *ObjectNode) allowedBySrcBucketPolicy(param *RequestParam, reqUid string) (err error) {
+func (o *ObjectNode) allowedBySrcBucketPolicy(param *RequestParam, reqUid string, userPolicy *proto.UserPolicy) (err error) {
 	paramCopy := *param
 	srcBucketId, srcKey, _, err := extractSrcBucketKey(paramCopy.r)
 	if err != nil {
 		log.LogDebugf("copySource(%v) argument invalid: requestID(%v)", paramCopy.r.Header.Get(XAmzCopySource), GetRequestID(paramCopy.r))
+		return
+	}
+	// The request user has been authorized to read srcBucket by user policy.
+	if userPolicy.IsAuthorizedS3(srcBucketId, GET_OBJECT) {
+		log.LogDebugf("srcBucket user policy check: action allowed: requestID(%v) reqUid(%v) volume(%v)",
+			GetRequestID(paramCopy.r), reqUid, srcBucketId)
 		return
 	}
 	vol, _, policy, err := o.loadBucketMeta(srcBucketId)
